@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Bedrock
+Comment=Mining companion for Star Citizen
+Exec=bedrock
+Icon=bedrock
+Terminal=false
+Categories=Game;Utility;

@@ -1,0 +1,57 @@
+Bedrock - Mining Companion for Star Citizen
+Copyright (C) 2026 Ravaxx
+
+Bedrock is free software: you can redistribute it and/or modify it under the
+terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. It is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See LICENSE for the full text.
+
+Source code: https://github.com/SC-Ravaxx/Bedrock
+
+
+WHAT THE GPL DOES NOT COVER
+
+These parts of the repository are not the author's to license, or are under
+their own licence. The GPL does not change their terms.
+
+- resources/fonts/ - Selawik (Microsoft) and D-DIN (Datto), under the SIL
+  Open Font License 1.1. Their licences lie beside them.
+- resources/textline.onnx, resources/textline_keys.txt - the PP-OCRv4
+  recognition model of PaddleOCR (Apache License 2.0), in the ONNX conversion
+  of @gutenye/ocr-models (MIT), with its input size fixed by
+  tools/fix_onnx_shape.py. See THIRD-PARTY-NOTICES.txt.
+- regolith_lookups.json and the refining tables built from it
+  (include/RefiningData.h) - RegolithCo-Common, MIT License,
+  Copyright (c) 2026 Regolith Co.
+- resources/uex_powered.png - the "Powered by UEX" badge, a mark of UEX
+  (uexcorp.space), used as UEX offers it to apps that use its API.
+- The game's data: the generated tables in include/ (ores, signatures,
+  mining places, crafting recipes, contract texts, items, commodities), the
+  glyph templates and the test pictures describe or show Star Citizen and
+  belong to Cloud Imperium Games. They are not licensed here. Mining
+  locations and refinery profiles are compiled from scmdb.net.
+- The libraries Bedrock is built on (OpenCV, zstd, Qt on Linux and others)
+  are used under their own licences, reproduced in THIRD-PARTY-NOTICES.txt
+  and THIRD-PARTY-NOTICES-LINUX.txt.
+
+
+STAR CITIZEN
+
+Bedrock is an unofficial tool. It is not made by, endorsed by, or affiliated
+with Cloud Imperium Games or Roberts Space Industries. "Star Citizen",
+"Squadron 42", "Roberts Space Industries" and "Cloud Imperium" are trademarks
+of Cloud Imperium Rights LLC.
+
+Bedrock reads the game the way a person does: it looks at the screen and at
+the game's own Game.log. It does not read the game's memory, attach to its
+process or inject anything into it. One optional feature writes a language
+file into the game folder, the way language packs do.
+
+
+THE NAME
+
+The GPL lets you change Bedrock and pass your version on. Please give a
+changed version another name, or say clearly that it is changed, so nobody
+mistakes it for the original.
