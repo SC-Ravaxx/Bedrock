@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(StarCitizenMiner VERSION 2.6.5 LANGUAGES CXX)
+project(StarCitizenMiner VERSION 2.6.5.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -29,6 +29,44 @@ endif()
 # bedrock-latest.txt, see include/resource.h). Official releases set it; a
 # build without it never checks for updates.
 set(BEDROCK_UPDATE_URL "" CACHE STRING "Update manifest address (official builds only; empty = no update check)")
+
+# The commit the build is made from, so a binary names the exact source it
+# came from (shown in the ? window and session.txt, checked by
+# tools/make_release.py). "-dirty" when tracked files differ from the commit.
+# Read again whenever HEAD or the index changes.
+set(BEDROCK_GIT_SHA "unknown")
+set(BEDROCK_GIT_SHORT "unknown")
+find_package(Git QUIET)
+if(GIT_FOUND)
+    execute_process(COMMAND "${GIT_EXECUTABLE}" -c safe.directory=* rev-parse HEAD
+                    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" RESULT_VARIABLE BEDROCK_GIT_RC
+                    OUTPUT_VARIABLE BEDROCK_GIT_HEAD OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(BEDROCK_GIT_RC EQUAL 0 AND BEDROCK_GIT_HEAD MATCHES "^[0-9a-f]+$")
+        execute_process(COMMAND "${GIT_EXECUTABLE}" -c safe.directory=* status --porcelain --untracked-files=no
+                        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+                        OUTPUT_VARIABLE BEDROCK_GIT_CHANGES OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+        string(SUBSTRING "${BEDROCK_GIT_HEAD}" 0 7 BEDROCK_GIT_SHORT)
+        set(BEDROCK_GIT_SHA "${BEDROCK_GIT_HEAD}")
+        if(BEDROCK_GIT_CHANGES)
+            string(APPEND BEDROCK_GIT_SHA "-dirty")
+            string(APPEND BEDROCK_GIT_SHORT "-dirty")
+        endif()
+        execute_process(COMMAND "${GIT_EXECUTABLE}" -c safe.directory=* rev-parse --absolute-git-dir
+                        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+                        OUTPUT_VARIABLE BEDROCK_GIT_DIR OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+        execute_process(COMMAND "${GIT_EXECUTABLE}" -c safe.directory=* symbolic-ref -q HEAD
+                        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+                        OUTPUT_VARIABLE BEDROCK_GIT_REF OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+        foreach(watched HEAD index packed-refs ${BEDROCK_GIT_REF})
+            if(EXISTS "${BEDROCK_GIT_DIR}/${watched}")
+                set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${BEDROCK_GIT_DIR}/${watched}")
+            endif()
+        endforeach()
+    endif()
+endif()
+message(STATUS "Bedrock is built from commit ${BEDROCK_GIT_SHA}")
+add_compile_definitions("$<$<COMPILE_LANGUAGE:CXX>:BEDROCK_GIT_SHA=\"${BEDROCK_GIT_SHA}\">"
+                        "$<$<COMPILE_LANGUAGE:CXX>:BEDROCK_GIT_SHORT=\"${BEDROCK_GIT_SHORT}\">")
 if(BEDROCK_UPDATE_URL)
     add_compile_definitions("$<$<COMPILE_LANGUAGE:CXX>:BEDROCK_UPDATE_URL=\"${BEDROCK_UPDATE_URL}\">")
 endif()

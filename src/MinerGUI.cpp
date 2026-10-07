@@ -13084,7 +13084,8 @@ void MinerGUI::drawAboutCard(Gdiplus::Graphics& g, int cw, int ch) {
     g.DrawString(L"click anywhere to close", -1, &subFont,
                  Gdiplus::RectF(left, y + scaleF(8), width, scaleF(16)), &rightAlign, &faintBrush);
     y += scaleF(26);
-    g.DrawString(L"Version " BEDROCK_VERSION_W L"  ·  a mining companion for Star Citizen",
+    g.DrawString(L"Version " BEDROCK_VERSION_W L"  ·  commit " BEDROCK_GIT_SHORT_W
+                 L"  ·  a mining companion for Star Citizen",
                  -1, &subFont, Gdiplus::PointF(left, y), &dimBrush);
     y += scaleF(24);
 
@@ -13297,6 +13298,11 @@ void MinerGUI::drawWhatsNewCard(Gdiplus::Graphics& g, int cw, int ch) {
     // however softly put, turns that into a collection. The jar sits behind the
     // ? button and along the foot of the main window. Plain words, like a patch
     // note.
+    version(L"2.6.5.1", L"7 October");
+    note(L"Bedrock is now open source under the GNU GPL, at");
+    note(L"github.com/SC-Ravaxx/Bedrock. This build is made from that code,");
+    note(L"and the ? window shows the commit it was built from.");
+    gap(10);
     version(L"2.6.5", L"7 October");
     note(L"Thanks to andydsm for testing most of this!");
     gap(10);

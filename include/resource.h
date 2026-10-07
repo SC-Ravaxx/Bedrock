@@ -11,7 +11,7 @@
 #define BEDROCK_VERSION_MAJOR 2
 #define BEDROCK_VERSION_MINOR 6
 #define BEDROCK_VERSION_PATCH 5
-#define BEDROCK_VERSION_BUILD 0
+#define BEDROCK_VERSION_BUILD 1
 
 #define BEDROCK_STR2(x) #x
 #define BEDROCK_STR(x) BEDROCK_STR2(x)
@@ -27,6 +27,17 @@
 #define BEDROCK_VERSION_W2(x) L##x
 #define BEDROCK_VERSION_W1(x) BEDROCK_VERSION_W2(x)
 #define BEDROCK_VERSION_W BEDROCK_VERSION_W1(BEDROCK_VERSION)
+
+// The commit the build was made from, set by CMake from git: the full SHA,
+// and the short one the ? window shows. "-dirty" when tracked files differed
+// from that commit; "unknown" outside a git checkout.
+#ifndef BEDROCK_GIT_SHA
+#define BEDROCK_GIT_SHA "unknown"
+#endif
+#ifndef BEDROCK_GIT_SHORT
+#define BEDROCK_GIT_SHORT "unknown"
+#endif
+#define BEDROCK_GIT_SHORT_W BEDROCK_VERSION_W1(BEDROCK_GIT_SHORT)
 
 // Where the app looks for a newer version: a text file of key=value
 // lines (see Updater.h). Set by the build for official releases only

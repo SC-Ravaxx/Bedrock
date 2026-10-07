@@ -73,6 +73,19 @@ if not UPDATE_URL.startswith("https://"):
 if UPDATE_URL.encode() not in io.open(EXE, "rb").read():
     raise SystemExit("%s was not built with %s - configure it with -DBEDROCK_UPDATE_URL and build again"
                      % (EXE, UPDATE_URL))
+# The commit: a release is packed from a clean checkout, and its exe names that
+# exact commit - so anyone can build the same source and compare.
+import subprocess as _sp
+COMMIT = _sp.run(["git", "-C", ROOT, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+changes = _sp.run(["git", "-C", ROOT, "status", "--porcelain", "--untracked-files=no"],
+                  capture_output=True, text=True).stdout.strip()
+if not re.fullmatch(r"[0-9a-f]{40}", COMMIT):
+    raise SystemExit("not a git checkout - a release is packed from one")
+if changes:
+    raise SystemExit("the checkout has changes that are not committed - commit them, build, then pack")
+exe_bytes = io.open(EXE, "rb").read()
+if (COMMIT.encode() + b"-dirty") in exe_bytes or COMMIT.encode() not in exe_bytes:
+    raise SystemExit("%s was not built from commit %s as it stands - build it again" % (EXE, COMMIT[:12]))
 # A developer build carries the whole workshop - every harvest and bench
 # command and every switch - and must never be what people download
 with io.open(EXE, "rb") as f:
@@ -222,6 +235,8 @@ notes = io.open(notes_file, encoding="utf-8").read() if notes_file else (
     "Bedrock - Mining Companion for Star Citizen (hand-out build)\r\n"
     "Version %s, %s\r\n\r\n"
     "(no release notes were given to tools/make_release.py)\r\n" % (version, stamp))
+notes = notes.rstrip("\r\n") + ("\r\n\r\nBuilt from commit %s\r\n"
+                                    "https://github.com/SC-Ravaxx/Bedrock/tree/%s\r\n" % (COMMIT, COMMIT))
 io.open(os.path.join(out, "VERSION.txt"), "w", newline="").write(notes)
 
 # --- does the package actually run? ---------------------------------------
@@ -285,6 +300,7 @@ manifest = [
     "sha256=" + digest,
     "notes=" + line,
     "licence=" + licence_sha,
+    "commit=" + COMMIT,
 ]
 # The Linux package, when it lies in dist/ beside the zip: the Linux build
 # reads url_linux= and sha256_linux= and passes over the zip's lines, the

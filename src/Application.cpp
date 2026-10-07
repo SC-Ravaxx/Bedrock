@@ -5263,6 +5263,7 @@ void Application::pushRanks() {
 
 void Application::describeSetup(std::ostream& out) const {
     out << "Bedrock " << BEDROCK_VERSION << "  " << timeStamp("%Y-%m-%d %H:%M:%S") << "\n";
+    out << "commit:  " << BEDROCK_GIT_SHA << "\n";
     // Where the player's things are. First question in every support
     // conversation, and the answer moved in 4.9.
     out << "program: " << AppPaths::program().string() << "\n";
