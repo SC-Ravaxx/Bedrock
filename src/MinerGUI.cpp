@@ -13298,6 +13298,12 @@ void MinerGUI::drawWhatsNewCard(Gdiplus::Graphics& g, int cw, int ch) {
     // however softly put, turns that into a collection. The jar sits behind the
     // ? button and along the foot of the main window. Plain words, like a patch
     // note.
+    version(L"2.6.5.2", L"7 October");
+    note(L"Reporting prices and refinery jobs to UEX works again: 2.6.5.1");
+    note(L"went out without Bedrock\u2019s UEX app token. Builds are now");
+    note(L"reproducible: the same code, built with the same tools, gives the");
+    note(L"same Bedrock.exe. The README on GitHub says how to check it.");
+    gap(10);
     version(L"2.6.5.1", L"7 October");
     note(L"Bedrock is now open source under the GNU GPL, at");
     note(L"github.com/SC-Ravaxx/Bedrock. This build is made from that code,");
