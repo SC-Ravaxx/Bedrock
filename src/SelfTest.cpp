@@ -1264,6 +1264,10 @@ int runSelfTest() {
             R::accountTrouble(200, "{\"status\":\"ok\"}").empty() &&
             R::verdict(500, "").find("500") != std::string::npos &&
             R::keyLooksRight(std::string(40, 'a')) && !R::keyLooksRight(std::string(39, 'a')) &&
+            // the app token beside the program: "Ab9" mixed as CMakeLists.txt mixes it
+            R::unmixAppToken("26,226,156\n") == "Ab9" && R::unmixAppToken("26, 226, 156") == "Ab9" &&
+            R::unmixAppToken("").empty() && R::unmixAppToken("26,x,7").empty() &&
+            R::unmixAppToken("26,226,156,256").empty() && R::unmixAppToken("91").empty() &&
             !R::keyLooksRight(std::string(39, 'a') + " ") &&
             R::base64((const unsigned char*)"Man", 3) == "TWFu" && R::base64((const unsigned char*)"Ma", 2) == "TWE=" &&
             R::base64((const unsigned char*)"M", 1) == "TQ==" && R::jsonText("a\"b\\c\n") == "\"a\\\"b\\\\c\\n\"";
@@ -1285,6 +1289,17 @@ int runSelfTest() {
                              plainBack.rows == 1080 && wideJpeg.size() / 3 * 4 < 10u * 1024 * 1024 &&
                              SCMiner::Application::uexPictureJpeg(cv::Mat()).empty();
         allPassed &= check(picture, "the picture with a price report: at most 1080 tall, a JPEG under UEX's 10 MB");
+        // ...and the app token beside the program, where a release carries it:
+        // there, it has to read (a package without it reports nothing)
+        {
+            std::error_code ec;
+            if (std::filesystem::exists(SCMiner::AppPaths::program() / "uex_token.dat", ec)) {
+                allPassed &= check(SCMiner::Application::uexTokenForProbe().size() >= 20,
+                                   "the UEX app token beside the program reads");
+            } else {
+                std::cout << "  (no uex_token.dat beside the program: this build asks UEX anonymously)" << std::endl;
+            }
+        }
         // ...kept once it has gone, the next one in its place, nothing left
         // beside it
         {

@@ -28,6 +28,7 @@ region_config.txt
 # Bedrock's app token for uexcorp.space - read by cmake, kept out of the
 # repository (see CMakeLists.txt)
 uex_token.txt
+uex_token.dat
 uex_key.dat
 
 # Local editor and tool state

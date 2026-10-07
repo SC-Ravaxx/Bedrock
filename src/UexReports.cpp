@@ -347,6 +347,30 @@ std::string accountTrouble(int httpStatus, const std::string& body) {
     return "";
 }
 
+std::string unmixAppToken(const std::string& line) {
+    std::string token;
+    size_t at = 0;
+    while (at < line.size()) {
+        size_t end = line.find(',', at);
+        if (end == std::string::npos) end = line.size();
+        std::string part = line.substr(at, end - at);
+        while (!part.empty() && std::isspace((unsigned char)part.back())) part.pop_back();
+        while (!part.empty() && std::isspace((unsigned char)part.front())) part.erase(part.begin());
+        if (part.empty() || part.size() > 3 ||
+            !std::all_of(part.begin(), part.end(), [](unsigned char c) { return std::isdigit(c) != 0; })) {
+            return "";
+        }
+        const int value = std::stoi(part);
+        if (value > 255) return "";
+        const int i = (int)token.size();
+        const unsigned char c = (unsigned char)(value ^ ((i * 37 + 91) % 256));
+        if (c < 33 || c > 126) return "";
+        token += (char)c;
+        at = end + 1;
+    }
+    return token;
+}
+
 bool keyLooksRight(const std::string& key) {
     if (key.size() != 40) return false;
     return std::all_of(key.begin(), key.end(), [](unsigned char c) { return std::isalnum(c) != 0; });

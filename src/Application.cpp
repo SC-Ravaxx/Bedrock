@@ -9,7 +9,6 @@
 #include "AppPaths.h"
 #include "CraftingData.h"
 #include "MiniJson.h"
-#include "UexToken.h"
 #include "resource.h"
 #include <algorithm>
 #include <iostream>
@@ -28,6 +27,9 @@
 #include <opencv2/core/utility.hpp>   // cv::setNumThreads
 
 namespace SCMiner {
+
+// Bedrock's UEX app token, read from beside the program (see below)
+static std::string uexToken();
 
 namespace {
 
@@ -1016,7 +1018,7 @@ void Application::runWithGUI(HINSTANCE hInstance) {
     // UEX, offered once: at the first start, when nobody has a key in yet.
     // It waits for the window to be free. A build without Bedrock's app token
     // can do nothing with an account.
-    if (uexWanted_ && !uexOffered_ && uexKey_.empty() && UEX_TOKEN_LENGTH > 0) gui_->offerUex();
+    if (uexWanted_ && !uexOffered_ && uexKey_.empty() && !uexToken().empty()) gui_->offerUex();
 
     // Come back scanning if that is how the app was left. An instance that
     // starts idle looks exactly like one that is working, and the difference
@@ -4389,13 +4391,16 @@ void Application::serviceGameTexts() {
 // UEX's API, at the address its documentation gives (api.uexcorp.space answers too)
 static const char* const UEX_API = "https://api.uexcorp.uk/2.0/";
 
-// Bedrock's app token for UEX, as the build mixed it in (CMakeLists.txt);
-// "" for a build made without uex_token.txt
+// Bedrock's app token for UEX: uex_token.dat beside the program, which the
+// build writes out of uex_token.txt and a release carries (CMakeLists.txt).
+// Read once; "" without the file - a build that asks UEX anonymously.
 static std::string uexToken() {
-    std::string token;
-    for (int i = 0; i < UEX_TOKEN_LENGTH; i++) {
-        token += (char)(UEX_TOKEN_MIXED[i] ^ (unsigned char)((i * 37 + 91) % 256));
-    }
+    static const std::string token = [] {
+        std::ifstream in(AppPaths::program() / "uex_token.dat");
+        std::string line;
+        if (!in || !std::getline(in, line)) return std::string();
+        return UexReports::unmixAppToken(line);
+    }();
     return token;
 }
 
@@ -5059,7 +5064,7 @@ void Application::pushUexAccount() {
     account.note = uexReportNote_;
     account.noteAt = uexReportNoteAt_;
     account.user = uexUser_;
-    account.hasToken = UEX_TOKEN_LENGTH > 0;
+    account.hasToken = !uexToken().empty();
     account.keyChanges = uexKeyChanges_;
     std::error_code ec;
     const std::filesystem::path shot = AppPaths::data() / "debug" / UEX_LAST_SHOT;

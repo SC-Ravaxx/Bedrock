@@ -101,6 +101,10 @@ bool keyTrouble(int httpStatus, const std::string& body);
 std::string accountTrouble(int httpStatus, const std::string& body);
 // A key as UEX hands them out: 40 characters, nothing but letters and digits
 bool keyLooksRight(const std::string& key);
+// Bedrock's app token out of uex_token.dat (CMakeLists.txt writes it): one
+// line of decimal numbers, byte i mixed with (i * 37 + 91) % 256. "" for
+// anything that does not come out as one word of printable characters.
+std::string unmixAppToken(const std::string& line);
 std::string base64(const unsigned char* bytes, size_t size);
 // A string as JSON writes it, quotes included
 std::string jsonText(const std::string& text);

@@ -19,6 +19,7 @@ cmake -S "$SRC" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release \
 cmake --build "$BUILD" --target bedrock -j "$(nproc)" > "$BUILD/build.log" 2>&1 \
     || { grep -n "error" "$BUILD/build.log" | grep -v Werror | head -20; exit 1; }
 echo "built $(ls -la "$BUILD/bedrock" | awk '{print $5}') bytes"
+sha256sum "$BUILD/bedrock"
 objdump -T "$BUILD/bedrock" | grep -o "GLIBC_[0-9.]*" | sort -uV | tail -1
 objdump -T "$BUILD/bedrock" | grep -o "GLIBCXX_[0-9.]*" | sort -uV | tail -1
 

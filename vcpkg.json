@@ -1,0 +1,16 @@
+{
+  "name": "bedrock",
+  "version-string": "2.6.5.1",
+  "description": "Mining companion for Star Citizen",
+  "builtin-baseline": "e5a1490e1409d175932ef6014519e9ae149ddb7c",
+  "dependencies": [
+    "opencv4",
+    "zstd"
+  ],
+  "features": {
+    "dev-tools": {
+      "description": "Tesseract, for the developer tools (-DBEDROCK_DEV_TOOLS=ON)",
+      "dependencies": [ "tesseract" ]
+    }
+  }
+}

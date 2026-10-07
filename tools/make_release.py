@@ -46,7 +46,14 @@ if re.search(r"#define BEDROCK_VERSION_BUILD\s+(\d+)", header) and number("BUILD
 # Today, unless BEDROCK_STAMP says otherwise: for a package whose contents
 # change before anybody has it, under the name the release page already
 # links - a new date would leave the old file being handed out.
-stamp = os.environ.get("BEDROCK_STAMP") or datetime.date.today().isoformat()
+# The commit's time names the package and dates every file in the zip, so
+# packing the same commit again gives the same zip
+import subprocess as _sp0
+_ct = _sp0.run(["git", "-C", ROOT, "log", "-1", "--format=%ct"], capture_output=True, text=True).stdout.strip()
+COMMIT_TIME = int(_ct) if _ct.isdigit() else 0
+_commit_day = (datetime.datetime.fromtimestamp(COMMIT_TIME, datetime.timezone.utc).date().isoformat()
+               if COMMIT_TIME else datetime.date.today().isoformat())
+stamp = os.environ.get("BEDROCK_STAMP") or _commit_day
 name = "Bedrock_%s_v%s" % (stamp, version)
 # Built in a staging folder, never straight into dist/: the last package is
 # usually the one the app is running from, and Windows holds that folder open.
@@ -136,6 +143,12 @@ else:
     if dlls_from is None:
         raise SystemExit("no earlier package in dist/ with runtime DLLs in it - folder or zip")
 shutil.copy2(EXE, os.path.join(out, "Bedrock.exe"))
+# The app token lies beside the exe, not in it (CMakeLists.txt): a release
+# without it would report nothing to UEX
+token_file = os.path.join(os.path.dirname(EXE), "uex_token.dat")
+if not os.path.exists(token_file):
+    raise SystemExit("no uex_token.dat beside %s - put the app token in uex_token.txt and run cmake again" % EXE)
+shutil.copy2(token_file, os.path.join(out, "uex_token.dat"))
 
 
 # --- every DLL the exe needs, all the way down ------------------------------
@@ -217,7 +230,14 @@ if unused:
         os.remove(os.path.join(out, gone))
     print("dropped : %s  (nothing imports them any more)" % ", ".join(unused))
 
-shutil.copy2(os.path.join(DIST, "README.txt"), os.path.join(out, "README.txt"))
+# Text files go into the package with Windows line ends, whatever the
+# checkout has, so the package does not depend on it
+def _copy_text(source_file, target_file):
+    text = io.open(source_file, "rb").read().decode("utf-8").replace("\r\n", "\n")
+    io.open(target_file, "wb").write(text.replace("\n", "\r\n").encode("utf-8"))
+
+
+_copy_text(os.path.join(DIST, "README.txt"), os.path.join(out, "README.txt"))
 # The licence and the third-party notices are not decoration: every Apache,
 # BSD and MIT library in the package is used on condition that its notice
 # travels with the binary. A package without them is one that may not be
@@ -227,8 +247,8 @@ for required in ("LICENSE", "THIRD-PARTY-NOTICES.txt"):
     source_file = os.path.join(ROOT, required)
     if not os.path.exists(source_file):
         raise SystemExit("no %s - run tools/gen_third_party_notices.py" % required)
-    shutil.copy2(source_file, os.path.join(out, required))
-shutil.copy2(os.path.join(DIST, "debug_README.txt"), os.path.join(out, "debug", "README.txt"))
+    _copy_text(source_file, os.path.join(out, required))
+_copy_text(os.path.join(DIST, "debug_README.txt"), os.path.join(out, "debug", "README.txt"))
 
 notes_file = sys.argv[1] if len(sys.argv) > 1 else None
 notes = io.open(notes_file, encoding="utf-8").read() if notes_file else (
@@ -237,6 +257,7 @@ notes = io.open(notes_file, encoding="utf-8").read() if notes_file else (
     "(no release notes were given to tools/make_release.py)\r\n" % (version, stamp))
 notes = notes.rstrip("\r\n") + ("\r\n\r\nBuilt from commit %s\r\n"
                                     "https://github.com/SC-Ravaxx/Bedrock/tree/%s\r\n" % (COMMIT, COMMIT))
+notes = notes.replace("\r\n", "\n").replace("\n", "\r\n")
 io.open(os.path.join(out, "VERSION.txt"), "w", newline="").write(notes)
 
 # --- does the package actually run? ---------------------------------------
@@ -274,11 +295,81 @@ if "Self-test PASSED" not in said or "[skip]" in said:
 print("selftest: passed from the package folder (%d checks)" % said.count("[PASS]"))
 
 # --- the zip, and its checksum --------------------------------------------
-with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
-    for root, _, files in os.walk(out):
-        for f in sorted(files):
-            full = os.path.join(root, f)
-            z.write(full, os.path.join(name, os.path.relpath(full, out)))
+# What every file in the package is, so a build of the same commit can be
+# compared file by file; and what it was built with.
+def _sha(path):
+    return hashlib.sha256(io.open(path, "rb").read()).hexdigest()
+
+
+def _cache_value(key):
+    cache = os.path.join(os.path.dirname(os.path.dirname(EXE)), "CMakeCache.txt")
+    if os.path.exists(cache):
+        m = re.search(r"^%s:[A-Z]+=(.*)$" % re.escape(key), io.open(cache, encoding="utf-8").read(), re.M)
+        if m:
+            return m.group(1).strip()
+    return ""
+
+
+def _compiler_version():
+    build = os.path.dirname(os.path.dirname(EXE))
+    for root, _, files in os.walk(os.path.join(build, "CMakeFiles")):
+        if "CMakeCXXCompiler.cmake" in files:
+            m = re.search(r'CMAKE_CXX_COMPILER_VERSION "([^"]+)"',
+                          io.open(os.path.join(root, "CMakeCXXCompiler.cmake"), encoding="utf-8").read())
+            if m:
+                return m.group(1)
+    return "?"
+
+
+def _sdk_version():
+    build = os.path.dirname(os.path.dirname(EXE))
+    for f in os.listdir(build):
+        if f.endswith(".vcxproj"):
+            m = re.search(r"<WindowsTargetPlatformVersion>([^<]+)<", io.open(os.path.join(build, f), encoding="utf-8").read())
+            if m:
+                return m.group(1)
+    return "?"
+
+
+_vcpkg = re.search(r'"builtin-baseline"\s*:\s*"([0-9a-f]+)"',
+                   io.open(os.path.join(ROOT, "vcpkg.json"), encoding="utf-8").read()).group(1)
+buildinfo = [
+    "Bedrock %s, commit %s" % (version, COMMIT),
+    "",
+    "Bedrock.exe was built with:",
+    "  MSVC (cl) %s, Windows SDK %s" % (_compiler_version(), _sdk_version()),
+    "  vcpkg at builtin-baseline %s (vcpkg.json), triplet x64-windows" % _vcpkg,
+    "  cmake -DBEDROCK_UPDATE_URL=%s, Release" % UPDATE_URL,
+    "",
+    "Bedrock.exe sha256 %s" % _sha(os.path.join(out, "Bedrock.exe")),
+    "",
+    "The DLLs are vcpkg's builds of those libraries and Microsoft's runtime; their",
+    "hashes are in SHA256SUMS.txt. How to build the same Bedrock.exe: README.md,",
+    "\"Reproducing a release\", at https://github.com/SC-Ravaxx/Bedrock",
+]
+io.open(os.path.join(out, "BUILDINFO.txt"), "w", newline="\r\n").write("\n".join(buildinfo) + "\n")
+listing = []
+for root, _, files in os.walk(out):
+    for f in files:
+        full = os.path.join(root, f)
+        rel = os.path.relpath(full, out).replace(os.sep, "/")
+        if rel != "SHA256SUMS.txt":
+            listing.append("%s  %s" % (_sha(full), rel))
+io.open(os.path.join(out, "SHA256SUMS.txt"), "w", newline="\n").write("\n".join(sorted(listing, key=lambda l: l[66:])) + "\n")
+
+ZIP_TIME = datetime.datetime.fromtimestamp(max(COMMIT_TIME, 315532800), datetime.timezone.utc).timetuple()[:6]
+entries = []
+for root, _, files in os.walk(out):
+    for f in files:
+        full = os.path.join(root, f)
+        entries.append(((name + "/" + os.path.relpath(full, out).replace(os.sep, "/")), full))
+with zipfile.ZipFile(zpath, "w") as z:
+    for arcname, full in sorted(entries):
+        info = zipfile.ZipInfo(arcname, date_time=ZIP_TIME)
+        info.compress_type = zipfile.ZIP_DEFLATED
+        info.create_system = 0
+        info.external_attr = 0x20
+        z.writestr(info, io.open(full, "rb").read(), compresslevel=9)
 
 digest = hashlib.sha256(io.open(zpath, "rb").read()).hexdigest()
 # The zip lives beside the version file, so its address follows from the one

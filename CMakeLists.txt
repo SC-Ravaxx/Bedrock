@@ -65,6 +65,22 @@ if(GIT_FOUND)
     endif()
 endif()
 message(STATUS "Bedrock is built from commit ${BEDROCK_GIT_SHA}")
+
+# Reproducible builds: the same commit, built with the same tools, gives the
+# same binary byte for byte. MSVC stamps the time into every object and the
+# exe unless /Brepro says otherwise; GCC writes the source folder into
+# __FILE__, which -ffile-prefix-map takes out, so where the checkout lies does
+# not matter either.
+if(MSVC)
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/Brepro>")
+    add_link_options("/Brepro")
+    # __FILE__ (OpenCV's CV_Assert carries it) without the checkout's folder
+    file(TO_NATIVE_PATH "${CMAKE_SOURCE_DIR}" BEDROCK_SOURCE_NATIVE)
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/d1trimfile:${BEDROCK_SOURCE_NATIVE}>")
+else()
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-ffile-prefix-map=${CMAKE_SOURCE_DIR}/=>"
+                        "$<$<COMPILE_LANGUAGE:CXX>:-ffile-prefix-map=${CMAKE_BINARY_DIR}/=build/>")
+endif()
 add_compile_definitions("$<$<COMPILE_LANGUAGE:CXX>:BEDROCK_GIT_SHA=\"${BEDROCK_GIT_SHA}\">"
                         "$<$<COMPILE_LANGUAGE:CXX>:BEDROCK_GIT_SHORT=\"${BEDROCK_GIT_SHORT}\">")
 if(BEDROCK_UPDATE_URL)
@@ -95,15 +111,15 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 
 # The Ore Finder's prices come from UEX (uexcorp.space). Asked with Bedrock's
 # own app token, UEX knows which app is asking; without one it answers all
-# the same. The token is uex_token.txt beside this file - never committed
-# (.gitignore) - and goes into the binary not as plain text but mixed byte by
-# byte, so no strings tool finds it in the exe. That keeps it from being
-# picked up in passing, not from anyone who looks - the mixing is in this
-# file. It identifies the app, not a player: it reads public prices and goes
-# with the price reports and refinery jobs a player chooses to send under
-# their own key (uex_key.dat, which no build carries). Once the file is there it is
-# watched: a token changed in it is read at the next build. (A file that was
-# not there when cmake last ran is read at the next cmake run.)
+# the same, but takes no reports. The token is uex_token.txt beside this file
+# - never committed (.gitignore). It does not go into the program: it is
+# written, mixed byte by byte, into uex_token.dat beside it, which a release
+# carries. So the program is the same with or without a token, and anyone can
+# build the official binary from the same commit (README.md, "Reproducing a
+# release"). It identifies the app, not a player: it reads public prices and
+# goes with the price reports and refinery jobs a player chooses to send
+# under their own key (uex_key.dat, which no build carries). A token changed
+# in the file is read at the next build.
 #
 # Read as bytes, so that what an editor puts around the token is not taken
 # for part of it: a byte order mark in front, white space and line ends on
@@ -131,24 +147,25 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/uex_token.txt")
 endif()
 string(LENGTH "${UEX_TOKEN_HEX}" UEX_TOKEN_DIGITS)
 math(EXPR UEX_TOKEN_LENGTH "${UEX_TOKEN_DIGITS} / 2")
-set(UEX_TOKEN_MIXED "")
+# uex_token.dat: one line of decimal numbers, each byte of the token mixed
+# the way UexReports::unmixAppToken takes off again
+set(UEX_TOKEN_FILE "${CMAKE_BINARY_DIR}/uex_token.dat")
 if(UEX_TOKEN_LENGTH GREATER 0)
+    set(UEX_TOKEN_MIXED "")
     math(EXPR UEX_TOKEN_LAST "${UEX_TOKEN_LENGTH} - 1")
     foreach(i RANGE ${UEX_TOKEN_LAST})
         math(EXPR at "${i} * 2")
         string(SUBSTRING "${UEX_TOKEN_HEX}" ${at} 2 byte)
-        # the same mix as uexToken() in Application.cpp takes off again
-        math(EXPR mixed "0x${byte} ^ ((${i} * 37 + 91) % 256)" OUTPUT_FORMAT HEXADECIMAL)
-        string(APPEND UEX_TOKEN_MIXED "${mixed}, ")
+        math(EXPR mixed "0x${byte} ^ ((${i} * 37 + 91) % 256)")
+        if(i GREATER 0)
+            string(APPEND UEX_TOKEN_MIXED ",")
+        endif()
+        string(APPEND UEX_TOKEN_MIXED "${mixed}")
     endforeach()
+    file(WRITE "${UEX_TOKEN_FILE}" "${UEX_TOKEN_MIXED}\n")
+else()
+    file(REMOVE "${UEX_TOKEN_FILE}")
 endif()
-file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/generated/UexToken.h" CONTENT
-"#pragma once
-// Made by cmake out of uex_token.txt (see CMakeLists.txt) - never committed.
-static const unsigned char UEX_TOKEN_MIXED[] = {@UEX_TOKEN_MIXED@0};
-static const int UEX_TOKEN_LENGTH = @UEX_TOKEN_LENGTH@;
-" @ONLY)
-include_directories(${CMAKE_BINARY_DIR}/generated)
 
 # The MSVC spellings the project uses in 33 places - _stricmp, localtime_s and
 # their like - translated in one header rather than rewritten at every call.
@@ -245,6 +262,12 @@ if(WIN32)
     # Source files are UTF-8 (without BOM) - required for the unicode UI strings
     if(MSVC)
         target_compile_options(${PROJECT_NAME} PRIVATE /utf-8)
+    endif()
+
+    # The app token beside the exe, where it is looked for (see above)
+    if(EXISTS "${UEX_TOKEN_FILE}")
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${UEX_TOKEN_FILE}" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/uex_token.dat")
     endif()
 
     target_link_libraries(${PROJECT_NAME} PRIVATE

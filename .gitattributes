@@ -1,3 +1,11 @@
+# Every checkout has the same bytes, whatever the platform or core.autocrlf
+# says: text files are LF everywhere, so a build from any checkout of a
+# commit is the same build (see "Reproducing a release" in README.md).
+* text=auto eol=lf
+
+# main.cpp carries raw carriage returns inside string literals: never touched
+src/main.cpp -text
+
 # The second reader's model and its character list go into the exe byte for
 # byte (resources/bedrock.rc): no line-ending conversion, ever
 resources/textline.onnx binary

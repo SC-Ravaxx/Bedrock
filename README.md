@@ -119,7 +119,9 @@ are on your PATH.
 - UEX: a build works without a UEX app token. Prices are still loaded;
   sending reports to UEX is switched off. If you have your own UEX app token,
   put it alone in a file `uex_token.txt` in the repository root (git ignores
-  it) and run cmake again.
+  it) and run cmake again. The token does not go into the program: the build
+  writes it, mixed, into `uex_token.dat` beside it, and Bedrock reads it from
+  there. Official releases carry Bedrock's own token that way.
 
 ### Self-test
 
@@ -128,6 +130,52 @@ are on your PATH.
 pictures in `tests/`, the place and trade parsing and much more. It needs no
 game, no network and no token. Exit code 0 and `=== Self-test PASSED ===` at
 the end mean everything passed.
+
+## Reproducing a release
+
+Official builds are reproducible: the same commit, built with the same tools,
+gives byte for byte the same `Bedrock.exe` and the same Linux `bedrock`
+binary. Every release package carries `BUILDINFO.txt` (the commit and the
+tools it was built with) and `SHA256SUMS.txt` (the hash of every file in it),
+and the ? window shows the commit. Bedrock's UEX app token is not in the
+program but in `uex_token.dat` beside it, so the program can be rebuilt
+without it.
+
+### Windows
+
+Use the versions `BUILDINFO.txt` names - for 2.6.5.1: Visual Studio 2022
+Build Tools with MSVC 19.44.35222 (toolset v143), Windows SDK 10.0.26100.0,
+CMake 3.31, and vcpkg; `vcpkg.json` pins every library to one vcpkg
+baseline, which vcpkg installs on its own when cmake runs.
+
+```powershell
+git clone https://github.com/SC-Ravaxx/Bedrock
+cd Bedrock
+git checkout <commit from BUILDINFO.txt>
+cmake -S . -B build-release -A x64 -DCMAKE_TOOLCHAIN_FILE="$env:USERPROFILE/vcpkg/scripts/buildsystems/vcpkg.cmake" -DBEDROCK_UPDATE_URL=https://the-forsaken.org/bedrock/bedrock-latest.txt
+cmake --build build-release --config Release
+Get-FileHash build-release\Release\Bedrock.exe
+```
+
+The hash matches the `Bedrock.exe` line of `SHA256SUMS.txt`. The update
+address has to be given exactly as above: it is part of the program.
+
+### Linux
+
+The official binary is built in an Ubuntu 22.04 root (GCC 11.4.0, Qt 6.2.4,
+OpenCV 4.10.0 built static): `tools/linux/jammy_setup.sh` makes the root,
+`tools/linux/opencv_static.sh` builds OpenCV in it, and
+`tools/linux/build_package.sh` builds Bedrock there (with
+`BEDROCK_UPDATE_URL` set as above) and prints the binary's sha256. Compare it
+with `usr/bin/bedrock` inside the AppImage
+(`./Bedrock-<version>-x86_64.AppImage --appimage-extract`).
+
+### What is not rebuilt from this repository
+
+The DLLs beside `Bedrock.exe` are vcpkg's builds of the pinned libraries and
+Microsoft's C++ runtime; the AppImage carries Qt and other libraries from
+Ubuntu 22.04. Their hashes are in `SHA256SUMS.txt`, but they come from those
+projects, not from this source.
 
 ## Where things live
 

@@ -32,6 +32,8 @@ APPDIR=$BUILD/AppDir
 rm -rf "$APPDIR"
 mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/256x256/apps"
 cp "$BUILD/bedrock" "$APPDIR/usr/bin/bedrock"
+# the app token lies beside the program, not in it (CMakeLists.txt)
+[ -f "$BUILD/uex_token.dat" ] && cp "$BUILD/uex_token.dat" "$APPDIR/usr/bin/uex_token.dat"
 cp "$SRC/resources/linux/bedrock.desktop" "$APPDIR/usr/share/applications/"
 cp "$SRC/resources/icon_256.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/bedrock.png"
 # the licences travel with the binary, as they do beside Bedrock.exe
@@ -59,6 +61,13 @@ echo "platform plugins besides xcb: $EXTRA_PLATFORM_PLUGINS"
 if [ -f "$TOOLS/runtime-x86_64" ]; then
     export LDAI_RUNTIME_FILE="$TOOLS/runtime-x86_64"
 fi
+# Reproducible: the squashfs inside takes every file's time, and the time it
+# was made, from SOURCE_DATE_EPOCH - the commit's time unless set already
+if [ -z "$SOURCE_DATE_EPOCH" ]; then
+    SOURCE_DATE_EPOCH=$(git -C "$SRC" -c safe.directory='*' log -1 --format=%ct 2>/dev/null || echo 1)
+fi
+export SOURCE_DATE_EPOCH
+echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
 linuxdeploy-x86_64.AppImage --appdir "$APPDIR" --plugin qt --output appimage
 ls -la "$OUTPUT"
 sha256sum "$OUTPUT"
