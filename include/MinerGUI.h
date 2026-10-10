@@ -334,6 +334,9 @@ public:
 
     // Live mode status (updates the toggle button and the status pill)
     void setLiveModeActive(bool active);
+    // At a commodity terminal with a picture owed to UEX: the overlay is kept
+    // out of the pictures meanwhile, as while the scan runs
+    void setTradeWatch(bool on);
 
     // Callback when the system selection changes
     using SystemChangedCallback = std::function<void(const std::string&)>;
@@ -482,7 +485,8 @@ public:
     // Compact always-on-top overlay mode (for use while the game is running)
     void toggleOverlayMode();
     bool isOverlayMode() const { return overlayMode_; }
-    // The overlay out of screen captures while live mode is on, in them otherwise
+    // The overlay out of screen captures while live mode is on or a trade's
+    // picture is owed (setTradeWatch), in them otherwise
     void keepOutOfCaptures();
     // A rock's ores in the overlay: one to a row (true, the overlay two rows
     // taller) or all on one line; kept in window.txt
@@ -677,6 +681,7 @@ private:
     HINSTANCE hInstance_ = nullptr;
     bool isOpen_ = false;
     bool liveModeActive_ = false;
+    bool tradeWatch_ = false;
     bool pulseOn_ = false;      // Blinking state of the LIVE indicator
     bool overlayMode_ = false;  // compact topmost overlay
     bool overlayOreRows_ = true;   // a rock's ores one to a row in the overlay

@@ -392,6 +392,33 @@ std::string base64(const unsigned char* bytes, size_t size) {
     return out;
 }
 
+int pictureFor(const std::vector<long long>& takenMs, const std::vector<double>& detail, long long tradeMs) {
+    const int n = (int)(std::min)(takenMs.size(), detail.size());
+    // a tenth of a second short of the request: taken by then, it was on
+    // the screen before the click
+    auto isBefore = [&](int i) { return takenMs[i] >= tradeMs - PICTURE_BEFORE_MS && takenMs[i] <= tradeMs - 100; };
+    auto isAfter = [&](int i) { return takenMs[i] > tradeMs - 100 && takenMs[i] <= tradeMs + PICTURE_AFTER_MS; };
+    double mostBefore = -1, mostAfter = -1;
+    for (int i = 0; i < n; i++) {
+        if (isBefore(i)) mostBefore = (std::max)(mostBefore, detail[i]);
+        if (isAfter(i)) mostAfter = (std::max)(mostAfter, detail[i]);
+    }
+    int before = -1, after = -1;
+    for (int i = 0; i < n; i++) {
+        if (isBefore(i) && detail[i] >= LIST_NEAR * mostBefore && (before < 0 || takenMs[i] > takenMs[before])) before = i;
+    }
+    // Far more detail after it than anything before: nothing before was the
+    // list - the player stood in CONFIRMATION all along - and the first list
+    // after it is the one. Not where one before surely was: more detail after
+    // is then where the player went once done.
+    if (mostAfter >= 0 && (before < 0 || (mostBefore < SURELY_LIST && mostAfter >= AFTER_JUMP * mostBefore))) {
+        for (int i = 0; i < n; i++) {
+            if (isAfter(i) && detail[i] >= LIST_NEAR * mostAfter && (after < 0 || takenMs[i] < takenMs[after])) after = i;
+        }
+    }
+    return after >= 0 ? after : before;
+}
+
 std::string jsonText(const std::string& text) {
     std::string out = "\"";
     for (unsigned char c : text) {

@@ -137,11 +137,29 @@ bool TradeBook::live(std::string_view text) {
     GameState::Event event;
     if (GameState::parse(text, &event)) where_.apply(event);
     if (text.find("Commodity") == std::string_view::npos) return false;
+    if (text.find("CommodityUIProvider") != std::string_view::npos) {
+        const long long at = millisOf(stampOf(text));
+        if (at > terminalSeenMs_) terminalSeenMs_ = at;
+    }
     return line(text, placeOf(where_));
+}
+
+long long TradeBook::millisOf(const std::string& stamp) {
+    const long long seconds = Reputation::epochOf(stamp.substr(0, 19));
+    if (seconds < 0) return -1;
+    long long ms = 0;
+    if (stamp.size() >= 23 && stamp[19] == '.') {
+        for (size_t i = 20; i < 23; i++) {
+            if (stamp[i] < '0' || stamp[i] > '9') return -1;
+            ms = ms * 10 + (stamp[i] - '0');
+        }
+    }
+    return seconds * 1000 + ms;
 }
 
 void TradeBook::liveLogRestarted() {
     where_ = GameState();
+    terminalSeenMs_ = 0;
     lastKey_[0].clear();
     lastKey_[1].clear();
 }

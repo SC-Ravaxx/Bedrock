@@ -1804,7 +1804,9 @@ int runUexShotProbe(const std::string& picture, const std::string& out) {
     const cv::Mat back = cv::imdecode(jpeg, cv::IMREAD_COLOR);
     const size_t sent = SCMiner::UexReports::base64(jpeg.data(), jpeg.size()).size();
     std::cout << frame.cols << "x" << frame.rows << " -> " << back.cols << "x" << back.rows << ", JPEG "
-              << jpeg.size() / 1024 << " KB, " << sent / 1024 << " KB as sent (UEX takes up to 10 MB)" << std::endl;
+              << jpeg.size() / 1024 << " KB, " << sent / 1024 << " KB as sent (UEX takes up to 10 MB), detail "
+              << SCMiner::Application::tradeFrameDetail(frame) << " (a terminal's list has much, a dialog over it little)"
+              << std::endl;
     return 0;
 }
 

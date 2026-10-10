@@ -4162,6 +4162,7 @@ void Application::lookForRefinery() {
     whole.autoDetect = false;
     const cv::Mat frame = screenCapture_.captureRegion(whole);
     if (frame.empty()) return;
+    keepTradeFrame(frame);
     std::vector<RefineryBar> bars = findRefineryBars(frame);
     refineryUp_ = !bars.empty();
     // "WORK ORDER DELIVERED" is looked for while an order is done: over the
@@ -4795,16 +4796,36 @@ void Application::watchTradesForUex() {
         item.trade = trade;
         item.due = std::chrono::steady_clock::now() + std::chrono::seconds(UEX_TRADE_HOLD_SECONDS);
         item.shotWanted = now - uexReportSince_ < (long long)UEX_PICTURE_DAYS * 86400;
+        item.fromTerminal = item.shotWanted && tradeWatch_;
         uexQueue_.push_back(std::move(item));
         queued = true;
     }
     if (queued) takeUexShots(false);
 }
 
-// The picture for every queued trade still owed one - at once, or, while a
-// scan is running, at the start of the next one: a capture in between would
-// cut into the scan's own
+// A test run (SCMINER_UEX_DRYRUN, workshop builds only) keeps each picture
+// for UEX in the debug folder as well the moment it is chosen, to see what
+// UEX would get. What has gone to UEX is kept as debug\uex_last_screenshot.jpg,
+// in every build.
+static void keepTestShot(const std::vector<unsigned char>& jpeg) {
+    if (jpeg.empty() || !DEV_ENV("SCMINER_UEX_DRYRUN")) return;
+    std::error_code ec;
+    const std::filesystem::path folder = AppPaths::data() / "debug";
+    std::filesystem::create_directories(folder, ec);
+    std::ofstream(folder / "uex_test_screenshot.jpg", std::ios::binary)
+        .write((const char*)jpeg.data(), (std::streamsize)jpeg.size());
+}
+
+// The picture for every queued trade still owed one and not to be chosen
+// from the terminal's own (fromTerminal): the game window, at once or, while
+// a scan is running, at the start of the next one - a capture in between
+// would cut into the scan's own
 void Application::takeUexShots(bool atScanStart) {
+    if (std::none_of(uexQueue_.begin(), uexQueue_.end(),
+                     [](const UexPending& p) { return p.shotWanted && !p.fromTerminal; })) {
+        uexShotPending_ = false;
+        return;
+    }
     if (!atScanStart && inScan_) {
         uexShotPending_ = true;
         return;
@@ -4813,7 +4834,7 @@ void Application::takeUexShots(bool atScanStart) {
     std::vector<unsigned char> jpeg;
     std::string shot;
     for (UexPending& item : uexQueue_) {
-        if (!item.shotWanted || !item.shot.empty()) continue;
+        if (!item.shotWanted || item.fromTerminal || !item.shot.empty()) continue;
         if (shot.empty()) {
             jpeg = uexScreenshot();
             shot = jpeg.empty() ? std::string() : UexReports::base64(jpeg.data(), jpeg.size());
@@ -4824,20 +4845,36 @@ void Application::takeUexShots(bool atScanStart) {
     }
 }
 
-// The game window as UEX takes it, a JPEG. A test run (SCMINER_UEX_DRYRUN,
-// workshop builds only) keeps it in the debug folder as well the moment it is
-// taken, to see what UEX would get - the commodity terminal at the moment of
-// the trade, the screen UEX asks for. What has gone to UEX is kept as
-// debug\uex_last_screenshot.jpg, in every build.
+// The picture for a trade made at a terminal, when its report is due: the
+// terminal's list from around it, out of those kept (UexReports::pictureFor).
+// False where none was kept - the game window is taken then, as for a trade
+// made away from the terminal's watch.
+bool Application::chooseTradePicture(UexPending& item) {
+    std::vector<long long> taken;
+    std::vector<double> detail;
+    for (const TradeFrame& frame : tradeFrames_) {
+        taken.push_back(frame.ms);
+        detail.push_back(frame.detail);
+    }
+    const long long tradeMs = TradeBook::millisOf(item.trade.stamp);
+    const int pick = UexReports::pictureFor(taken, detail, tradeMs);
+    if (pick < 0 || tradeFrames_[pick].jpeg.empty()) return false;
+    item.shotJpeg = tradeFrames_[pick].jpeg;
+    item.shot = UexReports::base64(item.shotJpeg.data(), item.shotJpeg.size());
+    item.shotWanted = false;
+    keepTestShot(item.shotJpeg);
+    const long long off = taken[pick] - tradeMs;
+    std::cout << "\nUEX picture: the terminal " << (off < 0 ? -off : off) << " ms " << (off < 0 ? "before" : "after")
+              << " the trade (detail " << detail[pick] << ")" << std::endl;
+    return true;
+}
+
+// The game window now, as UEX takes it, a JPEG - for a trade with no
+// picture kept from the terminal
 std::vector<unsigned char> Application::uexScreenshot() {
     const std::vector<unsigned char> jpeg = uexPictureJpeg(grabGamePicture());
-    if (!jpeg.empty() && DEV_ENV("SCMINER_UEX_DRYRUN")) {
-        std::error_code ec;
-        const std::filesystem::path folder = AppPaths::data() / "debug";
-        std::filesystem::create_directories(folder, ec);
-        std::ofstream(folder / "uex_test_screenshot.jpg", std::ios::binary)
-            .write((const char*)jpeg.data(), (std::streamsize)jpeg.size());
-    }
+    keepTestShot(jpeg);
+    if (!jpeg.empty()) std::cout << "\nUEX picture: the game window as it is now" << std::endl;
     return jpeg;
 }
 
@@ -4902,6 +4939,67 @@ cv::Mat Application::grabGamePicture() {
     return frame;
 }
 
+// Reporting, with pictures still owed for UEX's 90 days
+bool Application::uexPicturesWanted() const {
+    if (uexReportSince_ <= 0 || uexKey_.empty() || uexKeyTrouble_) return false;
+    if (library_.channel().rfind("LIVE", 0) != 0) return false;
+    return (long long)std::time(nullptr) - uexReportSince_ < (long long)UEX_PICTURE_DAYS * 86400;
+}
+
+static long long millisNow() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::system_clock::now().time_since_epoch())
+        .count();
+}
+
+// The refinery's look's picture, kept a few seconds while the player is at a
+// commodity terminal (its lines in the log are under two minutes old)
+void Application::keepTradeFrame(const cv::Mat& frame) {
+    const long long now = millisNow();
+    const bool was = tradeWatch_;
+    setTradeWatch(uexPicturesWanted() && now - library_.trades().terminalSeenMs() < TRADE_TERMINAL_MS);
+    if (!tradeWatch_) return;
+    // The overlay is kept out of the pictures from the watch on: the one
+    // taken before has it in it
+    if (!was && gui_ && gui_->isOverlayMode()) return;
+    TradeFrame kept;
+    kept.ms = now;
+    kept.detail = tradeFrameDetail(frame);
+    kept.jpeg = uexPictureJpeg(frame);
+    if (kept.jpeg.empty()) return;
+    tradeFrames_.push_back(std::move(kept));
+    while (!tradeFrames_.empty() && now - tradeFrames_.front().ms > TRADE_FRAMES_MS) tradeFrames_.pop_front();
+}
+
+// Measured on a recording of a purchase (7 October 2026, 5120x1440): the
+// commodity list 8.1-9.2 % edge pixels in the middle, CONFIRMATION over it
+// 3.9-4.3, LOADING, the order under way and TRANSACTION COMPLETE 0.9-2.0;
+// at 1920x1080, a Pyro terminal's list 7.7 and a Stanton one's TRANSACTION
+// COMPLETE 2.1
+double Application::tradeFrameDetail(const cv::Mat& frame) {
+    if (frame.empty()) return 0;
+    const cv::Rect middle((int)(frame.cols * 0.35), (int)(frame.rows * 0.15), (int)(frame.cols * 0.30),
+                          (int)(frame.rows * 0.70));
+    if (middle.width < 8 || middle.height < 8) return 0;
+    cv::Mat gray;
+    cv::cvtColor(frame(middle), gray, frame.channels() == 4 ? cv::COLOR_BGRA2GRAY : cv::COLOR_BGR2GRAY);
+    // the same scale whatever the screen: a terminal's text as on a 960 wide picture of a 32:9 one
+    cv::resize(gray, gray, cv::Size(288, std::max(8, middle.height * 288 / middle.width)), 0, 0, cv::INTER_AREA);
+    cv::GaussianBlur(gray, gray, cv::Size(5, 5), 0);
+    cv::Mat edges;
+    cv::Canny(gray, edges, 20, 51);
+    return 100.0 * cv::countNonZero(edges) / (double)edges.total();
+}
+
+void Application::setTradeWatch(bool on) {
+    if (!on) tradeFrames_.clear();
+    if (on == tradeWatch_) return;
+    tradeWatch_ = on;
+    // The overlay out of the pictures meanwhile, as while a scan runs: what
+    // is under it is the terminal UEX wants to see
+    if (gui_) gui_->setTradeWatch(on);
+}
+
 void Application::reportRefineryJob(const UexRefineryJob& job) {
     if (uexReportSince_ <= 0 || uexKey_.empty() || uexKeyTrouble_) return;
     if (job.placed > 0 && job.placed < uexReportSince_) return;   // placed before the player agreed
@@ -4926,6 +5024,10 @@ static const char* const UEX_LAST_SHOT = "uex_last_screenshot.jpg";
 // whose terminal is not exactly one of UEX's is left out, and the window
 // says why
 void Application::serviceUexReports() {
+    if (tradeWatch_ &&
+        (!uexPicturesWanted() || millisNow() - library_.trades().terminalSeenMs() >= TRADE_TERMINAL_MS)) {
+        setTradeWatch(false);
+    }
     const auto now = std::chrono::steady_clock::now();
     if (uexSendJob_.valid() && uexSendJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
         UexSent sent = uexSendJob_.get();
@@ -4963,6 +5065,11 @@ void Application::serviceUexReports() {
         return;
     }
     if (now < uexQueue_.front().due) return;
+    if (uexQueue_.front().shotWanted && uexQueue_.front().fromTerminal &&
+        !chooseTradePicture(uexQueue_.front())) {
+        uexQueue_.front().fromTerminal = false;   // nothing kept: the game window it is
+        takeUexShots(false);
+    }
     if (uexQueue_.front().shotWanted) return;   // its picture is still to be taken
     UexPending item = std::move(uexQueue_.front());
     uexQueue_.pop_front();

@@ -7,7 +7,8 @@
 //   - the prices the player trades at, as a data runner's reports
 //     (data_submit): the terminal, the commodity, what it paid or asked per
 //     SCU, when - and, for UEX's 90 days of evaluating a new data runner, a
-//     screenshot of the game window taken the moment of the trade;
+//     screenshot of the game window: the terminal's list, with its stock
+//     and prices, from around the trade (pictureFor);
 //   - the player's refinery jobs, into the refinery list of their account
 //     (user_refineries_jobs_add) - read off the REFINEMENT CENTER by the
 //     terminal reader, handed over as a UexRefineryJob.
@@ -106,6 +107,25 @@ bool keyLooksRight(const std::string& key);
 // anything that does not come out as one word of printable characters.
 std::string unmixAppToken(const std::string& line);
 std::string base64(const unsigned char* bytes, size_t size);
+// Of the pictures kept at a terminal - when each was taken (ms since 1970,
+// UTC) and how much detail it has in the middle of the screen
+// (Application::tradeFrameDetail) - the one to go with a trade requested at
+// `tradeMs`: the terminal's list, not a dialog over it. CONFIRMATION before
+// the request and TRANSACTION COMPLETE after it darken the whole terminal
+// and leave less detail than the list, and UEX turns down a picture in which
+// the prices cannot be seen. The newest with nearly the most detail
+// (LIST_NEAR) from PICTURE_BEFORE_MS before the request - the deal being
+// made, its price on it. Where one after it, up to PICTURE_AFTER_MS, has
+// AFTER_JUMP times as much, none before was the list: then the first with
+// nearly that much after it, the list once the player has accepted - unless
+// one before had SURELY_LIST, the most a dialog was ever seen to leave and
+// then some. -1 where no picture was taken in all that time.
+int pictureFor(const std::vector<long long>& takenMs, const std::vector<double>& detail, long long tradeMs);
+constexpr long long PICTURE_BEFORE_MS = 5000;
+constexpr long long PICTURE_AFTER_MS = 20000;
+constexpr double LIST_NEAR = 0.6;
+constexpr double AFTER_JUMP = 1.6;
+constexpr double SURELY_LIST = 6.5;   // lists measured 7.7-9.2, dialogs at most 4.3
 // A string as JSON writes it, quotes included
 std::string jsonText(const std::string& text);
 

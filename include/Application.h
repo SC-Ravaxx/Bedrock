@@ -340,6 +340,10 @@ public:
     // at most 1080 pixels tall, a JPEG (--uexshotprobe and the self-test
     // make it of a saved frame)
     static std::vector<unsigned char> uexPictureJpeg(cv::Mat frame);
+    // How much detail a game picture has in the middle of the screen, where
+    // a terminal in use stands: its list has much, a dialog over it (which
+    // darkens the whole terminal) little - the share of edge pixels there
+    static double tradeFrameDetail(const cv::Mat& frame);
     // ...and, once it has gone to UEX, kept for the player to see: written
     // beside `file` and moved over it, never seen half-written
     static bool keepUexShot(const std::filesystem::path& file, const std::vector<unsigned char>& jpeg);
@@ -371,6 +375,7 @@ private:
         std::string shot;                  // the game window, a JPEG in base64, while the 90 days last
         std::vector<unsigned char> shotJpeg;   // ...the same JPEG, kept once it has gone (debug\uex_last_screenshot.jpg)
         bool shotWanted = false;           // a picture is owed and not taken yet
+        bool fromTerminal = false;         // ...to be chosen from tradeFrames_ when it is due
         std::chrono::steady_clock::time_point due{};   // not before: the game may still refuse a trade
     };
     struct UexSent {
@@ -430,6 +435,23 @@ private:
     void takeUexShots(bool inScan);
     std::vector<unsigned char> uexScreenshot();
     cv::Mat grabGamePicture();
+    // The pictures the refinery's look takes, kept while the player is at a
+    // commodity terminal and UEX is owed pictures: a trade's report takes
+    // the terminal's list from around it (UexReports::pictureFor) when it
+    // is due. Each as UEX gets it, with when it was taken and its detail.
+    struct TradeFrame {
+        long long ms = 0;                     // since 1970, UTC
+        double detail = 0;                    // tradeFrameDetail
+        std::vector<unsigned char> jpeg;      // uexPictureJpeg
+    };
+    std::deque<TradeFrame> tradeFrames_;
+    bool tradeWatch_ = false;
+    bool uexPicturesWanted() const;
+    void keepTradeFrame(const cv::Mat& frame);
+    void setTradeWatch(bool on);
+    bool chooseTradePicture(UexPending& item);
+    static constexpr long long TRADE_FRAMES_MS = 25000;      // kept this long: the hold, and the seconds before it
+    static constexpr long long TRADE_TERMINAL_MS = 120000;   // the terminal in use this long after its last line
     void serviceUexReports();
     void readUexReported();
     void rememberUexReported(const std::string& key);

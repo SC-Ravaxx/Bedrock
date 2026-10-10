@@ -1039,6 +1039,23 @@ int runSelfTest() {
         allPassed &= check(has && seen.size() == 1 && seen[0].place == "Levski" && seen[0].scu == 64.0,
                            "a finished log's trades are read with the place its own lines put the ship at (got " +
                                std::string(seen.empty() ? "nothing" : seen[0].place) + ")");
+
+        // a commodity terminal in use, to the millisecond: its own lines say
+        // when - as it fills, as the player picks on it, and the request
+        TradeBook watching;
+        const bool unseen = watching.terminalSeenMs() == 0;
+        watching.live("<2026-09-28T11:37:30.250Z> [Notice] <CEntityComponentCommodityUIProvider::LoadShopInventoryData::"
+                      "<lambda_1>::operator ()> AddingCommodityBox - playerId[1234567890123] shopId[9876543210987] "
+                      "[Team_CoreGameplayFeatures][Shops]");
+        const long long opened = watching.terminalSeenMs();
+        watching.live("<2026-09-28T11:37:33.000Z> [Notice] <CreateCommodityInfo> Shopping Kiosk Context");
+        const long long still = watching.terminalSeenMs();
+        watching.live(sale);
+        const long long ms = TradeBook::millisOf("2026-09-28T11:37:34.512");
+        allPassed &= check(unseen && ms == 1790595454512LL && opened == ms - 4262 && still == opened &&
+                               watching.terminalSeenMs() == ms && TradeBook::millisOf("2026-09-28T11:37:34") == ms - 512 &&
+                               TradeBook::millisOf("noon") == -1,
+                           "a commodity terminal's own lines say when it was last in use, to the millisecond");
     }
 
     // --- UEX's prices: the JSON reader, and the five places that
@@ -1274,6 +1291,26 @@ int runSelfTest() {
         allPassed &= check(answers, "UEX's answers read: taken, and by whom; the key turned away stops the reports, a "
                                     "terminal it does not know does not, nor an account that is no data runner yet; a "
                                     "key has 40 letters and digits");
+        // the picture for a trade, as on the recording of 7 October: the
+        // list 161.5-163.5 s, CONFIRMATION until the request at 165.7,
+        // TRANSACTION COMPLETE until 168.3, the list again - every half second
+        const std::vector<long long> at = {161000, 161500, 162000, 162500, 163000, 163500, 164000, 164500, 165000,
+                                           165500, 166000, 166500, 167000, 167500, 168000, 168500, 169000, 169500};
+        const std::vector<double> seen = {1.6, 8.1, 8.4, 8.7, 8.8, 8.8, 4.3, 3.9, 4.0,
+                                          1.9, 0.9, 1.7, 2.0, 2.0, 2.0, 9.2, 9.1, 9.1};
+        // ...once a second, and the player long in CONFIRMATION: no list
+        // before the request, the one after it, not a dialog
+        const std::vector<long long> slow = {160000, 161000, 162000, 163000, 164000, 165000, 166000, 167000};
+        const std::vector<double> slowSeen = {4.3, 4.2, 4.0, 1.9, 2.0, 2.0, 9.1, 9.2};
+        // ...and the list before it, the player gone where there is more to
+        // see a little after it: the list
+        const bool chosen = R::pictureFor(at, seen, 165697) == 5 && R::pictureFor(slow, slowSeen, 162500) == 6 &&
+                            R::pictureFor({163000, 166000, 168000}, {8.8, 2.0, 12.0}, 165697) == 0 &&
+                            R::pictureFor({163000, 166000, 168000}, {8.8, 2.0, 15.0}, 165697) == 0 &&
+                            R::pictureFor(at, seen, 200000) == -1 && R::pictureFor({}, {}, 165697) == -1 &&
+                            R::pictureFor({165000}, {4.0}, 165697) == 0;
+        allPassed &= check(chosen, "a trade's picture for UEX is the terminal's list - from just before the trade, "
+                                   "else just after it - never a dialog over the prices");
         // the picture with a report: a 5120x1440 game comes out 3840x1080 -
         // its terminal readable - a 1080p one as it is, and under UEX's 10 MB
         cv::Mat wide(1440, 5120, CV_8UC4, cv::Scalar(40, 60, 80, 255));

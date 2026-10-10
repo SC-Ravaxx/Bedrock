@@ -2136,15 +2136,23 @@ bool MinerGUI::isOpen() const {
     return isOpen_;
 }
 
-// The overlay is kept out of screen captures while the scan runs, and only
-// then: with live mode off Bedrock captures nothing it could see itself in,
-// and a window kept out shows in Virtual Desktop's stream as "Protected
-// content blocked". What keeping it out costs the compositor has not been
-// measured.
+// The overlay is kept out of screen captures while the scan runs, and while
+// the player is at a commodity terminal with a picture owed to UEX - and
+// only then: otherwise Bedrock captures nothing it could see itself in, and
+// a window kept out shows in Virtual Desktop's stream as "Protected content
+// blocked". What keeping it out costs the compositor has not been measured.
 void MinerGUI::keepOutOfCaptures() {
 #ifdef _WIN32
-    if (hwnd_) SetWindowDisplayAffinity(hwnd_, overlayMode_ && liveModeActive_ ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE);
+    if (hwnd_) {
+        SetWindowDisplayAffinity(hwnd_, overlayMode_ && (liveModeActive_ || tradeWatch_) ? WDA_EXCLUDEFROMCAPTURE
+                                                                                          : WDA_NONE);
+    }
 #endif
+}
+
+void MinerGUI::setTradeWatch(bool on) {
+    tradeWatch_ = on;
+    keepOutOfCaptures();
 }
 
 void MinerGUI::setLiveModeActive(bool active) {
