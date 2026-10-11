@@ -479,6 +479,9 @@ private:
         std::vector<unsigned char> jpeg;      // uexPictureJpeg
     };
     std::deque<TradeFrame> tradeFrames_;
+    // A trade held back from UEX: its pictures and what the log said of it,
+    // in debug\uex_held
+    void keepHeldTrade(const Trade& trade, const std::string& label);
     bool tradeWatch_ = false;
     bool uexPicturesWanted() const;
     void keepTradeFrame(const cv::Mat& frame);

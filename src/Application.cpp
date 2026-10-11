@@ -5022,6 +5022,36 @@ bool Application::chooseTradePicture(UexPending& item) {
     return true;
 }
 
+// Every picture kept from the terminal around a trade held back from UEX,
+// named by when it was taken (ms since 1970, UTC), and what the log said of
+// the trade - in debug\uex_held\<the trade's time>. The newest 30 trades.
+void Application::keepHeldTrade(const Trade& trade, const std::string& label) {
+    std::error_code ec;
+    const std::filesystem::path root = AppPaths::data() / "debug" / "uex_held";
+    std::string name = trade.stamp;
+    for (char& c : name) {
+        if (c == ':' || c == '.') c = '-';
+    }
+    const std::filesystem::path folder = root / name;
+    std::filesystem::create_directories(folder, ec);
+    if (ec) return;
+    for (const TradeFrame& frame : tradeFrames_) keepUexShot(folder / (std::to_string(frame.ms) + ".jpg"), frame.jpeg);
+    {
+        std::ofstream about(folder / "trade.txt");
+        about << label << "\n"
+              << "stamp " << trade.stamp << " (ms " << TradeBook::millisOf(trade.stamp) << ")\n"
+              << "shop " << trade.shop << "\nplace " << trade.place << "\n"
+              << "resource " << trade.resource << " " << TradeBook::nameOf(trade.resource) << "\n"
+              << (trade.sold ? "sold " : "bought ") << trade.scu << " SCU for " << trade.total << " aUEC\n";
+    }
+    std::vector<std::filesystem::path> held;
+    for (const auto& entry : std::filesystem::directory_iterator(root, ec)) {
+        if (entry.is_directory()) held.push_back(entry.path());
+    }
+    std::sort(held.begin(), held.end());
+    for (size_t i = 0; i + 30 < held.size(); i++) std::filesystem::remove_all(held[i], ec);
+}
+
 // The game window now, as UEX takes it, a JPEG - for a trade with no
 // picture kept from the terminal
 std::vector<unsigned char> Application::uexScreenshot() {
@@ -5250,6 +5280,18 @@ void Application::serviceUexReports() {
             pushUexAccount();
             return;
         }
+        // UEX takes a price with the stock the terminal shows beside it and
+        // its level (scu_buy/scu_sell, status_buy/status_sell): a report
+        // without them goes to UEX's staff, who turn it down when the picture
+        // shows other figures - as on 11 October 2026. The log has neither;
+        // until they are read off the terminal a trade is not reported, and
+        // its pictures are kept to build that reading on.
+        keepHeldTrade(item.trade, label);
+        uexReportNote_ = label + ": not reported (the terminal's stock isn't read yet)";
+        uexReportNoteAt_ = (long long)std::time(nullptr);
+        rememberUexReported(item.key);
+        pushUexAccount();
+        return;
         body = UexReports::priceReport(terminal, commodity, item.trade.sold, item.trade.perScu(),
                                        Reputation::epochOf(item.trade.stamp), item.shot, production);
         endpoint = "data_submit";
