@@ -13306,6 +13306,15 @@ void MinerGUI::drawWhatsNewCard(Gdiplus::Graphics& g, int cw, int ch) {
     // however softly put, turns that into a collection. The jar sits behind the
     // ? button and along the foot of the main window. Plain words, like a patch
     // note.
+    version(L"2.6.6", L"11 October");
+    note(L"Price reports to UEX now carry a picture of the terminal\u2019s list,");
+    note(L"with its prices and stock. Until now the picture showed TRANSACTION");
+    note(L"COMPLETE over the terminal, and UEX turned such reports down.");
+    gap(6);
+    note(L"Blueprints and contracts are updated for Star Citizen 4.10.2: the");
+    note(L"F55 \u201CShadowflux\u201D, the Monolith armor and two new Wikelo");
+    note(L"contracts, and four renamed blueprints, among them DayBreak and Goliath.");
+    gap(10);
     version(L"2.6.5.2", L"7 October");
     note(L"Reporting prices and refinery jobs to UEX works again: 2.6.5.1");
     note(L"went out without Bedrock\u2019s UEX app token. Builds are now");

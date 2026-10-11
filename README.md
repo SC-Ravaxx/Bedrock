@@ -6,7 +6,7 @@ made of, whether your laser can break it, where an ore is found and where it
 sells best, your refinery work orders, and your blueprints.
 
 It is free, needs no account and no installer, and runs on Windows and on
-Linux (AppImage, also SteamOS). Current version: 2.6.5.2, for Star Citizen 4.10.
+Linux (AppImage, also SteamOS). Current version: 2.6.6, for Star Citizen 4.10.2.
 
 **Download:** the [Releases](https://github.com/SC-Ravaxx/Bedrock/releases) page - on Windows,
 unzip it anywhere and start `Bedrock.exe`; on Linux, make the AppImage
@@ -143,7 +143,7 @@ without it.
 
 ### Windows
 
-Use the versions `BUILDINFO.txt` names - for 2.6.5.2: Visual Studio 2022
+Use the versions `BUILDINFO.txt` names - for 2.6.6: Visual Studio 2022
 Build Tools with MSVC 19.44.35222 (toolset v143), Windows SDK 10.0.26100.0,
 CMake 3.31, and vcpkg; `vcpkg.json` pins every library to one vcpkg
 baseline, which vcpkg installs on its own when cmake runs.
