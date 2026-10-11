@@ -1,0 +1,3122 @@
+{
+ "methods": {
+  "CORMACK": {
+   "cost": 2.0,
+   "time": 0.25,
+   "yield": 0.7
+  },
+  "DINYX_SOLVENTATION": {
+   "cost": 1.0,
+   "time": 12.0,
+   "yield": 1.0
+  },
+  "ELECTROSTAROLYSIS": {
+   "cost": 2.0,
+   "time": 1.0,
+   "yield": 0.85
+  },
+  "FERRON_EXCHANGE": {
+   "cost": 2.0,
+   "time": 4.0,
+   "yield": 1.0
+  },
+  "GASKIN_PROCESS": {
+   "cost": 6.0,
+   "time": 0.5,
+   "yield": 0.85
+  },
+  "KAZEN_WINNOWING": {
+   "cost": 1.0,
+   "time": 0.75,
+   "yield": 0.7
+  },
+  "PYROMETRIC_CHROMALYSIS": {
+   "cost": 6.0,
+   "time": 2.0,
+   "yield": 1.0
+  },
+  "THERMONATIC_DEPOSITION": {
+   "cost": 1.0,
+   "time": 3.0,
+   "yield": 0.85
+  },
+  "XCR_REACTION": {
+   "cost": 6.0,
+   "time": 0.125,
+   "yield": 0.7
+  }
+ },
+ "ores": {
+  "Agricium (Ore)": {
+   "cost": 1.01865,
+   "known": true,
+   "time": 1.11981,
+   "yield": 0.45
+  },
+  "Aluminum (Ore)": {
+   "cost": 0.052917,
+   "known": true,
+   "time": 0.74654,
+   "yield": 0.45
+  },
+  "Aslarite (Raw)": {
+   "cost": 1.0,
+   "known": false,
+   "time": 1.0,
+   "yield": 0.45
+  },
+  "Beryl (Raw)": {
+   "cost": 0.813599,
+   "known": true,
+   "time": 0.858521,
+   "yield": 0.45
+  },
+  "Bexalite (Raw)": {
+   "cost": 2.44741,
+   "known": true,
+   "time": 1.08248,
+   "yield": 0.45
+  },
+  "Borase (Ore)": {
+   "cost": 0.998808,
+   "known": true,
+   "time": 0.933175,
+   "yield": 0.45
+  },
+  "Construction Rubble": {
+   "cost": 1.0,
+   "known": false,
+   "time": 1.0,
+   "yield": 0.45
+  },
+  "Construction Salvage": {
+   "cost": 1.0,
+   "known": false,
+   "time": 1.0,
+   "yield": 0.45
+  },
+  "Copper (Ore)": {
+   "cost": 0.0595316,
+   "known": true,
+   "time": 0.858521,
+   "yield": 0.45
+  },
+  "Corundum (Raw)": {
+   "cost": 0.0661463,
+   "known": true,
+   "time": 0.783867,
+   "yield": 0.45
+  },
+  "Gold (Ore)": {
+   "cost": 2.54663,
+   "known": true,
+   "time": 1.04516,
+   "yield": 0.45
+  },
+  "Hephaestanite": {
+   "cost": 0.793755,
+   "known": true,
+   "time": 0.970502,
+   "yield": 0.45
+  },
+  "Iron (Ore)": {
+   "cost": 0.0661463,
+   "known": true,
+   "time": 0.858521,
+   "yield": 0.45
+  },
+  "Laranite (Raw)": {
+   "cost": 0.826828,
+   "known": true,
+   "time": 1.15714,
+   "yield": 0.45
+  },
+  "Lindinium (Ore)": {
+   "cost": 1.0,
+   "known": false,
+   "time": 1.0,
+   "yield": 0.45
+  },
+  "Ouratite (Raw)": {
+   "cost": 1.0,
+   "known": false,
+   "time": 1.0,
+   "yield": 0.45
+  },
+  "Quantainium (Raw)": {
+   "cost": 4.75592,
+   "known": true,
+   "time": 1.49308,
+   "yield": 0.45
+  },
+  "Quartz (Raw)": {
+   "cost": 0.0661463,
+   "known": true,
+   "time": 1.00783,
+   "yield": 0.45
+  },
+  "Raw Ice": {
+   "cost": 1.0,
+   "known": false,
+   "time": 1.0,
+   "yield": 0.45
+  },
+  "Raw Silicon": {
+   "cost": 1.0,
+   "known": false,
+   "time": 1.0,
+   "yield": 0.45
+  },
+  "Riccite (Ore)": {
+   "cost": 1.0,
+   "known": false,
+   "time": 1.0,
+   "yield": 0.45
+  },
+  "Savrilium (Ore)": {
+   "cost": 1.0,
+   "known": false,
+   "time": 1.0,
+   "yield": 0.45
+  },
+  "Stileron (Ore)": {
+   "cost": 1.0,
+   "known": false,
+   "time": 1.0,
+   "yield": 0.45
+  },
+  "Taranite (Raw)": {
+   "cost": 2.47387,
+   "known": true,
+   "time": 1.19446,
+   "yield": 0.45
+  },
+  "Tin (Ore)": {
+   "cost": 1.0,
+   "known": false,
+   "time": 1.0,
+   "yield": 0.45
+  },
+  "Titanium (Ore)": {
+   "cost": 0.052917,
+   "known": true,
+   "time": 0.821194,
+   "yield": 0.45
+  },
+  "Torite (Ore)": {
+   "cost": 1.0,
+   "known": false,
+   "time": 1.0,
+   "yield": 0.45
+  },
+  "Tungsten (Ore)": {
+   "cost": 0.363804,
+   "known": true,
+   "time": 0.783867,
+   "yield": 0.45
+  }
+ },
+ "source": "include/RefiningData.h, include/RefineryData.h",
+ "stations": {
+  "ARC-L1 Wide Forest Station": {
+   "full": true,
+   "materials": {
+    "Agricium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Aluminum (Ore)": {
+     "cost": 1.05,
+     "time": 0.87,
+     "yield": 0.95
+    },
+    "Aslarite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Beryl (Raw)": {
+     "cost": 1.04,
+     "time": 1.05,
+     "yield": 1.07
+    },
+    "Bexalite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Borase (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Rubble": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Salvage": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Copper (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Corundum (Raw)": {
+     "cost": 1.03,
+     "time": 0.92,
+     "yield": 0.96
+    },
+    "Gold (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Hephaestanite": {
+     "cost": 1.03,
+     "time": 0.81,
+     "yield": 0.96
+    },
+    "Iron (Ore)": {
+     "cost": 0.98,
+     "time": 0.97,
+     "yield": 1.01
+    },
+    "Laranite (Raw)": {
+     "cost": 1.02,
+     "time": 0.92,
+     "yield": 0.98
+    },
+    "Lindinium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Ouratite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quantainium (Raw)": {
+     "cost": 1.04,
+     "time": 1.07,
+     "yield": 1.03
+    },
+    "Quartz (Raw)": {
+     "cost": 1.1,
+     "time": 1.09,
+     "yield": 1.11
+    },
+    "Raw Ice": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Silicon": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Riccite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Savrilium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Stileron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Taranite (Raw)": {
+     "cost": 1.02,
+     "time": 0.81,
+     "yield": 0.94
+    },
+    "Tin (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Titanium (Ore)": {
+     "cost": 0.97,
+     "time": 1.11,
+     "yield": 1.05
+    },
+    "Torite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tungsten (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    }
+   }
+  },
+  "ARC-L2 Lively Pathway Station": {
+   "full": true,
+   "materials": {
+    "Agricium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Aluminum (Ore)": {
+     "cost": 1.03,
+     "time": 0.91,
+     "yield": 1.0
+    },
+    "Aslarite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Beryl (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Bexalite (Raw)": {
+     "cost": 0.9,
+     "time": 1.04,
+     "yield": 1.02
+    },
+    "Borase (Ore)": {
+     "cost": 0.92,
+     "time": 0.98,
+     "yield": 1.02
+    },
+    "Construction Rubble": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Salvage": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Copper (Ore)": {
+     "cost": 0.98,
+     "time": 1.04,
+     "yield": 1.06
+    },
+    "Corundum (Raw)": {
+     "cost": 0.93,
+     "time": 0.86,
+     "yield": 0.97
+    },
+    "Gold (Ore)": {
+     "cost": 0.94,
+     "time": 1.09,
+     "yield": 1.07
+    },
+    "Hephaestanite": {
+     "cost": 0.85,
+     "time": 0.87,
+     "yield": 0.92
+    },
+    "Iron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Laranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Lindinium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Ouratite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quantainium (Raw)": {
+     "cost": 1.04,
+     "time": 1.07,
+     "yield": 1.03
+    },
+    "Quartz (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Ice": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Silicon": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Riccite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Savrilium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Stileron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Taranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tin (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Titanium (Ore)": {
+     "cost": 0.94,
+     "time": 1.07,
+     "yield": 1.03
+    },
+    "Torite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tungsten (Ore)": {
+     "cost": 0.98,
+     "time": 0.84,
+     "yield": 0.94
+    }
+   }
+  },
+  "ARC-L4 Faint Glen Station": {
+   "full": true,
+   "materials": {
+    "Agricium (Ore)": {
+     "cost": 1.0,
+     "time": 0.85,
+     "yield": 0.96
+    },
+    "Aluminum (Ore)": {
+     "cost": 1.0,
+     "time": 0.91,
+     "yield": 0.97
+    },
+    "Aslarite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Beryl (Raw)": {
+     "cost": 1.0,
+     "time": 0.88,
+     "yield": 0.96
+    },
+    "Bexalite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Borase (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Rubble": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Salvage": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Copper (Ore)": {
+     "cost": 1.0,
+     "time": 0.89,
+     "yield": 0.96
+    },
+    "Corundum (Raw)": {
+     "cost": 1.0,
+     "time": 0.79,
+     "yield": 0.91
+    },
+    "Gold (Ore)": {
+     "cost": 1.0,
+     "time": 0.91,
+     "yield": 0.96
+    },
+    "Hephaestanite": {
+     "cost": 1.0,
+     "time": 0.79,
+     "yield": 0.95
+    },
+    "Iron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Laranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Lindinium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Ouratite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quantainium (Raw)": {
+     "cost": 1.07,
+     "time": 0.91,
+     "yield": 1.0
+    },
+    "Quartz (Raw)": {
+     "cost": 1.0,
+     "time": 0.87,
+     "yield": 0.98
+    },
+    "Raw Ice": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Silicon": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Riccite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Savrilium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Stileron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Taranite (Raw)": {
+     "cost": 1.05,
+     "time": 0.9,
+     "yield": 1.05
+    },
+    "Tin (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Titanium (Ore)": {
+     "cost": 1.0,
+     "time": 0.86,
+     "yield": 0.98
+    },
+    "Torite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tungsten (Ore)": {
+     "cost": 1.0,
+     "time": 0.89,
+     "yield": 0.95
+    }
+   }
+  },
+  "CRU-L1 Ambitious Dream Station": {
+   "full": true,
+   "materials": {
+    "Agricium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Aluminum (Ore)": {
+     "cost": 0.97,
+     "time": 1.04,
+     "yield": 1.0
+    },
+    "Aslarite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Beryl (Raw)": {
+     "cost": 0.98,
+     "time": 1.09,
+     "yield": 1.07
+    },
+    "Bexalite (Raw)": {
+     "cost": 0.95,
+     "time": 0.97,
+     "yield": 0.94
+    },
+    "Borase (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Rubble": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Salvage": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Copper (Ore)": {
+     "cost": 0.97,
+     "time": 0.96,
+     "yield": 1.0
+    },
+    "Corundum (Raw)": {
+     "cost": 0.97,
+     "time": 1.08,
+     "yield": 1.07
+    },
+    "Gold (Ore)": {
+     "cost": 0.93,
+     "time": 0.94,
+     "yield": 0.94
+    },
+    "Hephaestanite": {
+     "cost": 0.97,
+     "time": 0.97,
+     "yield": 0.98
+    },
+    "Iron (Ore)": {
+     "cost": 0.97,
+     "time": 1.08,
+     "yield": 1.02
+    },
+    "Laranite (Raw)": {
+     "cost": 0.89,
+     "time": 1.07,
+     "yield": 0.92
+    },
+    "Lindinium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Ouratite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quantainium (Raw)": {
+     "cost": 0.98,
+     "time": 0.98,
+     "yield": 1.0
+    },
+    "Quartz (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Ice": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Silicon": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Riccite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Savrilium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Stileron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Taranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tin (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Titanium (Ore)": {
+     "cost": 0.96,
+     "time": 0.95,
+     "yield": 0.99
+    },
+    "Torite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tungsten (Ore)": {
+     "cost": 0.97,
+     "time": 1.08,
+     "yield": 1.02
+    }
+   }
+  },
+  "Checkmate": {
+   "full": false,
+   "materials": {
+    "Agricium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.92
+    },
+    "Aluminum (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.96
+    },
+    "Aslarite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Beryl (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Bexalite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.98
+    },
+    "Borase (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.01
+    },
+    "Construction Rubble": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Salvage": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Copper (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Corundum (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Gold (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.97
+    },
+    "Hephaestanite": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Iron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Laranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.02
+    },
+    "Lindinium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Ouratite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quantainium (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.02
+    },
+    "Quartz (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Ice": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Silicon": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Riccite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Savrilium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Stileron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Taranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tin (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Titanium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Torite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tungsten (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.04
+    }
+   }
+  },
+  "HUR-L1 Green Glade Station": {
+   "full": true,
+   "materials": {
+    "Agricium (Ore)": {
+     "cost": 1.03,
+     "time": 0.88,
+     "yield": 0.92
+    },
+    "Aluminum (Ore)": {
+     "cost": 1.05,
+     "time": 0.96,
+     "yield": 0.96
+    },
+    "Aslarite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Beryl (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Bexalite (Raw)": {
+     "cost": 1.04,
+     "time": 0.94,
+     "yield": 0.98
+    },
+    "Borase (Ore)": {
+     "cost": 1.05,
+     "time": 0.97,
+     "yield": 1.01
+    },
+    "Construction Rubble": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Salvage": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Copper (Ore)": {
+     "cost": 1.05,
+     "time": 0.93,
+     "yield": 0.95
+    },
+    "Corundum (Raw)": {
+     "cost": 1.03,
+     "time": 0.93,
+     "yield": 0.95
+    },
+    "Gold (Ore)": {
+     "cost": 1.05,
+     "time": 0.91,
+     "yield": 0.97
+    },
+    "Hephaestanite": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Iron (Ore)": {
+     "cost": 1.05,
+     "time": 0.96,
+     "yield": 0.95
+    },
+    "Laranite (Raw)": {
+     "cost": 1.04,
+     "time": 1.0,
+     "yield": 1.02
+    },
+    "Lindinium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Ouratite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quantainium (Raw)": {
+     "cost": 1.04,
+     "time": 1.0,
+     "yield": 1.02
+    },
+    "Quartz (Raw)": {
+     "cost": 1.03,
+     "time": 0.97,
+     "yield": 1.0
+    },
+    "Raw Ice": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Silicon": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Riccite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Savrilium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Stileron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Taranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tin (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Titanium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Torite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tungsten (Ore)": {
+     "cost": 1.04,
+     "time": 1.01,
+     "yield": 1.04
+    }
+   }
+  },
+  "HUR-L2 Faithful Dream Station": {
+   "full": true,
+   "materials": {
+    "Agricium (Ore)": {
+     "cost": 0.98,
+     "time": 1.05,
+     "yield": 0.98
+    },
+    "Aluminum (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Aslarite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Beryl (Raw)": {
+     "cost": 1.02,
+     "time": 1.0,
+     "yield": 1.01
+    },
+    "Bexalite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Borase (Ore)": {
+     "cost": 1.01,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Rubble": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Salvage": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Copper (Ore)": {
+     "cost": 1.05,
+     "time": 0.99,
+     "yield": 0.97
+    },
+    "Corundum (Raw)": {
+     "cost": 1.03,
+     "time": 1.02,
+     "yield": 1.0
+    },
+    "Gold (Ore)": {
+     "cost": 1.09,
+     "time": 0.97,
+     "yield": 1.01
+    },
+    "Hephaestanite": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Iron (Ore)": {
+     "cost": 1.03,
+     "time": 0.97,
+     "yield": 1.0
+    },
+    "Laranite (Raw)": {
+     "cost": 1.06,
+     "time": 0.91,
+     "yield": 0.99
+    },
+    "Lindinium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Ouratite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quantainium (Raw)": {
+     "cost": 1.04,
+     "time": 1.0,
+     "yield": 1.02
+    },
+    "Quartz (Raw)": {
+     "cost": 1.03,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Ice": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Silicon": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Riccite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Savrilium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Stileron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Taranite (Raw)": {
+     "cost": 1.04,
+     "time": 0.9,
+     "yield": 0.97
+    },
+    "Tin (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Titanium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Torite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tungsten (Ore)": {
+     "cost": 1.02,
+     "time": 1.02,
+     "yield": 1.0
+    }
+   }
+  },
+  "Levski": {
+   "full": false,
+   "materials": {
+    "Agricium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.08
+    },
+    "Aluminum (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.08
+    },
+    "Aslarite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Beryl (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.08
+    },
+    "Bexalite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.08
+    },
+    "Borase (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.08
+    },
+    "Construction Rubble": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.09
+    },
+    "Construction Salvage": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.08
+    },
+    "Copper (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.08
+    },
+    "Corundum (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.08
+    },
+    "Gold (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.05
+    },
+    "Hephaestanite": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.08
+    },
+    "Iron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.08
+    },
+    "Laranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.07
+    },
+    "Lindinium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.04
+    },
+    "Ouratite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quantainium (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.05
+    },
+    "Quartz (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.08
+    },
+    "Raw Ice": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.1
+    },
+    "Raw Silicon": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.08
+    },
+    "Riccite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Savrilium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.01
+    },
+    "Stileron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Taranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.08
+    },
+    "Tin (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.09
+    },
+    "Titanium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.08
+    },
+    "Torite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.01
+    },
+    "Tungsten (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.08
+    }
+   }
+  },
+  "MIC-L1 Shallow Frontier Station": {
+   "full": true,
+   "materials": {
+    "Agricium (Ore)": {
+     "cost": 0.96,
+     "time": 1.05,
+     "yield": 1.08
+    },
+    "Aluminum (Ore)": {
+     "cost": 0.96,
+     "time": 1.15,
+     "yield": 1.07
+    },
+    "Aslarite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Beryl (Raw)": {
+     "cost": 1.09,
+     "time": 0.83,
+     "yield": 0.94
+    },
+    "Bexalite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Borase (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Rubble": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Salvage": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Copper (Ore)": {
+     "cost": 0.98,
+     "time": 0.99,
+     "yield": 1.04
+    },
+    "Corundum (Raw)": {
+     "cost": 0.97,
+     "time": 0.96,
+     "yield": 1.02
+    },
+    "Gold (Ore)": {
+     "cost": 0.95,
+     "time": 1.0,
+     "yield": 1.01
+    },
+    "Hephaestanite": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Iron (Ore)": {
+     "cost": 0.92,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Laranite (Raw)": {
+     "cost": 0.94,
+     "time": 0.96,
+     "yield": 1.02
+    },
+    "Lindinium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Ouratite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quantainium (Raw)": {
+     "cost": 0.97,
+     "time": 0.98,
+     "yield": 1.0
+    },
+    "Quartz (Raw)": {
+     "cost": 0.95,
+     "time": 0.91,
+     "yield": 0.97
+    },
+    "Raw Ice": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Silicon": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Riccite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Savrilium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Stileron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Taranite (Raw)": {
+     "cost": 0.97,
+     "time": 1.18,
+     "yield": 1.0
+    },
+    "Tin (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Titanium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Torite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tungsten (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    }
+   }
+  },
+  "MIC-L2 Long Forest Station": {
+   "full": true,
+   "materials": {
+    "Agricium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Aluminum (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Aslarite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Beryl (Raw)": {
+     "cost": 0.95,
+     "time": 0.9,
+     "yield": 0.92
+    },
+    "Bexalite (Raw)": {
+     "cost": 1.04,
+     "time": 1.19,
+     "yield": 1.09
+    },
+    "Borase (Ore)": {
+     "cost": 0.95,
+     "time": 0.95,
+     "yield": 0.97
+    },
+    "Construction Rubble": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Salvage": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Copper (Ore)": {
+     "cost": 0.91,
+     "time": 0.97,
+     "yield": 1.02
+    },
+    "Corundum (Raw)": {
+     "cost": 0.91,
+     "time": 1.08,
+     "yield": 1.06
+    },
+    "Gold (Ore)": {
+     "cost": 0.96,
+     "time": 1.11,
+     "yield": 1.09
+    },
+    "Hephaestanite": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Iron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Laranite (Raw)": {
+     "cost": 0.9,
+     "time": 1.02,
+     "yield": 0.99
+    },
+    "Lindinium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Ouratite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quantainium (Raw)": {
+     "cost": 0.97,
+     "time": 0.98,
+     "yield": 1.01
+    },
+    "Quartz (Raw)": {
+     "cost": 0.92,
+     "time": 0.89,
+     "yield": 1.0
+    },
+    "Raw Ice": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Silicon": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Riccite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Savrilium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Stileron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Taranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tin (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Titanium (Ore)": {
+     "cost": 0.91,
+     "time": 1.05,
+     "yield": 1.06
+    },
+    "Torite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tungsten (Ore)": {
+     "cost": 0.97,
+     "time": 1.1,
+     "yield": 1.09
+    }
+   }
+  },
+  "MIC-L5 Modern Icarus Station": {
+   "full": true,
+   "materials": {
+    "Agricium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Aluminum (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Aslarite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Beryl (Raw)": {
+     "cost": 1.08,
+     "time": 1.04,
+     "yield": 1.07
+    },
+    "Bexalite (Raw)": {
+     "cost": 1.07,
+     "time": 1.2,
+     "yield": 1.12
+    },
+    "Borase (Ore)": {
+     "cost": 1.05,
+     "time": 1.11,
+     "yield": 1.09
+    },
+    "Construction Rubble": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Salvage": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Copper (Ore)": {
+     "cost": 1.02,
+     "time": 1.07,
+     "yield": 1.09
+    },
+    "Corundum (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Gold (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Hephaestanite": {
+     "cost": 1.06,
+     "time": 1.09,
+     "yield": 1.08
+    },
+    "Iron (Ore)": {
+     "cost": 1.03,
+     "time": 1.03,
+     "yield": 1.08
+    },
+    "Laranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Lindinium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Ouratite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quantainium (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quartz (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Ice": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Silicon": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Riccite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Savrilium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Stileron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Taranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tin (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Titanium (Ore)": {
+     "cost": 1.06,
+     "time": 1.12,
+     "yield": 1.13
+    },
+    "Torite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tungsten (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    }
+   }
+  },
+  "Nyx Gateway (Pyro)": {
+   "full": false,
+   "materials": {
+    "Agricium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.92
+    },
+    "Aluminum (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.96
+    },
+    "Aslarite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Beryl (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Bexalite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.98
+    },
+    "Borase (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.01
+    },
+    "Construction Rubble": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Salvage": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Copper (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Corundum (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Gold (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.97
+    },
+    "Hephaestanite": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Iron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Laranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.02
+    },
+    "Lindinium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Ouratite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quantainium (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.02
+    },
+    "Quartz (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Ice": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Silicon": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Riccite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Savrilium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Stileron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Taranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tin (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Titanium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Torite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tungsten (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.04
+    }
+   }
+  },
+  "Nyx Gateway (Stanton)": {
+   "full": false,
+   "materials": {
+    "Agricium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Aluminum (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Aslarite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Beryl (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.07
+    },
+    "Bexalite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Borase (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Rubble": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Salvage": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Copper (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Corundum (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.96
+    },
+    "Gold (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Hephaestanite": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.96
+    },
+    "Iron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.01
+    },
+    "Laranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.98
+    },
+    "Lindinium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Ouratite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quantainium (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.03
+    },
+    "Quartz (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.11
+    },
+    "Raw Ice": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Silicon": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Riccite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Savrilium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Stileron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Taranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.94
+    },
+    "Tin (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Titanium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.05
+    },
+    "Torite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tungsten (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    }
+   }
+  },
+  "Orbituary": {
+   "full": false,
+   "materials": {
+    "Agricium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.92
+    },
+    "Aluminum (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.96
+    },
+    "Aslarite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Beryl (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Bexalite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.98
+    },
+    "Borase (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.01
+    },
+    "Construction Rubble": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Salvage": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Copper (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Corundum (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Gold (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.97
+    },
+    "Hephaestanite": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Iron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Laranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.02
+    },
+    "Lindinium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Ouratite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quantainium (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.02
+    },
+    "Quartz (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Ice": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Silicon": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Riccite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Savrilium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Stileron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Taranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tin (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Titanium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Torite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tungsten (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.04
+    }
+   }
+  },
+  "Pyro Gateway (Nyx)": {
+   "full": false,
+   "materials": {
+    "Agricium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.92
+    },
+    "Aluminum (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.96
+    },
+    "Aslarite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Beryl (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Bexalite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.98
+    },
+    "Borase (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.01
+    },
+    "Construction Rubble": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Salvage": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Copper (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Corundum (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Gold (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.97
+    },
+    "Hephaestanite": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Iron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Laranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.02
+    },
+    "Lindinium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Ouratite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quantainium (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.02
+    },
+    "Quartz (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Ice": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Silicon": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Riccite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Savrilium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Stileron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Taranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tin (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Titanium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Torite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tungsten (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.04
+    }
+   }
+  },
+  "Pyro Gateway (Stanton)": {
+   "full": true,
+   "materials": {
+    "Agricium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Aluminum (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Aslarite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Beryl (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.07
+    },
+    "Bexalite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.94
+    },
+    "Borase (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Rubble": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Salvage": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Copper (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Corundum (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.07
+    },
+    "Gold (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.94
+    },
+    "Hephaestanite": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.98
+    },
+    "Iron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.02
+    },
+    "Laranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.92
+    },
+    "Lindinium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Ouratite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quantainium (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quartz (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Ice": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Silicon": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Riccite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Savrilium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Stileron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Taranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tin (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Titanium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.99
+    },
+    "Torite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tungsten (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.02
+    }
+   }
+  },
+  "Ruin Station": {
+   "full": false,
+   "materials": {
+    "Agricium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.92
+    },
+    "Aluminum (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.96
+    },
+    "Aslarite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Beryl (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Bexalite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.98
+    },
+    "Borase (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.01
+    },
+    "Construction Rubble": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Salvage": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Copper (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Corundum (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Gold (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.97
+    },
+    "Hephaestanite": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Iron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Laranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.02
+    },
+    "Lindinium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Ouratite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quantainium (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.02
+    },
+    "Quartz (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Ice": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Silicon": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Riccite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Savrilium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Stileron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Taranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tin (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Titanium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Torite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tungsten (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.04
+    }
+   }
+  },
+  "Stanton Gateway (Nyx)": {
+   "full": false,
+   "materials": {
+    "Agricium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.92
+    },
+    "Aluminum (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.96
+    },
+    "Aslarite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Beryl (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Bexalite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.98
+    },
+    "Borase (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.01
+    },
+    "Construction Rubble": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Salvage": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Copper (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Corundum (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Gold (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.97
+    },
+    "Hephaestanite": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Iron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Laranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.02
+    },
+    "Lindinium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Ouratite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quantainium (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.02
+    },
+    "Quartz (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Ice": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Silicon": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Riccite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Savrilium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Stileron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Taranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tin (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Titanium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Torite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tungsten (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.04
+    }
+   }
+  },
+  "Stanton Gateway (Pyro)": {
+   "full": false,
+   "materials": {
+    "Agricium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.92
+    },
+    "Aluminum (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.96
+    },
+    "Aslarite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Beryl (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Bexalite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.98
+    },
+    "Borase (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.01
+    },
+    "Construction Rubble": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Salvage": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Copper (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Corundum (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Gold (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.97
+    },
+    "Hephaestanite": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Iron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.95
+    },
+    "Laranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.02
+    },
+    "Lindinium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Ouratite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quantainium (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.02
+    },
+    "Quartz (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Ice": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Silicon": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Riccite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Savrilium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Stileron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Taranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tin (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Titanium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Torite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tungsten (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.04
+    }
+   }
+  },
+  "Terra Gateway (Stanton)": {
+   "full": true,
+   "materials": {
+    "Agricium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.08
+    },
+    "Aluminum (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.07
+    },
+    "Aslarite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Beryl (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.94
+    },
+    "Bexalite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Borase (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Rubble": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Construction Salvage": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Copper (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.04
+    },
+    "Corundum (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.02
+    },
+    "Gold (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.01
+    },
+    "Hephaestanite": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Iron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Laranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.02
+    },
+    "Lindinium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Ouratite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quantainium (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Quartz (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 0.97
+    },
+    "Raw Ice": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Raw Silicon": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Riccite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Savrilium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Stileron (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Taranite (Raw)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tin (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Titanium (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Torite (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    },
+    "Tungsten (Ore)": {
+     "cost": 1.0,
+     "time": 1.0,
+     "yield": 1.0
+    }
+   }
+  }
+ }
+}

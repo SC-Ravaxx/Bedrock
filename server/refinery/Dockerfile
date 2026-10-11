@@ -7,7 +7,7 @@ RUN useradd --system --uid 10001 --no-create-home bedrock \
     && chown bedrock /data
 
 WORKDIR /app
-COPY app.py stations.txt ./
+COPY app.py stations.txt tables.json ./
 
 USER bedrock
 ENV BEDROCK_API_DB=/data/refinery.db \

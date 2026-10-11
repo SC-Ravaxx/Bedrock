@@ -1,6 +1,6 @@
 # Goes under services: in the stack's docker-compose.yml, with the volume
 # below added under its volumes:. The folder ./bedrock-api holds app.py,
-# stations.txt and the Dockerfile of server/refinery.
+# stations.txt, tables.json and the Dockerfile of server/refinery.
 
   # ============================================================
   # Bedrock refinery observations (github.com/SC-Ravaxx/Bedrock, server/refinery)
