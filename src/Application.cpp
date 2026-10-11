@@ -9,6 +9,7 @@
 #include "AppPaths.h"
 #include "CraftingData.h"
 #include "MiniJson.h"
+#include "CommodityTerminal.h"
 #include "RefineryData.h"
 #include "RefiningData.h"
 #include "resource.h"
@@ -5252,6 +5253,53 @@ void Application::serviceUexReports() {
         return;
     }
     if (now < uexQueue_.front().due) return;
+    // A purchase whose terminal was watched: its card read off the pictures
+    // kept around it, in the background - a line read costs 50 to 100 ms -
+    // for the stock and its level UEX takes with the price, and the picture
+    // that shows them
+    if (!uexQueue_.front().refinery && !uexQueue_.front().trade.sold && uexQueue_.front().fromTerminal &&
+        !uexQueue_.front().cardRead) {
+        if (!uexCardJob_.valid()) {
+            if (!uexCardLines_) {
+                uexCardLines_ = std::make_unique<TextLineReader>();
+                if (!uexCardLines_->loadEmbedded()) std::cout << "\nUEX card: the line reader could not be loaded" << std::endl;
+            }
+            if (uexCardLines_->ready()) {
+                std::vector<TerminalPicture> pictures;
+                for (const TradeFrame& f : tradeFrames_) pictures.push_back({f.ms, f.jpeg});
+                const Trade& trade = uexQueue_.front().trade;
+                uexCardJob_ = std::async(std::launch::async,
+                                         [pictures = std::move(pictures), name = std::string(TradeBook::nameOf(trade.resource)),
+                                          tradeMs = TradeBook::millisOf(trade.stamp), perScu = trade.perScu(),
+                                          reader = uexCardLines_.get()]() {
+                                             UexCard out;
+                                             out.card = readTradeCard(pictures, name, tradeMs, perScu, *reader);
+                                             if (out.card.found) out.jpeg = pictures[out.card.picture].jpeg;
+                                             return out;
+                                         });
+                return;
+            }
+            uexQueue_.front().cardRead = true;
+        } else {
+            if (uexCardJob_.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+            UexCard read = uexCardJob_.get();
+            UexPending& item = uexQueue_.front();
+            item.cardRead = true;
+            const TradeCard& card = read.card;
+            std::cout << "\nUEX card: " << card.read << " pictures read, "
+                      << (card.found ? "found: " + std::to_string(card.price) + " a SCU, " + std::to_string(card.stock) +
+                                           " SCU, level " + std::to_string(card.level)
+                                     : std::string("not found")) << std::endl;
+            if (card.found) {
+                item.stock = card.stock;
+                item.level = card.level;
+                item.shown = card.price;
+                if (item.shotWanted) item.shot = UexReports::base64(read.jpeg.data(), read.jpeg.size());
+                item.shotJpeg = std::move(read.jpeg);
+                item.shotWanted = false;
+            }
+        }
+    }
     if (uexQueue_.front().shotWanted && uexQueue_.front().fromTerminal &&
         !chooseTradePicture(uexQueue_.front())) {
         uexQueue_.front().fromTerminal = false;   // nothing kept: the game window it is
@@ -5287,17 +5335,23 @@ void Application::serviceUexReports() {
         // UEX takes a price with the stock the terminal shows beside it and
         // its level (scu_buy/scu_sell, status_buy/status_sell): a report
         // without them goes to UEX's staff, who turn it down when the picture
-        // shows other figures - as on 11 October 2026. The log has neither;
-        // until they are read off the terminal a trade is not reported, and
-        // its pictures are kept to build that reading on.
-        keepHeldTrade(item.trade, label);
-        uexReportNote_ = label + ": not reported (the terminal's stock isn't read yet)";
-        uexReportNoteAt_ = (long long)std::time(nullptr);
-        rememberUexReported(item.key);
-        pushUexAccount();
-        return;
-        body = UexReports::priceReport(terminal, commodity, item.trade.sold, item.trade.perScu(),
-                                       Reputation::epochOf(item.trade.stamp), item.shot, production);
+        // shows other figures - as on 11 October 2026. The log has neither:
+        // a purchase's card is read off the terminal, and a trade whose card
+        // was not - a sale's is not read yet - is not reported; its pictures
+        // are kept to build that reading on.
+        if (item.trade.sold || item.level < 1 || item.stock < 0 || item.shown < 0) {
+            keepHeldTrade(item.trade, label);
+            uexReportNote_ = label + ": not reported (" +
+                             (item.trade.sold ? std::string("sales can't be read off the terminal yet")
+                                              : std::string("its stock couldn't be read off the terminal")) + ")";
+            uexReportNoteAt_ = (long long)std::time(nullptr);
+            rememberUexReported(item.key);
+            pushUexAccount();
+            return;
+        }
+        body = UexReports::priceReport(terminal, commodity, item.trade.sold, item.shown,
+                                       Reputation::epochOf(item.trade.stamp), item.shot, production, item.stock,
+                                       item.level);
         endpoint = "data_submit";
     } else {
         const UexRefineryJob& job = item.job;

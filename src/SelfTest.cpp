@@ -35,6 +35,7 @@
 #include "TextLineReader.h"
 #include "MiniJson.h"
 #include "RefineryShare.h"
+#include "CommodityTerminal.h"
 #include "UexPrices.h"
 #include "UexReports.h"
 #include "UexMarket.h"
@@ -1328,6 +1329,8 @@ int runSelfTest() {
                                   "Construction Rubble, Aluminium, the Cormack Method - and a refinery by its station");
         const std::string price = R::priceReport(778, 33, true, 24300, 1791300000, "", true);
         const std::string bought = R::priceReport(100, 33, false, 27550.5, 0, "QUJD", false);
+        const std::string stocked = R::priceReport(436, 21, false, 235, 1791700000, "", true, 24000, 7);
+        const std::string sold = R::priceReport(436, 21, true, 300, 0, "", true, 0, 1);
         SCMiner::UexRefineryJob::Item iron;
         iron.material = "Iron (Ore)";
         iron.quantity = 484;
@@ -1338,9 +1341,41 @@ int runSelfTest() {
                      "\"price_sell\":24300}],\"date_added\":1791300000}" &&
             bought == "{\"id_terminal\":100,\"type\":\"commodity\",\"is_production\":0,\"prices\":[{\"id_commodity\":33,"
                       "\"price_buy\":27550.5}],\"screenshot\":\"QUJD\"}" &&
+            stocked == "{\"id_terminal\":436,\"type\":\"commodity\",\"is_production\":1,\"prices\":[{\"id_commodity\":21,"
+                       "\"price_buy\":235,\"scu_buy\":24000,\"status_buy\":7}],\"date_added\":1791700000}" &&
+            sold == "{\"id_terminal\":436,\"type\":\"commodity\",\"is_production\":1,\"prices\":[{\"id_commodity\":21,"
+                    "\"price_sell\":300,\"scu_sell\":0,\"status_sell\":1}]}" &&
             job == "{\"is_production\":0,\"id_terminal\":788,\"id_refinery_method\":2,\"cost\":194,\"time_minutes\":8,"
                    "\"items\":[{\"id_commodity\":48,\"quantity\":484,\"yield\":235}]}";
         allPassed &= check(bodies, "a price report and a refinery job as UEX's documentation writes them");
+
+        // ...and the commodity terminal's card, its lines as the reader takes
+        // them: the stock's level in the game's words, the stock, the price
+        // of a SCU or of one cargo box, the name with its figures exact
+        bool unitA = true, unitB = false, unitC = true;
+        const bool card =
+            SCMiner::commodityLevelIn("MAX INVENTORY") == 7 && SCMiner::commodityLevelIn("HAX INVENTORY") == 7 &&
+            SCMiner::commodityLevelIn("VERY LOV INVENTORY") == 2 && SCMiner::commodityLevelIn("Low Inventory") == 3 &&
+            SCMiner::commodityLevelIn("HEDIUN INVENTORY") == 4 && SCMiner::commodityLevelIn("Very High Inventory") == 6 &&
+            SCMiner::commodityLevelIn("Out of Stock") == 1 && SCMiner::commodityLevelIn("No Inventory") == 1 &&
+            SCMiner::commodityLevelIn("Inventory Updating") == 0 && SCMiner::commodityLevelIn("NOW INVENTORY") == -1 &&
+            SCMiner::commodityLevelIn("INVENTORY") == -1 && SCMiner::commodityLevelIn("NAX INVENTORY") == 7 &&
+            SCMiner::commodityLevelIn("SHOP QUANTITY") == -1 &&
+            SCMiner::parseShopQuantity("24,000 SCU") == 24000 && SCMiner::parseShopQuantity("4SCU") == 4 &&
+            SCMiner::parseShopQuantity("1,O5O SCU") == 1050 && SCMiner::parseShopQuantity("24,00 SCU") == -1 &&
+            SCMiner::parseShopQuantity("SHOP QUANTITY") == -1 && SCMiner::parseShopQuantity("1050 SCU") == -1 &&
+            SCMiner::parseCommodityPrice("4.167/SCU", unitA) == 4167 && !unitA &&
+            SCMiner::parseCommodityPrice("02.850/SCU", unitA) == 2850 &&
+            SCMiner::parseCommodityPrice("\xC2\xA4" "1,879/Units", unitB) == 1879 && unitB &&
+            SCMiner::parseCommodityPrice("316/SCU", unitC) == 316 && !unitC &&
+            SCMiner::parseCommodityPrice("1,108", unitC) == -1 && SCMiner::parseCommodityPrice("1316/SCU", unitC) == -1 &&
+            SCMiner::commodityNamed("SHIP AMMUNITION SIZE 1", "Ship Ammunition - Size 1") &&
+            !SCMiner::commodityNamed("SHIP AMMUNITION SIZE 2", "Ship Ammunition - Size 1") &&
+            SCMiner::commodityNamed("HEPHAESTANITE", "Hephaestanite") &&
+            SCMiner::commodityNamed("Agricultural Supplies", "Agricultural Supplies") &&
+            !SCMiner::commodityNamed("IRON", "Tin");
+        allPassed &= check(card, "a commodity terminal's card read: the stock's level in the game's words, the stock, "
+                                 "the price of a SCU or of a cargo box, the name with its figures exact");
         std::string user;
         const bool answers =
             R::verdict(200, "{\"status\":\"ok\",\"data\":{\"username\":\"Runner\"}}", &user).empty() && user == "Runner" &&

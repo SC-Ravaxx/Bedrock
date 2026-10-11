@@ -4311,6 +4311,33 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             return runRefineryReplay(__argv[i + 1], __argv[i + 2], std::atoll(__argv[i + 3]), std::atof(__argv[i + 4]),
                                      i + 5 < __argc ? std::atoi(__argv[i + 5]) : 4);
         }
+        else if (arg == "--tradecard" && i + 4 < __argc) {
+            setupConsole(true);
+            return runTradeCard(__argv[i + 1], __argv[i + 2], std::atof(__argv[i + 3]), std::atof(__argv[i + 4]));
+        }
+        else if (arg == "--commodity" && i + 1 < __argc) {
+            // --commodity <pictures, or a folder> [--wanted <commodity>]
+            setupConsole(true);
+            std::vector<std::string> files;
+            std::string wanted;
+            for (int k = i + 1; k < __argc; k++) {
+                const std::string a = __argv[k];
+                if (a == "--wanted" && k + 1 < __argc) {
+                    wanted = __argv[++k];
+                } else if (std::filesystem::is_directory(a)) {
+                    std::vector<std::string> found;
+                    for (const auto& entry : std::filesystem::directory_iterator(a)) {
+                        const std::string ext = entry.path().extension().string();
+                        if (ext == ".jpg" || ext == ".png") found.push_back(entry.path().string());
+                    }
+                    std::sort(found.begin(), found.end());
+                    files.insert(files.end(), found.begin(), found.end());
+                } else {
+                    files.push_back(a);
+                }
+            }
+            return runCommodity(files, wanted);
+        }
         else if (arg == "--refineryshare" && i + 2 < __argc) {
             setupConsole(true);
             return runRefineryShare(__argv[i + 1], __argv[i + 2]);

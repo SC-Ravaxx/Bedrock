@@ -196,6 +196,7 @@ set(CORE_SOURCES
     src/RefineryTerminal.cpp
     src/RefineryOrders.cpp
     src/RefineryShare.cpp
+    src/CommodityTerminal.cpp
     src/TradeBook.cpp
     src/BlueprintLibrary.cpp
     src/Reputation.cpp

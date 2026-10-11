@@ -43,6 +43,18 @@ int runRefinery(const std::vector<std::string>& files, const std::string& drawDi
 // picture was written - with the service's answer printed
 int runRefineryShare(const std::string& picture, const std::string& service);
 
+// --commodity <pictures, or a folder> [--wanted <commodity>]: the commodity
+// terminal's SHOP INVENTORY read off each picture - every card's name, stock
+// level, stock and price, or the one commodity's card alone, as a report to
+// UEX reads it (SCMINER_COMMODITY_TRACE: every line of text read)
+int runCommodity(const std::vector<std::string>& files, const std::string& wanted);
+
+// --tradecard <folder> <commodity> <price a SCU> <second of the trade>: the
+// pictures of a folder taken a second apart, the first at second 0, read as
+// a report to UEX reads them for a purchase at that second - which card
+// was found, in which picture
+int runTradeCard(const std::string& folder, const std::string& commodity, double perScu, double tradeSecond);
+
 // --refineryreplay <folder> <station> <first frame's UTC> <seconds a frame>
 // [every]: a recording cut into frames played through the order book the way
 // the app reads it - every <every>-th frame, a reading a second - and the

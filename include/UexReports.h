@@ -81,10 +81,12 @@ private:
 namespace UexReports {
 
 // The body of a data_submit for one trade: what the terminal paid for it (a
-// sale) or asked (a purchase), per SCU, at `when`; a screenshot only while
-// UEX's 90 days last (empty otherwise)
+// sale) or asked (a purchase), per SCU, at `when`, with the shop's stock
+// beside it (SCU) and its level (1 out of stock .. 7 max inventory) where
+// they were read off the terminal (-1 leaves them out); a screenshot only
+// while UEX's 90 days last (empty otherwise)
 std::string priceReport(int terminal, int commodity, bool sold, double perScu, long long when,
-                        const std::string& screenshotBase64, bool production);
+                        const std::string& screenshotBase64, bool production, int stock = -1, int level = -1);
 // The body of a user_refineries_jobs_add: the commodities' ids beside their items
 std::string refineryJob(int terminal, int method, double cost, int minutes,
                         const std::vector<std::pair<int, UexRefineryJob::Item>>& items, bool production);

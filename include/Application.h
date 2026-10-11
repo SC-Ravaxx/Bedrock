@@ -28,6 +28,7 @@
 #include "UexPrices.h"
 #include "UexReports.h"
 #include "RefineryShare.h"
+#include "CommodityTerminal.h"
 #include "UexMarket.h"
 #include <memory>
 
@@ -410,6 +411,10 @@ private:
         std::vector<unsigned char> shotJpeg;   // ...the same JPEG, kept once it has gone (debug\uex_last_screenshot.jpg)
         bool shotWanted = false;           // a picture is owed and not taken yet
         bool fromTerminal = false;         // ...to be chosen from tradeFrames_ when it is due
+        // a purchase's card as the terminal showed it (CommodityTerminal):
+        // read once it is due, off the pictures kept from the terminal
+        bool cardRead = false;
+        int stock = -1, level = -1, shown = -1;   // SCU, 1-7, the price per SCU as shown; -1 not read
         std::chrono::steady_clock::time_point due{};   // not before: the game may still refuse a trade
     };
     struct UexSent {
@@ -479,6 +484,14 @@ private:
         std::vector<unsigned char> jpeg;      // uexPictureJpeg
     };
     std::deque<TradeFrame> tradeFrames_;
+    // A purchase's card read off the pictures kept around it
+    // (readTradeCard), in the background, and the picture that shows it
+    struct UexCard {
+        TradeCard card;
+        std::vector<unsigned char> jpeg;
+    };
+    std::unique_ptr<TextLineReader> uexCardLines_;   // the reader the background job reads with
+    std::future<UexCard> uexCardJob_;
     // A trade held back from UEX: its pictures and what the log said of it,
     // in debug\uex_held
     void keepHeldTrade(const Trade& trade, const std::string& label);
