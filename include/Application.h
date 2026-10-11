@@ -518,7 +518,15 @@ private:
         long long ms = 0;
         std::vector<unsigned char> shot;
         std::vector<unsigned char> demand;   // the picture at full size, where it is of what the shop buys
+        std::vector<unsigned char> picture;  // ...whatever it is of, for the visit's record
     };
+    // The visit's record, debug\uex_visits\<when>: each picture read and what
+    // was made of it, and why each card went to UEX or did not
+    long long sessionOpenedMs_ = 0;
+    int sessionReads_ = 0;
+    std::vector<std::string> sessionLog_;
+    std::vector<std::pair<long long, std::vector<unsigned char>>> sessionPictures_;
+    void keepVisitRecord(const std::vector<std::string>& lines);
     std::vector<std::pair<long long, std::vector<unsigned char>>> sessionDemand_;   // ...kept, a few
     std::future<SessionRead> sessionJob_;
     std::unique_ptr<TextLineReader> sessionLines_;

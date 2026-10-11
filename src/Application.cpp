@@ -5088,6 +5088,28 @@ void Application::keepDemandPictures(const std::vector<std::pair<long long, std:
     for (size_t i = 0; i + 8 < held.size(); i++) std::filesystem::remove_all(held[i], ec);
 }
 
+// The visit's record: the pictures read off the list at full size, and
+// visit.txt with what was made of each and why each card went or did not -
+// in debug\uex_visits\<when it opened>, the newest 5 visits
+void Application::keepVisitRecord(const std::vector<std::string>& lines) {
+    std::error_code ec;
+    const std::filesystem::path root = AppPaths::data() / "debug" / "uex_visits";
+    const std::filesystem::path folder = root / std::to_string(sessionOpenedMs_);
+    std::filesystem::create_directories(folder, ec);
+    if (!ec) {
+        for (const auto& p : sessionPictures_) keepUexShot(folder / (std::to_string(p.first) + ".jpg"), p.second);
+        std::ofstream out(folder / "visit.txt");
+        for (const std::string& line : lines) out << line << "\n";
+        std::vector<std::filesystem::path> visits;
+        for (const auto& entry : std::filesystem::directory_iterator(root, ec)) {
+            if (entry.is_directory()) visits.push_back(entry.path());
+        }
+        std::sort(visits.begin(), visits.end());
+        for (size_t i = 0; i + 5 < visits.size(); i++) std::filesystem::remove_all(visits[i], ec);
+    }
+    sessionPictures_.clear();
+}
+
 static double thumbChange(const cv::Mat& a, const cv::Mat& b) {
     if (a.empty() || b.empty() || a.size() != b.size()) return 255;
     cv::Mat d;
@@ -5103,6 +5125,18 @@ static double thumbChange(const cv::Mat& a, const cv::Mat& b) {
 void Application::serviceTerminalSession() {
     if (sessionJob_.valid() && sessionJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
         SessionRead read = sessionJob_.get();
+        sessionReads_++;
+        {
+            std::ostringstream line;
+            line << "picture " << read.ms << ": side " << read.screen.side << ", " << read.screen.cards.size() << " cards, "
+                 << (int)std::lround(read.screen.ms) << " ms";
+            for (const CommodityCard& c : read.screen.cards) {
+                line << "\n    '" << c.name << "' level " << c.level << ", " << c.stock << " SCU, " << c.price
+                     << (c.perUnit ? " a box" : " a SCU") << ", price read " << c.priceReads << "x";
+            }
+            sessionLog_.push_back(line.str());
+        }
+        if (sessionPictures_.size() < 16) sessionPictures_.push_back({read.ms, read.picture});
         if (!read.screen.cards.empty()) {
             terminalSession_.add(read.ms, read.screen);
             sessionShots_.push_back(std::move(read.shot));
@@ -5127,6 +5161,7 @@ void Application::serviceTerminalSession() {
     if (!changed && sessionReadsOfView_ >= 2) return;
     if (!sessionOpen_) {
         sessionOpen_ = true;
+        sessionOpenedMs_ = newest.ms;
         sessionShop_ = library_.trades().terminalShop();
         sessionPlace_ = library_.trades().terminalPlace();
         if (!uexDirectory_ && !uexDirectoryJob_.valid()) {
@@ -5152,6 +5187,7 @@ void Application::serviceTerminalSession() {
         if (!bgr.empty()) out.screen = readCommodityScreen(bgr, *reader);
         if (!out.screen.cards.empty()) out.shot = shot;
         if (out.screen.side == 2) out.demand = jpeg;
+        out.picture = jpeg;
         return out;
     });
 }
@@ -5174,45 +5210,75 @@ void Application::finishTerminalSession() {
     sessionShots_.clear();
     if (!sessionDemand_.empty()) keepDemandPictures(sessionDemand_);
     sessionDemand_.clear();
-    if (session.pictures() == 0) return;
+    std::vector<std::string> record;
+    record.push_back("visit to " + sessionShop_ + " at " + sessionPlace_ + ", opened " + std::to_string(sessionOpenedMs_) +
+                     ", " + std::to_string(sessionReads_) + " pictures read, " + std::to_string(session.pictures()) +
+                     " with the list" + (tradeWatch_ ? "; the player left it" : "; the terminal went quiet"));
+    for (std::string& line : sessionLog_) record.push_back(std::move(line));
+    sessionLog_.clear();
+    sessionReads_ = 0;
+    struct RecordAtEnd {
+        Application* app;
+        std::vector<std::string>* lines;
+        ~RecordAtEnd() { app->keepVisitRecord(*lines); }
+    } recordAtEnd{this, &record};
+    if (session.pictures() == 0) {
+        record.push_back("nothing read off the list");
+        return;
+    }
     std::cout << "\nTerminal: " << session.pictures() << " pictures of the list read at " << sessionShop_ << std::endl;
     std::string why;
     const int terminal = uexDirectory_ ? uexDirectory_->tradeTerminal(sessionShop_, sessionPlace_, why) : 0;
     if (!terminal || !uexPrices_) {
-        std::cout << "Terminal: nothing reported (" << (terminal ? "no prices from UEX to hold it against" : why) << ")"
-                  << std::endl;
+        record.push_back(std::string("nothing reported: ") +
+                         (!uexDirectory_ ? "UEX's terminal list not loaded" : !terminal ? why : "no prices from UEX to hold it against"));
+        std::cout << "Terminal: " << record.back() << std::endl;
         return;
     }
+    record.push_back("UEX terminal " + std::to_string(terminal) + " (" + uexDirectory_->terminalName(terminal) + ")");
     const UexDirectory& directory = *uexDirectory_;
     const long long now = (long long)std::time(nullptr);
     std::map<std::string, int> ids;
-    auto wanted = [&](const TerminalSession::Row& row) {
+    auto decide = [&](const TerminalSession::Row& row) -> std::string {
         // the commodity: the one of the game's names the card's name reads as
         std::string game;
         for (const CommodityName& c : COMMODITY_NAMES) {
             if (!commodityNamed(row.name, c.name)) continue;
-            if (!game.empty() && game != c.name) return false;
+            if (!game.empty() && game != c.name) return "reads as both " + game + " and " + c.name;
             game = c.name;
         }
-        const int id = game.empty() ? 0 : directory.commodity(game);
-        if (!id) return false;
+        if (game.empty()) return "no commodity of the game's by that name";
+        const int id = directory.commodity(game);
+        if (!id) return "UEX doesn't list " + game;
         // ...not one a purchase's own report is still to go with
         for (const UexPending& pending : uexQueue_) {
-            if (!pending.list && !pending.refinery && game == TradeBook::nameOf(pending.trade.resource)) return false;
+            if (!pending.list && !pending.refinery && game == TradeBook::nameOf(pending.trade.resource)) {
+                return "its purchase is reported on its own";
+            }
         }
         const double last = uexPrices_->lastPrice(terminal, id, false);
         const double band = row.priceReads >= 2 ? 0.35 : 0.10;
-        if (last <= 0 || std::abs(row.price - last) > band * last) return false;
+        if (last <= 0) return "UEX has no price for it here";
+        if (std::abs(row.price - last) > band * last) {
+            return "too far from UEX's " + std::to_string((long long)std::llround(last)) + " (read " +
+                   std::to_string(row.priceReads) + "x)";
+        }
         const auto sent = uexRowsSent_.find({terminal, id});
         if (sent != uexRowsSent_.end()) {
             const long long age = now - sent->second.at;
             // UEX takes one report of a commodity at a place in five minutes
-            if (age < 6 * 60) return false;
+            if (age < 6 * 60) return "sent a moment ago";
             if (age < 3600 && sent->second.level == row.level && sent->second.stock == row.stock &&
-                sent->second.price == row.price) return false;
+                sent->second.price == row.price) return "sent unchanged within the hour";
         }
         ids[row.name] = id;
-        return true;
+        return "";
+    };
+    auto wanted = [&](const TerminalSession::Row& row) {
+        const std::string no = decide(row);
+        record.push_back("  '" + row.name + "' level " + std::to_string(row.level) + ", " + std::to_string(row.stock) +
+                         " SCU, " + std::to_string(row.price) + " a SCU: " + (no.empty() ? "goes" : no));
+        return no.empty();
     };
     const bool shotWanted = now - uexReportSince_ < (long long)UEX_PICTURE_DAYS * 86400;
     for (const TerminalSession::Report& report : session.reports(wanted)) {
@@ -5231,6 +5297,7 @@ void Application::finishTerminalSession() {
             uexRowsSent_[{terminal, r.commodity}] = {now, row.level, row.stock, row.price};
         }
         item.key = "list|" + std::to_string(terminal) + "|" + std::to_string(report.ms);
+        record.push_back("report of " + std::to_string(item.rows.size()) + " with picture " + std::to_string(report.ms));
         item.shotJpeg = shots[report.picture];
         if (shotWanted) item.shot = UexReports::base64(item.shotJpeg.data(), item.shotJpeg.size());
         item.due = std::chrono::steady_clock::now();
