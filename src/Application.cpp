@@ -10,6 +10,7 @@
 #include "CraftingData.h"
 #include "MiniJson.h"
 #include "CommodityTerminal.h"
+#include "CommodityData.h"
 #include "RefineryData.h"
 #include "RefiningData.h"
 #include "resource.h"
@@ -4465,6 +4466,7 @@ void Application::pollLibrary() {
     serviceGameTexts();
     keepGameTextsFresh();
     serviceUex();
+    serviceTerminalSession();
     serviceUexReports();
     serviceUexMarket();
     // The same log, read for where the player is and what they fly
@@ -4690,7 +4692,10 @@ void Application::serviceUex() {
                   << (done.tokenRefused ? " (UEX turned the app token away; asked without it)" : "") << std::endl;
         gui_->setUexPrices(uexWanted_, uexPrices_, uexFetchedAt_, uexNote_);
     }
-    if (!uexWanted_ || uexJob_.valid() || !gui_->plannerOpen()) return;
+    // ...and while a commodity terminal is in use with reports going to UEX:
+    // what is read off it is held against UEX's last prices
+    const bool atTerminal = tradeWatch_ && uexReportSince_ > 0;
+    if (!uexWanted_ || uexJob_.valid() || (!gui_->plannerOpen() && !atTerminal)) return;
     const long long age = uexPrices_ ? (long long)std::time(nullptr) - uexFetchedAt_ : -1;
     if (uexPrices_ && age >= 0 && age < UEX_PRICES_MINUTES * 60) return;
     const auto now = std::chrono::steady_clock::now();
@@ -5040,7 +5045,9 @@ void Application::keepHeldTrade(const Trade& trade, const std::string& label) {
     const std::filesystem::path folder = root / name;
     std::filesystem::create_directories(folder, ec);
     if (ec) return;
-    for (const TradeFrame& frame : tradeFrames_) keepUexShot(folder / (std::to_string(frame.ms) + ".jpg"), frame.jpeg);
+    for (const TradeFrame& frame : tradeFrames_) {
+        keepUexShot(folder / (std::to_string(frame.ms) + ".jpg"), frame.readJpeg.empty() ? frame.jpeg : frame.readJpeg);
+    }
     {
         std::ofstream about(folder / "trade.txt");
         about << label << "\n"
@@ -5054,7 +5061,172 @@ void Application::keepHeldTrade(const Trade& trade, const std::string& label) {
         if (entry.is_directory()) held.push_back(entry.path());
     }
     std::sort(held.begin(), held.end());
-    for (size_t i = 0; i + 30 < held.size(); i++) std::filesystem::remove_all(held[i], ec);
+    for (size_t i = 0; i + 8 < held.size(); i++) std::filesystem::remove_all(held[i], ec);
+}
+
+// ---- a visit to a commodity terminal's list (TerminalSession) -------------
+
+// Pictures of the list of what a shop buys, read at a terminal and not
+// reported yet: kept at full size in debug\uex_held\demand_<when> beside
+// the trades held back, to read that list by in time. The newest 8 there.
+void Application::keepDemandPictures(const std::vector<std::pair<long long, std::vector<unsigned char>>>& pictures) {
+    std::error_code ec;
+    const std::filesystem::path root = AppPaths::data() / "debug" / "uex_held";
+    const std::filesystem::path folder = root / ("demand_" + std::to_string(pictures.front().first));
+    std::filesystem::create_directories(folder, ec);
+    if (ec) return;
+    for (const auto& p : pictures) keepUexShot(folder / (std::to_string(p.first) + ".jpg"), p.second);
+    std::ofstream(folder / "terminal.txt") << "shop " << sessionShop_ << "\nplace " << sessionPlace_ << "\n";
+    std::vector<std::filesystem::path> held;
+    for (const auto& entry : std::filesystem::directory_iterator(root, ec)) {
+        if (entry.is_directory()) held.push_back(entry.path());
+    }
+    std::sort(held.begin(), held.end(), [](const std::filesystem::path& a, const std::filesystem::path& b) {
+        std::error_code e;
+        return std::filesystem::last_write_time(a, e) < std::filesystem::last_write_time(b, e);
+    });
+    for (size_t i = 0; i + 8 < held.size(); i++) std::filesystem::remove_all(held[i], ec);
+}
+
+static double thumbChange(const cv::Mat& a, const cv::Mat& b) {
+    if (a.empty() || b.empty() || a.size() != b.size()) return 255;
+    cv::Mat d;
+    cv::absdiff(a, b, d);
+    return cv::mean(d)[0];
+}
+
+// While a commodity terminal is in use and prices go to UEX: the newest
+// picture read in the background where the list has changed since the last
+// one read - and once more where it has not, two pictures to agree - a
+// second apart at most. Three reads without the list: the player has left,
+// and what was read goes to UEX (finishTerminalSession).
+void Application::serviceTerminalSession() {
+    if (sessionJob_.valid() && sessionJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        SessionRead read = sessionJob_.get();
+        if (!read.screen.cards.empty()) {
+            terminalSession_.add(read.ms, read.screen);
+            sessionShots_.push_back(std::move(read.shot));
+            if (!read.demand.empty() && sessionDemand_.size() < 12) sessionDemand_.push_back({read.ms, std::move(read.demand)});
+            sessionEmptyReads_ = 0;
+        } else {
+            sessionEmptyReads_++;
+        }
+    }
+    if (sessionOpen_ && !sessionJob_.valid() && (!tradeWatch_ || sessionEmptyReads_ >= SESSION_EMPTY_READS)) {
+        finishTerminalSession();
+        return;
+    }
+    const bool reporting = uexReportSince_ > 0 && !uexKey_.empty() && !uexKeyTrouble_;
+    if (!reporting || !tradeWatch_ || tradeFrames_.empty() || sessionJob_.valid()) return;
+    const TradeFrame& newest = tradeFrames_.back();
+    if (newest.readJpeg.empty() || newest.ms < sessionReadMs_ + SESSION_READ_MS) return;
+    const bool changed = thumbChange(newest.thumb, sessionThumb_) > 3.0;
+    if (!changed && sessionReadsOfView_ >= 2) return;
+    if (!sessionOpen_) {
+        sessionOpen_ = true;
+        sessionShop_ = library_.trades().terminalShop();
+        sessionPlace_ = library_.trades().terminalPlace();
+    }
+    sessionReadsOfView_ = changed ? 1 : sessionReadsOfView_ + 1;
+    sessionReadMs_ = newest.ms;
+    sessionThumb_ = newest.thumb.clone();
+    if (!sessionLines_) {
+        sessionLines_ = std::make_unique<TextLineReader>();
+        if (!sessionLines_->loadEmbedded()) std::cout << "\nTerminal: the line reader could not be loaded" << std::endl;
+    }
+    if (!sessionLines_->ready()) return;
+    sessionJob_ = std::async(std::launch::async, [jpeg = newest.readJpeg, shot = newest.jpeg, ms = newest.ms,
+                                                  reader = sessionLines_.get()]() {
+        SessionRead out;
+        out.ms = ms;
+        const cv::Mat bgr = cv::imdecode(jpeg, cv::IMREAD_COLOR);
+        if (!bgr.empty()) out.screen = readCommodityScreen(bgr, *reader);
+        if (!out.screen.cards.empty()) out.shot = shot;
+        if (out.screen.side == 2) out.demand = jpeg;
+        return out;
+    });
+}
+
+// The visit over: every card of the shop's stock two pictures agreed on -
+// a commodity UEX knows, its price near what UEX last had there (within
+// 35 % where it read the same at two sizes, else 10 %: a misread figure is
+// far off it), not sent a moment ago - in as few reports as pictures show
+// them, each with its picture. The other list, what the shop buys, is not
+// read yet: its pictures are kept in debug\uex_held to be.
+void Application::finishTerminalSession() {
+    sessionOpen_ = false;
+    sessionReadMs_ = 0;
+    sessionThumb_.release();
+    sessionReadsOfView_ = 0;
+    sessionEmptyReads_ = 0;
+    TerminalSession session = std::move(terminalSession_);
+    terminalSession_ = TerminalSession();
+    std::vector<std::vector<unsigned char>> shots = std::move(sessionShots_);
+    sessionShots_.clear();
+    if (!sessionDemand_.empty()) keepDemandPictures(sessionDemand_);
+    sessionDemand_.clear();
+    if (session.pictures() == 0) return;
+    std::cout << "\nTerminal: " << session.pictures() << " pictures of the list read at " << sessionShop_ << std::endl;
+    std::string why;
+    const int terminal = uexDirectory_ ? uexDirectory_->tradeTerminal(sessionShop_, sessionPlace_, why) : 0;
+    if (!terminal || !uexPrices_) {
+        std::cout << "Terminal: nothing reported (" << (terminal ? "no prices from UEX to hold it against" : why) << ")"
+                  << std::endl;
+        return;
+    }
+    const UexDirectory& directory = *uexDirectory_;
+    const long long now = (long long)std::time(nullptr);
+    std::map<std::string, int> ids;
+    auto wanted = [&](const TerminalSession::Row& row) {
+        // the commodity: the one of the game's names the card's name reads as
+        std::string game;
+        for (const CommodityName& c : COMMODITY_NAMES) {
+            if (!commodityNamed(row.name, c.name)) continue;
+            if (!game.empty() && game != c.name) return false;
+            game = c.name;
+        }
+        const int id = game.empty() ? 0 : directory.commodity(game);
+        if (!id) return false;
+        // ...not one a purchase's own report is still to go with
+        for (const UexPending& pending : uexQueue_) {
+            if (!pending.list && !pending.refinery && game == TradeBook::nameOf(pending.trade.resource)) return false;
+        }
+        const double last = uexPrices_->lastPrice(terminal, id, false);
+        const double band = row.priceReads >= 2 ? 0.35 : 0.10;
+        if (last <= 0 || std::abs(row.price - last) > band * last) return false;
+        const auto sent = uexRowsSent_.find({terminal, id});
+        if (sent != uexRowsSent_.end()) {
+            const long long age = now - sent->second.at;
+            // UEX takes one report of a commodity at a place in five minutes
+            if (age < 6 * 60) return false;
+            if (age < 3600 && sent->second.level == row.level && sent->second.stock == row.stock &&
+                sent->second.price == row.price) return false;
+        }
+        ids[row.name] = id;
+        return true;
+    };
+    const bool shotWanted = now - uexReportSince_ < (long long)UEX_PICTURE_DAYS * 86400;
+    for (const TerminalSession::Report& report : session.reports(wanted)) {
+        if (report.picture >= shots.size() || shots[report.picture].empty()) continue;
+        UexPending item;
+        item.list = true;
+        item.listTerminal = terminal;
+        item.listWhen = report.ms / 1000;
+        for (const TerminalSession::Row& row : report.rows) {
+            UexPriceRow r;
+            r.commodity = ids[row.name];
+            r.price = row.price;
+            r.stock = row.stock;
+            r.level = row.level;
+            item.rows.push_back(r);
+            uexRowsSent_[{terminal, r.commodity}] = {now, row.level, row.stock, row.price};
+        }
+        item.key = "list|" + std::to_string(terminal) + "|" + std::to_string(report.ms);
+        item.shotJpeg = shots[report.picture];
+        if (shotWanted) item.shot = UexReports::base64(item.shotJpeg.data(), item.shotJpeg.size());
+        item.due = std::chrono::steady_clock::now();
+        uexQueue_.push_back(std::move(item));
+    }
 }
 
 // The game window now, as UEX takes it, a JPEG - for a trade with no
@@ -5130,8 +5302,9 @@ cv::Mat Application::grabGamePicture() {
 // Reporting, with pictures still owed for UEX's 90 days
 bool Application::uexPicturesWanted() const {
     if (uexReportSince_ <= 0 || uexKey_.empty() || uexKeyTrouble_) return false;
-    if (library_.channel().rfind("LIVE", 0) != 0) return false;
-    return (long long)std::time(nullptr) - uexReportSince_ < (long long)UEX_PICTURE_DAYS * 86400;
+    // the terminal's pictures are what its stock is read off: wanted after
+    // UEX's 90 days too, when a report goes without one
+    return library_.channel().rfind("LIVE", 0) == 0;
 }
 
 static long long millisNow() {
@@ -5155,6 +5328,18 @@ void Application::keepTradeFrame(const cv::Mat& frame) {
     kept.detail = tradeFrameDetail(frame);
     kept.jpeg = uexPictureJpeg(frame);
     if (kept.jpeg.empty()) return;
+    // ...and the middle of the view at full size, where the terminal stands
+    // while it is used: what its cards are read off (CommodityTerminal)
+    {
+        const int half = (std::min)(frame.cols / 2, (int)std::lround(0.95 * frame.rows));
+        cv::Mat middle;
+        if (frame.channels() == 4) cv::cvtColor(frame(cv::Rect(frame.cols / 2 - half, 0, 2 * half, frame.rows)), middle, cv::COLOR_BGRA2BGR);
+        else middle = frame(cv::Rect(frame.cols / 2 - half, 0, 2 * half, frame.rows));
+        cv::imencode(".jpg", middle, kept.readJpeg, {cv::IMWRITE_JPEG_QUALITY, 90});
+        cv::Mat grey;
+        cv::cvtColor(middle(cv::Rect(middle.cols / 2, 0, middle.cols / 2, middle.rows)), grey, cv::COLOR_BGR2GRAY);
+        cv::resize(grey, kept.thumb, cv::Size(48, 48), 0, 0, cv::INTER_AREA);
+    }
     tradeFrames_.push_back(std::move(kept));
     while (!tradeFrames_.empty() && now - tradeFrames_.front().ms > TRADE_FRAMES_MS) tradeFrames_.pop_front();
 }
@@ -5266,15 +5451,20 @@ void Application::serviceUexReports() {
             }
             if (uexCardLines_->ready()) {
                 std::vector<TerminalPicture> pictures;
-                for (const TradeFrame& f : tradeFrames_) pictures.push_back({f.ms, f.jpeg});
+                std::vector<std::vector<unsigned char>> shots;
+                for (const TradeFrame& f : tradeFrames_) {
+                    pictures.push_back({f.ms, f.readJpeg.empty() ? f.jpeg : f.readJpeg});
+                    shots.push_back(f.jpeg);
+                }
                 const Trade& trade = uexQueue_.front().trade;
                 uexCardJob_ = std::async(std::launch::async,
-                                         [pictures = std::move(pictures), name = std::string(TradeBook::nameOf(trade.resource)),
+                                         [pictures = std::move(pictures), shots = std::move(shots),
+                                          name = std::string(TradeBook::nameOf(trade.resource)),
                                           tradeMs = TradeBook::millisOf(trade.stamp), perScu = trade.perScu(),
                                           reader = uexCardLines_.get()]() {
                                              UexCard out;
                                              out.card = readTradeCard(pictures, name, tradeMs, perScu, *reader);
-                                             if (out.card.found) out.jpeg = pictures[out.card.picture].jpeg;
+                                             if (out.card.found) out.jpeg = shots[out.card.picture];
                                              return out;
                                          });
                 return;
@@ -5311,7 +5501,12 @@ void Application::serviceUexReports() {
     const UexDirectory& directory = *uexDirectory_;
     const bool production = DEV_ENV("SCMINER_UEX_DRYRUN") == nullptr;
     std::string why, body, endpoint, label;
-    if (!item.refinery) {
+    if (item.list) {
+        label = std::to_string(item.rows.size()) + (item.rows.size() == 1 ? " price at " : " prices at ") +
+                directory.terminalName(item.listTerminal);
+        body = UexReports::priceReport(item.listTerminal, item.rows, item.listWhen, item.shot, production);
+        endpoint = "data_submit";
+    } else if (!item.refinery) {
         // refused after all, in the quarter of a minute it was held?
         for (const Trade& trade : library_.trades().trades()) {
             if (trade.stamp == item.trade.stamp && trade.resource == item.trade.resource &&
@@ -5353,6 +5548,7 @@ void Application::serviceUexReports() {
                                        Reputation::epochOf(item.trade.stamp), item.shot, production, item.stock,
                                        item.level);
         endpoint = "data_submit";
+        uexRowsSent_[{terminal, commodity}] = {(long long)std::time(nullptr), item.level, item.stock, item.shown};
     } else {
         const UexRefineryJob& job = item.job;
         const int terminal = directory.refineryTerminal(job.station, why);

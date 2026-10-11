@@ -86,11 +86,17 @@ bool UexPrices::read(const std::string& pricesJson, const std::string& terminals
     std::map<std::string, std::vector<UexOffer>> byCommodity;
     std::map<std::string, std::map<std::string, UexOffer>> bestBySystem;
     std::map<std::string, UexOffer> cheapestBuy;
+    std::unordered_map<long long, std::pair<double, double>> byTerminal;
     for (const JsonValue& row : priceRows->items) {
         const std::string commodity = row.textOr("commodity_name");
         if (commodity.empty()) continue;
         const long long reported = (long long)row.numberOr("date_modified");
         if (now > 0 && reported > 0 && now - reported > REPORT_DAYS * 86400) continue;
+        const long long terminalId = (long long)row.numberOr("id_terminal", 0);
+        const long long commodityId = (long long)row.numberOr("id_commodity", 0);
+        if (terminalId > 0 && commodityId > 0) {
+            byTerminal[(terminalId << 20) | commodityId] = {row.numberOr("price_buy"), row.numberOr("price_sell")};
+        }
         UexOffer offer;
         offer.terminal = row.textOr("terminal_name");
         offer.reported = reported;
@@ -132,6 +138,7 @@ bool UexPrices::read(const std::string& pricesJson, const std::string& terminals
         });
         if ((int)offers.size() > OFFERS_KEPT) offers.resize(OFFERS_KEPT);
     }
+    byTerminal_ = std::move(byTerminal);
     if (byCommodity.empty()) {
         why = "the price list was empty";
         return false;
@@ -176,6 +183,13 @@ std::string UexPrices::mostValuable(const std::vector<std::string>& ores) const 
         }
     }
     return best;
+}
+
+double UexPrices::lastPrice(int terminal, int commodity, bool sold) const {
+    if (terminal <= 0 || commodity <= 0) return 0;
+    const auto it = byTerminal_.find(((long long)terminal << 20) | commodity);
+    if (it == byTerminal_.end()) return 0;
+    return sold ? it->second.second : it->second.first;
 }
 
 }  // namespace SCMiner

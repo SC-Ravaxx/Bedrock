@@ -1376,6 +1376,52 @@ int runSelfTest() {
             !SCMiner::commodityNamed("IRON", "Tin");
         allPassed &= check(card, "a commodity terminal's card read: the stock's level in the game's words, the stock, "
                                  "the price of a SCU or of a cargo box, the name with its figures exact");
+
+        // ...and a visit to its list: what two pictures of the shop's stock
+        // agree on, in as few pictures as show it; the other list apart
+        auto cardOf = [](const char* name, int level, int stock, int price) {
+            SCMiner::CommodityCard c;
+            c.name = name;
+            c.level = level;
+            c.stock = stock;
+            c.price = price;
+            c.priceReads = 2;
+            return c;
+        };
+        SCMiner::CommodityScreen a, b, c, d;
+        a.side = b.side = c.side = 1;
+        d.side = 2;
+        a.cards = {cardOf("ARGON", 7, 24000, 316), cardOf("IRON", 2, 4, 2850)};
+        b.cards = {cardOf("ARGON", 7, 24000, 316), cardOf("IRON", 2, 4, 12850)};
+        c.cards = {cardOf("IRON", 2, 4, 2850), cardOf("GOLD", 2, 23, 26492)};
+        d.cards = {cardOf("WASTE", 7, 75, 229), cardOf("WASTE", 7, 75, 229)};
+        SCMiner::TerminalSession visit;
+        visit.add(1000, a);
+        visit.add(2000, b);
+        visit.add(3000, c);
+        visit.add(4000, d);
+        const auto all = visit.reports([](const SCMiner::TerminalSession::Row&) { return true; });
+        const auto ironOnly = visit.reports([](const SCMiner::TerminalSession::Row& r) { return r.name == "IRON"; });
+        SCMiner::UexPriceRow r1, r2;
+        r1.commodity = 6;
+        r1.price = 316;
+        r1.stock = 24000;
+        r1.level = 7;
+        r2.commodity = 20;
+        r2.price = 2850;
+        r2.stock = 4;
+        r2.level = 2;
+        const std::string two = R::priceReport(22, std::vector<SCMiner::UexPriceRow>{r1, r2}, 1791700000, "", true);
+        const bool visited =
+            visit.sawDemand() && all.size() == 1 && all[0].picture == 0 && all[0].rows.size() == 2 &&
+            ironOnly.size() == 1 && ironOnly[0].picture == 2 && ironOnly[0].rows.size() == 1 &&
+            ironOnly[0].rows[0].price == 2850 &&
+            two == "{\"id_terminal\":22,\"type\":\"commodity\",\"is_production\":1,\"prices\":["
+                   "{\"id_commodity\":6,\"price_buy\":316,\"scu_buy\":24000,\"status_buy\":7},"
+                   "{\"id_commodity\":20,\"price_buy\":2850,\"scu_buy\":4,\"status_buy\":2}],\"date_added\":1791700000}";
+        allPassed &= check(visited, "a visit to a terminal's list: what two pictures of the shop's stock agree on, in as "
+                                    "few pictures as show it - a misread once is outvoted, a card seen once waits - "
+                                    "and the report of several prices");
         std::string user;
         const bool answers =
             R::verdict(200, "{\"status\":\"ok\",\"data\":{\"username\":\"Runner\"}}", &user).empty() && user == "Runner" &&

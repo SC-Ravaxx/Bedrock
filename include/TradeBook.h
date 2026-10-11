@@ -72,6 +72,10 @@ public:
     // writes lines as the terminal fills and as the player picks on it - in
     // milliseconds since 1970, UTC; 0 before the first
     long long terminalSeenMs() const { return terminalSeenMs_; }
+    // ...its shop, as the game names it, and the place the log had the
+    // player at then - "" before a terminal said which
+    const std::string& terminalShop() const { return terminalShop_; }
+    const std::string& terminalPlace() const { return terminalPlace_; }
     // "2026-09-28T11:37:34.512", a request's time, in milliseconds since
     // 1970, UTC; -1 for anything else
     static long long millisOf(const std::string& stamp);
@@ -99,6 +103,7 @@ private:
     std::string lastKey_[2];               // the newest request bought [0] and sold [1], for a refusal to find
     GameState where_;                      // the live log's
     long long terminalSeenMs_ = 0;
+    std::string terminalShop_, terminalPlace_;
     std::filesystem::path file_;
     bool dirty_ = false;
     int changes_ = 0;

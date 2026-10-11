@@ -140,6 +140,11 @@ bool TradeBook::live(std::string_view text) {
     if (text.find("CommodityUIProvider") != std::string_view::npos) {
         const long long at = millisOf(stampOf(text));
         if (at > terminalSeenMs_) terminalSeenMs_ = at;
+        const std::string_view shop = fieldOf(text, "shopName");
+        if (!shop.empty()) {
+            terminalShop_ = std::string(shop);
+            terminalPlace_ = placeOf(where_);
+        }
     }
     return line(text, placeOf(where_));
 }

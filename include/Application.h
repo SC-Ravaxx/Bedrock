@@ -415,6 +415,12 @@ private:
         // read once it is due, off the pictures kept from the terminal
         bool cardRead = false;
         int stock = -1, level = -1, shown = -1;   // SCU, 1-7, the price per SCU as shown; -1 not read
+        // ...or the prices of a visit to a terminal's list, off one picture
+        // of it (finishTerminalSession), bought or not
+        bool list = false;
+        int listTerminal = 0;
+        long long listWhen = 0;            // when the picture was taken, Unix seconds
+        std::vector<UexPriceRow> rows;
         std::chrono::steady_clock::time_point due{};   // not before: the game may still refuse a trade
     };
     struct UexSent {
@@ -482,6 +488,10 @@ private:
         long long ms = 0;                     // since 1970, UTC
         double detail = 0;                    // tradeFrameDetail
         std::vector<unsigned char> jpeg;      // uexPictureJpeg
+        // ...and the terminal's part of it at full size, to read its cards
+        // by, with a small grey copy of the list's side to see it change
+        std::vector<unsigned char> readJpeg;
+        cv::Mat thumb;
     };
     std::deque<TradeFrame> tradeFrames_;
     // A purchase's card read off the pictures kept around it
@@ -492,6 +502,37 @@ private:
     };
     std::unique_ptr<TextLineReader> uexCardLines_;   // the reader the background job reads with
     std::future<UexCard> uexCardJob_;
+    // A visit to a commodity terminal's list (TerminalSession): its pictures
+    // read in the background as the list changes - twice where it stands
+    // still, for two to agree - and every card two pictures agree on
+    // reported once the player has left it, bought or not
+    TerminalSession terminalSession_;
+    std::vector<std::vector<unsigned char>> sessionShots_;   // the UEX picture of each picture added
+    std::string sessionShop_, sessionPlace_;
+    bool sessionOpen_ = false;
+    long long sessionReadMs_ = 0;           // the last picture sent to be read
+    cv::Mat sessionThumb_;                  // ...as it looked
+    int sessionReadsOfView_ = 0, sessionEmptyReads_ = 0;
+    struct SessionRead {
+        CommodityScreen screen;
+        long long ms = 0;
+        std::vector<unsigned char> shot;
+        std::vector<unsigned char> demand;   // the picture at full size, where it is of what the shop buys
+    };
+    std::vector<std::pair<long long, std::vector<unsigned char>>> sessionDemand_;   // ...kept, a few
+    std::future<SessionRead> sessionJob_;
+    std::unique_ptr<TextLineReader> sessionLines_;
+    // What went to UEX, by terminal and commodity: when, and the values
+    struct UexRowSent {
+        long long at = 0;
+        int level = -1, stock = -1, price = -1;
+    };
+    std::map<std::pair<int, int>, UexRowSent> uexRowsSent_;
+    void serviceTerminalSession();
+    void finishTerminalSession();
+    void keepDemandPictures(const std::vector<std::pair<long long, std::vector<unsigned char>>>& pictures);
+    static constexpr long long SESSION_READ_MS = 1000;   // a picture read a second at most
+    static constexpr int SESSION_EMPTY_READS = 3;        // ...three without the list: the player has left
     // A trade held back from UEX: its pictures and what the log said of it,
     // in debug\uex_held
     void keepHeldTrade(const Trade& trade, const std::string& label);

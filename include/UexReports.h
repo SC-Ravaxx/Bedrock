@@ -78,6 +78,15 @@ private:
     std::vector<std::pair<std::string, int>> methods_;       // letters, id
 };
 
+// One commodity's price at a terminal, as a report to UEX carries it
+struct UexPriceRow {
+    int commodity = 0;       // UEX's id
+    bool sold = false;       // what the terminal pays (it buys) - else what it asks
+    double price = 0;        // per SCU
+    int stock = -1;          // SCU the terminal shows; -1 left out
+    int level = -1;          // 1 out of stock .. 7 max inventory; -1 left out
+};
+
 namespace UexReports {
 
 // The body of a data_submit for one trade: what the terminal paid for it (a
@@ -87,6 +96,9 @@ namespace UexReports {
 // while UEX's 90 days last (empty otherwise)
 std::string priceReport(int terminal, int commodity, bool sold, double perScu, long long when,
                         const std::string& screenshotBase64, bool production, int stock = -1, int level = -1);
+// ...and of several commodities at one terminal, off one picture of it
+std::string priceReport(int terminal, const std::vector<UexPriceRow>& rows, long long when,
+                        const std::string& screenshotBase64, bool production);
 // The body of a user_refineries_jobs_add: the commodities' ids beside their items
 std::string refineryJob(int terminal, int method, double cost, int minutes,
                         const std::vector<std::pair<int, UexRefineryJob::Item>>& items, bool production);

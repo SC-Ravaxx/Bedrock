@@ -256,12 +256,28 @@ namespace UexReports {
 
 std::string priceReport(int terminal, int commodity, bool sold, double perScu, long long when,
                         const std::string& screenshotBase64, bool production, int stock, int level) {
+    UexPriceRow row;
+    row.commodity = commodity;
+    row.sold = sold;
+    row.price = perScu;
+    row.stock = stock;
+    row.level = level;
+    return priceReport(terminal, std::vector<UexPriceRow>{row}, when, screenshotBase64, production);
+}
+
+std::string priceReport(int terminal, const std::vector<UexPriceRow>& rows, long long when,
+                        const std::string& screenshotBase64, bool production) {
     std::string out = "{\"id_terminal\":" + std::to_string(terminal) + ",\"type\":\"commodity\",\"is_production\":" +
-                      (production ? "1" : "0") + ",\"prices\":[{\"id_commodity\":" + std::to_string(commodity) +
-                      (sold ? ",\"price_sell\":" : ",\"price_buy\":") + figure(perScu);
-    if (stock >= 0) out += (sold ? ",\"scu_sell\":" : ",\"scu_buy\":") + std::to_string(stock);
-    if (level >= 1 && level <= 7) out += (sold ? ",\"status_sell\":" : ",\"status_buy\":") + std::to_string(level);
-    out += "}]";
+                      (production ? "1" : "0") + ",\"prices\":[";
+    for (size_t i = 0; i < rows.size(); i++) {
+        const UexPriceRow& r = rows[i];
+        out += std::string(i ? "," : "") + "{\"id_commodity\":" + std::to_string(r.commodity) +
+               (r.sold ? ",\"price_sell\":" : ",\"price_buy\":") + figure(r.price);
+        if (r.stock >= 0) out += (r.sold ? ",\"scu_sell\":" : ",\"scu_buy\":") + std::to_string(r.stock);
+        if (r.level >= 1 && r.level <= 7) out += (r.sold ? ",\"status_sell\":" : ",\"status_buy\":") + std::to_string(r.level);
+        out += "}";
+    }
+    out += "]";
     // when it was seen: UEX takes a report's own date within 30 days
     if (when > 0) out += ",\"date_added\":" + std::to_string(when);
     if (!screenshotBase64.empty()) out += ",\"screenshot\":\"" + screenshotBase64 + "\"";
