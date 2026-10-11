@@ -158,7 +158,8 @@ def validate(body, now):
         "channel": channel,
         "observed": _number(body.get("observed"), now - OBSERVED_PAST, now + OBSERVED_FUTURE, "observed"),
         "station": _text(body.get("station"), NAME, "station"),
-        "capacity": _number(body.get("capacity"), 0, 999, "capacity", optional=True),
+        # before 4.10.2 raised every refinery's capacity, Levski stood at 42804 %
+        "capacity": _number(body.get("capacity"), 0, 999999, "capacity", optional=True),
         "workload": workload,
         "quote": None,
     }

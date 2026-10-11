@@ -98,7 +98,7 @@ class ServiceTest(unittest.TestCase):
     def test_what_a_terminal_cannot_show_is_turned_down(self):
         bad = [
             self.reading(station="<script>"),
-            self.reading(capacity=5000),
+            self.reading(capacity=2000000),
             self.reading(capacity=True),
             self.reading(observed=self.now - 10 * 86400),
             self.reading(observed=self.now + 3600),
