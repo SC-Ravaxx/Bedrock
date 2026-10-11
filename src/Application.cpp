@@ -5117,11 +5117,14 @@ static double thumbChange(const cv::Mat& a, const cv::Mat& b) {
     return cv::mean(d)[0];
 }
 
-// While a commodity terminal is in use and prices go to UEX: the newest
-// picture read in the background where the list has changed since the last
-// one read - and once more where it has not, two pictures to agree - a
-// second apart at most. Three reads without the list: the player has left,
-// and what was read goes to UEX (finishTerminalSession).
+// While a commodity terminal is in use and prices go to UEX: each picture
+// taken that shows a change - and the next where it does not, two to agree -
+// put in line as it is taken and read in the background one after another,
+// on after the player has left where the reading lags: a picture costs a few
+// seconds, a quick visit is over sooner. Three in a row without the list: the
+// player left there, and what follows is not read. Then the visit goes to
+// UEX (finishTerminalSession), and a new one opens only with the terminal's
+// next line in the log - not on the walk away.
 void Application::serviceTerminalSession() {
     if (sessionJob_.valid() && sessionJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
         SessionRead read = sessionJob_.get();
@@ -5142,44 +5145,60 @@ void Application::serviceTerminalSession() {
             sessionShots_.push_back(std::move(read.shot));
             if (!read.demand.empty() && sessionDemand_.size() < 12) sessionDemand_.push_back({read.ms, std::move(read.demand)});
             sessionEmptyReads_ = 0;
-        } else {
-            sessionEmptyReads_++;
+        } else if (++sessionEmptyReads_ >= SESSION_EMPTY_READS && terminalSession_.pictures() > 0) {
+            // the player left there: what follows is not the list
+            sessionLeft_ = true;
+            sessionQueue_.clear();
         }
     }
-    if (sessionOpen_ && !sessionJob_.valid() && (!tradeWatch_ || sessionEmptyReads_ >= SESSION_EMPTY_READS)) {
-        // UEX's terminals and prices first, where they are on their way - on
-        // a visit without a purchase nothing else has asked for them
+    const bool reporting = uexReportSince_ > 0 && !uexKey_.empty() && !uexKeyTrouble_;
+    // each picture taken that shows a change, and the next where it does not
+    if (reporting && tradeWatch_ && !sessionLeft_ && !tradeFrames_.empty()) {
+        const TradeFrame& newest = tradeFrames_.back();
+        const bool canOpen = sessionOpen_ || library_.trades().terminalSeenMs() > sessionClosedSeenMs_;
+        if (!newest.readJpeg.empty() && newest.ms > sessionQueuedMs_ && canOpen) {
+            sessionQueuedMs_ = newest.ms;
+            const bool changed = thumbChange(newest.thumb, sessionThumb_) > 3.0;
+            if (changed || sessionReadsOfView_ < 2) {
+                if (!sessionOpen_) {
+                    sessionOpen_ = true;
+                    sessionOpenedMs_ = newest.ms;
+                    sessionShop_ = library_.trades().terminalShop();
+                    sessionPlace_ = library_.trades().terminalPlace();
+                    if (!uexDirectory_ && !uexDirectoryJob_.valid()) {
+                        uexDirectoryAsked_ = true;
+                        uexDirectoryTried_ = std::chrono::steady_clock::now();
+                        const std::filesystem::path folder = AppPaths::data() / "uex";
+                        uexDirectoryJob_ = std::async(std::launch::async, [folder]() { return loadUexDirectory(folder); });
+                    }
+                }
+                sessionReadsOfView_ = changed ? 1 : sessionReadsOfView_ + 1;
+                sessionThumb_ = newest.thumb.clone();
+                sessionQueue_.push_back({newest.ms, newest.readJpeg, newest.jpeg});
+                while (sessionQueue_.size() > 40) sessionQueue_.pop_front();
+            }
+        }
+    }
+    // The visit over - the player left, or the terminal fell quiet - with
+    // nothing left to read: UEX's terminals and prices first, where they are
+    // on their way (on a visit without a purchase nothing else asked for them)
+    if (sessionOpen_ && !sessionJob_.valid() && sessionQueue_.empty() && (sessionLeft_ || !tradeWatch_)) {
         if ((!uexDirectory_ && uexDirectoryJob_.valid()) || (!uexPrices_ && uexJob_.valid())) return;
+        sessionClosedSeenMs_ = library_.trades().terminalSeenMs();
+        sessionLeft_ = false;
         finishTerminalSession();
         return;
     }
-    const bool reporting = uexReportSince_ > 0 && !uexKey_.empty() && !uexKeyTrouble_;
-    if (!reporting || !tradeWatch_ || tradeFrames_.empty() || sessionJob_.valid()) return;
-    const TradeFrame& newest = tradeFrames_.back();
-    if (newest.readJpeg.empty() || newest.ms < sessionReadMs_ + SESSION_READ_MS) return;
-    const bool changed = thumbChange(newest.thumb, sessionThumb_) > 3.0;
-    if (!changed && sessionReadsOfView_ >= 2) return;
-    if (!sessionOpen_) {
-        sessionOpen_ = true;
-        sessionOpenedMs_ = newest.ms;
-        sessionShop_ = library_.trades().terminalShop();
-        sessionPlace_ = library_.trades().terminalPlace();
-        if (!uexDirectory_ && !uexDirectoryJob_.valid()) {
-            uexDirectoryAsked_ = true;
-            uexDirectoryTried_ = std::chrono::steady_clock::now();
-            const std::filesystem::path folder = AppPaths::data() / "uex";
-            uexDirectoryJob_ = std::async(std::launch::async, [folder]() { return loadUexDirectory(folder); });
-        }
-    }
-    sessionReadsOfView_ = changed ? 1 : sessionReadsOfView_ + 1;
-    sessionReadMs_ = newest.ms;
-    sessionThumb_ = newest.thumb.clone();
+    if (!sessionOpen_ && sessionLeft_) sessionLeft_ = false;
+    if (sessionJob_.valid() || sessionQueue_.empty()) return;
     if (!sessionLines_) {
         sessionLines_ = std::make_unique<TextLineReader>();
         if (!sessionLines_->loadEmbedded()) std::cout << "\nTerminal: the line reader could not be loaded" << std::endl;
     }
     if (!sessionLines_->ready()) return;
-    sessionJob_ = std::async(std::launch::async, [jpeg = newest.readJpeg, shot = newest.jpeg, ms = newest.ms,
+    QueuedPicture next = std::move(sessionQueue_.front());
+    sessionQueue_.pop_front();
+    sessionJob_ = std::async(std::launch::async, [jpeg = std::move(next.read), shot = std::move(next.shot), ms = next.ms,
                                                   reader = sessionLines_.get()]() {
         SessionRead out;
         out.ms = ms;
@@ -5204,6 +5223,7 @@ void Application::finishTerminalSession() {
     sessionThumb_.release();
     sessionReadsOfView_ = 0;
     sessionEmptyReads_ = 0;
+    sessionQueue_.clear();
     TerminalSession session = std::move(terminalSession_);
     terminalSession_ = TerminalSession();
     std::vector<std::vector<unsigned char>> shots = std::move(sessionShots_);

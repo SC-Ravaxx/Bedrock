@@ -529,6 +529,16 @@ private:
     void keepVisitRecord(const std::vector<std::string>& lines);
     std::vector<std::pair<long long, std::vector<unsigned char>>> sessionDemand_;   // ...kept, a few
     std::future<SessionRead> sessionJob_;
+    // The pictures to read, put in line as they are taken: a picture costs
+    // seconds, a quick visit is over before its pictures are read
+    struct QueuedPicture {
+        long long ms = 0;
+        std::vector<unsigned char> read, shot;
+    };
+    std::deque<QueuedPicture> sessionQueue_;
+    long long sessionQueuedMs_ = 0;       // the last picture looked at for the line
+    bool sessionLeft_ = false;            // three in a row without the list: the player left there
+    long long sessionClosedSeenMs_ = 0;   // the terminal's last line when a visit ended: a new one opens with a later line
     std::unique_ptr<TextLineReader> sessionLines_;
     // What went to UEX, by terminal and commodity: when, and the values
     struct UexRowSent {

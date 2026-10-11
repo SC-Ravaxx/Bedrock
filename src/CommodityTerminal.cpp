@@ -142,7 +142,10 @@ std::vector<cv::Rect> textLines(const cv::Mat& bgr, std::vector<cv::Rect>* allPi
                          stats.at<int>(i, cv::CC_STAT_WIDTH), stats.at<int>(i, cv::CC_STAT_HEIGHT));
         const int area = stats.at<int>(i, cv::CC_STAT_AREA);
         if (r.height < minH || r.height > maxH) continue;
-        const bool bar = r.width <= barW && r.height * 5 >= r.width * 6 && area * 10 >= r.area() * 7;
+        // a hairline upright - a card's edge, the scroll bar - is no letter
+        // either, and would carry a line on to it
+        const bool bar = (r.width <= barW && r.height * 5 >= r.width * 6 && area * 10 >= r.area() * 7) ||
+                         r.width <= (std::max)(2, static_cast<int>(std::lround(0.003 * H)));
         if (trace) {
             std::printf("    piece %d,%d %dx%d, %d%% solid%s\n", r.x, r.y, r.width, r.height, area * 100 / (std::max)(1, r.area()),
                         bar ? " - a bar" : "");
@@ -365,32 +368,53 @@ bool commodityNamed(const std::string& read, const std::string& name) {
     for (unsigned char c : name) {
         if (std::isdigit(c)) figuresB += static_cast<char>(c);
     }
-    return figuresA == figuresB && distance(a, b) <= (std::max)(1, static_cast<int>(b.size()) / 6);
+    const int slips = (std::max)(1, static_cast<int>(b.size()) / 6);
+    if (figuresA == figuresB) return distance(a, b) <= slips;
+    // a name ending in figures whose last marks the reader took for letters,
+    // as Pyro's 1 for an l ("Sizel"): those marks as figures
+    if (figuresB.empty() || !figuresA.empty()) return false;
+    size_t end = read.size();
+    while (end > 0 && read[end - 1] == ' ') end--;
+    std::string tail;
+    while (end > 0 && tail.size() < figuresB.size()) {
+        const char d = figureChar(read[end - 1]);
+        if (!std::isdigit(static_cast<unsigned char>(d))) break;
+        tail.insert(tail.begin(), d);
+        end--;
+    }
+    return tail == figuresB && distance(folded(read.substr(0, end), false), b) <= slips;
+}
+
+// The lines found at 1080 - on a 1440 picture the openings would cost four
+// times as much and find the same - in the picture's own measure, to be read
+// off the picture as it is
+std::vector<cv::Rect> linesOf(const cv::Mat& bgr, std::vector<cv::Rect>* pieces) {
+    if (bgr.rows <= 1100) return textLines(bgr, pieces);
+    const double k = 1080.0 / bgr.rows;
+    cv::Mat small;
+    cv::resize(bgr, small, cv::Size(), k, k, cv::INTER_AREA);
+    std::vector<cv::Rect> smallPieces;
+    const std::vector<cv::Rect> smallLines = textLines(small, pieces ? &smallPieces : nullptr);
+    auto full = [&](const cv::Rect& r) {
+        const int x0 = static_cast<int>(std::floor(r.x / k)), y0 = static_cast<int>(std::floor(r.y / k));
+        const int x1 = static_cast<int>(std::ceil((r.x + r.width) / k)), y1 = static_cast<int>(std::ceil((r.y + r.height) / k));
+        return cv::Rect(x0, y0, x1 - x0, y1 - y0) & cv::Rect(0, 0, bgr.cols, bgr.rows);
+    };
+    std::vector<cv::Rect> lines;
+    for (const cv::Rect& r : smallLines) lines.push_back(full(r));
+    if (pieces) {
+        pieces->clear();
+        for (const cv::Rect& r : smallPieces) pieces->push_back(full(r));
+    }
+    return lines;
 }
 
 CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader, const std::string& wanted) {
     const auto t0 = std::chrono::steady_clock::now();
     CommodityScreen screen;
     if (bgr.empty()) return screen;
-    // The lines found at 1080 - on a 1440 picture the openings would cost
-    // four times as much and find the same - and read off the picture as it is
-    std::vector<cv::Rect> boxes, pieces;
-    if (bgr.rows > 1100) {
-        const double k = 1080.0 / bgr.rows;
-        cv::Mat small;
-        cv::resize(bgr, small, cv::Size(), k, k, cv::INTER_AREA);
-        std::vector<cv::Rect> smallPieces;
-        const std::vector<cv::Rect> smallLines = textLines(small, &smallPieces);
-        auto full = [&](const cv::Rect& r) {
-            const int x0 = static_cast<int>(std::floor(r.x / k)), y0 = static_cast<int>(std::floor(r.y / k));
-            const int x1 = static_cast<int>(std::ceil((r.x + r.width) / k)), y1 = static_cast<int>(std::ceil((r.y + r.height) / k));
-            return cv::Rect(x0, y0, x1 - x0, y1 - y0) & cv::Rect(0, 0, bgr.cols, bgr.rows);
-        };
-        for (const cv::Rect& r : smallLines) boxes.push_back(full(r));
-        for (const cv::Rect& r : smallPieces) pieces.push_back(full(r));
-    } else {
-        boxes = textLines(bgr, &pieces);
-    }
+    std::vector<cv::Rect> pieces;
+    const std::vector<cv::Rect> boxes = linesOf(bgr, &pieces);
     // each line read when it is wanted, and once
     std::vector<std::optional<Line>> lines(boxes.size());
     static const bool trace = DEV_ENV("SCMINER_COMMODITY_TRACE") != nullptr;
@@ -413,13 +437,17 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader, 
     // right as well.
     std::vector<bool> used(boxes.size(), false);
     int firstH = 0;   // the first card's SHOP QUANTITY, how high
+    // a line's right end with the pieces beside it on its row: a letter
+    // that came apart moves it ("SHOP QUANTIT" and its Y, at Checkmate)
+    std::vector<int> ends(boxes.size());
+    for (size_t i = 0; i < boxes.size(); i++) ends[i] = right(wholeRow(pieces, boxes[i]));
     auto under = [&](size_t i) {
         const cv::Rect& a = boxes[i];
         for (size_t j = i + 1; j < boxes.size(); j++) {
             const cv::Rect& b = boxes[j];
             if (b.y > bottom(a) + a.height) break;
             if (used[j] || b.y < bottom(a) - a.height / 3) continue;
-            if (std::abs(right(b) - right(a)) <= (std::max)(6, a.height * 4 / 5)) return j;
+            if (std::abs(ends[j] - ends[i]) <= (std::max)(8, a.height * 3 / 2)) return j;
         }
         return boxes.size();
     };
@@ -486,9 +514,8 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader, 
         // at 1440 alone, over two recorded purchases). Taken where both say
         // the same, or one says nothing; not where they differ.
         auto readPrice = [&](const cv::Mat& img, const cv::Rect& line, const char* what) {
-            bool unit = false;
-            int price = parseCommodityPrice(readLine(img, line, reader).text, unit);
-            screen.lines++;
+            // without the sign where it comes off - the whole line only where
+            // it does not, or that reading makes no price
             const cv::Rect bare = afterCurrency(img, line);
             if (bare.area() > 0) {
                 const Line again = readLine(img, bare, reader);
@@ -496,11 +523,11 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader, 
                 bool bareUnit = false;
                 const int barePrice = parseCommodityPrice(again.text, bareUnit);
                 if (trace) std::printf("      price %s without its sign: '%s' -> %d\n", what, again.text.c_str(), barePrice);
-                if (barePrice >= 0) {
-                    price = barePrice;
-                    unit = bareUnit;
-                }
+                if (barePrice >= 0) return std::make_pair(barePrice, bareUnit);
             }
+            bool unit = false;
+            const int price = parseCommodityPrice(readLine(img, line, reader).text, unit);
+            screen.lines++;
             return std::make_pair(price, unit);
         };
         const cv::Rect priceLine = wholeRow(pieces, boxes[pi]);
@@ -546,19 +573,82 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader, 
     if (wanted.empty() && !screen.cards.empty()) {
         const cv::Rect& top = screen.cards.front().card;
         int buyFill = -1, sellFill = -1, heading = 0;
+        cv::Rect sellTab, buyTab;
         for (size_t i = 0; i < boxes.size(); i++) {
             const cv::Rect& b = boxes[i];
-            if (bottom(b) > top.y - firstH / 2 || b.y < top.y - 14 * firstH) continue;
-            if (b.x < top.x - 10 * firstH || b.x > right(top) + 2 * firstH) continue;
+            // anywhere above the topmost card read - the list may be
+            // scrolled, its first cards not made out
+            if (bottom(b) > top.y - firstH / 2 || b.y < top.y - 30 * firstH) continue;
+            if (b.x < top.x - 12 * firstH || b.x > right(top) + 4 * firstH) continue;
             const std::string t = folded(text(i), false);
             if (t.size() < 3) continue;
             if (distance(t, "INSTOCK") <= 1 || distance(t, "NOSTOCK") <= 1 || distance(t, "OUTOFSTOCK") <= 2) heading = 1;
             else if (distance(t, "INDEMAND") <= 2 || distance(t, "NODEMAND") <= 2) heading = 2;
-            else if (t == "BUY") buyFill = fillBeside(bgr, b);
-            else if (distance(t, "LOCALMARKETVALUE") <= 3) sellFill = fillBeside(bgr, b);
+            else if (t == "BUY") {
+                buyFill = fillBeside(bgr, b);
+                buyTab = b;
+            }
+            else if (distance(t, "LOCALMARKETVALUE") <= 3) {
+                sellFill = fillBeside(bgr, b);
+                sellTab = b;
+            }
+        }
+        if (!heading && buyFill < 0 && sellFill < 0) {
+            // ...written dark on a light fill, as Pyro's tabs are: looked for
+            // in the picture turned over, light for dark
+            cv::Mat turned;
+            cv::bitwise_not(bgr, turned);
+            for (const cv::Rect& b : linesOf(turned, nullptr)) {
+                if (bottom(b) > top.y - firstH / 2 || b.y < top.y - 30 * firstH) continue;
+                if (b.x < top.x - 12 * firstH || b.x > right(top) + 4 * firstH) continue;
+                const Line read = readLine(bgr, b, reader);
+                screen.lines++;
+                const std::string t = folded(read.text, false);
+                if (trace) std::printf("      dark line %d,%d %dx%d: '%s'\n", b.x, b.y, b.width, b.height, read.text.c_str());
+                if (t == "BUY") {
+                    buyFill = fillBeside(bgr, b);
+                    buyTab = b;
+                }
+                else if (distance(t, "LOCALMARKETVALUE") <= 3) {
+                    sellFill = fillBeside(bgr, b);
+                    sellTab = b;
+                }
+            }
         }
         if (heading) screen.side = heading;
         else if (buyFill >= 0 && sellFill >= 0 && std::abs(buyFill - sellFill) >= 12) screen.side = buyFill > sellFill ? 1 : 2;
+        else if (buyFill >= 0 && sellFill < 0) {
+            // LOCAL MARKET VALUE not made out - Pyro's sets its letters wide
+            // apart - its tab's fill where it stands, three fifths across the
+            // list, a strip wide enough for the fill and not its letters
+            const int h = buyTab.height;
+            const int mid = top.x + top.width * 31 / 50;
+            const cv::Rect strip = cv::Rect(mid - h, buyTab.y, 2 * h, h) & cv::Rect(0, 0, bgr.cols, bgr.rows);
+            if (strip.width >= 2 && strip.height >= 2) {
+                std::vector<cv::Mat> channels;
+                cv::split(bgr(strip), channels);
+                cv::Mat value = cv::max(cv::max(channels[0], channels[1]), channels[2]);
+                value = value.reshape(1, 1).clone();
+                std::vector<uchar> v(value.begin<uchar>(), value.end<uchar>());
+                std::nth_element(v.begin(), v.begin() + v.size() / 2, v.end());
+                const int other = v[v.size() / 2];
+                if (trace) std::printf("    LOCAL MARKET VALUE's tab, where it stands: fill %d\n", other);
+                if (std::abs(buyFill - other) >= 12) screen.side = buyFill > other ? 1 : 2;
+            }
+        }
+        else if (sellFill >= 0 && buyFill < 0) {
+            // BUY not made out - at Pyro's terminals it is dark on its light
+            // fill when picked: its tab's fill left of LOCAL MARKET VALUE's
+            const int h = sellTab.height;
+            const cv::Rect beside = cv::Rect(sellTab.x - h * 3, sellTab.y, h, h) & cv::Rect(0, 0, bgr.cols, bgr.rows);
+            if (beside.width >= 2) {
+                cv::Rect probe = beside;
+                probe.x = beside.x - h * 2 / 3 - 1;
+                const int left = fillBeside(bgr, probe);
+                if (trace) std::printf("    tab left of LOCAL MARKET VALUE: fill %d\n", left);
+                if (left >= 0 && std::abs(left - sellFill) >= 12) screen.side = left > sellFill ? 1 : 2;
+            }
+        }
         if (trace) std::printf("    side %d: heading %d, BUY fill %d, LOCAL MARKET VALUE fill %d\n", screen.side, heading, buyFill, sellFill);
     }
     screen.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
