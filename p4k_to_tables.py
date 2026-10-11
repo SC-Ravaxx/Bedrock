@@ -126,7 +126,7 @@ for b in blueprints:
         "output_item_uuid": guid,          # the item table below is keyed the same way
         "craft_time_seconds": b["seconds"],
         "is_available_by_default": False,
-        "game_version": "4.10.0-LIVE (game files)",
+        "game_version": "4.10.2-LIVE (game files)",
         "ingredient_count": len(ingredients),
         "unlocking_missions_count": 0,
         "ingredients": ingredients,
