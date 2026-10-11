@@ -34,6 +34,7 @@
 #include "TradeBook.h"
 #include "TextLineReader.h"
 #include "MiniJson.h"
+#include "RefineryShare.h"
 #include "UexPrices.h"
 #include "UexReports.h"
 #include "UexMarket.h"
@@ -626,6 +627,76 @@ int runSelfTest() {
         allPassed &= check(names, "...the method and the material a line names, the inert rest, a warning box's line as "
                                   "none of them; the refinery at the place the log names, and the one the terminal's "
                                   "header names - a gateway's by the system");
+
+        // The station's workload, off its REFINERY CAPACITY - as read on the
+        // terminals at Checkmate, Pyro Gateway and Levski
+        using SCMiner::refineryWorkloadIn;
+        const bool workload =
+            SCMiner::parseRefineryPercent("103%") == 103 && SCMiner::parseRefineryPercent("42804% ") == 42804 &&
+            SCMiner::parseRefineryPercent("CURRENT CAPACITY 952%") == 952 &&
+            SCMiner::parseRefineryPercent("1O3 %") == 103 && SCMiner::parseRefineryPercent("103") == -1 &&
+            SCMiner::parseRefineryPercent("%") == -1 &&
+            refineryWorkloadIn("Refinery currently has a light workload. No surcharge at this time.") == 0 &&
+            refineryWorkloadIn("REFINERY CURRENTLY HAS A MODERATE") == 1 &&
+            refineryWorkloadIn("REINERYCURRENTLYHASAMODERATE") == 1 &&
+            refineryWorkloadIn("Refinery currently has a heavy workload. A moderate surcharge will be added.") == 2 &&
+            refineryWorkloadIn("Refinery currently has an extreme workload. A large surcharge will be added.") == 3 &&
+            refineryWorkloadIn("Refinerycurenty haanextm") == 3 &&
+            refineryWorkloadIn("Workoad.largeurcharewil") == 3 &&
+            refineryWorkloadIn("WORKLOAD. A MODERATE SURCHARGE WILL BE") == 2 &&
+            refineryWorkloadIn("Refinery currently has a modrte workoad. A small surcharge will be added.") == 1 &&
+            refineryWorkloadIn("Refinery currently has a hcavv workload. A moderate surcharge will be added.") == 2 &&
+            refineryWorkloadIn("A SURCHARGE WILL BE ADDED") == -1 &&
+            refineryWorkloadIn("// REFINERY CAPACITY") == -1 &&
+            std::string(SCMiner::refineryWorkloadName(3)) == "extreme" && std::string(SCMiner::refineryWorkloadName(4)).empty() &&
+            SCMiner::refineryMaterialIn(" CONSTRUCTION MA") == "Construction Salvage" &&
+            SCMiner::refineryMaterialIn("CONSTRUCTION MATERIALS") == "Construction Salvage" &&
+            SCMiner::refineryMaterialIn("CONSTRUCTION SALVAGE") == "Construction Salvage";
+        allPassed &= check(workload, "a refinery's workload reads: CURRENT CAPACITY's figure, and the game's sentence on "
+                                     "it by its word or, misread, by the surcharge's; the salvage's refined name");
+
+        // ...and shared (RefineryShare): the report as the service takes it,
+        // its answer, and when a reading goes again
+        namespace S = SCMiner::RefineryShare;
+        S::Reading r;
+        r.station = "HUR-L1 Green Glade Station";
+        r.observed = 1791709800;
+        r.capacity = 106;
+        r.workload = 1;
+        r.method = "DINYX_SOLVENTATION";
+        r.cost = 4210.4;
+        r.seconds = 23040;
+        r.items = {{"Iron (Ore)", 1050, 874, 958}, {"Gold \"(Ore)\"", 20, -1, 17}};
+        S::Reading bare;
+        bare.station = "Checkmate";
+        bare.observed = 5;
+        bare.workload = 0;
+        std::map<std::string, S::StationState> states;
+        std::string why;
+        const bool readsBack = S::readStations(
+            "{\"generated\":1,\"stations\":[{\"station\":\"Checkmate\",\"capacity\":103,\"workload\":\"moderate\","
+            "\"observed\":1791713037,\"fresh\":true,\"sources\":2,\"confirmed\":true,\"seen_24h\":5,\"quotes_24h\":0},"
+            "{\"station\":\"Levski\",\"capacity\":null,\"workload\":\"extreme\",\"observed\":7,\"sources\":0,"
+            "\"confirmed\":false}]}", states, why);
+        const bool shared =
+            S::body(r, "2.6.7", 41002, "LIVE") ==
+                "{\"v\":1,\"bedrock\":\"2.6.7\",\"game\":\"4.10.2\",\"channel\":\"LIVE\",\"observed\":1791709800,"
+                "\"station\":\"HUR-L1 Green Glade Station\",\"capacity\":106,\"workload\":\"moderate\",\"quote\":{"
+                "\"method\":\"DINYX_SOLVENTATION\",\"cost\":4210,\"seconds\":23040,\"items\":["
+                "{\"material\":\"Iron (Ore)\",\"quantity\":1050,\"quality\":874,\"yield\":958},"
+                "{\"material\":\"Gold \\\"(Ore)\\\"\",\"quantity\":20,\"yield\":17}]}}" &&
+            S::body(bare, "2.6.7", 0, "") ==
+                "{\"v\":1,\"bedrock\":\"2.6.7\",\"observed\":5,\"station\":\"Checkmate\",\"workload\":\"light\"}" &&
+            readsBack && states.size() == 2 && states["Checkmate"].capacity == 103 && states["Checkmate"].workload == 1 &&
+            states["Checkmate"].sources == 2 && states["Checkmate"].confirmed && states["Levski"].capacity == -1 &&
+            states["Levski"].workload == 3 && !states["Levski"].confirmed &&
+            !S::readStations("{\"stations\":5}", states, why) &&
+            S::worthSending(106, 1, 1000, -1, -1, 0) && !S::worthSending(106, 1, 1100, 106, 1, 1000) &&
+            S::worthSending(103, 1, 1100, 106, 1, 1000) && S::worthSending(106, 1, 1000 + S::RESEND_SECONDS, 106, 1, 1000) &&
+            !S::worthSending(-1, -1, 9999, 1, 1, 1);
+        allPassed &= check(shared, "refinery workloads shared: the report as the service takes it, with a quote and "
+                                   "without, the stations it hands back, and a reading sent again only when it changed "
+                                   "or ten minutes on");
 
         // The bars over the panels, drawn the size and colour they have at
         // 5120x1440: a SETUP's red band under one, a PROCESSING's amber, the

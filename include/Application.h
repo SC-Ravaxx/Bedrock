@@ -27,6 +27,7 @@
 #include "FrameRecorder.h"
 #include "UexPrices.h"
 #include "UexReports.h"
+#include "RefineryShare.h"
 #include "UexMarket.h"
 #include <memory>
 
@@ -265,6 +266,38 @@ private:
     bool refineryUp_ = false;                   // the last look found a work order's panel
     std::string refineryLastStation_;           // the station of the last reading with panels on it...
     std::chrono::steady_clock::time_point refineryLastPanels_{};   // ...and when
+    // Refinery workloads (RefineryShare): what the terminals show of them,
+    // read by the player - shown in the Refinery window, and sent with the
+    // player's yes (refineryshare=1) where the build carries the service's
+    // address (BEDROCK_REFINERY_URL), LIVE's refineries only - and what other
+    // players read, fetched while the Refinery window is open
+    bool refineryShare_ = false;
+    struct WorkloadReading {
+        int capacity = -1, workload = -1;
+        long long at = 0;    // UTC seconds
+    };
+    std::map<std::string, WorkloadReading> workloadLast_;   // the last read per station, for the next to agree with
+    std::map<std::string, WorkloadReading> workloadMine_;   // ...what two in a row agreed on
+    std::map<std::string, WorkloadReading> workloadSent_;
+    std::string quoteLast_;                                 // a quote read, for the next reading to agree with
+    std::set<std::string> quotesSent_;
+    std::deque<std::string> shareQueue_;                    // reports waiting to go
+    std::string shareSending_;
+    std::future<int> shareJob_;                             // one going: the status it was answered with
+    std::chrono::steady_clock::time_point shareRetryAt_{};
+    std::future<std::pair<std::string, std::map<std::string, RefineryShare::StationState>>> stationsJob_;
+    std::chrono::steady_clock::time_point stationsAsked_{};
+    std::map<std::string, RefineryShare::StationState> stationsShared_;
+    void shareRefineryScreen(const RefineryScreen& read, const std::string& station, long long taken);
+    bool queueRefineryShare(const RefineryShare::Reading& reading);   // false where it does not go
+    void serviceRefineryShare();
+    void pushRefineryWorkloads();
+    void setRefineryShare(bool on);
+public:
+    // The service's address in this build ("" for none) - a workshop build
+    // can be pointed elsewhere with SCMINER_REFINERY_URL
+    static std::string refineryServiceUrl();
+private:
     // When a rock's scan panel was last on screen: the player is mining, and
     // no terminal is in reach - in a MOLE's turret the log has nobody in a
     // seat, and its cockpit's orange light can take a terminal's shape

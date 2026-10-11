@@ -1291,6 +1291,23 @@ int runScreenshots(const std::string& dir) {
     gui.pickForShot();
     pump();
     if (gui.refineryHandle()) shoot(gui.refineryHandle(), "refinery_hold.png", true);
+    // ...with the refineries' workloads beside them, as the player and the
+    // service saw them, and the box that shares them ticked
+    {
+        const long long now = (long long)std::time(nullptr);
+        std::map<std::string, SCMiner::MinerGUI::RefineryWorkload> seen;
+        seen["Checkmate"] = {103, 1, now - 40, 1, true};
+        seen["Levski"] = {42804, 3, now - 26 * 60, 3, false};
+        seen["Pyro Gateway (Nyx)"] = {96, 0, now - 3 * 3600, 2, false};
+        seen["Orbituary"] = {148, 2, now - 7 * 60, 2, false};
+        seen["HUR-L1 Green Glade Station"] = {-1, 1, now - 12 * 60, 1, false};
+        gui.setRefineryWorkloads(seen);
+        gui.setRefineryShare(true, true);
+        pump();
+        if (gui.refineryHandle()) shoot(gui.refineryHandle(), "refinery_workloads.png", true);
+        gui.setRefineryWorkloads({});
+        gui.setRefineryShare(false, false);
+    }
     // ...and the method dropped down, all nine with their factors
     gui.openMethodForShot();
     pump();

@@ -211,6 +211,8 @@ public:
     // being written and not over (see ContractScan::Running)
     const std::vector<ContractScan::Running>& runningContracts() const { return liveScan_.running(); }
     int runningChanges() const { return liveScan_.runningChanges(); }
+    // The game that writes the live log, from its header: 41002 is 4.10.2; 0 unknown
+    int liveGameVersion() const { return liveScan_.version(); }
     // When the game last wrote to its log, by the last line's own time
     // (seconds since 1970, UTC; 0 before one was read). A game closed takes
     // its contracts with it, and its log says nothing of that - it only

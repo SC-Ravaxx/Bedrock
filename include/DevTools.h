@@ -37,6 +37,12 @@ int runPipelineOnFiles(const std::vector<std::string>& files);
 // places read marked
 int runRefinery(const std::vector<std::string>& files, const std::string& drawDir);
 
+// --refineryshare <picture> <service address>: one saved picture of a
+// refinery terminal read as the app reads it, and what it says of the
+// station's workload sent to the service as the app would - taken when the
+// picture was written - with the service's answer printed
+int runRefineryShare(const std::string& picture, const std::string& service);
+
 // --refineryreplay <folder> <station> <first frame's UTC> <seconds a frame>
 // [every]: a recording cut into frames played through the order book the way
 // the app reads it - every <every>-th frame, a reading a second - and the

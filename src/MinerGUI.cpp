@@ -11,6 +11,7 @@
 #include "CraftingData.h"
 #include "RefineryData.h"
 #include "RefiningData.h"
+#include "RefineryTerminal.h"
 #include "resource.h"
 #include <dwmapi.h>
 #include <shellapi.h>
@@ -1661,6 +1662,21 @@ void MinerGUI::setRefineryOrders(std::vector<RefineryOrder> orders) {
     refineryOrders_ = std::move(orders);
     if (refinery_) InvalidateRect(refinery_, nullptr, FALSE);
     keepRefineryBadge();
+}
+
+void MinerGUI::setRefineryWorkloads(std::map<std::string, RefineryWorkload> workloads) {
+    refineryWorkloads_ = std::move(workloads);
+    if (refinery_) InvalidateRect(refinery_, nullptr, FALSE);
+}
+
+void MinerGUI::setRefineryShare(bool on, bool available) {
+    refineryShareOn_ = on;
+    refineryShareAvailable_ = available;
+    if (refinery_) InvalidateRect(refinery_, nullptr, FALSE);
+}
+
+bool MinerGUI::refineryShown() const {
+    return refinery_ && IsWindowVisible(refinery_);
 }
 
 int MinerGUI::refineryDoneCount() const {
@@ -18791,6 +18807,9 @@ LRESULT MinerGUI::handleRefineryMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
                     refineryMethodOpen_ = true;
                 } else if (hit.kind == 4 || hit.kind == 5) {
                     refineryStep(hit.value, hit.kind == 5 ? 1.0f : -1.0f);
+                } else if (hit.kind == 10) {
+                    refineryShareOn_ = !refineryShareOn_;
+                    if (onRefineryShare_) onRefineryShare_(refineryShareOn_);
                 }
                 InvalidateRect(hwnd, nullptr, TRUE);
                 return 0;
@@ -18974,10 +18993,41 @@ void MinerGUI::paintRefinery(HDC hdc) {
         const float M = (float)scale(MARGIN);
         g.FillRectangle(&accentBrush, M, (float)scale(18), scaleF(8), scaleF(8));
         g.DrawString(L"Refinery", -1, &markFont, Gdiplus::PointF(M + scaleF(14), (float)scale(8)), &textBrush);
+        // The box that shares the refineries' workloads with other players
+        // (RefineryShare), drawn as the Blueprints window draws its box: a
+        // quiet button carrying its tick. Only where the build can share.
+        float subRight = (float)cw - M;
+        if (refineryShareAvailable_) {
+            const wchar_t* label = L"Share refinery workloads";
+            Gdiplus::RectF w;
+            g.MeasureString(label, -1, &buttonFont, Gdiplus::PointF(0, 0), &w);
+            const float boxS = scaleF(11), pad = scaleF(10);
+            const float bw = pad + boxS + scaleF(7) + w.Width + pad;
+            const Gdiplus::RectF b((float)cw - M - bw, (float)scale(14), bw, scaleF(28));
+            const bool hot = isHot(hoverRef_, b);
+            drawButton(g, b, L"", buttonFont, ButtonKind::Secondary, hot, scaleF(R_CONTROL));
+            const Gdiplus::RectF box(b.X + pad, b.Y + (b.Height - boxS) / 2.0f, boxS, boxS);
+            if (refineryShareOn_) {
+                fillRoundRect(g, box, scaleF(2), COL_ACCENT);
+                Gdiplus::Pen tick(COL_ACCENT_INK, scaleF(1.8f));
+                g.DrawLine(&tick, box.X + scaleF(2.5f), box.Y + scaleF(5.5f), box.X + scaleF(4.5f), box.Y + scaleF(8));
+                g.DrawLine(&tick, box.X + scaleF(4.5f), box.Y + scaleF(8), box.X + scaleF(8.5f), box.Y + scaleF(3));
+            } else {
+                strokeRoundRect(g, box, scaleF(2), hot ? COL_TEXT_DIM : COL_TEXT_FAINT);
+            }
+            Gdiplus::SolidBrush ink(hot ? COL_TEXT : tint(COL_TEXT, 215));
+            g.DrawString(label, -1, &buttonFont,
+                         Gdiplus::RectF(box.GetRight() + scaleF(7), b.Y, w.Width + pad, b.Height), &leftMid, &ink);
+            refHits_.push_back({b, 10, 0});
+            subRight = b.X - scaleF(10);
+        }
         g.DrawString(refineryOrdersView_
                          ? L"the work orders a refinery's terminal showed you · what comes out of them, and when"
                          : L"tick what is in the hold, set how much, pick a method · the stations sort themselves by yield",
-                     -1, &subFont, Gdiplus::PointF(M + scaleF(15), (float)scale(36)), &dimBrush);
+                     -1, &subFont,
+                     Gdiplus::RectF(M + scaleF(15), (float)scale(36), (std::max)(scaleF(40), subRight - M - scaleF(15)),
+                                    scaleF(14)),
+                     &leftMid, &dimBrush);
 
         // System tabs, the same words the Ore Finder uses
         const wchar_t* systems[4] = {L"All", L"Stanton", L"Pyro", L"Nyx"};
@@ -19275,6 +19325,34 @@ void MinerGUI::paintRefinery(HDC hdc) {
             else if (winner) fillRoundRect(g, band, scaleF(R_CONTROL), tint(COL_ACCENT, 16));
 
             g.DrawString(toW(st.name).c_str(), -1, &stationFont, Gdiplus::PointF(rx, ry + scaleF(1)), &textBrush);
+            // ...and beside it its workload as last seen, by the player or by
+            // other players: what the game's surcharge goes by
+            const auto seen = refineryWorkloads_.find(st.name);
+            if (seen != refineryWorkloads_.end() && (seen->second.capacity >= 0 || seen->second.workload >= 0)) {
+                const RefineryWorkload& w = seen->second;
+                std::wstring words;
+                if (w.capacity >= 0) words = std::to_wstring(w.capacity) + L" %";
+                if (w.workload >= 0) words += (words.empty() ? L"" : L"  \u00B7  ") + toW(refineryWorkloadName(w.workload));
+                const long long age = (std::max)(0LL, (long long)std::time(nullptr) - w.observed);
+                words += L"  \u00B7  " + (age < 60      ? std::wstring(L"just now")
+                                          : age < 3600   ? std::to_wstring(age / 60) + L" min ago"
+                                          : age < 86400  ? std::to_wstring(age / 3600) + L" h ago"
+                                                         : std::to_wstring(age / 86400) + L" d ago");
+                const Gdiplus::Color tone = age > 2 * 3600    ? COL_TEXT_FAINT
+                                            : w.workload == 0 ? COL_GREEN
+                                            : w.workload == 2 ? COL_YELLOW
+                                            : w.workload == 3 ? COL_RED
+                                                              : COL_TEXT_DIM;
+                Gdiplus::SolidBrush toneBrush(tone);
+                Gdiplus::RectF nameW;
+                g.MeasureString(toW(st.name).c_str(), -1, &stationFont, Gdiplus::PointF(0, 0), &nameW);
+                const float from = rx + nameW.Width + scaleF(8);
+                const float to = rx + rw - (refineryPicked_.empty() ? scaleF(2) : scaleF(76));
+                if (to - from > scaleF(40)) {
+                    g.DrawString(words.c_str(), -1, &subFont, Gdiplus::RectF(from, ry + scaleF(1), to - from, scaleF(16)),
+                                 &leftMid, &toneBrush);
+                }
+            }
 
             // The line underneath: what the ticked materials come to here,
             // or - with nothing ticked - what this station is known for

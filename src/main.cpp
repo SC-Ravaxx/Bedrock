@@ -4311,6 +4311,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             return runRefineryReplay(__argv[i + 1], __argv[i + 2], std::atoll(__argv[i + 3]), std::atof(__argv[i + 4]),
                                      i + 5 < __argc ? std::atoi(__argv[i + 5]) : 4);
         }
+        else if (arg == "--refineryshare" && i + 2 < __argc) {
+            setupConsole(true);
+            return runRefineryShare(__argv[i + 1], __argv[i + 2]);
+        }
         else if (arg == "--refinery" && i + 1 < __argc) {
             // --refinery <pictures, or a folder> [--draw <dir>]
             setupConsole(true);

@@ -80,6 +80,20 @@ if not UPDATE_URL.startswith("https://"):
 if UPDATE_URL.encode() not in io.open(EXE, "rb").read():
     raise SystemExit("%s was not built with %s - configure it with -DBEDROCK_UPDATE_URL and build again"
                      % (EXE, UPDATE_URL))
+# The refinery service's address (server/refinery), the same way: a package
+# without it could not show other players' refinery workloads
+REFINERY_URL = os.environ.get("BEDROCK_REFINERY_URL", "")
+if not REFINERY_URL:
+    cache = os.path.join(os.path.dirname(os.path.dirname(EXE)), "CMakeCache.txt")
+    if os.path.exists(cache):
+        m = re.search(r"^BEDROCK_REFINERY_URL:STRING=(.*)$", io.open(cache, encoding="utf-8").read(), re.M)
+        REFINERY_URL = m.group(1).strip() if m else ""
+if not REFINERY_URL.startswith("https://"):
+    raise SystemExit("no refinery service address - configure the release build with "
+                     "-DBEDROCK_REFINERY_URL=https://.../bedrock/api")
+if REFINERY_URL.encode() not in io.open(EXE, "rb").read():
+    raise SystemExit("%s was not built with %s - configure it with -DBEDROCK_REFINERY_URL and build again"
+                     % (EXE, REFINERY_URL))
 # The commit: a release is packed from a clean checkout, and its exe names that
 # exact commit - so anyone can build the same source and compare.
 import subprocess as _sp
@@ -339,7 +353,7 @@ buildinfo = [
     "Bedrock.exe was built with:",
     "  MSVC (cl) %s, Windows SDK %s" % (_compiler_version(), _sdk_version()),
     "  vcpkg at builtin-baseline %s (vcpkg.json), triplet x64-windows" % _vcpkg,
-    "  cmake -DBEDROCK_UPDATE_URL=%s, Release" % UPDATE_URL,
+    "  cmake -DBEDROCK_UPDATE_URL=%s -DBEDROCK_REFINERY_URL=%s, Release" % (UPDATE_URL, REFINERY_URL),
     "",
     "Bedrock.exe sha256 %s" % _sha(os.path.join(out, "Bedrock.exe")),
     "",

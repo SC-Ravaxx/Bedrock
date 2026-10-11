@@ -9,6 +9,8 @@
 #include "AppPaths.h"
 #include "CraftingData.h"
 #include "MiniJson.h"
+#include "RefineryData.h"
+#include "RefiningData.h"
 #include "resource.h"
 #include <algorithm>
 #include <iostream>
@@ -822,6 +824,9 @@ void Application::runWithGUI(HINSTANCE hInstance) {
     gui_->setUexAccountCallback([this](int action, const std::string& text) { uexAccountAction(action, text); });
     pushUexAccount();
     gui_->setGameTextsCallback([this](bool on) { setGameTextsWanted(on); });
+    // The Refinery window's box that shares refinery workloads
+    gui_->setRefineryShare(refineryShare_, !refineryServiceUrl().empty());
+    gui_->setRefineryShareCallback([this](bool on) { setRefineryShare(on); });
     loadPlaceOverride();
     gui_->setLiveModeCallback([this](bool active) { applyLiveMode(active); });
     // The update strip: one click fetches, the next installs. Nothing
@@ -1074,6 +1079,7 @@ void Application::runWithGUI(HINSTANCE hInstance) {
         // ...and a refinery's terminal, at a station that has one
         lookForRefinery();
         handRefineryOrdersToUex();
+        serviceRefineryShare();
 
         // Live mode
         if (liveModeActive_) {
@@ -3640,6 +3646,8 @@ void Application::saveRegionConfig() {
         // a value set by hand (update=0) would otherwise last one session.
         file << "update=" << (updateCheck_ ? 1 : 0) << std::endl;
         file << "gametexts=" << (gameTextsWanted_ ? 1 : 0) << std::endl;
+        // refineryshare=1: the box in the Refinery window - see RefineryShare
+        file << "refineryshare=" << (refineryShare_ ? 1 : 0) << std::endl;
         // uex=0: the Ore Finder never asks uexcorp.space for prices
         file << "uex=" << (uexWanted_ ? 1 : 0) << std::endl;
         // Reporting to UEX: 0, or when the player agreed to it (on a UEX
@@ -3729,6 +3737,7 @@ void Application::loadRegionConfig() {
                 else if (key == "uexoffered") uexOffered_ = (value != 0);
                 // gametexts=1: the box in the Blueprints window - see GameTexts
                 else if (key == "gametexts") gameTextsWanted_ = (value != 0);
+                else if (key == "refineryshare") refineryShare_ = (value != 0);
                 else if (key == "hudscale") hudScalePercent_ = std::clamp(value, 0, 500);
                 else if (key == "uiscale") uiScalePercent_ = std::clamp(value, 0, 250);
                 else if (key == "viewx") storedViewport.x = value;
@@ -4209,6 +4218,7 @@ void Application::takeRefineryScreen(const RefineryScreen& read, const std::stri
         refineryOrders_.take("", RefineryScreen(), taken);
         return;
     }
+    shareRefineryScreen(read, station, taken);
     const size_t had = refineryOrders_.orders().size();
     if (!refineryOrders_.take(station, read, taken)) return;
     refineryOrders_.save(AppPaths::file(REFINERY_ORDERS_FILE));
@@ -4225,6 +4235,147 @@ void Application::takeRefineryScreen(const RefineryScreen& read, const std::stri
         std::cout << ", done in " << (added.due - taken) << " s" << std::endl;
     }
     pushRefineryOrders();
+}
+
+// ---- refinery workloads (RefineryShare) ---------------------------------
+
+std::string Application::refineryServiceUrl() {
+    if (const char* dev = DEV_ENV("SCMINER_REFINERY_URL")) return dev;
+#ifdef BEDROCK_REFINERY_URL
+    return BEDROCK_REFINERY_URL;
+#else
+    return "";
+#endif
+}
+
+void Application::setRefineryShare(bool on) {
+    refineryShare_ = on;
+    if (!on) shareQueue_.clear();
+    saveRegionConfig();
+    if (gui_) gui_->setRefineryShare(refineryShare_, !refineryServiceUrl().empty());
+}
+
+// What a reading of the terminal says of its station's workload, and of an
+// order being set up: like the orders themselves, taken only where two
+// readings in a row agree - one misread figure never stands - and then shown
+// and, where the player shares, sent
+void Application::shareRefineryScreen(const RefineryScreen& read, const std::string& station, long long taken) {
+    if (read.capacity >= 0 || read.workload >= 0) {
+        const WorkloadReading now{read.capacity, read.workload, taken};
+        const auto last = workloadLast_.find(station);
+        const bool agrees = last != workloadLast_.end() && last->second.capacity == now.capacity &&
+                            last->second.workload == now.workload && taken - last->second.at <= 120;
+        workloadLast_[station] = now;
+        if (agrees) {
+            workloadMine_[station] = now;
+            pushRefineryWorkloads();
+            WorkloadReading& sent = workloadSent_[station];
+            if (RefineryShare::worthSending(now.capacity, now.workload, taken, sent.capacity, sent.workload, sent.at)) {
+                RefineryShare::Reading r;
+                r.station = station;
+                r.observed = taken;
+                r.capacity = now.capacity;
+                r.workload = now.workload;
+                if (queueRefineryShare(r)) sent = now;
+            }
+        }
+    }
+    for (const RefineryPanel& panel : read.panels) {
+        if (panel.kind != RefineryBar::Band::Setup || !panel.whole()) continue;
+        RefineryShare::Reading r;
+        r.station = station;
+        r.observed = taken;
+        r.capacity = read.capacity;
+        r.workload = read.workload;
+        for (const RefiningMethod& m : REFINING_METHODS) {
+            if (panel.method == m.name) r.method = m.key;
+        }
+        r.cost = panel.cost;
+        r.seconds = panel.seconds;
+        std::string key = station + "|" + std::to_string(panel.order) + "|" + r.method + "|" +
+                          std::to_string(std::llround(panel.cost)) + "|" + std::to_string(panel.seconds);
+        for (const RefineryRow& row : panel.rows) {
+            if (row.inert || row.material.empty() || row.quantity <= 0 || row.yield < 0) continue;
+            r.items.push_back({row.material, row.quantity, row.quality, row.yield});
+            key += "|" + row.material + ":" + std::to_string(row.quantity) + ":" + std::to_string(row.yield);
+        }
+        if (r.method.empty() || r.items.empty()) continue;
+        const bool agrees = key == quoteLast_;
+        quoteLast_ = key;
+        if (!agrees || quotesSent_.count(key)) continue;
+        if (queueRefineryShare(r)) quotesSent_.insert(key);
+    }
+}
+
+bool Application::queueRefineryShare(const RefineryShare::Reading& reading) {
+    if (!refineryShare_ || refineryServiceUrl().empty()) return false;
+    if (library_.channel().rfind("LIVE", 0) != 0) return false;   // the PTU's refineries are not LIVE's
+    shareQueue_.push_back(RefineryShare::body(reading, BEDROCK_VERSION, library_.liveGameVersion(), "LIVE"));
+    while (shareQueue_.size() > 200) shareQueue_.pop_front();
+    return true;
+}
+
+// The reports, one at a time off the UI thread - again a minute later where
+// the service could not be reached or was busy - and, while the Refinery
+// window is open, every five minutes what the service knows of each station
+void Application::serviceRefineryShare() {
+    const std::string base = refineryServiceUrl();
+    if (base.empty()) return;
+    const auto now = std::chrono::steady_clock::now();
+    if (shareJob_.valid() && shareJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        const int status = shareJob_.get();
+        if (status == 0 || status == 429 || status >= 500) {
+            if (refineryShare_) shareQueue_.push_front(shareSending_);
+            shareRetryAt_ = now + std::chrono::minutes(1);
+        } else if (status >= 400) {
+            std::cout << "\nRefinery workloads: the service turned a report down (" << status << ")" << std::endl;
+        }
+        shareSending_.clear();
+    }
+    if (!shareJob_.valid() && refineryShare_ && !shareQueue_.empty() && now >= shareRetryAt_) {
+        shareSending_ = shareQueue_.front();
+        shareQueue_.pop_front();
+        shareJob_ = std::async(std::launch::async, [url = base + "/v1/refinery/observations", body = shareSending_]() {
+            HttpAnswer answer;
+            httpsPost(url, {"Content-Type: application/json"}, body, answer, 64 * 1024);
+            return answer.status;
+        });
+    }
+    if (stationsJob_.valid() && stationsJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        auto answer = stationsJob_.get();
+        if (answer.first.empty()) {
+            stationsShared_ = std::move(answer.second);
+            pushRefineryWorkloads();
+        } else {
+            std::cout << "\nRefinery workloads: " << answer.first << std::endl;
+        }
+    }
+    const bool asked = stationsAsked_.time_since_epoch().count() != 0;
+    if (!stationsJob_.valid() && gui_ && gui_->refineryShown() &&
+        (!asked || now - stationsAsked_ >= std::chrono::minutes(5))) {
+        stationsAsked_ = now;
+        stationsJob_ = std::async(std::launch::async, [url = base + "/v1/refinery/stations"]() {
+            std::string body, why;
+            std::map<std::string, RefineryShare::StationState> states;
+            if (httpsGet(url, {}, body, why, 1024 * 1024)) RefineryShare::readStations(body, states, why);
+            return std::make_pair(why, states);
+        });
+    }
+}
+
+// The window's figures: each station's newest - the player's own reading or
+// the service's
+void Application::pushRefineryWorkloads() {
+    if (!gui_) return;
+    std::map<std::string, MinerGUI::RefineryWorkload> out;
+    for (const auto& [name, s] : stationsShared_) {
+        out[name] = {s.capacity, s.workload, s.observed, s.sources, false};
+    }
+    for (const auto& [name, w] : workloadMine_) {
+        const auto it = out.find(name);
+        if (it == out.end() || w.at >= it->second.observed) out[name] = {w.capacity, w.workload, w.at, 1, true};
+    }
+    gui_->setRefineryWorkloads(std::move(out));
 }
 
 // Each work order read whole - method, bill, time, what went in and what

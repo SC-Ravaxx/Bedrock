@@ -29,6 +29,7 @@ endif()
 # bedrock-latest.txt, see include/resource.h). Official releases set it; a
 # build without it never checks for updates.
 set(BEDROCK_UPDATE_URL "" CACHE STRING "Update manifest address (official builds only; empty = no update check)")
+set(BEDROCK_REFINERY_URL "" CACHE STRING "Refinery observations service, server/refinery (official builds only; empty = none)")
 
 # The commit the build is made from, so a binary names the exact source it
 # came from (shown in the ? window and session.txt, checked by
@@ -85,6 +86,9 @@ add_compile_definitions("$<$<COMPILE_LANGUAGE:CXX>:BEDROCK_GIT_SHA=\"${BEDROCK_G
                         "$<$<COMPILE_LANGUAGE:CXX>:BEDROCK_GIT_SHORT=\"${BEDROCK_GIT_SHORT}\">")
 if(BEDROCK_UPDATE_URL)
     add_compile_definitions("$<$<COMPILE_LANGUAGE:CXX>:BEDROCK_UPDATE_URL=\"${BEDROCK_UPDATE_URL}\">")
+endif()
+if(BEDROCK_REFINERY_URL)
+    add_compile_definitions("$<$<COMPILE_LANGUAGE:CXX>:BEDROCK_REFINERY_URL=\"${BEDROCK_REFINERY_URL}\">")
 endif()
 
 # Find required packages
@@ -191,6 +195,7 @@ set(CORE_SOURCES
     src/RockContents.cpp
     src/RefineryTerminal.cpp
     src/RefineryOrders.cpp
+    src/RefineryShare.cpp
     src/TradeBook.cpp
     src/BlueprintLibrary.cpp
     src/Reputation.cpp

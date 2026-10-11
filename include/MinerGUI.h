@@ -359,6 +359,24 @@ public:
     // game's own contract texts (GameTexts), and what the last write said
     using GameTextsCallback = std::function<void(bool on)>;
     void setGameTextsCallback(GameTextsCallback callback) { onGameTexts_ = std::move(callback); }
+
+    // Each refinery's workload as last seen - by the player at its terminal,
+    // or by other players through the service (RefineryShare) - beside its
+    // name in the Refinery window
+    struct RefineryWorkload {
+        int capacity = -1;       // per cent
+        int workload = -1;       // 0 light .. 3 extreme
+        long long observed = 0;  // UTC seconds
+        int sources = 0;
+        bool own = false;
+    };
+    void setRefineryWorkloads(std::map<std::string, RefineryWorkload> workloads);
+    // The Refinery window's box that shares them: on or off, and whether the
+    // build can share at all (it carries the service's address)
+    using RefineryShareCallback = std::function<void(bool on)>;
+    void setRefineryShareCallback(RefineryShareCallback callback) { onRefineryShare_ = std::move(callback); }
+    void setRefineryShare(bool on, bool available);
+    bool refineryShown() const;
     void setGameTexts(bool on, const std::string& note) {
         gameTextsOn_ = on;
         gameTextsNote_ = note;
@@ -1064,6 +1082,10 @@ private:
     // The Blueprints window's box for the game's texts, and its last word
     bool gameTextsOn_ = false;
     std::string gameTextsNote_;
+    std::map<std::string, RefineryWorkload> refineryWorkloads_;
+    bool refineryShareOn_ = false;
+    bool refineryShareAvailable_ = false;
+    RefineryShareCallback onRefineryShare_;
 
     // The card that goes up by itself once, on the first start after an
     // update: what changed, and a word of thanks. Same shape as the ? card -

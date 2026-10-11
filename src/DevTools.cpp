@@ -12,6 +12,11 @@
 #include "TextLineReader.h"
 #include "RefineryTerminal.h"
 #include "RefineryOrders.h"
+#include "RefineryShare.h"
+#include "RefineryData.h"
+#include "RefiningData.h"
+#include "Updater.h"
+#include "resource.h"
 
 #include <opencv2/opencv.hpp>
 
@@ -595,6 +600,69 @@ cv::Mat augmented(const cv::Mat& frame, const std::string& spec) {
     return out;
 }
 
+int runRefineryShare(const std::string& picture, const std::string& service) {
+    SCMiner::TextLineReader* lines = panelLines();
+    if (!lines) return 1;
+    const cv::Mat frame = cv::imread(picture, cv::IMREAD_COLOR);
+    if (frame.empty()) {
+        std::cout << "could not read " << picture << std::endl;
+        return 1;
+    }
+    const std::vector<SCMiner::RefineryBar> bars = SCMiner::findRefineryBars(frame);
+    const SCMiner::RefineryScreen screen = SCMiner::readRefineryScreen(frame, bars, *lines);
+    std::string station = SCMiner::refineryStationNamed(screen.stationText, "");
+    for (const char* system : {"Pyro", "Nyx", "Stanton"}) {
+        if (station.empty()) station = SCMiner::refineryStationNamed(screen.stationText, system);
+    }
+    std::error_code ec;
+    const auto written = std::filesystem::last_write_time(picture, ec);
+    SCMiner::RefineryShare::Reading r;
+    r.station = station;
+    r.observed = std::chrono::duration_cast<std::chrono::seconds>(
+                     std::chrono::clock_cast<std::chrono::system_clock>(written).time_since_epoch())
+                     .count();
+    r.capacity = screen.capacity;
+    r.workload = screen.workload;
+    for (const SCMiner::RefineryPanel& panel : screen.panels) {
+        if (panel.kind != SCMiner::RefineryBar::Band::Setup || !panel.whole()) continue;
+        for (const SCMiner::RefiningMethod& m : SCMiner::REFINING_METHODS) {
+            if (panel.method == m.name) r.method = m.key;
+        }
+        r.cost = panel.cost;
+        r.seconds = panel.seconds;
+        for (const SCMiner::RefineryRow& row : panel.rows) {
+            if (row.inert || row.material.empty() || row.quantity <= 0 || row.yield < 0) continue;
+            r.items.push_back({row.material, row.quantity, row.quality, row.yield});
+        }
+        break;
+    }
+    if (station.empty() || (r.capacity < 0 && r.workload < 0 && r.items.empty())) {
+        std::cout << "nothing to send: station '" << screen.stationText << "', capacity " << r.capacity
+                  << ", workload " << r.workload << std::endl;
+        return 1;
+    }
+    const std::string body = SCMiner::RefineryShare::body(r, BEDROCK_VERSION, 41002, "LIVE");
+    std::cout << body << std::endl;
+    SCMiner::HttpAnswer answer;
+    SCMiner::httpsPost(service + "/v1/refinery/observations", {"Content-Type: application/json"}, body, answer);
+    std::cout << "-> " << answer.status << " " << answer.body << (answer.why.empty() ? "" : " (" + answer.why + ")")
+              << std::endl;
+    // ...and the stations as the service hands them back, read as the app reads them
+    std::string stations, why;
+    std::map<std::string, SCMiner::RefineryShare::StationState> states;
+    if (!SCMiner::httpsGet(service + "/v1/refinery/stations", {}, stations, why) ||
+        !SCMiner::RefineryShare::readStations(stations, states, why)) {
+        std::cout << "stations: " << why << std::endl;
+        return 1;
+    }
+    for (const auto& [name, s] : states) {
+        std::cout << "  " << name << ": capacity " << s.capacity << " %, workload " << s.workload << " ("
+                  << SCMiner::refineryWorkloadName(s.workload) << "), observed " << s.observed << ", "
+                  << s.sources << " source(s)" << (s.confirmed ? ", confirmed" : "") << std::endl;
+    }
+    return answer.status >= 200 && answer.status < 300 ? 0 : 1;
+}
+
 int runRefinery(const std::vector<std::string>& files, const std::string& drawDir) {
     SCMiner::TextLineReader* lines = panelLines();
     if (!lines) return 1;
@@ -631,6 +699,8 @@ int runRefinery(const std::vector<std::string>& files, const std::string& drawDi
         readMs += screen.ms;
         std::cout << ", read " << (int)std::lround(screen.ms) << " ms" << (screen.delivered ? "  WORK ORDER DELIVERED" : "")
                   << std::endl;
+        std::cout << "  station '" << screen.stationText << "' capacity " << screen.capacity << " % workload "
+                  << screen.workload << " (" << SCMiner::refineryWorkloadName(screen.workload) << ")" << std::endl;
         for (size_t i = 0; i < screen.panels.size(); i++) {
             const SCMiner::RefineryPanel& p = screen.panels[i];
             panels++;
