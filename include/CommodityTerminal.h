@@ -20,6 +20,7 @@
 
 #include <opencv2/core.hpp>
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -33,11 +34,18 @@ struct CommodityCard {
     int stock = -1;          // SCU, SHOP QUANTITY
     int price = -1;          // aUEC, as the card shows it
     bool perUnit = false;    // "/UNITS": a cargo box is picked, the price is one box's
+    // How the price was made out: 2 the picture as it is and at 1080 said the
+    // same, 1 one of them alone (a 1080 picture is read once); 0 not at all
+    int priceReads = 0;
     cv::Rect card;           // where it stands on the picture
 };
 
 struct CommodityScreen {
     std::vector<CommodityCard> cards;   // top to bottom
+    // The list they are on: 1 the shop's stock, what it sells (the tab BUY,
+    // IN STOCK), 2 what it buys (LOCAL MARKET VALUE, IN DEMAND); 0 not made
+    // out. Read for the whole list only - one card looked for is a purchase.
+    int side = 0;
     int lines = 0;                      // lines of text read, for the tools
     double ms = 0;
 };
@@ -68,6 +76,39 @@ struct TradeCard {
 };
 TradeCard readTradeCard(const std::vector<TerminalPicture>& pictures, const std::string& name, long long tradeMs,
                         double perScu, TextLineReader& reader);
+
+// A visit to a terminal's list, picture by picture - read whole as the
+// player looks and scrolls, bought or not: the cards two pictures of the
+// shop's stock agree on, gathered for UEX into as few of the pictures as
+// show them all, as a report takes one picture
+class TerminalSession {
+public:
+    void add(long long ms, const CommodityScreen& screen);
+    size_t pictures() const { return seen_.size(); }
+    // a picture of what the shop buys among them - not reported yet
+    bool sawDemand() const;
+    struct Row {
+        std::string name;    // as read
+        int level = -1, stock = -1, price = -1;
+        int priceReads = 0;  // the most its price was read with (CommodityCard)
+    };
+    struct Report {
+        size_t picture = 0;  // which of the pictures added
+        long long ms = 0;
+        std::vector<Row> rows;
+    };
+    // `wanted` says which agreed cards go (a known commodity, a price near
+    // UEX's last, not sent a moment ago)
+    std::vector<Report> reports(const std::function<bool(const Row&)>& wanted) const;
+
+private:
+    struct Picture {
+        long long ms = 0;
+        int side = 0;
+        std::vector<CommodityCard> cards;
+    };
+    std::vector<Picture> seen_;
+};
 
 // The pieces, for the tools and the self-test
 int commodityLevelIn(const std::string& text);                     // "MAX INVENTORY" -> 7; -1 none

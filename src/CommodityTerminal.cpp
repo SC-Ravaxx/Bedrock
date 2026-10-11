@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <map>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -110,7 +111,7 @@ struct Line {
 // of the icon beside IRON is not, or of a top where one hangs below the
 // line ("Max Inventory") - and stand within a line's height and a half of
 // each other: "4" and "SCU", "MAX" and "INVENTORY".
-std::vector<cv::Rect> textLines(const cv::Mat& bgr) {
+std::vector<cv::Rect> textLines(const cv::Mat& bgr, std::vector<cv::Rect>* allPieces = nullptr) {
     const int H = bgr.rows;
     const int half = (std::min)(bgr.cols / 2, static_cast<int>(std::lround(0.95 * H)));
     const int from = bgr.cols / 2 - static_cast<int>(std::lround(0.1 * H));
@@ -186,6 +187,8 @@ std::vector<cv::Rect> textLines(const cv::Mat& bgr) {
     }
     std::sort(lines.begin(), lines.end(),
               [](const cv::Rect& a, const cv::Rect& b) { return a.y != b.y ? a.y < b.y : a.x < b.x; });
+    // ...and every piece, the short ones too ("¤3,"), to make a line whole by
+    if (allPieces) *allPieces = std::move(pieces);
     return lines;
 }
 
@@ -193,14 +196,102 @@ Line readLine(const cv::Mat& bgr, const cv::Rect& r, TextLineReader& reader) {
     const int mx = (std::max)(3, r.height / 2), my = (std::max)(2, r.height / 4);
     const cv::Rect box = cv::Rect(r.x - mx, r.y - my, r.width + 2 * mx, r.height + 2 * my) & cv::Rect(0, 0, bgr.cols, bgr.rows);
     cv::Mat piece = bgr(box);
-    // the small lines - SHOP QUANTITY, the level, the price - read whole at twice their size
-    if (piece.rows < 28) cv::resize(piece, piece, cv::Size(), 2.0, 2.0, cv::INTER_CUBIC);
+    // brought up to the reader's own height, 48, with care - a 1080 picture's
+    // small lines are 20 high with their margins, a 1440 one's 27
+    if (piece.rows < 48) {
+        const double k = 48.0 / piece.rows;
+        cv::resize(piece, piece, cv::Size(), k, k, cv::INTER_CUBIC);
+    }
     const TextLineReader::Line read = reader.read(piece);
     return {r, read.text, read.mean};
 }
 
+// A price's line without its currency sign: the sign, a small square with
+// spikes at its corners, stands a gap apart from the first figure, and the
+// reader takes it for a 1 or lets it swallow the figure beside it ("17,126"
+// for 7,126, "868" for 6,868). An empty box where the first mark is not
+// shaped as the sign - a mark as wide as a figure or two figures run
+// together - or nothing follows it.
+cv::Rect afterCurrency(const cv::Mat& bgr, const cv::Rect& line) {
+    const cv::Rect box = line & cv::Rect(0, 0, bgr.cols, bgr.rows);
+    if (box.width < 8 || box.height < 6) return cv::Rect();
+    std::vector<cv::Mat> channels;
+    cv::split(bgr(box), channels);
+    const cv::Mat value = cv::max(cv::max(channels[0], channels[1]), channels[2]);
+    double low = 0, high = 0;
+    cv::minMaxLoc(value, &low, &high);
+    if (high - low < 40) return cv::Rect();
+    const cv::Mat ink = value >= low + (high - low) * 0.45;
+    std::vector<int> columns(ink.cols);
+    for (int x = 0; x < ink.cols; x++) columns[x] = cv::countNonZero(ink.col(x));
+    int x0 = 0;
+    while (x0 < ink.cols && columns[x0] == 0) x0++;
+    int x1 = x0;
+    while (x1 < ink.cols && columns[x1] > 0) x1++;
+    int x2 = x1;
+    while (x2 < ink.cols && columns[x2] == 0) x2++;
+    const int h = box.height;
+    // ...the sign stands lower than the figure after it: a first mark as
+    // tall as the next is a figure - the sign left out of the line, a 6 come
+    // apart into two - and nothing is cut
+    int x3 = x2;
+    while (x3 < ink.cols && columns[x3] > 0) x3++;
+    auto tallness = [&](int from, int to) {
+        if (to <= from) return 0;
+        std::vector<cv::Point> lit;
+        cv::findNonZero(ink.colRange(from, to), lit);
+        return lit.empty() ? 0 : cv::boundingRect(lit).height;
+    };
+    const int mark = tallness(x0, x1), next = tallness(x2, x3);
+    static const bool trace = DEV_ENV("SCMINER_COMMODITY_TRACE") != nullptr;
+    if (trace) {
+        std::printf("      sign? first mark %d-%d (%d high) of %d, gap to %d, next %d high, line %dx%d\n", x0, x1, mark,
+                    ink.cols, x2, next, box.width, h);
+    }
+    if (x1 - x0 < h * 7 / 20 || x1 - x0 > h * 6 / 5 || x2 == x1 || x2 > ink.cols - h) return cv::Rect();
+    if (next <= 0 || mark * 20 > next * 17) return cv::Rect();
+    const int from = (x1 + x2) / 2;
+    return cv::Rect(box.x + from, box.y, box.width - from, box.height);
+}
+
 int right(const cv::Rect& r) { return r.x + r.width; }
 int bottom(const cv::Rect& r) { return r.y + r.height; }
+
+// The fill right of a tab's name: its ground, lighter on the tab picked; -1
+// where the picture ends there
+int fillBeside(const cv::Mat& bgr, const cv::Rect& name) {
+    const int h = name.height;
+    const cv::Rect patch = cv::Rect(right(name) + h / 3, name.y, (std::max)(2, h * 2 / 3), h) &
+                           cv::Rect(0, 0, bgr.cols, bgr.rows);
+    if (patch.width < 2 || patch.height < 2) return -1;
+    std::vector<cv::Mat> channels;
+    cv::split(bgr(patch), channels);
+    cv::Mat value = cv::max(cv::max(channels[0], channels[1]), channels[2]);
+    value = value.reshape(1, 1).clone();
+    std::vector<uchar> v(value.begin<uchar>(), value.end<uchar>());
+    std::nth_element(v.begin(), v.begin() + v.size() / 2, v.end());
+    return v[v.size() / 2];
+}
+
+// A stock's or a price's whole line: the pieces beside it on its row, two
+// line heights apart at most - "¤3," stays apart from "128/SCU" where the
+// sign stands lower than the slash, "SCU" from "6,868/" - and nothing else
+// stands that near in the right column
+cv::Rect wholeRow(const std::vector<cv::Rect>& boxes, cv::Rect line) {
+    for (bool grew = true; grew;) {
+        grew = false;
+        for (const cv::Rect& b : boxes) {
+            if ((b & line) == b) continue;
+            const int overlap = (std::min)(bottom(b), bottom(line)) - (std::max)(b.y, line.y);
+            if (overlap * 2 < (std::min)(b.height, line.height)) continue;
+            const int gap = b.x >= right(line) ? b.x - right(line) : line.x - right(b);
+            if (gap > 2 * line.height || (b.x < right(line) && right(b) > line.x)) continue;
+            line |= b;
+            grew = true;
+        }
+    }
+    return line;
+}
 
 }  // namespace
 
@@ -281,7 +372,25 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader, 
     const auto t0 = std::chrono::steady_clock::now();
     CommodityScreen screen;
     if (bgr.empty()) return screen;
-    const std::vector<cv::Rect> boxes = textLines(bgr);
+    // The lines found at 1080 - on a 1440 picture the openings would cost
+    // four times as much and find the same - and read off the picture as it is
+    std::vector<cv::Rect> boxes, pieces;
+    if (bgr.rows > 1100) {
+        const double k = 1080.0 / bgr.rows;
+        cv::Mat small;
+        cv::resize(bgr, small, cv::Size(), k, k, cv::INTER_AREA);
+        std::vector<cv::Rect> smallPieces;
+        const std::vector<cv::Rect> smallLines = textLines(small, &smallPieces);
+        auto full = [&](const cv::Rect& r) {
+            const int x0 = static_cast<int>(std::floor(r.x / k)), y0 = static_cast<int>(std::floor(r.y / k));
+            const int x1 = static_cast<int>(std::ceil((r.x + r.width) / k)), y1 = static_cast<int>(std::ceil((r.y + r.height) / k));
+            return cv::Rect(x0, y0, x1 - x0, y1 - y0) & cv::Rect(0, 0, bgr.cols, bgr.rows);
+        };
+        for (const cv::Rect& r : smallLines) boxes.push_back(full(r));
+        for (const cv::Rect& r : smallPieces) pieces.push_back(full(r));
+    } else {
+        boxes = textLines(bgr, &pieces);
+    }
     // each line read when it is wanted, and once
     std::vector<std::optional<Line>> lines(boxes.size());
     static const bool trace = DEV_ENV("SCMINER_COMMODITY_TRACE") != nullptr;
@@ -303,6 +412,7 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader, 
     // for buying, AVAILABLE CARGO SIZE (SCU) and its row of boxes stand flush
     // right as well.
     std::vector<bool> used(boxes.size(), false);
+    int firstH = 0;   // the first card's SHOP QUANTITY, how high
     auto under = [&](size_t i) {
         const cv::Rect& a = boxes[i];
         for (size_t j = i + 1; j < boxes.size(); j++) {
@@ -368,14 +478,183 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader, 
             band |= l;
         }
         if (levelLine < left.size()) band |= boxes[left[levelLine]];
-        card.stock = parseShopQuantity(text(qi));
-        card.price = parseCommodityPrice(text(pi), card.perUnit);
+        const cv::Rect stockLine = wholeRow(pieces, boxes[qi]);
+        card.stock = parseShopQuantity(stockLine == boxes[qi] ? text(qi) : readLine(bgr, stockLine, reader).text);
+        // The price, read without its currency sign where it can be cut off,
+        // and - a picture larger than 1080 - read again at 1080: the reader
+        // slips at one size where it does not at the other (5,868 for 6,868
+        // at 1440 alone, over two recorded purchases). Taken where both say
+        // the same, or one says nothing; not where they differ.
+        auto readPrice = [&](const cv::Mat& img, const cv::Rect& line, const char* what) {
+            bool unit = false;
+            int price = parseCommodityPrice(readLine(img, line, reader).text, unit);
+            screen.lines++;
+            const cv::Rect bare = afterCurrency(img, line);
+            if (bare.area() > 0) {
+                const Line again = readLine(img, bare, reader);
+                screen.lines++;
+                bool bareUnit = false;
+                const int barePrice = parseCommodityPrice(again.text, bareUnit);
+                if (trace) std::printf("      price %s without its sign: '%s' -> %d\n", what, again.text.c_str(), barePrice);
+                if (barePrice >= 0) {
+                    price = barePrice;
+                    unit = bareUnit;
+                }
+            }
+            return std::make_pair(price, unit);
+        };
+        const cv::Rect priceLine = wholeRow(pieces, boxes[pi]);
+        const auto own = readPrice(bgr, priceLine, "as it is");
+        card.price = own.first;
+        card.perUnit = own.second;
+        card.priceReads = own.first >= 0 ? 1 : 0;
+        if (bgr.rows > 1100) {
+            const double k = 1080.0 / bgr.rows;
+            const cv::Rect& line = priceLine;
+            const int pad = (std::max)(8, line.height);
+            const cv::Rect near = cv::Rect(line.x - pad, line.y - pad, line.width + 2 * pad, line.height + 2 * pad) &
+                                  cv::Rect(0, 0, bgr.cols, bgr.rows);
+            cv::Mat small;
+            cv::resize(bgr(near), small, cv::Size(), k, k, cv::INTER_AREA);
+            const cv::Rect inSmall = cv::Rect(static_cast<int>(std::lround((line.x - near.x) * k)),
+                                              static_cast<int>(std::lround((line.y - near.y) * k)),
+                                              static_cast<int>(std::lround(line.width * k)),
+                                              static_cast<int>(std::lround(line.height * k))) &
+                                     cv::Rect(0, 0, small.cols, small.rows);
+            const auto other = readPrice(small, inSmall, "at 1080");
+            if (own.first >= 0 && other.first >= 0) {
+                if (own == other) {
+                    card.priceReads = 2;
+                } else {
+                    card.price = -1;
+                    card.priceReads = 0;
+                }
+            } else if (other.first >= 0) {
+                card.price = other.first;
+                card.perUnit = other.second;
+                card.priceReads = 1;
+            }
+        }
         card.card = band;
         if (!wanted.empty() && !commodityNamed(card.name, wanted)) continue;
+        if (screen.cards.empty()) firstH = h;
         screen.cards.push_back(card);
+    }
+    // Which list it is: the tab picked - BUY, the shop's stock, or LOCAL
+    // MARKET VALUE, what it buys - is filled lighter beside its name, and the
+    // list's heading says IN STOCK or IN DEMAND where it is in sight
+    if (wanted.empty() && !screen.cards.empty()) {
+        const cv::Rect& top = screen.cards.front().card;
+        int buyFill = -1, sellFill = -1, heading = 0;
+        for (size_t i = 0; i < boxes.size(); i++) {
+            const cv::Rect& b = boxes[i];
+            if (bottom(b) > top.y - firstH / 2 || b.y < top.y - 14 * firstH) continue;
+            if (b.x < top.x - 10 * firstH || b.x > right(top) + 2 * firstH) continue;
+            const std::string t = folded(text(i), false);
+            if (t.size() < 3) continue;
+            if (distance(t, "INSTOCK") <= 1 || distance(t, "NOSTOCK") <= 1 || distance(t, "OUTOFSTOCK") <= 2) heading = 1;
+            else if (distance(t, "INDEMAND") <= 2 || distance(t, "NODEMAND") <= 2) heading = 2;
+            else if (t == "BUY") buyFill = fillBeside(bgr, b);
+            else if (distance(t, "LOCALMARKETVALUE") <= 3) sellFill = fillBeside(bgr, b);
+        }
+        if (heading) screen.side = heading;
+        else if (buyFill >= 0 && sellFill >= 0 && std::abs(buyFill - sellFill) >= 12) screen.side = buyFill > sellFill ? 1 : 2;
+        if (trace) std::printf("    side %d: heading %d, BUY fill %d, LOCAL MARKET VALUE fill %d\n", screen.side, heading, buyFill, sellFill);
     }
     screen.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     return screen;
+}
+
+void TerminalSession::add(long long ms, const CommodityScreen& screen) {
+    Picture p;
+    p.ms = ms;
+    p.side = screen.side;
+    p.cards = screen.cards;
+    seen_.push_back(std::move(p));
+}
+
+bool TerminalSession::sawDemand() const {
+    for (const Picture& p : seen_) {
+        if (p.side == 2) return true;
+    }
+    return false;
+}
+
+std::vector<TerminalSession::Report> TerminalSession::reports(const std::function<bool(const Row&)>& wanted) const {
+    auto whole = [](const CommodityCard& c) {
+        return !c.name.empty() && c.level >= 1 && c.stock >= 0 && c.price >= 0 && !c.perUnit;
+    };
+    // what the pictures of the shop's stock said of each card, by its name
+    struct Said {
+        Row row;
+        int pictures = 0;
+        long long lastMs = 0;
+    };
+    std::map<std::string, std::vector<Said>> byName;
+    for (const Picture& p : seen_) {
+        if (p.side != 1) continue;
+        for (const CommodityCard& c : p.cards) {
+            if (!whole(c)) continue;
+            std::vector<Said>& said = byName[folded(c.name, true)];
+            auto it = std::find_if(said.begin(), said.end(), [&](const Said& s) {
+                return s.row.level == c.level && s.row.stock == c.stock && s.row.price == c.price;
+            });
+            if (it == said.end()) {
+                Said s;
+                s.row = {c.name, c.level, c.stock, c.price, c.priceReads};
+                s.pictures = 1;
+                s.lastMs = p.ms;
+                said.push_back(s);
+            } else {
+                it->pictures++;
+                it->lastMs = (std::max)(it->lastMs, p.ms);
+                it->row.priceReads = (std::max)(it->row.priceReads, c.priceReads);
+            }
+        }
+    }
+    // ...what two of them agree on - the later where a card changed while
+    // the player was there, as when they bought some
+    std::map<std::string, Row> agreed;
+    for (const auto& entry : byName) {
+        const Said* best = nullptr;
+        for (const Said& s : entry.second) {
+            if (s.pictures >= 2 && (!best || s.lastMs > best->lastMs)) best = &s;
+        }
+        if (best && wanted(best->row)) agreed[entry.first] = best->row;
+    }
+    // ...gathered into as few pictures as show them: the one showing most of
+    // those still to go, the later of two alike
+    std::vector<Report> out;
+    while (!agreed.empty()) {
+        size_t pick = seen_.size();
+        std::vector<std::string> keys;
+        for (size_t i = 0; i < seen_.size(); i++) {
+            if (seen_[i].side != 1) continue;
+            std::vector<std::string> shown;
+            for (const CommodityCard& c : seen_[i].cards) {
+                if (!whole(c)) continue;
+                const auto it = agreed.find(folded(c.name, true));
+                if (it != agreed.end() && it->second.level == c.level && it->second.stock == c.stock &&
+                    it->second.price == c.price) {
+                    shown.push_back(it->first);
+                }
+            }
+            if (!shown.empty() && shown.size() >= keys.size()) {
+                pick = i;
+                keys = shown;
+            }
+        }
+        if (keys.empty()) break;
+        Report report;
+        report.picture = pick;
+        report.ms = seen_[pick].ms;
+        for (const std::string& key : keys) {
+            report.rows.push_back(agreed[key]);
+            agreed.erase(key);
+        }
+        out.push_back(std::move(report));
+    }
+    return out;
 }
 
 TradeCard readTradeCard(const std::vector<TerminalPicture>& pictures, const std::string& name, long long tradeMs,

@@ -696,6 +696,38 @@ int runTradeCard(const std::string& folder, const std::string& commodity, double
     return card.found ? 0 : 1;
 }
 
+int runSession(const std::string& folder) {
+    SCMiner::TextLineReader* lines = panelLines();
+    if (!lines) return 1;
+    std::vector<std::string> files;
+    for (const auto& entry : std::filesystem::directory_iterator(folder)) {
+        const std::string ext = entry.path().extension().string();
+        if (ext == ".jpg" || ext == ".png") files.push_back(entry.path().string());
+    }
+    std::sort(files.begin(), files.end());
+    SCMiner::TerminalSession session;
+    std::vector<std::string> added;
+    for (size_t i = 0; i < files.size(); i++) {
+        const cv::Mat frame = cv::imread(files[i], cv::IMREAD_COLOR);
+        if (frame.empty()) continue;
+        const SCMiner::CommodityScreen screen = SCMiner::readCommodityScreen(frame, *lines);
+        if (screen.cards.empty()) continue;
+        session.add((long long)i * 1000, screen);
+        added.push_back(std::filesystem::path(files[i]).filename().string());
+    }
+    std::cout << session.pictures() << " pictures of the list" << (session.sawDemand() ? ", some of what it buys" : "")
+              << std::endl;
+    for (const SCMiner::TerminalSession::Report& report :
+         session.reports([](const SCMiner::TerminalSession::Row&) { return true; })) {
+        std::cout << "  report with " << added[report.picture] << ":" << std::endl;
+        for (const SCMiner::TerminalSession::Row& row : report.rows) {
+            std::cout << "    '" << row.name << "' level " << row.level << ", " << row.stock << " SCU, " << row.price
+                      << " a SCU (read " << row.priceReads << "x)" << std::endl;
+        }
+    }
+    return 0;
+}
+
 int runCommodity(const std::vector<std::string>& files, const std::string& wanted) {
     SCMiner::TextLineReader* lines = panelLines();
     if (!lines) return 1;
@@ -708,7 +740,7 @@ int runCommodity(const std::vector<std::string>& files, const std::string& wante
         const SCMiner::CommodityScreen screen = SCMiner::readCommodityScreen(frame, *lines, wanted);
         ms += screen.ms;
         std::cout << std::filesystem::path(file).filename().string() << ": " << screen.cards.size() << " cards, "
-                  << screen.lines << " lines, " << (int)std::lround(screen.ms) << " ms" << std::endl;
+                  << screen.lines << " lines, " << (int)std::lround(screen.ms) << " ms, side " << screen.side << std::endl;
         if (!screen.cards.empty()) withCards++;
         for (const SCMiner::CommodityCard& c : screen.cards) {
             cards++;

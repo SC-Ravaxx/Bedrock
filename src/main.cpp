@@ -4311,6 +4311,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             return runRefineryReplay(__argv[i + 1], __argv[i + 2], std::atoll(__argv[i + 3]), std::atof(__argv[i + 4]),
                                      i + 5 < __argc ? std::atoi(__argv[i + 5]) : 4);
         }
+        else if (arg == "--session" && i + 1 < __argc) {
+            setupConsole(true);
+            return runSession(__argv[i + 1]);
+        }
         else if (arg == "--tradecard" && i + 4 < __argc) {
             setupConsole(true);
             return runTradeCard(__argv[i + 1], __argv[i + 2], std::atof(__argv[i + 3]), std::atof(__argv[i + 4]));

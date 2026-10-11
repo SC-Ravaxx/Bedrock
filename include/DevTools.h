@@ -55,6 +55,11 @@ int runCommodity(const std::vector<std::string>& files, const std::string& wante
 // was found, in which picture
 int runTradeCard(const std::string& folder, const std::string& commodity, double perScu, double tradeSecond);
 
+// --session <folder>: the pictures of a folder, a second apart, read as a
+// visit to a terminal's list - every picture whole - and the reports to UEX
+// it would make, before UEX's prices are held against them
+int runSession(const std::string& folder);
+
 // --refineryreplay <folder> <station> <first frame's UTC> <seconds a frame>
 // [every]: a recording cut into frames played through the order book the way
 // the app reads it - every <every>-th frame, a reading a second - and the
