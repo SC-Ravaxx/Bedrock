@@ -49,10 +49,16 @@ struct StationState {
 // that is not one
 bool readStations(const std::string& json, std::map<std::string, StationState>& out, std::string& why);
 
-// Whether a station's workload, read again, goes to the service: when it is
-// not what was sent last, and otherwise every RESEND_SECONDS
+// Whether a station's workload, read again, goes to the service: at once
+// where its level changed or its capacity moved by CHANGE_POINTS since what
+// was sent last, or where it says what the last did not; otherwise every
+// RESEND_SECONDS - but never one short of what the last said (the figure or
+// the level not made out), as the service shows a station's newest reading.
+// A capacity ticks up and down a point at a time while orders run, and the
+// service takes a station from one sender a dozen times an hour.
 bool worthSending(int capacity, int workload, long long now, int lastCapacity, int lastWorkload, long long lastSent);
 constexpr long long RESEND_SECONDS = 600;
+constexpr int CHANGE_POINTS = 5;
 
 }  // namespace RefineryShare
 }  // namespace SCMiner

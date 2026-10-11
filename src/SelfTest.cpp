@@ -692,11 +692,17 @@ int runSelfTest() {
             states["Levski"].workload == 3 && !states["Levski"].confirmed &&
             !S::readStations("{\"stations\":5}", states, why) &&
             S::worthSending(106, 1, 1000, -1, -1, 0) && !S::worthSending(106, 1, 1100, 106, 1, 1000) &&
-            S::worthSending(103, 1, 1100, 106, 1, 1000) && S::worthSending(106, 1, 1000 + S::RESEND_SECONDS, 106, 1, 1000) &&
+            !S::worthSending(103, 1, 1100, 106, 1, 1000) && S::worthSending(101, 1, 1100, 106, 1, 1000) &&
+            S::worthSending(106, 2, 1100, 106, 1, 1000) && !S::worthSending(-1, 1, 1100, 106, 1, 1000) &&
+            !S::worthSending(-1, 1, 1000 + S::RESEND_SECONDS, 106, 1, 1000) &&
+            S::worthSending(-1, 2, 1100, 106, 1, 1000) && S::worthSending(106, 1, 1100, -1, 1, 1000) &&
+            !S::worthSending(106, -1, 1100, 106, 1, 1000) &&
+            S::worthSending(106, 1, 1000 + S::RESEND_SECONDS, 106, 1, 1000) &&
             !S::worthSending(-1, -1, 9999, 1, 1, 1);
         allPassed &= check(shared, "refinery workloads shared: the report as the service takes it, with a quote and "
-                                   "without, the stations it hands back, and a reading sent again only when it changed "
-                                   "or ten minutes on");
+                                   "without, the stations it hands back, and a reading sent again at once when its "
+                                   "level changed or it moved five points, else ten minutes on - and never one "
+                                   "that says less than the last");
 
         // The bars over the panels, drawn the size and colour they have at
         // 5120x1440: a SETUP's red band under one, a PROCESSING's amber, the

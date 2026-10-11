@@ -4326,9 +4326,13 @@ void Application::serviceRefineryShare() {
     const auto now = std::chrono::steady_clock::now();
     if (shareJob_.valid() && shareJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
         const int status = shareJob_.get();
-        if (status == 0 || status == 429 || status >= 500) {
+        if (status == 0 || status >= 500) {
             if (refineryShare_) shareQueue_.push_front(shareSending_);
             shareRetryAt_ = now + std::chrono::minutes(1);
+        } else if (status == 429) {
+            // enough of this station - or from this address - for now: a
+            // fresher reading comes along, so this one goes, and the rest wait
+            shareRetryAt_ = now + std::chrono::minutes(10);
         } else if (status >= 400) {
             std::cout << "\nRefinery workloads: the service turned a report down (" << status << ")" << std::endl;
         }

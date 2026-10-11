@@ -5,6 +5,7 @@
 #include "UexReports.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <sstream>
 
@@ -70,7 +71,11 @@ bool readStations(const std::string& json, std::map<std::string, StationState>& 
 bool worthSending(int capacity, int workload, long long now, int lastCapacity, int lastWorkload, long long lastSent) {
     if (capacity < 0 && workload < 0) return false;
     if (lastSent <= 0) return true;
-    if (capacity != lastCapacity || workload != lastWorkload) return true;
+    const bool levelChanged = workload >= 0 && lastWorkload >= 0 && workload != lastWorkload;
+    const bool moved = capacity >= 0 && lastCapacity >= 0 && std::abs(capacity - lastCapacity) >= CHANGE_POINTS;
+    if (levelChanged || moved) return true;
+    if ((workload < 0 && lastWorkload >= 0) || (capacity < 0 && lastCapacity >= 0)) return false;
+    if ((workload >= 0 && lastWorkload < 0) || (capacity >= 0 && lastCapacity < 0)) return true;
     return now - lastSent >= RESEND_SECONDS;
 }
 
