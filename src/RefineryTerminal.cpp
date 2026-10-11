@@ -721,6 +721,59 @@ double parseRefineryAmount(const std::string& text) {
     }
 }
 
+int parseRefineryPercent(const std::string& text) {
+    // the figure before the sign; "％" is the wide one some readers give
+    size_t sign = text.find('%');
+    if (sign == std::string::npos) sign = text.find("\xEF\xBC\x85");
+    if (sign == std::string::npos) return -1;
+    // ...right before it: what stands further left - CURRENT CAPACITY, where
+    // the line was taken whole - is no part of it
+    std::string digits;
+    for (size_t i = sign; i > 0; i--) {
+        const char c = text[i - 1];
+        if (c == ' ' && digits.empty()) continue;
+        const char d = asDigit(c);
+        if (!std::isdigit(static_cast<unsigned char>(d))) break;
+        digits.insert(digits.begin(), d);
+    }
+    if (digits.empty() || digits.size() > 6) return -1;
+    return std::stoi(digits);
+}
+
+int refineryWorkloadIn(const std::string& text) {
+    const std::string t = letters(text);
+    // a word in the letters, a reader's slip in it forgiven
+    auto has = [&](const std::string& word) {
+        const size_t n = word.size();
+        for (size_t len = n - 1; len <= n + 1; len++) {
+            for (size_t i = 0; i + len <= t.size(); i++) {
+                if (editDistance(t.substr(i, len), word) <= 1) return true;
+            }
+        }
+        return false;
+    };
+    // The four sentences: light - no surcharge, moderate - a small one,
+    // heavy - a moderate one, extreme - a large one. The workload's word
+    // first ("a heavy workload. A moderate surcharge" is heavy), then the
+    // surcharge's size where the word was misread; "has an" is extreme's alone.
+    // The sizes with the word after them: "LARGE" alone is a slip away from
+    // the "HARGE" every surcharge ends in.
+    if (has("EXTREME") || t.find("ANEXT") != std::string::npos) return 3;
+    if (has("HEAVY")) return 2;
+    if (has("LIGHT") || has("NOSURCHARGE")) return 0;
+    if (has("MODERATEWORK")) return 1;
+    if (has("LARGESURCH")) return 3;
+    if (has("SMALLSURCH")) return 1;
+    if (has("MODERATESURCH")) return 2;
+    if (has("MODERATE")) return 1;
+    return -1;
+}
+
+const char* refineryWorkloadName(int workload) {
+    static const char* const NAMES[] = {"light", "moderate", "heavy", "extreme"};
+    return workload >= 0 && workload < 4 ? NAMES[workload] : "";
+}
+
 int parseRefineryTime(const std::string& text) {
     // "7m 22s", "1h 2m 3s", "45s", "2d 3h": numbers each followed by its unit
     int total = 0, value = -1, parts = 0;
@@ -775,6 +828,15 @@ std::string refineryMaterialIn(const std::string& text, bool* inert) {
         t.rfind("INERT", 0) == 0) {
         if (inert) *inert = true;
         return "";
+    }
+    // The salvage's refined name, which no material in the tables has: the
+    // construction salvage comes out as CONSTRUCTION MATERIALS, too long for
+    // its column, so cut short as much as was read
+    {
+        const std::string want = "CONSTRUCTIONMATERIALS";
+        if (t.size() >= 13 && editDistance(t, want.substr(0, (std::min)(want.size(), t.size()))) <= 1) {
+            return "Construction Salvage";
+        }
     }
     int best = 1 << 30;
     std::string name;
@@ -877,6 +939,16 @@ constexpr Box PROC_TIME{190, 628, 446, 680};        // TIME REMAINING 7m 7s
 // The station's name at the top left of the screen, over the first panel's
 // bar to its left, clear of the header's rules and of REFINEMENT CENTER
 constexpr Box STATION_NAME{-372, -80, 262, -34};
+
+// The station's REFINERY CAPACITY, on the panel left of the first order: the
+// sentence on its workload, and CURRENT CAPACITY's figure - at Levski in
+// small mixed case with the figure under its name, at Pyro in capitals with
+// the figure beside it (measured at Levski on 6 October and at Checkmate on
+// 11 October 2026)
+constexpr Box LEVSKI_WORKLOAD{-380, 325, -150, 380};
+constexpr Box LEVSKI_CAPACITY{-335, 438, -165, 476};
+constexpr Box PYRO_WORKLOAD{-375, 300, -50, 362};
+constexpr Box PYRO_CAPACITY{-240, 372, -30, 405};   // wide to the left: seen from the side, the figure leans that way
 
 
 cv::Rect place(const RefineryBar& bar, const Box& b, const cv::Size& picture) {
@@ -996,6 +1068,42 @@ double figureNear(const cv::Mat& bgr, const RefineryBar& bar, const Box& expecte
 // is neither
 double amountWithCents(const std::string& text) {
     return text.find('.') != std::string::npos ? parseRefineryAmount(text) : -1;
+}
+
+double percentFigure(const std::string& text) {
+    return parseRefineryPercent(text);
+}
+
+// The workload's sentence: its lines read from the top until one names the
+// workload - the first does, it ends on the word - and all of them together
+// where none alone does
+int workloadNear(const cv::Mat& bgr, const RefineryBar& bar, const Box& expected, const cv::Size& size,
+                 TextLineReader& reader) {
+    const double k = bar.bar.width / REF_BAR_W;
+    const cv::Rect area = place(bar, Box{expected.x0, expected.y0 - 20, expected.x1, expected.y1 + 20}, size);
+    std::string all;
+    int lines = 0;
+    for (const auto& [top, bottom] : textRows(bgr, area, k)) {
+        if (bottom - top > 40 * k) continue;   // a box or a bar, not a line of words
+        if (++lines > 5) break;
+        const int pad = static_cast<int>(std::lround(3 * k));
+        const cv::Rect line =
+            cv::Rect(area.x, top - pad, area.width, bottom - top + 2 * pad) & cv::Rect(0, 0, size.width, size.height);
+        // Levski's sentence is small, a line 19 pixels high in 1440: read
+        // at twice its size, its words come out whole
+        const cv::Rect ink = inkBox(bgr, line);
+        if (ink.width < 4 || ink.height < 4) continue;
+        cv::Mat piece = bgr(ink);
+        if (piece.rows < 28) cv::resize(piece, piece, cv::Size(), 2.0, 2.0, cv::INTER_CUBIC);
+        const TextLineReader::Line read = reader.read(piece);
+        static const bool trace = DEV_ENV("SCMINER_REFINERY_TRACE") != nullptr;
+        if (trace) std::printf("      workload at %d,%d %dx%d: '%s' %.2f\n", ink.x, ink.y, ink.width, ink.height,
+                               read.text.c_str(), read.mean);
+        all += read.text + " ";
+        const int found = refineryWorkloadIn(all);
+        if (found >= 0) return found;
+    }
+    return -1;
 }
 
 double timeFigure(const std::string& text) {
@@ -1189,6 +1297,11 @@ RefineryScreen readRefineryScreen(const cv::Mat& input, const std::vector<Refine
     // read under may be anything
     if (first) {
         screen.stationText = readText(bgr, inkBox(bgr, place(*first, STATION_NAME, size)), reader, "station");
+        // ...and its workload, on the panel beside the orders
+        const bool pyro = first->theme == RefineryBar::Theme::Pyro;
+        screen.capacity = static_cast<int>(
+            figureNear(bgr, *first, pyro ? PYRO_CAPACITY : LEVSKI_CAPACITY, size, reader, "capacity", percentFigure));
+        screen.workload = workloadNear(bgr, *first, pyro ? PYRO_WORKLOAD : LEVSKI_WORKLOAD, size, reader);
     }
     if (notice) screen.delivered = findDeliveredNotice(raw, reader);
     screen.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();

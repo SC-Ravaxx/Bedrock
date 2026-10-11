@@ -91,6 +91,13 @@ struct RefineryScreen {
     // "WORK ORDER DELIVERED" on the terminal (looked for only when asked): an
     // order was just collected, and its panel is gone
     bool delivered = false;
+    // The station's REFINERY CAPACITY, on the panel left of the orders: its
+    // CURRENT CAPACITY in per cent, and which of the game's four sentences
+    // stands over it - 0 light (no surcharge), 1 moderate (a small one),
+    // 2 heavy (a moderate one), 3 extreme (a large one); -1 where not made
+    // out. The game sets a new order's cost by it, and it shows nowhere else.
+    int capacity = -1;
+    int workload = -1;
     double ms = 0;
 };
 
@@ -106,12 +113,23 @@ bool findDeliveredNotice(const cv::Mat& bgr, TextLineReader& reader);
 int parseRefineryTime(const std::string& text);
 // "194.00" -> 194.0; -1 when no number
 double parseRefineryAmount(const std::string& text);
+// "103%" -> 103, "42804 %" -> 42804; -1 for anything else
+int parseRefineryPercent(const std::string& text);
+// The workload a REFINERY CAPACITY sentence names - "Refinery currently has
+// a moderate workload. A small surcharge will be added." -> 1 - by the word
+// before "workload": 0 light, 1 moderate, 2 heavy, 3 extreme; -1 for none.
+// Its first line alone is enough, it ends on that word.
+int refineryWorkloadIn(const std::string& text);
+// "light", "moderate", "heavy", "extreme"; "" for anything else
+const char* refineryWorkloadName(int workload);
 // "874" -> 874 with O/I/S/B put right; -1 for "--" and anything else
 int parseRefineryCount(const std::string& text);
 // The method a read names, as REFINING_METHODS spells it; "" when none is near
 std::string refiningMethodIn(const std::string& text);
 // The material a read names, as REFINERY_MATERIALS spells it ("IRON (ORE)" and
-// the refined "IRON" both give "Iron (Ore)"); "" when none is near
+// the refined "IRON" both give "Iron (Ore)"; the salvage's refined
+// "CONSTRUCTION MATERIALS", cut short to "CONSTRUCTION MA" in its column or
+// not, gives "Construction Salvage"); "" when none is near
 std::string refineryMaterialIn(const std::string& text, bool* inert = nullptr);
 // Whether a quality is one a material comes in: one of its ore's eight
 // values (ORE_BANDS) - the terminal prints the raw ore's, refined or not.
