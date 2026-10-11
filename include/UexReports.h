@@ -75,6 +75,12 @@ private:
     };
     std::vector<Terminal> terminals_;
     std::vector<std::pair<std::string, int>> commodities_;   // folded name, id
+    std::vector<std::pair<std::string, int>> commodityNames_;   // ...as UEX writes it, id
+public:
+    // Every commodity as UEX writes its name ("Ship Ammunition - Size 2"),
+    // with its id - what a name read off a terminal is matched against
+    const std::vector<std::pair<std::string, int>>& commodityNames() const { return commodityNames_; }
+private:
     std::vector<std::pair<std::string, int>> methods_;       // letters, id
 };
 

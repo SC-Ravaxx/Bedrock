@@ -1365,7 +1365,8 @@ int runSelfTest() {
             SCMiner::parseShopQuantity("1,O5O SCU") == 1050 && SCMiner::parseShopQuantity("24,00 SCU") == -1 &&
             SCMiner::parseShopQuantity("SHOP QUANTITY") == -1 && SCMiner::parseShopQuantity("1050 SCU") == -1 &&
             SCMiner::parseCommodityPrice("4.167/SCU", unitA) == 4167 && !unitA &&
-            SCMiner::parseCommodityPrice("02.850/SCU", unitA) == 2850 &&
+            SCMiner::parseCommodityPrice("02.850/SCU", unitA) == -1 && SCMiner::parseShopQuantity("000 SCU") == -1 &&
+            SCMiner::parseShopQuantity("0 SCU") == 0 &&
             SCMiner::parseCommodityPrice("\xC2\xA4" "1,879/Units", unitB) == 1879 && unitB &&
             SCMiner::parseCommodityPrice("316/SCU", unitC) == 316 && !unitC &&
             SCMiner::parseCommodityPrice("1,108", unitC) == -1 && SCMiner::parseCommodityPrice("1316/SCU", unitC) == -1 &&

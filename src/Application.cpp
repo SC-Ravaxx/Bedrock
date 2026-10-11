@@ -5260,21 +5260,32 @@ void Application::finishTerminalSession() {
     const long long now = (long long)std::time(nullptr);
     std::map<std::string, int> ids;
     auto decide = [&](const TerminalSession::Row& row) -> std::string {
-        // the commodity: the one of the game's names the card's name reads as
+        // the commodity: the one of UEX's the card's name reads as - its
+        // names are the terminal's, the sizes of ship ammunition apart, where
+        // the game's own list has the one - else of the game's
         std::string game;
-        for (const CommodityName& c : COMMODITY_NAMES) {
-            if (!commodityNamed(row.name, c.name)) continue;
-            if (!game.empty() && game != c.name) return "reads as both " + game + " and " + c.name;
-            game = c.name;
+        int id = 0;
+        for (const auto& entry : directory.commodityNames()) {
+            if (!commodityNamed(row.name, entry.first)) continue;
+            if (id && id != entry.second) return "reads as both " + game + " and " + entry.first;
+            game = entry.first;
+            id = entry.second;
         }
-        if (game.empty()) return "no commodity of the game's by that name";
-        const int id = directory.commodity(game);
-        if (!id) return "UEX doesn't list " + game;
+        if (!id) {
+            for (const CommodityName& c : COMMODITY_NAMES) {
+                if (!commodityNamed(row.name, c.name)) continue;
+                if (!game.empty() && game != c.name) return "reads as both " + game + " and " + c.name;
+                game = c.name;
+            }
+            if (game.empty()) return "no commodity by that name";
+            id = directory.commodity(game);
+            if (!id) return "UEX doesn't list " + game;
+        }
         // ...not one a purchase's own report is still to go with
         for (const UexPending& pending : uexQueue_) {
-            if (!pending.list && !pending.refinery && game == TradeBook::nameOf(pending.trade.resource)) {
-                return "its purchase is reported on its own";
-            }
+            if (pending.list || pending.refinery) continue;
+            const std::string bought = TradeBook::nameOf(pending.trade.resource);
+            if (game == bought || directory.commodity(bought) == id) return "its purchase is reported on its own";
         }
         const double last = uexPrices_->lastPrice(terminal, id, false);
         const double band = row.priceReads >= 2 ? 0.35 : 0.10;

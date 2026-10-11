@@ -125,11 +125,14 @@ bool UexDirectory::read(const std::string& terminalsJson, const std::string& com
         }
         readTerminals.push_back(std::move(t));
     }
-    std::vector<std::pair<std::string, int>> readCommodities;
+    std::vector<std::pair<std::string, int>> readCommodities, readNames;
     for (const JsonValue& row : commodityRows->items) {
         const int id = (int)row.numberOr("id", 0);
         const std::string name = commodityKey(row.textOr("name"));
-        if (id > 0 && !name.empty()) readCommodities.push_back({name, id});
+        if (id > 0 && !name.empty()) {
+            readCommodities.push_back({name, id});
+            readNames.push_back({row.textOr("name"), id});
+        }
     }
     std::vector<std::pair<std::string, int>> readMethods;
     for (const JsonValue& row : methodRows->items) {
@@ -143,6 +146,7 @@ bool UexDirectory::read(const std::string& terminalsJson, const std::string& com
     }
     terminals_ = std::move(readTerminals);
     commodities_ = std::move(readCommodities);
+    commodityNames_ = std::move(readNames);
     methods_ = std::move(readMethods);
     return true;
 }

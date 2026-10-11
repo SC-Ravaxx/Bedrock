@@ -57,8 +57,9 @@ char figureChar(char c) {
 }
 
 // "1,050", "24,000", "316": a whole amount, its thousands in threes set off
-// by commas; -1 where the characters are not one. A currency sign read as a
-// nought in front of it goes.
+// by commas; -1 where the characters are not one - a nought in front
+// among them: a figure lost before it ("000 SCU" for 6,000) is not a
+// smaller amount
 int wholeFigure(const std::string& s) {
     std::string t;
     for (char c : s) {
@@ -67,7 +68,7 @@ int wholeFigure(const std::string& s) {
         if (!std::isdigit(static_cast<unsigned char>(d)) && d != ',') return -1;
         t += d;
     }
-    while (t.size() > 1 && t[0] == '0' && std::isdigit(static_cast<unsigned char>(t[1]))) t.erase(0, 1);
+    if (t.size() > 1 && t[0] == '0') return -1;
     if (t.empty() || t.front() == ',' || t.back() == ',') return -1;
     const size_t first = t.find(',');
     // the terminal sets off every thousand: four figures in a row are a
@@ -144,7 +145,12 @@ std::vector<cv::Rect> textLines(const cv::Mat& bgr, std::vector<cv::Rect>* allPi
         if (r.height < minH || r.height > maxH) continue;
         // a hairline upright - a card's edge, the scroll bar - is no letter
         // either, and would carry a line on to it
-        const bool bar = (r.width <= barW && r.height * 5 >= r.width * 6 && area * 10 >= r.area() * 7) ||
+        // a bar is slender (a tall one, 5 by 28 at Checkmate) or all but
+        // solid (a short fill, 7 by 11 at 94 %); a narrow figure is neither -
+        // Baijini Point's 6 (7 by 13, 75 %) went for one, and 6,000 SCU read 0
+        const bool slender = r.width * 5 <= r.height * 2 && area * 10 >= r.area() * 7;
+        const bool solid = r.height * 5 >= r.width * 6 && area * 100 >= r.area() * 88;
+        const bool bar = (r.width <= barW && (slender || solid)) ||
                          r.width <= (std::max)(2, static_cast<int>(std::lround(0.003 * H)));
         if (trace) {
             std::printf("    piece %d,%d %dx%d, %d%% solid%s\n", r.x, r.y, r.width, r.height, area * 100 / (std::max)(1, r.area()),
@@ -195,10 +201,28 @@ std::vector<cv::Rect> textLines(const cv::Mat& bgr, std::vector<cv::Rect>* allPi
     return lines;
 }
 
-Line readLine(const cv::Mat& bgr, const cv::Rect& r, TextLineReader& reader) {
+// A line read with a margin of its ground around it. Walled, nothing left of
+// the wall is: the margin there takes the ground's colour - a price's line cut
+// after its currency sign, two pixels from the first figure, has the sign in
+// its margin else, and the reader takes it for an 8 or a nought ("87,126" for
+// 7,126 at Checkmate), and so has a line its sign stands apart from.
+Line readLine(const cv::Mat& bgr, const cv::Rect& r, TextLineReader& reader, int wall = -1) {
     const int mx = (std::max)(3, r.height / 2), my = (std::max)(2, r.height / 4);
     const cv::Rect box = cv::Rect(r.x - mx, r.y - my, r.width + 2 * mx, r.height + 2 * my) & cv::Rect(0, 0, bgr.cols, bgr.rows);
     cv::Mat piece = bgr(box);
+    if (wall > box.x && box.area() > 0) {
+        piece = piece.clone();
+        std::vector<cv::Mat> channels;
+        cv::split(piece, channels);
+        cv::Scalar ground;
+        for (size_t c = 0; c < channels.size() && c < 4; c++) {
+            cv::Mat row = channels[c].reshape(1, 1).clone();
+            std::vector<uchar> v(row.begin<uchar>(), row.end<uchar>());
+            std::nth_element(v.begin(), v.begin() + v.size() / 2, v.end());
+            ground[static_cast<int>(c)] = v[v.size() / 2];
+        }
+        piece.colRange(0, (std::min)(piece.cols, wall - box.x)).setTo(ground);
+    }
     // brought up to the reader's own height, 48, with care - a 1080 picture's
     // small lines are 20 high with their margins, a 1440 one's 27
     if (piece.rows < 48) {
@@ -234,9 +258,10 @@ cv::Rect afterCurrency(const cv::Mat& bgr, const cv::Rect& line) {
     int x2 = x1;
     while (x2 < ink.cols && columns[x2] == 0) x2++;
     const int h = box.height;
-    // ...the sign stands lower than the figure after it: a first mark as
-    // tall as the next is a figure - the sign left out of the line, a 6 come
-    // apart into two - and nothing is cut
+    // ...and is followed by a figure: a first mark with a mark less than half
+    // its height after it is a figure before its comma - the sign left out of
+    // the line - and nothing is cut. (Pyro's sign stands as tall as its
+    // figures, Stanton's a little lower.)
     int x3 = x2;
     while (x3 < ink.cols && columns[x3] > 0) x3++;
     auto tallness = [&](int from, int to) {
@@ -250,11 +275,66 @@ cv::Rect afterCurrency(const cv::Mat& bgr, const cv::Rect& line) {
     if (trace) {
         std::printf("      sign? first mark %d-%d (%d high) of %d, gap to %d, next %d high, line %dx%d\n", x0, x1, mark,
                     ink.cols, x2, next, box.width, h);
+        std::printf("        marks:");
+        for (int a = 0; a < ink.cols;) {
+            if (columns[a] == 0) {
+                a++;
+                continue;
+            }
+            int b = a;
+            while (b < ink.cols && columns[b] > 0) b++;
+            std::vector<cv::Point> lit;
+            cv::findNonZero(ink.colRange(a, b), lit);
+            const cv::Rect m = cv::boundingRect(lit);
+            std::printf(" [%d+%d y%d-%d %d%%]", a, b - a, m.y, m.y + m.height,
+                        static_cast<int>(100.0 * lit.size() / (std::max)(1, m.area())));
+            a = b;
+        }
+        std::printf("\n");
     }
     if (x1 - x0 < h * 7 / 20 || x1 - x0 > h * 6 / 5 || x2 == x1 || x2 > ink.cols - h) return cv::Rect();
-    if (next <= 0 || mark * 20 > next * 17) return cv::Rect();
+    if (next <= 0 || next * 2 < mark) return cv::Rect();
     const int from = (x1 + x2) / 2;
     return cv::Rect(box.x + from, box.y, box.width - from, box.height);
+}
+
+// Where a price's currency sign stands apart, left of its line: a piece too
+// small for a line of its own (Stanton's sign, 9 high at 1440), a gap off the
+// figure after it - a 1 there, narrower than the gap the pieces are run
+// together over. The line's first mark is a figure then, as tall as the next
+// ("¤189") or not, and nothing is cut off it; the line is read walled in the
+// middle of that gap. -1 where no sign stands there - Pyro's stands as tall as
+// its figures and comes in the line with them.
+int signApart(const cv::Mat& bgr, const cv::Rect& line) {
+    const int h = line.height;
+    const cv::Rect frame(0, 0, bgr.cols, bgr.rows);
+    const cv::Rect box = line & frame;
+    const cv::Rect beside = cv::Rect(line.x - h * 3 / 2, line.y, h * 3 / 2, line.height) & frame;
+    if (box.width < 8 || box.height < 6 || beside.width < 3) return -1;
+    auto valueOf = [&](const cv::Rect& r) {
+        std::vector<cv::Mat> channels;
+        cv::split(bgr(r), channels);
+        const cv::Mat value = cv::max(cv::max(channels[0], channels[1]), channels[2]);
+        return value;
+    };
+    double low = 0, high = 0;
+    cv::minMaxLoc(valueOf(box), &low, &high);
+    if (high - low < 40) return -1;
+    const cv::Mat ink = valueOf(beside) >= low + (high - low) * 0.45;
+    // from the line leftwards: past what touches it (the first figure's
+    // fringe), past the gap, to the next mark
+    int x = ink.cols - 1;
+    while (x >= 0 && cv::countNonZero(ink.col(x)) > 0) x--;
+    const int gapEnd = x + 1;
+    while (x >= 0 && cv::countNonZero(ink.col(x)) == 0) x--;
+    if (x < 0) return -1;
+    const int end = x + 1;
+    while (x >= 0 && cv::countNonZero(ink.col(x)) > 0) x--;
+    std::vector<cv::Point> lit;
+    cv::findNonZero(ink.colRange(x + 1, end), lit);
+    const cv::Rect mark = cv::boundingRect(lit);
+    if (mark.height * 5 < h * 2 || mark.width < 2) return -1;
+    return beside.x + (end + gapEnd) / 2;
 }
 
 int right(const cv::Rect& r) { return r.x + r.width; }
@@ -513,12 +593,17 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader, 
         // slips at one size where it does not at the other (5,868 for 6,868
         // at 1440 alone, over two recorded purchases). Taken where both say
         // the same, or one says nothing; not where they differ.
-        auto readPrice = [&](const cv::Mat& img, const cv::Rect& line, const char* what) {
+        const cv::Rect priceLine = wholeRow(pieces, boxes[pi]);
+        const int apart = signApart(bgr, priceLine);
+        if (trace && apart >= 0) std::printf("      the sign stands apart from the price, %d left of it\n", priceLine.x - apart);
+        // ...the line walled off the sign where it stands apart: it stands
+        // within the line's margin else
+        auto readPrice = [&](const cv::Mat& img, const cv::Rect& line, int wall, const char* what) {
             // without the sign where it comes off - the whole line only where
             // it does not, or that reading makes no price
-            const cv::Rect bare = afterCurrency(img, line);
+            const cv::Rect bare = wall >= 0 ? cv::Rect() : afterCurrency(img, line);
             if (bare.area() > 0) {
-                const Line again = readLine(img, bare, reader);
+                const Line again = readLine(img, bare, reader, bare.x);
                 screen.lines++;
                 bool bareUnit = false;
                 const int barePrice = parseCommodityPrice(again.text, bareUnit);
@@ -526,12 +611,13 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader, 
                 if (barePrice >= 0) return std::make_pair(barePrice, bareUnit);
             }
             bool unit = false;
-            const int price = parseCommodityPrice(readLine(img, line, reader).text, unit);
+            const Line whole = readLine(img, line, reader, wall);
+            const int price = parseCommodityPrice(whole.text, unit);
             screen.lines++;
+            if (trace) std::printf("      price %s: '%s' -> %d\n", what, whole.text.c_str(), price);
             return std::make_pair(price, unit);
         };
-        const cv::Rect priceLine = wholeRow(pieces, boxes[pi]);
-        const auto own = readPrice(bgr, priceLine, "as it is");
+        const auto own = readPrice(bgr, priceLine, apart, "as it is");
         card.price = own.first;
         card.perUnit = own.second;
         card.priceReads = own.first >= 0 ? 1 : 0;
@@ -548,7 +634,8 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader, 
                                               static_cast<int>(std::lround(line.width * k)),
                                               static_cast<int>(std::lround(line.height * k))) &
                                      cv::Rect(0, 0, small.cols, small.rows);
-            const auto other = readPrice(small, inSmall, "at 1080");
+            const int smallWall = apart >= 0 ? static_cast<int>(std::lround((apart - near.x) * k)) : -1;
+            const auto other = readPrice(small, inSmall, smallWall, "at 1080");
             if (own.first >= 0 && other.first >= 0) {
                 if (own == other) {
                     card.priceReads = 2;
@@ -563,6 +650,9 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader, 
             }
         }
         card.card = band;
+        // no stock, yet the game's word says there is some: one of the two
+        // misread, and the card not made out
+        if (card.stock == 0 && card.level > 1) card.stock = -1;
         if (!wanted.empty() && !commodityNamed(card.name, wanted)) continue;
         if (screen.cards.empty()) firstH = h;
         screen.cards.push_back(card);
