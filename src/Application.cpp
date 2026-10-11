@@ -5113,6 +5113,9 @@ void Application::serviceTerminalSession() {
         }
     }
     if (sessionOpen_ && !sessionJob_.valid() && (!tradeWatch_ || sessionEmptyReads_ >= SESSION_EMPTY_READS)) {
+        // UEX's terminals and prices first, where they are on their way - on
+        // a visit without a purchase nothing else has asked for them
+        if ((!uexDirectory_ && uexDirectoryJob_.valid()) || (!uexPrices_ && uexJob_.valid())) return;
         finishTerminalSession();
         return;
     }
@@ -5126,6 +5129,12 @@ void Application::serviceTerminalSession() {
         sessionOpen_ = true;
         sessionShop_ = library_.trades().terminalShop();
         sessionPlace_ = library_.trades().terminalPlace();
+        if (!uexDirectory_ && !uexDirectoryJob_.valid()) {
+            uexDirectoryAsked_ = true;
+            uexDirectoryTried_ = std::chrono::steady_clock::now();
+            const std::filesystem::path folder = AppPaths::data() / "uex";
+            uexDirectoryJob_ = std::async(std::launch::async, [folder]() { return loadUexDirectory(folder); });
+        }
     }
     sessionReadsOfView_ = changed ? 1 : sessionReadsOfView_ + 1;
     sessionReadMs_ = newest.ms;
