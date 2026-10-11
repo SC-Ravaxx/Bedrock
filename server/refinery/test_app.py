@@ -185,13 +185,28 @@ class ServiceTest(unittest.TestCase):
 
     # ---------------------------------------------------------------- layer 4: several senders
 
-    def test_a_station_now_is_the_median_of_its_senders_without_outliers(self):
+    def test_a_station_now_is_its_newest_reading_backed_by_others(self):
+        # sent in turn, each a little older than the one before
         self.send(address="10.0.0.1", capacity=100)
         self.send(address="10.0.0.2", capacity=110)
         self.send(address="10.0.0.3", capacity=300, workload="extreme")
         s = self.stations()["Checkmate"]
         self.assertEqual((s["capacity"], s["workload"], s["sources"], s["confirmed"], s["fresh"]),
-                         (105, "moderate", 3, True, True))
+                         (100, "moderate", 3, True, True))
+
+    def test_one_newest_reading_against_two_that_agree_is_outvoted(self):
+        self.send(address="10.0.0.1", capacity=100, observed=self.now - 600)
+        self.send(address="10.0.0.2", capacity=105, observed=self.now - 500)
+        self.send(address="10.0.0.3", capacity=300, workload="extreme", observed=self.now - 60)
+        s = self.stations()["Checkmate"]
+        self.assertEqual((s["capacity"], s["workload"], s["sources"], s["confirmed"], s["observed"]),
+                         (105, "moderate", 3, True, self.now - 500))
+
+    def test_a_reading_hours_old_still_confirms(self):
+        self.send(address="10.0.0.1", capacity=103, observed=self.now - 2 * 3600)
+        self.send(address="10.0.0.2", capacity=124, observed=self.now - 60)
+        s = self.stations()["Checkmate"]
+        self.assertEqual((s["capacity"], s["workload"], s["sources"], s["confirmed"]), (124, "moderate", 2, True))
 
     def test_one_sender_counts_once_and_alone_does_not_confirm(self):
         self.send(address="10.0.0.1", capacity=100, observed=self.now - 600)
@@ -200,7 +215,7 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual((s["capacity"], s["workload"], s["sources"], s["confirmed"]), (140, "heavy", 1, False))
 
     def test_an_old_reading_shows_as_not_fresh(self):
-        self.send(capacity=80, workload="light", observed=self.now - 2 * 3600)
+        self.send(capacity=80, workload="light", observed=self.now - 4 * 3600)
         s = self.stations()["Checkmate"]
         self.assertEqual((s["capacity"], s["fresh"], s["sources"], s["confirmed"]), (80, False, 0, False))
 

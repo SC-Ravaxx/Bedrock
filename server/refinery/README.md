@@ -51,11 +51,13 @@ nothing is taken on its word:
      cost and time have to stay within wide bands around it (0.5 to 6 times
      and 0.1 to 20 times). Those bands leave room for the workload
      surcharge, which still has to be learned.
-3. **Several senders.** A station's current state is made from the last 30
-   minutes of readings, one per sender: the median capacity with outliers
-   left out (more than 15 points or 25 % from the median), and the
-   workload most senders saw. It counts as `confirmed` only once two
-   senders agree.
+3. **Several senders.** A station's current state is its newest reading
+   of the last three hours, each sender's newest counting once - hours
+   rather than minutes while few players send, as a workload moves slowly.
+   It counts as `confirmed` once another sender saw the same (the same
+   workload, the capacity within 15 points or 25 %). Where two or more
+   senders agree on something else and outnumber the ones that back the
+   newest reading, the newest of theirs stands instead.
 4. **Limits.** One sender can report a station at most 12 times an hour,
    and an address can send at most 120 readings an hour in total. nginx
    adds its own limit in front.
@@ -111,11 +113,11 @@ for a reading that does not fit the format, `413` when it is too large,
 ### `GET /v1/refinery/stations`
 
 Each station's current state. It is `fresh` when made from readings of the
-last 30 minutes. Otherwise it is the newest plausible reading of the last
+last three hours. Otherwise it is the newest plausible reading of the last
 seven days, with `sources` 0.
 
 ```json
-{"generated": 1791710100, "days": 7, "window": 1800, "stations": [
+{"generated": 1791710100, "days": 7, "window": 10800, "stations": [
   {"station": "Checkmate", "capacity": 106, "workload": "moderate",
    "observed": 1791709800, "fresh": true, "sources": 2, "confirmed": true,
    "seen_24h": 5, "quotes_24h": 2}

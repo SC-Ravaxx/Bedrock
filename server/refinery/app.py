@@ -19,8 +19,9 @@ Since anyone can send anything, nothing sent is taken on its word:
   - and fit what the game does: a workload level only at the capacities
     other senders saw it at, a quote's yield, cost and time against
     Bedrock's refining model (judge)
-  - a station's state is the median of several senders, outliers left out,
-    and it is confirmed only once two senders agree (consensus)
+  - a station's state is its newest reading, confirmed once another sender
+    saw the same in the last hours, and outvoted where two or more senders
+    agree on something else (consensus)
   - one sender reports a station a few times an hour at most
   - what slipped through can be found and taken out (--purge, --stats)
 
@@ -60,8 +61,12 @@ QUOTES_MAX = 5000
 OBSERVED_PAST = 3 * 86400     # a reading sent this late is still taken (Bedrock was offline)
 OBSERVED_FUTURE = 600         # ...and one this far ahead (a clock a little fast)
 
-CONSENSUS_SECONDS = 1800      # the readings that make a station's state now
-OUTLIER_POINTS = 15           # a capacity this far from the senders' median - or 25 % of it - is left out
+# The readings that make a station's state now, each sender's newest: hours
+# rather than minutes while few players send - a workload moves slowly
+# (Checkmate went from 103 to 124 % in four hours of 11 October 2026, and
+# stayed moderate)
+CONSENSUS_SECONDS = 3 * 3600
+OUTLIER_POINTS = 15           # two capacities this far apart - or 25 % of the larger - tell different things
 STATION_READINGS_PER_HOUR = 12  # from one sender, for one station
 SOURCE_HOURS = 48             # how long a reading keeps the token that tells senders apart
 RANGE_DAYS = 30               # a workload level's capacity span is learned over this long
@@ -236,25 +241,33 @@ def judge(r, ranges, tables=None):
     return ""
 
 
+def agree(a, b):
+    """Two readings of a station tell the same: the same workload where both
+    have one, capacities within the outlier margin where both have one"""
+    if a["workload"] and b["workload"] and a["workload"] != b["workload"]:
+        return False
+    if a["capacity"] is not None and b["capacity"] is not None:
+        if abs(a["capacity"] - b["capacity"]) > max(OUTLIER_POINTS, 0.25 * max(a["capacity"], b["capacity"])):
+            return False
+    return True
+
+
 def consensus(readings):
-    """One station's state from its readings in CONSENSUS_SECONDS, one per
-    sender: the median capacity with the outliers left out, the workload
-    most senders saw (the newest of a tie)"""
-    caps = [r["capacity"] for r in readings if r["capacity"] is not None]
-    capacity = None
-    if caps:
-        middle = statistics.median(caps)
-        kept = [c for c in caps if abs(c - middle) <= max(OUTLIER_POINTS, 0.25 * middle)]
-        capacity = int(round(statistics.median(kept)))
-    levels = collections.Counter(r["workload"] for r in readings if r["workload"])
-    workload = None
-    if levels:
-        most = max(levels.values())
-        tied = {level for level, n in levels.items() if n == most}
-        workload = next(r["workload"] for r in sorted(readings, key=lambda r: -r["observed"])
-                        if r["workload"] in tied)
-    return {"capacity": capacity, "workload": workload, "observed": max(r["observed"] for r in readings),
-            "sources": len(readings)}
+    """One station's state from each sender's newest reading in
+    CONSENSUS_SECONDS: the newest of them - the station as it was seen last -
+    unless two or more of the others agree on something else and outnumber
+    the ones that back it, when the newest of theirs stands. Confirmed once
+    another sender backs it."""
+    ordered = sorted(readings, key=lambda r: (r["observed"], r["id"]), reverse=True)
+    shown, backing = ordered[0], 0
+    for candidate in ordered:
+        backers = sum(1 for r in ordered if r is not candidate and agree(r, candidate))
+        against = len(ordered) - 1 - backers
+        if against < 2 or against <= backers + 1:
+            shown, backing = candidate, backers
+            break
+    return {"capacity": shown["capacity"], "workload": shown["workload"], "observed": shown["observed"],
+            "sources": len(readings), "confirmed": backing >= 1}
 
 
 # ---------------------------------------------------------------- the store
@@ -452,7 +465,7 @@ class Store:
     def stations(self, now):
         """Each known station's state: from its readings of the last
         CONSENSUS_SECONDS where there are any (fresh), else its newest within
-        STATION_DAYS; confirmed once two senders agree on it now"""
+        STATION_DAYS; confirmed once another sender saw the same in that time"""
         db = self._db()
         try:
             rows = db.execute(
@@ -480,11 +493,11 @@ class Store:
             else:
                 last = readings[-1]
                 state = {"capacity": last["capacity"], "workload": last["workload"], "observed": last["observed"],
-                         "sources": 0}
+                         "sources": 0, "confirmed": False}
             seen, quotes = counts.get(name, (0, 0))
             out.append({"station": name, "capacity": state["capacity"], "workload": state["workload"],
                         "observed": state["observed"], "fresh": bool(recent), "sources": state["sources"],
-                        "confirmed": state["sources"] >= 2, "seen_24h": seen, "quotes_24h": quotes})
+                        "confirmed": state["confirmed"], "seen_24h": seen, "quotes_24h": quotes})
         return out
 
     def quotes(self, now, days, station=None):
