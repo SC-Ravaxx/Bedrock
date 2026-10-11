@@ -19425,7 +19425,7 @@ void MinerGUI::paintRefinery(HDC hdc) {
             const float top = tabY + tabH + scaleF(1);
             g.FillRectangle(&bgBrush, 0.0f, top, (float)cw, (float)ch - top);
             refHits_.erase(std::remove_if(refHits_.begin(), refHits_.end(),
-                                          [](const RefHit& h) { return h.kind != 1 && h.kind != 8; }),
+                                          [](const RefHit& h) { return h.kind != 1 && h.kind != 8 && h.kind != 10; }),
                            refHits_.end());
             paintRefineryOrders(g, cw, ch, top);
         }

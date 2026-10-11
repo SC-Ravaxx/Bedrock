@@ -267,11 +267,12 @@ private:
     std::string refineryLastStation_;           // the station of the last reading with panels on it...
     std::chrono::steady_clock::time_point refineryLastPanels_{};   // ...and when
     // Refinery workloads (RefineryShare): what the terminals show of them,
-    // read by the player - shown in the Refinery window, and sent with the
-    // player's yes (refineryshare=1) where the build carries the service's
-    // address (BEDROCK_REFINERY_URL), LIVE's refineries only - and what other
-    // players read, fetched while the Refinery window is open
-    bool refineryShare_ = false;
+    // read by the player - shown in the Refinery window, and sent unless the
+    // player takes the tick off in it (sharerefinery=0) where the build
+    // carries the service's address (BEDROCK_REFINERY_URL), LIVE's refineries
+    // only - and what other players read, fetched while the Refinery window
+    // is open
+    bool refineryShare_ = true;
     struct WorkloadReading {
         int capacity = -1, workload = -1;
         long long at = 0;    // UTC seconds

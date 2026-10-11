@@ -3,8 +3,9 @@
 // a station's workload - CURRENT CAPACITY and the game's word for it - and a
 // work order's quote as it was set up. The game sets a new order's cost by
 // that workload, and only the terminal shows it, so with readings from many
-// players everyone sees how busy each refinery is. Sent only with the
-// player's yes, LIVE's refineries only, and nothing of the player goes along.
+// players everyone sees how busy each refinery is. Sent unless the player
+// takes the tick off in the Refinery window, LIVE's refineries only, and
+// nothing of the player goes along.
 
 #include <map>
 #include <string>

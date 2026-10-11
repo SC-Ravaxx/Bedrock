@@ -3646,8 +3646,10 @@ void Application::saveRegionConfig() {
         // a value set by hand (update=0) would otherwise last one session.
         file << "update=" << (updateCheck_ ? 1 : 0) << std::endl;
         file << "gametexts=" << (gameTextsWanted_ ? 1 : 0) << std::endl;
-        // refineryshare=1: the box in the Refinery window - see RefineryShare
-        file << "refineryshare=" << (refineryShare_ ? 1 : 0) << std::endl;
+        // sharerefinery=0: the box in the Refinery window unticked - see
+        // RefineryShare. On until then; an earlier test build's
+        // "refineryshare" was off before anyone could choose, and is let go.
+        file << "sharerefinery=" << (refineryShare_ ? 1 : 0) << std::endl;
         // uex=0: the Ore Finder never asks uexcorp.space for prices
         file << "uex=" << (uexWanted_ ? 1 : 0) << std::endl;
         // Reporting to UEX: 0, or when the player agreed to it (on a UEX
@@ -3737,7 +3739,7 @@ void Application::loadRegionConfig() {
                 else if (key == "uexoffered") uexOffered_ = (value != 0);
                 // gametexts=1: the box in the Blueprints window - see GameTexts
                 else if (key == "gametexts") gameTextsWanted_ = (value != 0);
-                else if (key == "refineryshare") refineryShare_ = (value != 0);
+                else if (key == "sharerefinery") refineryShare_ = (value != 0);
                 else if (key == "hudscale") hudScalePercent_ = std::clamp(value, 0, 500);
                 else if (key == "uiscale") uiScalePercent_ = std::clamp(value, 0, 250);
                 else if (key == "viewx") storedViewport.x = value;

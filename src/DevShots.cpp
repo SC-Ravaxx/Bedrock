@@ -1379,6 +1379,25 @@ int runScreenshots(const std::string& dir) {
         gui.setRefineryOrders(orders);
         pump();
         shoot(gui.refineryHandle(), "refinery_orders.png", true);
+        // ...where the box in the header still takes a click: along its row
+        // from the right edge in, until it answers
+        {
+            bool answered = false, nowOn = true;
+            gui.setRefineryShare(true, true);
+            gui.setRefineryShareCallback([&](bool on) { answered = true; nowOn = on; });
+            pump();
+            RECT rc{};
+            GetClientRect(gui.refineryHandle(), &rc);
+            for (int x = rc.right - 4; x > rc.right / 2 && !answered; x -= 6) {
+                SendMessageW(gui.refineryHandle(), WM_LBUTTONDOWN, 0, MAKELPARAM(x, 28));
+            }
+            pump();
+            std::cout << "refinery share box over the work orders: "
+                      << (answered ? (nowOn ? "clicked, on" : "clicked, off") : "NO ANSWER") << std::endl;
+            gui.setRefineryShareCallback(nullptr);
+            gui.setRefineryShare(false, false);
+            pump();
+        }
         // ...and the main window's Refinery button with the finished ones
         // counted on it: three of the four done
         orders[1].due = now - 30;
