@@ -107,8 +107,9 @@ struct Line {
 // run together over four pixels only, a bar - a narrow, solid upright - is
 // dropped (a full one already by its height), and a line's words are then
 // joined where they are of a height - a quarter apart at most, as a piece
-// of the icon beside IRON is not - and stand within a line's height and a
-// half of each other: "4" and "SCU", "MAX" and "INVENTORY".
+// of the icon beside IRON is not, or of a top where one hangs below the
+// line ("Max Inventory") - and stand within a line's height and a half of
+// each other: "4" and "SCU", "MAX" and "INVENTORY".
 std::vector<cv::Rect> textLines(const cv::Mat& bgr) {
     const int H = bgr.rows;
     const int half = (std::min)(bgr.cols / 2, static_cast<int>(std::lround(0.95 * H)));
@@ -140,7 +141,7 @@ std::vector<cv::Rect> textLines(const cv::Mat& bgr) {
                          stats.at<int>(i, cv::CC_STAT_WIDTH), stats.at<int>(i, cv::CC_STAT_HEIGHT));
         const int area = stats.at<int>(i, cv::CC_STAT_AREA);
         if (r.height < minH || r.height > maxH) continue;
-        const bool bar = r.width <= barW && r.height * 5 >= r.width * 6 && area * 5 >= r.area() * 4;
+        const bool bar = r.width <= barW && r.height * 5 >= r.width * 6 && area * 10 >= r.area() * 7;
         if (trace) {
             std::printf("    piece %d,%d %dx%d, %d%% solid%s\n", r.x, r.y, r.width, r.height, area * 100 / (std::max)(1, r.area()),
                         bar ? " - a bar" : "");
@@ -161,7 +162,16 @@ std::vector<cv::Rect> textLines(const cv::Mat& bgr) {
                 if (b.x < a.x) continue;
                 const int lower = (std::min)(a.height, b.height), higher = (std::max)(a.height, b.height);
                 const int overlap = (std::min)(a.y + a.height, b.y + b.height) - (std::max)(a.y, b.y);
-                if (overlap < lower * 3 / 5 || higher * 4 > lower * 5) continue;
+                // of a height - or, a word with a descender ("Inventory"
+                // beside "Max"), of a top, the one reaching below the other
+                // no further than a descender, both shaped as words: the
+                // bar and the icon beside a name share its top as well
+                const bool height = higher * 4 <= lower * 5;
+                const int below = std::abs((a.y + a.height) - (b.y + b.height));
+                const bool words = a.width * 2 >= a.height * 3 && b.width * 2 >= b.height * 3;
+                const bool top = words && std::abs(a.y - b.y) * 4 <= lower && below * 2 <= lower &&
+                                 higher * 5 <= lower * 8;
+                if (overlap < lower * 3 / 5 || (!height && !top)) continue;
                 if (b.x - (a.x + a.width) > lower * 3 / 2) continue;
                 pieces[i] = a | b;
                 pieces.erase(pieces.begin() + j);
@@ -286,37 +296,35 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader, 
         }
         return lines[i]->text;
     };
-    // SHOP QUANTITY, the stock and the price of every card stand flush right
-    // on one edge, the edge more lines end on than any other: found without
-    // reading a word
-    int edge = -1, most = 0;
-    for (const cv::Rect& b : boxes) {
-        int on = 0;
-        for (const cv::Rect& o : boxes) on += std::abs(right(o) - right(b)) <= 4 ? 1 : 0;
-        if (on > most) {
-            most = on;
-            edge = right(b);
+    // SHOP QUANTITY, the stock and the price of a card stand flush right, one
+    // close under the other, the stock the largest - flush with each other,
+    // not with the next card's: a terminal seen at an angle moves the right
+    // edge down the list. The first is read to be sure: under a card opened
+    // for buying, AVAILABLE CARGO SIZE (SCU) and its row of boxes stand flush
+    // right as well.
+    std::vector<bool> used(boxes.size(), false);
+    auto under = [&](size_t i) {
+        const cv::Rect& a = boxes[i];
+        for (size_t j = i + 1; j < boxes.size(); j++) {
+            const cv::Rect& b = boxes[j];
+            if (b.y > bottom(a) + a.height) break;
+            if (used[j] || b.y < bottom(a) - a.height / 3) continue;
+            if (std::abs(right(b) - right(a)) <= (std::max)(6, a.height * 4 / 5)) return j;
         }
-    }
-    if (most < 3) {
-        screen.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
-        return screen;
-    }
-    std::vector<size_t> column;
+        return boxes.size();
+    };
     for (size_t i = 0; i < boxes.size(); i++) {
-        if (std::abs(right(boxes[i]) - edge) <= (std::max)(4, boxes[i].height / 2)) column.push_back(i);
-    }
-    // ...three to a card, close one under the other, the stock the largest
-    for (size_t c = 0; c + 2 < column.size();) {
-        const cv::Rect& a = boxes[column[c]];
-        const cv::Rect& q = boxes[column[c + 1]];
-        const cv::Rect& p = boxes[column[c + 2]];
-        const bool close = q.y - bottom(a) <= a.height && p.y - bottom(q) <= q.height;
-        if (!close || q.height < a.height || q.height < p.height) {
-            c++;
-            continue;
-        }
-        c += 3;
+        if (used[i]) continue;
+        const size_t qi = under(i);
+        if (qi == boxes.size()) continue;
+        const size_t pi = under(qi);
+        if (pi == boxes.size()) continue;
+        const cv::Rect& a = boxes[i];
+        const cv::Rect& q = boxes[qi];
+        const cv::Rect& p = boxes[pi];
+        if (q.height < a.height || q.height < p.height || q.height > 2 * a.height) continue;
+        if (distance(folded(text(i), false), "SHOPQUANTITY") > 3) continue;
+        used[i] = used[qi] = used[pi] = true;
         const int h = a.height;
         CommodityCard card;
         cv::Rect band = a | q | p;
@@ -330,6 +338,11 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader, 
             if (middleY < top || middleY > foot) continue;
             if (right(l) > a.x - h / 2 || l.x < a.x - 30 * h) continue;
             left.push_back(i);
+        }
+        if (trace) {
+            std::printf("    card %d,%d %dx%d - left:", band.x, band.y, band.width, band.height);
+            for (size_t i : left) std::printf(" %d,%d %dx%d", boxes[i].x, boxes[i].y, boxes[i].width, boxes[i].height);
+            std::printf("\n");
         }
         if (left.empty()) continue;
         // looking for one commodity: a card whose name begins otherwise is
@@ -355,8 +368,8 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader, 
             band |= l;
         }
         if (levelLine < left.size()) band |= boxes[left[levelLine]];
-        card.stock = parseShopQuantity(text(column[c - 2]));
-        card.price = parseCommodityPrice(text(column[c - 1]), card.perUnit);
+        card.stock = parseShopQuantity(text(qi));
+        card.price = parseCommodityPrice(text(pi), card.perUnit);
         card.card = band;
         if (!wanted.empty() && !commodityNamed(card.name, wanted)) continue;
         screen.cards.push_back(card);
