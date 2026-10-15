@@ -4220,7 +4220,9 @@ void Application::takeRefineryScreen(const RefineryScreen& read, const std::stri
     }
     shareRefineryScreen(read, station, taken);
     const size_t had = refineryOrders_.orders().size();
-    if (!refineryOrders_.take(station, read, taken)) return;
+    const bool changed = refineryOrders_.take(station, read, taken);
+    keepRefineryNotes(refineryOrders_.takeNotes());
+    if (!changed) return;
     refineryOrders_.save(AppPaths::file(REFINERY_ORDERS_FILE));
     if (refineryOrders_.orders().size() < had) {
         std::cout << "\n[refinery] " << station << ": " << (had - refineryOrders_.orders().size())
@@ -4406,8 +4408,31 @@ void Application::handRefineryOrdersToUex() {
         for (const RefineryOrder::Part& p : order.parts) job.items.push_back({p.material, p.quantity, p.yield});
         reportRefineryJob(job);
         handed |= refineryOrders_.markHanded(i, (long long)std::time(nullptr));
+        keepRefineryNotes({"work order " + std::to_string(order.number) + " at " + order.station + " goes to UEX" +
+                           (uexReportSince_ > 0 ? "" : " - but reporting is off")});
     }
     if (handed) refineryOrders_.save(AppPaths::file(REFINERY_ORDERS_FILE));
+}
+
+void Application::keepRefineryNotes(const std::vector<std::string>& lines) {
+    if (lines.empty()) return;
+    std::error_code ec;
+    const std::filesystem::path folder = AppPaths::data() / "debug";
+    std::filesystem::create_directories(folder, ec);
+    const std::filesystem::path file = folder / "refinery_jobs.txt";
+    // past 256 KB, the newer half kept
+    const auto size = std::filesystem::file_size(file, ec);
+    if (!ec && size > 256 * 1024) {
+        std::ifstream in(file, std::ios::binary);
+        std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        in.close();
+        const size_t from = text.find('\n', text.size() / 2);
+        std::ofstream(file, std::ios::binary | std::ios::trunc)
+            << (from == std::string::npos ? std::string() : text.substr(from + 1));
+    }
+    std::ofstream out(file, std::ios::app);
+    const std::string when = timeStamp("%Y-%m-%d %H:%M:%S");
+    for (const std::string& line : lines) out << when << "  " << line << "\n";
 }
 
 void Application::pushRefineryOrders() {
@@ -4977,6 +5002,7 @@ void Application::serviceUexReports() {
         uexReportNote_ = sent.note;
         uexReportNoteAt_ = (long long)std::time(nullptr);
         std::cout << "\nUEX report: " << sent.note << std::endl;
+        keepRefineryNotes({sent.note});
         pushUexAccount();
     }
     if (uexDirectoryJob_.valid() && uexDirectoryJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
@@ -5019,6 +5045,7 @@ void Application::serviceUexReports() {
                                     : !missing.empty() ? "UEX doesn't list " + missing
                                                        : "the job wasn't read completely") + ")";
         uexReportNoteAt_ = (long long)std::time(nullptr);
+        keepRefineryNotes({uexReportNote_});
         rememberUexReported(item.key);
         pushUexAccount();
         return;

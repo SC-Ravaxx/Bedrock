@@ -64,9 +64,13 @@ public:
     // or with the game's "WORK ORDER ACCEPTED" box over it, says something
     // else a second later. A quote is kept off a single reading: it stands
     // on the screen for a second or two before CONFIRM takes it away, and it
-    // only ever goes to an order whose parts and time it matches. True when
-    // the book changed.
+    // only ever goes to an order whose time it matches. True when the book
+    // changed.
     bool take(const std::string& station, const RefineryScreen& read, long long taken);
+    // What became of each quote and order since the last call, a line each -
+    // where an order got no quote, why (Application keeps them in
+    // debug\refinery_jobs.txt)
+    std::vector<std::string> takeNotes();
     // Collected, or not wanted in the list any more
     bool remove(size_t index);
     // Gone to the UEX report: not again
@@ -104,7 +108,10 @@ private:
     bool noticeUp_ = false;
     int toCollect_ = 0;
     bool noteCollected(const std::string& station, const RefineryScreen& read, long long now);
-    // The last SETUP that had a quote on it, for the order it becomes
+    // The SETUPs that had a quote on them lately, the newest last, for the
+    // orders they become: two set up one after the other go each to its own,
+    // and an order first read a while after it was placed - the player gone
+    // at once - still finds its own. A quarter of an hour, eight at most.
     struct Quote {
         std::string station, method;
         double cost = -1;
@@ -112,7 +119,14 @@ private:
         std::vector<RefineryOrder::Part> parts;   // the rows with a yield: the ones refined
         long long taken = 0;                      // last seen
         bool used = false;                        // gone to an order already
-    } quote_;
+    };
+    std::vector<Quote> quotes_;
+    Quote* quoteFor(const std::string& station, const std::vector<RefineryOrder::Part>& parts, int remaining,
+                    long long now, std::string& why);
+    static constexpr long long QUOTE_KEPT_SECONDS = 900;
+    static constexpr size_t QUOTES_KEPT = 8;
+    std::vector<std::string> notes_;
+    std::string lastPartialQuote_;   // a quote read without all of it: noted once, not at every look
 };
 
 }  // namespace SCMiner

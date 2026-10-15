@@ -255,6 +255,10 @@ private:
     void lookForRefinery();
     // Each work order read whole goes to the UEX report once
     void handRefineryOrdersToUex();
+    // What the order book made of each quote and order, and what came of
+    // each job at UEX, a line each with its time: debug\refinery_jobs.txt,
+    // to see why a job did not go
+    void keepRefineryNotes(const std::vector<std::string>& lines);
     std::chrono::steady_clock::time_point refineryHandCheck_{};
     void takeRefineryScreen(const RefineryScreen& read, const std::string& station, long long taken);
     void pushRefineryOrders();

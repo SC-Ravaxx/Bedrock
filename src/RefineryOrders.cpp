@@ -39,6 +39,32 @@ bool overlap(const std::vector<RefineryOrder::Part>& a, const std::vector<Refine
     return false;
 }
 
+// "Iron (Ore) 874: 484 -> 235", for the record
+std::string partsText(const std::vector<RefineryOrder::Part>& parts) {
+    std::string out;
+    for (const RefineryOrder::Part& p : parts) {
+        out += (out.empty() ? "" : "; ") + p.material + " " + std::to_string(p.quality) + ": " +
+               (p.quantity >= 0 ? std::to_string(p.quantity) : std::string("?")) + " -> " +
+               (p.yield >= 0 ? std::to_string(p.yield) : std::string("?"));
+    }
+    return out;
+}
+
+// What an order lacks for a report to UEX; "" for nothing
+std::string missingOf(const RefineryOrder& order) {
+    std::string out;
+    auto add = [&](const std::string& what) { out += (out.empty() ? "" : ", ") + what; };
+    if (order.method.empty()) add("its method");
+    if (order.cost < 0) add("its bill");
+    if (order.seconds <= 0 || order.placed <= 0) add("its time");
+    for (const RefineryOrder::Part& p : order.parts) {
+        if (p.quantity < 0) add("the amount of " + p.material);
+        if (p.yield < 0) add("the yield of " + p.material);
+    }
+    if (order.parts.empty()) add("its parts");
+    return out;
+}
+
 bool sameParts(const std::vector<RefineryOrder::Part>& a, const std::vector<RefineryOrder::Part>& b) {
     if (a.size() != b.size()) return false;
     for (size_t i = 0; i < a.size(); i++) {
@@ -147,23 +173,38 @@ bool RefineryOrderBook::samePanel(const RefineryPanel& a, long long aTaken, cons
 
 // A quote: the method, the bill and the time, and which rows it refines -
 // the ones the quote gave a yield, as far as the list shows them. The same
-// quote seen again only moves its time on: once it went to an order, it
-// does not go to a second one.
+// quote seen again only moves its time on - unless it went to an order
+// already: then it is set up anew, the same job twice being two orders.
 void RefineryOrderBook::noteQuote(const std::string& station, const RefineryPanel& panel, long long now) {
-    if (panel.method.empty() || panel.cost < 0 || panel.seconds <= 0) return;
+    if (panel.method.empty() || panel.cost < 0 || panel.seconds <= 0) {
+        std::string lacks;
+        if (panel.method.empty()) lacks += "its method";
+        if (panel.cost < 0) lacks += std::string(lacks.empty() ? "" : ", ") + "its bill";
+        if (panel.seconds <= 0) lacks += std::string(lacks.empty() ? "" : ", ") + "its time";
+        const std::string note = "quote at " + station + " read without " + lacks;
+        if (note != lastPartialQuote_) notes_.push_back(note);
+        lastPartialQuote_ = note;
+        return;
+    }
+    lastPartialQuote_.clear();
     std::vector<RefineryOrder::Part> parts = partsOf(panel, true);
-    const bool same = quote_.station == station && quote_.method == panel.method && quote_.cost == panel.cost &&
-                      quote_.seconds == panel.seconds;
-    if (same) {
+    quotes_.erase(std::remove_if(quotes_.begin(), quotes_.end(),
+                                 [&](const Quote& q) { return now - q.taken > QUOTE_KEPT_SECONDS; }),
+                  quotes_.end());
+    for (Quote& q : quotes_) {
+        if (q.used || q.station != station || q.method != panel.method || q.cost != panel.cost ||
+            q.seconds != panel.seconds) {
+            continue;
+        }
         // the same quote looked at again - scrolled, it may show other rows:
         // they all go into the job
-        quote_.taken = now;
+        q.taken = now;
         for (const RefineryOrder::Part& p : parts) {
-            auto at = std::find_if(quote_.parts.begin(), quote_.parts.end(), [&](const RefineryOrder::Part& q) {
-                return q.material == p.material && q.quality == p.quality;
+            auto at = std::find_if(q.parts.begin(), q.parts.end(), [&](const RefineryOrder::Part& k) {
+                return k.material == p.material && k.quality == p.quality;
             });
-            if (at == quote_.parts.end()) {
-                quote_.parts.push_back(p);
+            if (at == q.parts.end()) {
+                q.parts.push_back(p);
             } else {
                 if (p.yield >= 0) at->yield = p.yield;
                 if (p.quantity >= 0) at->quantity = p.quantity;
@@ -171,13 +212,52 @@ void RefineryOrderBook::noteQuote(const std::string& station, const RefineryPane
         }
         return;
     }
-    quote_ = Quote();
-    quote_.station = station;
-    quote_.method = panel.method;
-    quote_.cost = panel.cost;
-    quote_.seconds = panel.seconds;
-    quote_.parts = parts;
-    quote_.taken = now;
+    Quote q;
+    q.station = station;
+    q.method = panel.method;
+    q.cost = panel.cost;
+    q.seconds = panel.seconds;
+    q.parts = parts;
+    q.taken = now;
+    quotes_.push_back(q);
+    if (quotes_.size() > QUOTES_KEPT) quotes_.erase(quotes_.begin());
+    char bill[32];
+    std::snprintf(bill, sizeof(bill), "%.0f", panel.cost);
+    notes_.push_back("quote at " + station + ": " + panel.method + ", " + bill + " aUEC, " +
+                     std::to_string(panel.seconds) + " s, " + partsText(parts));
+}
+
+// The quote an order just come up was set up from: of its station's quotes
+// not gone to an order yet, the one seen last before the order was placed -
+// placed being when it is done less the time its quote gave it - and at most
+// two minutes before. One seen more than a minute before the order is read
+// - the player gone at once, back later - has to name a part of it as well.
+// Not by its rows alone: a long list scrolls, and the quote's view of it and
+// the order's need not have a row in common. Null, and `why`, for none.
+RefineryOrderBook::Quote* RefineryOrderBook::quoteFor(const std::string& station,
+                                                     const std::vector<RefineryOrder::Part>& parts, int remaining,
+                                                     long long now, std::string& why) {
+    Quote* best = nullptr;
+    long long bestGap = 0;
+    int here = 0;
+    for (Quote& q : quotes_) {
+        if (q.used || q.station != station) continue;
+        here++;
+        const long long since = now - q.taken;
+        if (since < 0 || remaining > q.seconds + 2) continue;
+        const long long gap = now + remaining - q.seconds - q.taken;
+        if (gap < -15 || gap > 120) continue;
+        if (since > 60 && !overlap(q.parts, parts)) continue;
+        if (!best || gap < bestGap) {
+            best = &q;
+            bestGap = gap;
+        }
+    }
+    if (!best) {
+        why = here == 0 ? std::string("no quote seen for it")
+                        : std::to_string(here) + (here == 1 ? " quote" : " quotes") + " at the station, none fits its time";
+    }
+    return best;
 }
 
 bool RefineryOrderBook::apply(const std::string& station, const RefineryScreen& screen, long long now) {
@@ -282,22 +362,17 @@ bool RefineryOrderBook::apply(const std::string& station, const RefineryScreen& 
         order.parts = parts;
         order.due = due;
         order.seen = now;
-        // Set up here a moment ago: the quote last seen less than a minute
-        // before this new order, and the order running no longer than it
-        // said and not much less than it said minus the time since. Not by
-        // its rows: a long list scrolls, and the quote's view of it and the
-        // order's need not have a row in common.
-        const long long since = now - quote_.taken;
-        if (!quote_.used && quote_.station == station && since >= 0 && since <= 60 &&
-            panel.seconds <= quote_.seconds + 2 && panel.seconds >= quote_.seconds - since - 15) {
-            order.method = quote_.method;
-            order.cost = quote_.cost;
-            order.seconds = quote_.seconds;
-            order.placed = due - quote_.seconds;
-            quote_.used = true;
+        std::string why;
+        Quote* quote = quoteFor(station, parts, panel.seconds, now, why);
+        if (quote) {
+            order.method = quote->method;
+            order.cost = quote->cost;
+            order.seconds = quote->seconds;
+            order.placed = due - quote->seconds;
+            quote->used = true;
             // ...and what went in, which only the quote shows: the rows it
             // refines are the order's parts, the ones this look missed too
-            for (const RefineryOrder::Part& q : quote_.parts) {
+            for (const RefineryOrder::Part& q : quote->parts) {
                 auto at = std::find_if(order.parts.begin(), order.parts.end(), [&](const RefineryOrder::Part& p) {
                     return p.material == q.material && p.quality == q.quality;
                 });
@@ -308,6 +383,13 @@ bool RefineryOrderBook::apply(const std::string& station, const RefineryScreen& 
                 }
             }
         }
+        const std::string lacks = missingOf(order);
+        notes_.push_back("work order " + std::to_string(order.number) + " at " + station + ": " + partsText(order.parts) +
+                         ", done in " + std::to_string(panel.seconds) + " s" +
+                         (quote ? ", with the quote seen " + std::to_string(order.placed - quote->taken) +
+                                      " s before it was placed"
+                                : ", without a quote (" + why + ")") +
+                         (lacks.empty() ? std::string(" - whole") : " - lacks " + lacks));
         orders_.push_back(order);
         changed = true;
     }
@@ -404,6 +486,12 @@ bool RefineryOrderBook::take(const std::string& station, const RefineryScreen& r
     const bool applied = !steady.panels.empty() && apply(station, steady, taken);
     const bool collected = noteCollected(station, read, taken);
     return applied || collected;
+}
+
+std::vector<std::string> RefineryOrderBook::takeNotes() {
+    std::vector<std::string> out;
+    out.swap(notes_);
+    return out;
 }
 
 bool RefineryOrder::complete() const {

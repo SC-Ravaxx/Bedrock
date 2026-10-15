@@ -966,6 +966,60 @@ int runSelfTest() {
         allPassed &= check(oneOrder && bands, "a long list scrolled through: one order of all its parts, with the quote "
                                               "whose list showed only some of them; a quality its ore does not come in "
                                               "is no reading");
+        // Two set up one after the other, the second's quote read before the
+        // first order was: each order its own quote - not the newest for both
+        // (one job went to UEX, the other did not, 15 October 2026)
+        SCMiner::RefineryOrderBook pair;
+        RefineryPanel quoteB = setup;
+        quoteB.cost = 201;
+        quoteB.seconds = 470;
+        quoteB.rows = {row("Iron (Ore)", 874, 500, 243)};
+        RefineryPanel orderB = running;
+        orderB.order = 2;
+        orderB.rows = {row("Iron (Ore)", 874, -1, 243)};
+        pair.take("Levski", screen({setup}), t0);
+        pair.take("Levski", screen({quoteB}), t0 + 22);
+        pair.take("Levski", screen({at(running, 415), at(orderB, 464)}), t0 + 30);
+        pair.take("Levski", screen({at(running, 414), at(orderB, 463)}), t0 + 31);
+        const bool eachOwn = pair.orders().size() == 2 && pair.orders()[0].cost == 194 && pair.orders()[0].complete() &&
+                             pair.orders()[0].placed == t0 + 3 && pair.orders()[1].cost == 201 &&
+                             pair.orders()[1].complete() && pair.orders()[1].placed == t0 + 24;
+        // ...the same job set up twice: two quotes, an order each
+        SCMiner::RefineryOrderBook twin;
+        RefineryPanel running2 = running;
+        running2.order = 2;
+        twin.take("Levski", screen({setup}), t0);
+        twin.take("Levski", screen({at(running, 440)}), t0 + 4);
+        twin.take("Levski", screen({at(running, 439)}), t0 + 5);
+        twin.take("Levski", screen({at(running, 430), setup}), t0 + 14);
+        twin.take("Levski", screen({at(running, 425), at(running2, 440)}), t0 + 19);
+        twin.take("Levski", screen({at(running, 424), at(running2, 439)}), t0 + 20);
+        const bool twins = twin.orders().size() == 2 && twin.orders()[0].complete() && twin.orders()[1].complete() &&
+                           twin.orders()[1].placed == t0 + 17;
+        // ...an order first read five minutes after it was placed, the player
+        // gone at once: its quote by its time and a part in common - none
+        // without one, and the record says why
+        SCMiner::RefineryOrderBook late;
+        late.take("Levski", screen({setup}), t0);
+        late.take("Levski", screen({at(running, 145)}), t0 + 300);
+        late.take("Levski", screen({at(running, 144)}), t0 + 301);
+        const bool lateQuoted = late.orders().size() == 1 && late.orders()[0].complete() && late.orders()[0].placed == t0 + 3;
+        SCMiner::RefineryOrderBook stranger;
+        RefineryPanel gold = running;
+        gold.rows = {row("Gold (Ore)", 553, -1, 54)};
+        stranger.take("Levski", screen({setup}), t0);
+        stranger.take("Levski", screen({at(gold, 145)}), t0 + 300);
+        stranger.take("Levski", screen({at(gold, 144)}), t0 + 301);
+        const std::vector<std::string> notes = stranger.takeNotes();
+        const bool unquoted = stranger.orders().size() == 1 && stranger.orders()[0].method.empty() && notes.size() == 2 &&
+                          notes[0].find("quote at Levski: Pyrometric Chromalysis, 194 aUEC, 442 s") == 0 &&
+                          notes[1].find("without a quote (1 quote at the station, none fits its time)") !=
+                              std::string::npos &&
+                          notes[1].find("lacks its method") != std::string::npos && stranger.takeNotes().empty();
+        allPassed &= check(eachOwn && twins && lateQuoted && unquoted,
+                           "quotes kept for their orders: two set up one after the other each to its own, the same job "
+                           "twice two, an order read five minutes on still its own - not one without a part in common, "
+                           "and the record says why");
         allPassed &= check(once && twice && quoted && later && notGarbled && notElsewhere && another && kept,
                            "the work orders' book: an order taken on the second reading that agrees, with the quote "
                            "read before it and what went in; the same order later only kept; a garbled reading, "
