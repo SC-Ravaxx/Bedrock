@@ -2152,23 +2152,15 @@ bool MinerGUI::isOpen() const {
     return isOpen_;
 }
 
-// The overlay is kept out of screen captures while the scan runs, and while
-// the player is at a commodity terminal with a picture owed to UEX - and
-// only then: otherwise Bedrock captures nothing it could see itself in, and
-// a window kept out shows in Virtual Desktop's stream as "Protected content
-// blocked". What keeping it out costs the compositor has not been measured.
+// The overlay is kept out of screen captures while the scan runs, and only
+// then: with live mode off Bedrock captures nothing it could see itself in,
+// and a window kept out shows in Virtual Desktop's stream as "Protected
+// content blocked". What keeping it out costs the compositor has not been
+// measured.
 void MinerGUI::keepOutOfCaptures() {
 #ifdef _WIN32
-    if (hwnd_) {
-        SetWindowDisplayAffinity(hwnd_, overlayMode_ && (liveModeActive_ || tradeWatch_) ? WDA_EXCLUDEFROMCAPTURE
-                                                                                          : WDA_NONE);
-    }
+    if (hwnd_) SetWindowDisplayAffinity(hwnd_, overlayMode_ && liveModeActive_ ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE);
 #endif
-}
-
-void MinerGUI::setTradeWatch(bool on) {
-    tradeWatch_ = on;
-    keepOutOfCaptures();
 }
 
 void MinerGUI::setLiveModeActive(bool active) {
@@ -13323,9 +13315,9 @@ void MinerGUI::drawWhatsNewCard(Gdiplus::Graphics& g, int cw, int ch) {
     // ? button and along the foot of the main window. Plain words, like a patch
     // note.
     version(L"2.6.6", L"11 October");
-    note(L"Price reports to UEX now carry a picture of the terminal\u2019s list,");
-    note(L"with its prices and stock. Until now the picture showed TRANSACTION");
-    note(L"COMPLETE over the terminal, and UEX turned such reports down.");
+    note(L"Bedrock no longer reports prices to UEX: reading them off the");
+    note(L"terminal wasn\u2019t reliable enough. Refinery jobs still go to your");
+    note(L"UEX account if you\u2019ve turned that on.");
     gap(6);
     note(L"Blueprints and contracts are updated for Star Citizen 4.10.2: the");
     note(L"F55 \u201CShadowflux\u201D, the Monolith armor and two new Wikelo");
@@ -15055,22 +15047,12 @@ void MinerGUI::pressUexCard(int action, UexCardView& view, HWND owner) {
         case 12:
             if (onUexAccount_) onUexAccount_(2, "");
             break;
-        case 13:   // Report prices...: the question, with a key in
+        case 13:   // Refinery jobs...: the question, with a key in
             if (!uexAccount_.keyEnd.empty()) view.step = 3;
             break;
         case 14:   // Close, Done, Skip
             if (view.welcome) closeUexWelcome();
             else view.step = 0;
-            break;
-        case 15:   // Agree: reporting on
-            if (onUexAccount_) onUexAccount_(3, "");
-            if (view.welcome) closeUexWelcome();
-            else view.step = 1;
-            break;
-        case 16:   // Decline: no reports - the account stays
-            if (onUexAccount_) onUexAccount_(4, "");
-            if (view.welcome) closeUexWelcome();
-            else view.step = 1;
             break;
         case 17:   // Opt out
             if (onUexAccount_) onUexAccount_(4, "");
@@ -15080,17 +15062,11 @@ void MinerGUI::pressUexCard(int action, UexCardView& view, HWND owner) {
             ShellExecuteW(owner, L"open", L"https://uexcorp.space/account/home/tab/account_main#panel-secret-key",
                           nullptr, nullptr, SW_SHOWNORMAL);
             break;
-        case 21:   // Sign up on UEX: where an account becomes a data runner's - UEX takes
-                   // reports from data runners only
-            ShellExecuteW(owner, L"open", L"https://uexcorp.space/data/signup", nullptr, nullptr, SW_SHOWNORMAL);
-            break;
-        case 22:   // the last screenshot sent to UEX, in the picture viewer
-            if (!uexAccount_.lastShot.empty()) {
-                ShellExecuteW(owner, L"open", uexAccount_.lastShot.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-            }
-            break;
-        case 19:   // Yes, report prices: first the pictures
-            if (uexAccount_.hasToken) view.step = 2;
+        case 19:   // Yes: refinery jobs go to UEX
+            if (!uexAccount_.hasToken) break;
+            if (onUexAccount_) onUexAccount_(3, "");
+            if (view.welcome) closeUexWelcome();
+            else view.step = 1;
             break;
         case 20:   // No: the account without reports
             if (onUexAccount_) onUexAccount_(4, "");
@@ -15138,10 +15114,9 @@ void MinerGUI::openUexWelcomeForShot(int step) {
 
 // The UEX card, over the Ore Finder or - the first start's offer - over the
 // main window. Step 1 the account: what it gives and the key (Get key, Paste
-// key); once one is in, whether prices are reported and the way to it. Step
-// 3 asks whether to report prices; step 2 says that every report carries a
-// picture of the game for the first 90 days - agreed to, and it is on;
-// declined, and it is off, the account kept.
+// key); once one is in, whether refinery jobs go to it and the way to that.
+// Step 3 asks whether they should: yes, and they do; no, and the account is
+// kept without.
 void MinerGUI::drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& view, POINT hover) {
     view.hits.clear();
     Gdiplus::Font markFont(&markFamily(), scaleF(19), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
@@ -15175,31 +15150,12 @@ void MinerGUI::drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& vi
     struct Words { std::wstring text; const Gdiplus::Font* font; Gdiplus::SolidBrush* brush; float after; };
     std::vector<Words> words;
     std::wstring title;
-    if (view.step == 2) {
-        title = L"Screenshots for 90 days";
-        words.push_back({L"UEX reviews new data runners during their first 90 days and needs a screenshot with every "
-                         L"report. For the next 90 days, each price Bedrock reports will include a screenshot of the "
-                         L"game window, taken right after you trade. After that, no more screenshots are sent.",
+    if (view.step == 3) {
+        title = L"Send refinery jobs to UEX?";
+        words.push_back({L"Bedrock can add the refinery jobs you start to the refinery list on your UEX account.",
                          &textFont, &dimBrush, scaleF(8)});
-        words.push_back({L"The screenshot shows the whole game window as it is at that moment, including your name and "
-                         L"balance on the terminal and the chat if it's open.",
-                         &textFont, &dimBrush, scaleF(10)});
-        words.push_back({L"If you agree, reporting starts now. If you decline, nothing is reported and your account "
-                         L"stays connected.",
-                         &textFont, &dimBrush, scaleF(16)});
-    } else if (view.step == 3) {
-        title = L"Report prices to UEX?";
-        words.push_back({L"Bedrock can send the prices you trade at to UEX, under your account. This keeps the prices "
-                         L"on UEX up to date for everyone.",
-                         &textFont, &dimBrush, scaleF(8)});
-        words.push_back({L"Whenever you buy or sell a commodity at a terminal, Bedrock sends the terminal, the "
-                         L"commodity, the price per SCU and the time. Refinery jobs you start are added to the "
-                         L"refinery jobs on your UEX account.",
-                         &textFont, &dimBrush, scaleF(8)});
-        words.push_back({L"A trade is only reported if Bedrock can tell the terminal for certain. Nothing else is sent.",
-                         &textFont, &dimBrush, scaleF(8)});
-        words.push_back({L"UEX only takes reports from data runners. If you aren't one yet, click Sign up on UEX to "
-                         L"register first.",
+        words.push_back({L"For each job it sends the refinery, the method, the cost, the processing time and the "
+                         L"materials with their amounts. Nothing else is sent.",
                          &textFont, &dimBrush, scaleF(8)});
         words.push_back({L"Your account stays connected either way.", &textFont, &textBrush, scaleF(16)});
     } else {
@@ -15207,13 +15163,10 @@ void MinerGUI::drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& vi
         if (account.on) {
             std::wstring state = L"Your UEX account is connected";
             if (!account.user.empty()) state += L" as " + toW(account.user);
-            state += L". Price reporting has been on since " + dayOf(account.since);
-            const long long picturesEnd = account.since + 90ll * 86400;
-            state += picturesEnd > now ? L", with screenshots until " + dayOf(picturesEnd) + L"."
-                                       : L". Screenshots are no longer sent.";
+            state += L". Your refinery jobs have been added to it since " + dayOf(account.since) + L".";
             words.push_back({state, &textFont, &textBrush, scaleF(10)});
         } else if (keyed) {
-            words.push_back({L"Your UEX account is connected. Price reporting is off.", &textFont, &textBrush,
+            words.push_back({L"Your UEX account is connected. Refinery jobs aren't sent.", &textFont, &textBrush,
                              scaleF(6)});
             words.push_back({L"In the Ore Finder's UEX market tab, clicking a listing you've already messaged about "
                              L"opens that conversation.",
@@ -15223,8 +15176,8 @@ void MinerGUI::drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& vi
             words.push_back({L"\u00B7  In the Ore Finder's UEX market tab, clicking a listing you've already messaged "
                              L"about opens that conversation.",
                              &textFont, &dimBrush, scaleF(2)});
-            words.push_back({L"\u00B7  If you want, Bedrock can also report the prices you trade at to UEX. You'll be "
-                             L"asked about this next.",
+            words.push_back({L"\u00B7  If you want, Bedrock can also add your refinery jobs to your UEX account. "
+                             L"You'll be asked about this next.",
                              &textFont, &dimBrush, scaleF(6)});
             words.push_back({view.welcome ? L"This is optional. If you skip it, you can connect later in the Ore "
                                             L"Finder (Connect UEX, bottom right)."
@@ -15250,9 +15203,7 @@ void MinerGUI::drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& vi
     std::wstring trouble;
     if (view.step != 1 && !account.hasToken) trouble = L"This build has no UEX app token, so nothing can be reported.";
     else if (account.keyTrouble) trouble = L"UEX didn't accept this key. Copy it again from your UEX account page and paste it.";
-    else if (view.step == 1 && account.on && account.accountTrouble == "datarunner") {
-        trouble = L"UEX didn't take the last report. If you aren't a data runner yet, click Sign up on UEX to register.";
-    } else if (view.step == 1 && account.on && account.accountTrouble == "blocked") {
+    else if (view.step == 1 && account.on && account.accountTrouble == "blocked") {
         trouble = L"UEX has blocked reports from this account.";
     } else if (view.step == 1 && account.on && account.accountTrouble == "unverified") {
         trouble = L"UEX needs this account verified with RSI first. You can do that on your UEX account page.";
@@ -15273,8 +15224,8 @@ void MinerGUI::drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& vi
     }
     const float keyRowH = view.step == 1 ? scaleF(36) * (removeBelow ? 2 : 1) : 0.0f;
     const float lineH = scaleF(18);
-    // what stands in the way takes the lines it needs - the data runner's
-    // sign-up runs to two in a narrow window
+    // what stands in the way takes the lines it needs - two in a narrow
+    // window
     float troubleH = 0;
     if (!trouble.empty()) {
         Gdiplus::RectF room;
@@ -15284,16 +15235,8 @@ void MinerGUI::drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& vi
     const float buttonsH = scaleF(34);
     const float buttonW = scaleF(120);
     const float second = left + buttonW + scaleF(12);
-    // Sign up on UEX: right of the buttons where the row has room, under them
-    // where it has not
-    const bool signUp = view.step == 3 || (view.step != 2 && account.on && account.accountTrouble == "datarunner");
-    const bool signBeside = left + width - buttonW >= second + buttonW + scaleF(12);
-    const float signRowH = signUp && !signBeside ? buttonsH : 0.0f;
-    // the screenshot that went with the last report, a link on the account's
-    // page
-    const bool shotLink = view.step == 1 && !account.lastShot.empty();
     const float cardH = scaleF(16) + scaleF(34) + wordsH + keyRowH + troubleH + (news.empty() ? 0.0f : lineH) +
-                        (shotLink ? lineH : 0.0f) + scaleF(8) + buttonsH + signRowH + scaleF(16);
+                        scaleF(8) + buttonsH + scaleF(16);
     const float cardY = (std::max)(scaleF(view.welcome ? 70 : 100), ((float)ch - cardH) / 2.0f - scaleF(40));
     view.rect = Gdiplus::RectF(cardX, cardY, cardW, cardH);
     refplanGlassPane(g, view.rect, scaleF(R_CARD), scaleF(18), COL_CARD);
@@ -15339,36 +15282,15 @@ void MinerGUI::drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& vi
         g.DrawString(news.c_str(), -1, &subFont, Gdiplus::RectF(left, y, width, lineH), &oneLine, &dimBrush);
         y += lineH;
     }
-    if (shotLink) {
-        // a link, as the Ore Finder's footer has them
-        const wchar_t* link = L"Show the last screenshot sent to UEX";
-        Gdiplus::RectF linkW;
-        g.MeasureString(link, -1, &subFont, Gdiplus::PointF(0, 0), &linkW);
-        const Gdiplus::RectF hit(left - scaleF(4), y - scaleF(2), linkW.Width + scaleF(8), linkW.Height + scaleF(4));
-        const bool hot = isHot(hover, hit);
-        Gdiplus::SolidBrush linkBrush(hot ? COL_ACCENT_HI : COL_ACCENT);
-        g.DrawString(link, -1, &subFont, Gdiplus::PointF(left, y), &linkBrush);
-        Gdiplus::Pen rule(hot ? COL_ACCENT_HI : tint(COL_ACCENT, 150), 1.0f);
-        g.DrawLine(&rule, left, y + linkW.Height - scaleF(2), left + linkW.Width - scaleF(2), y + linkW.Height - scaleF(2));
-        view.hits.push_back({hit, 22});
-        y += lineH;
-    }
     y += scaleF(8);
-    const float signX = signBeside ? left + width - buttonW : left;
-    const float signY = signBeside ? y : y + buttonsH;
-    if (view.step == 2) {
-        button(L"Agree", left, buttonW, y, ButtonKind::Primary, 15);
-        button(L"Decline", second, buttonW, y, ButtonKind::Secondary, 16);
-    } else if (view.step == 3) {
+    if (view.step == 3) {
         button(L"Yes", left, buttonW, y, account.hasToken ? ButtonKind::Primary : ButtonKind::Ghost, 19);
         button(L"No", second, buttonW, y, ButtonKind::Secondary, 20);
-        button(L"Sign up on UEX", signX, buttonW, signY, ButtonKind::Ghost, 21);
     } else if (account.on) {
-        button(L"Stop reporting", left, buttonW, y, ButtonKind::Secondary, 17);
+        button(L"Stop sending", left, buttonW, y, ButtonKind::Secondary, 17);
         button(L"Close", second, buttonW, y, ButtonKind::Ghost, 14);
-        if (signUp) button(L"Sign up on UEX", signX, buttonW, signY, ButtonKind::Secondary, 21);
     } else if (keyed) {
-        button(L"Report prices\u2026", left, buttonW + scaleF(20), y, ButtonKind::Secondary, 13);
+        button(L"Refinery jobs\u2026", left, buttonW + scaleF(20), y, ButtonKind::Secondary, 13);
         button(view.welcome ? L"Done" : L"Close", second + scaleF(20), buttonW, y, ButtonKind::Ghost, 14);
     } else {
         button(view.welcome ? L"Skip" : L"Close", left, buttonW, y, ButtonKind::Secondary, 14);

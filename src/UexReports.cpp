@@ -6,7 +6,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
-#include <regex>
 
 #include "AppPaths.h"
 #include "MiniJson.h"
@@ -113,26 +112,18 @@ bool UexDirectory::read(const std::string& terminalsJson, const std::string& com
         t.id = (int)row.numberOr("id", 0);
         if (t.id <= 0) continue;
         t.type = row.textOr("type");
-        t.nickname = row.textOr("nickname");
         for (const char* key : {"name", "fullname", "nickname", "displayname", "space_station_name", "outpost_name",
                                 "city_name"}) {
             const std::string name = folded(row.textOr(key));
             if (!name.empty() && !holds(t.names, name)) t.names.push_back(name);
         }
-        for (const char* key : {"moon_name", "planet_name", "orbit_name"}) {
-            const std::string name = folded(row.textOr(key));
-            if (!name.empty() && !holds(t.around, name)) t.around.push_back(name);
-        }
         readTerminals.push_back(std::move(t));
     }
-    std::vector<std::pair<std::string, int>> readCommodities, readNames;
+    std::vector<std::pair<std::string, int>> readCommodities;
     for (const JsonValue& row : commodityRows->items) {
         const int id = (int)row.numberOr("id", 0);
         const std::string name = commodityKey(row.textOr("name"));
-        if (id > 0 && !name.empty()) {
-            readCommodities.push_back({name, id});
-            readNames.push_back({row.textOr("name"), id});
-        }
+        if (id > 0 && !name.empty()) readCommodities.push_back({name, id});
     }
     std::vector<std::pair<std::string, int>> readMethods;
     for (const JsonValue& row : methodRows->items) {
@@ -146,7 +137,6 @@ bool UexDirectory::read(const std::string& terminalsJson, const std::string& com
     }
     terminals_ = std::move(readTerminals);
     commodities_ = std::move(readCommodities);
-    commodityNames_ = std::move(readNames);
     methods_ = std::move(readMethods);
     return true;
 }
@@ -179,64 +169,6 @@ int UexDirectory::method(const std::string& name) const {
     return 0;
 }
 
-int UexDirectory::tradeTerminal(const std::string& shop, const std::string& place, std::string& why) const {
-    // What the terminal takes: refined goods, or - at a refinery's ore sales
-    // - the ore as it came out of the rock
-    const std::string shopFolded = folded(shop);
-    const bool raw = shopFolded.find("0resales") != std::string::npos || shopFolded.find("refinery") != std::string::npos;
-    const std::string type = raw ? "commodity_raw" : "commodity";
-    // The shop's own name first, where a word of it is a terminal's name:
-    // SCShop_Levski_CargoOffice_Commodities is at Levski whatever the log says
-    // of the place (in sample logs: Nyx 26 times, Crusader 8, Levski 11).
-    std::vector<int> byShop;
-    size_t from = 0;
-    while (from <= shop.size()) {
-        const size_t end = shop.find('_', from);
-        const std::string word = folded(shop.substr(from, end == std::string::npos ? std::string::npos : end - from));
-        if (word.size() >= 4) {
-            for (const Terminal& t : terminals_) {
-                if (t.type == type && holds(t.names, word) &&
-                    std::find(byShop.begin(), byShop.end(), t.id) == byShop.end()) {
-                    byShop.push_back(t.id);
-                }
-            }
-        }
-        if (end == std::string::npos) break;
-        from = end + 1;
-    }
-    if (byShop.size() == 1) return byShop.front();
-    // ...then the place: a station's or a town's name is one terminal, a
-    // moon's often more than one - Pyro IV has four outposts that buy
-    const std::string at = folded(place);
-    if (at.empty()) {
-        why = "the game log doesn't say where";
-        return 0;
-    }
-    std::vector<int> byPlace;
-    for (const Terminal& t : terminals_) {
-        if (t.type == type && (holds(t.names, at) || holds(t.around, at))) byPlace.push_back(t.id);
-    }
-    if (byPlace.size() == 1) return byPlace.front();
-    // "PYR2 L4", the app's name for a Pyro Lagrange point, is UEX's orbit
-    // "Monox Lagrange Point 4" - the rest stop that stands there
-    if (byPlace.empty()) {
-        static const std::regex pyro(R"(^PYR([1-6]) L([1-5])$)", std::regex::icase);
-        std::smatch m;
-        const std::string spelled = place;
-        if (std::regex_match(spelled, m, pyro)) {
-            static const char* const BODIES[] = {"Pyro I", "Monox", "Bloom", "Pyro IV", "Pyro V", "Pyro VI"};
-            const std::string orbit = folded(std::string(BODIES[m[1].str()[0] - '1']) + " Lagrange Point " + m[2].str());
-            for (const Terminal& t : terminals_) {
-                if (t.type == type && holds(t.around, orbit)) byPlace.push_back(t.id);
-            }
-            if (byPlace.size() == 1) return byPlace.front();
-        }
-    }
-    why = byPlace.empty() ? "UEX has no terminal at " + place
-                          : std::to_string(byPlace.size()) + " terminals at " + place + ", can't tell which";
-    return 0;
-}
-
 int UexDirectory::refineryTerminal(const std::string& station, std::string& why) const {
     const std::string at = folded(station);
     std::vector<int> found;
@@ -249,45 +181,7 @@ int UexDirectory::refineryTerminal(const std::string& station, std::string& why)
     return 0;
 }
 
-std::string UexDirectory::terminalName(int id) const {
-    for (const Terminal& t : terminals_) {
-        if (t.id == id) return t.nickname;
-    }
-    return "";
-}
-
 namespace UexReports {
-
-std::string priceReport(int terminal, int commodity, bool sold, double perScu, long long when,
-                        const std::string& screenshotBase64, bool production, int stock, int level) {
-    UexPriceRow row;
-    row.commodity = commodity;
-    row.sold = sold;
-    row.price = perScu;
-    row.stock = stock;
-    row.level = level;
-    return priceReport(terminal, std::vector<UexPriceRow>{row}, when, screenshotBase64, production);
-}
-
-std::string priceReport(int terminal, const std::vector<UexPriceRow>& rows, long long when,
-                        const std::string& screenshotBase64, bool production) {
-    std::string out = "{\"id_terminal\":" + std::to_string(terminal) + ",\"type\":\"commodity\",\"is_production\":" +
-                      (production ? "1" : "0") + ",\"prices\":[";
-    for (size_t i = 0; i < rows.size(); i++) {
-        const UexPriceRow& r = rows[i];
-        out += std::string(i ? "," : "") + "{\"id_commodity\":" + std::to_string(r.commodity) +
-               (r.sold ? ",\"price_sell\":" : ",\"price_buy\":") + figure(r.price);
-        if (r.stock >= 0) out += (r.sold ? ",\"scu_sell\":" : ",\"scu_buy\":") + std::to_string(r.stock);
-        if (r.level >= 1 && r.level <= 7) out += (r.sold ? ",\"status_sell\":" : ",\"status_buy\":") + std::to_string(r.level);
-        out += "}";
-    }
-    out += "]";
-    // when it was seen: UEX takes a report's own date within 30 days
-    if (when > 0) out += ",\"date_added\":" + std::to_string(when);
-    if (!screenshotBase64.empty()) out += ",\"screenshot\":\"" + screenshotBase64 + "\"";
-    out += "}";
-    return out;
-}
 
 std::string refineryJob(int terminal, int method, double cost, int minutes,
                         const std::vector<std::pair<int, UexRefineryJob::Item>>& items, bool production) {
@@ -334,8 +228,8 @@ std::string verdict(int httpStatus, const std::string& body, std::string* userna
     if (status == "missing_secret_key" || status == "invalid_secret_key") return "UEX didn't accept the key";
     if (status == "user_not_found") return "UEX has no account with that key";
     // user_not_allowed: "applied restriction (temporary ban, user not a
-    // datarunner, etc)" - which is a data runner signing up as a rule
-    if (status == "user_not_allowed") return "UEX only takes reports from data runners";
+    // datarunner, etc)"
+    if (status == "user_not_allowed") return "UEX doesn't take reports from this account";
     if (status == "user_disabled") return "UEX has blocked reports from this account";
     if (status == "user_not_verified") return "that UEX account is not verified with RSI yet";
     if (status == "requests_limit_reached") return "too many requests to UEX, try again later";
@@ -397,49 +291,6 @@ std::string unmixAppToken(const std::string& line) {
 bool keyLooksRight(const std::string& key) {
     if (key.size() != 40) return false;
     return std::all_of(key.begin(), key.end(), [](unsigned char c) { return std::isalnum(c) != 0; });
-}
-
-std::string base64(const unsigned char* bytes, size_t size) {
-    static const char* const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string out;
-    out.reserve((size + 2) / 3 * 4);
-    for (size_t i = 0; i < size; i += 3) {
-        const unsigned long chunk = ((unsigned long)bytes[i] << 16) |
-                                    ((i + 1 < size ? (unsigned long)bytes[i + 1] : 0ul) << 8) |
-                                    (i + 2 < size ? (unsigned long)bytes[i + 2] : 0ul);
-        out += ALPHABET[(chunk >> 18) & 63];
-        out += ALPHABET[(chunk >> 12) & 63];
-        out += i + 1 < size ? ALPHABET[(chunk >> 6) & 63] : '=';
-        out += i + 2 < size ? ALPHABET[chunk & 63] : '=';
-    }
-    return out;
-}
-
-int pictureFor(const std::vector<long long>& takenMs, const std::vector<double>& detail, long long tradeMs) {
-    const int n = (int)(std::min)(takenMs.size(), detail.size());
-    // a tenth of a second short of the request: taken by then, it was on
-    // the screen before the click
-    auto isBefore = [&](int i) { return takenMs[i] >= tradeMs - PICTURE_BEFORE_MS && takenMs[i] <= tradeMs - 100; };
-    auto isAfter = [&](int i) { return takenMs[i] > tradeMs - 100 && takenMs[i] <= tradeMs + PICTURE_AFTER_MS; };
-    double mostBefore = -1, mostAfter = -1;
-    for (int i = 0; i < n; i++) {
-        if (isBefore(i)) mostBefore = (std::max)(mostBefore, detail[i]);
-        if (isAfter(i)) mostAfter = (std::max)(mostAfter, detail[i]);
-    }
-    int before = -1, after = -1;
-    for (int i = 0; i < n; i++) {
-        if (isBefore(i) && detail[i] >= LIST_NEAR * mostBefore && (before < 0 || takenMs[i] > takenMs[before])) before = i;
-    }
-    // Far more detail after it than anything before: nothing before was the
-    // list - the player stood in CONFIRMATION all along - and the first list
-    // after it is the one. Not where one before surely was: more detail after
-    // is then where the player went once done.
-    if (mostAfter >= 0 && (before < 0 || (mostBefore < SURELY_LIST && mostAfter >= AFTER_JUMP * mostBefore))) {
-        for (int i = 0; i < n; i++) {
-            if (isAfter(i) && detail[i] >= LIST_NEAR * mostAfter && (after < 0 || takenMs[i] < takenMs[after])) after = i;
-        }
-    }
-    return after >= 0 ? after : before;
 }
 
 std::string jsonText(const std::string& text) {

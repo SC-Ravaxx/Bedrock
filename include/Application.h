@@ -28,7 +28,6 @@
 #include "UexPrices.h"
 #include "UexReports.h"
 #include "RefineryShare.h"
-#include "CommodityTerminal.h"
 #include "UexMarket.h"
 #include <memory>
 
@@ -365,23 +364,9 @@ public:
     // The two lists, kept in `folder` and fetched where they are too old -
     // waits for UEX, so never on the UI thread (--uexprobe calls it as well)
     static UexOutcome loadUex(const std::filesystem::path& folder);
-    // For --uexreportprobe: UEX's lists as a report reads them, and whether
-    // the build carries an app token (the token itself goes no further)
-    static std::shared_ptr<UexDirectory> loadUexDirectoryForProbe(const std::filesystem::path& folder) {
-        return loadUexDirectory(folder);
-    }
+    // Whether the build carries an app token, for the self-test (the token
+    // itself goes no further)
     static std::string uexTokenForProbe();
-    // The picture that goes with a price report, made of the game's picture:
-    // at most 1080 pixels tall, a JPEG (--uexshotprobe and the self-test
-    // make it of a saved frame)
-    static std::vector<unsigned char> uexPictureJpeg(cv::Mat frame);
-    // How much detail a game picture has in the middle of the screen, where
-    // a terminal in use stands: its list has much, a dialog over it (which
-    // darkens the whole terminal) little - the share of edge pixels there
-    static double tradeFrameDetail(const cv::Mat& frame);
-    // ...and, once it has gone to UEX, kept for the player to see: written
-    // beside `file` and moved over it, never seen half-written
-    static bool keepUexShot(const std::filesystem::path& file, const std::vector<unsigned char>& jpeg);
     // ...and the marketplace's listings of one ore, told as lines - no
     // player's name in them
     static std::string uexMarketForProbe(const std::filesystem::path& folder, const std::string& ore);
@@ -399,29 +384,12 @@ private:
     // the Ore Finder is still open
     static constexpr int UEX_RETRY_MINUTES = 10;
     // Reporting to UEX (UexReports.h), opt-in: uexreport= in
-    // region_config.txt is 0, or the Unix second the player agreed - what is
-    // sent first, then the screenshots of the first 90 days, agreed to or
-    // nothing. The key is in uex_key.dat.
+    // region_config.txt is 0, or the Unix second the player agreed. What goes
+    // is the player's refinery jobs, to their own account there. The key is
+    // in uex_key.dat.
     struct UexPending {
         std::string key;                   // what makes it once-only
-        bool refinery = false;
-        Trade trade;                       // a price report...
-        UexRefineryJob job;                // ...or a refinery job
-        std::string shot;                  // the game window, a JPEG in base64, while the 90 days last
-        std::vector<unsigned char> shotJpeg;   // ...the same JPEG, kept once it has gone (debug\uex_last_screenshot.jpg)
-        bool shotWanted = false;           // a picture is owed and not taken yet
-        bool fromTerminal = false;         // ...to be chosen from tradeFrames_ when it is due
-        // a purchase's card as the terminal showed it (CommodityTerminal):
-        // read once it is due, off the pictures kept from the terminal
-        bool cardRead = false;
-        int stock = -1, level = -1, shown = -1;   // SCU, 1-7, the price per SCU as shown; -1 not read
-        // ...or the prices of a visit to a terminal's list, off one picture
-        // of it (finishTerminalSession), bought or not
-        bool list = false;
-        int listTerminal = 0;
-        long long listWhen = 0;            // when the picture was taken, Unix seconds
-        std::vector<UexPriceRow> rows;
-        std::chrono::steady_clock::time_point due{};   // not before: the game may still refuse a trade
+        UexRefineryJob job;
     };
     struct UexSent {
         std::string key, note, user;
@@ -445,8 +413,7 @@ private:
     bool uexDirectoryAsked_ = false;
     std::string uexReportNote_;            // what came of the last report or press, for the window
     long long uexReportNoteAt_ = 0;
-    std::string uexUser_;                  // the data runner's name UEX answered with
-    bool uexShotPending_ = false;          // a picture owed while a scan ran
+    std::string uexUser_;                  // the name UEX answered with
     // The UEX marketplace (UexMarket.h): the listings of the ore the Ore
     // Finder's UEX tab shows, and of a rock's part of quality 900 or more
     // (the rock view says what a player pays for it); each ore's kept ten
@@ -473,94 +440,8 @@ private:
     static std::shared_ptr<UexThreads> loadUexThreads(const std::string& key);
     static constexpr int UEX_MARKET_MINUTES = 10;
     static constexpr int UEX_MARKET_QUALITY = 900;
-    static constexpr int UEX_PICTURE_DAYS = 90;
-    static constexpr int UEX_TRADE_HOLD_SECONDS = 15;
     static std::shared_ptr<UexDirectory> loadUexDirectory(const std::filesystem::path& folder);
-    void watchTradesForUex();
-    void takeUexShots(bool inScan);
-    std::vector<unsigned char> uexScreenshot();
     cv::Mat grabGamePicture();
-    // The pictures the refinery's look takes, kept while the player is at a
-    // commodity terminal and UEX is owed pictures: a trade's report takes
-    // the terminal's list from around it (UexReports::pictureFor) when it
-    // is due. Each as UEX gets it, with when it was taken and its detail.
-    struct TradeFrame {
-        long long ms = 0;                     // since 1970, UTC
-        double detail = 0;                    // tradeFrameDetail
-        std::vector<unsigned char> jpeg;      // uexPictureJpeg
-        // ...and the terminal's part of it at full size, to read its cards
-        // by, with a small grey copy of the list's side to see it change
-        std::vector<unsigned char> readJpeg;
-        cv::Mat thumb;
-    };
-    std::deque<TradeFrame> tradeFrames_;
-    // A purchase's card read off the pictures kept around it
-    // (readTradeCard), in the background, and the picture that shows it
-    struct UexCard {
-        TradeCard card;
-        std::vector<unsigned char> jpeg;
-    };
-    std::unique_ptr<TextLineReader> uexCardLines_;   // the reader the background job reads with
-    std::future<UexCard> uexCardJob_;
-    // A visit to a commodity terminal's list (TerminalSession): its pictures
-    // read in the background as the list changes - twice where it stands
-    // still, for two to agree - and every card two pictures agree on
-    // reported once the player has left it, bought or not
-    TerminalSession terminalSession_;
-    std::vector<std::vector<unsigned char>> sessionShots_;   // the UEX picture of each picture added
-    std::string sessionShop_, sessionPlace_;
-    bool sessionOpen_ = false;
-    long long sessionReadMs_ = 0;           // the last picture sent to be read
-    cv::Mat sessionThumb_;                  // ...as it looked
-    int sessionReadsOfView_ = 0, sessionEmptyReads_ = 0;
-    struct SessionRead {
-        CommodityScreen screen;
-        long long ms = 0;
-        std::vector<unsigned char> shot;
-        std::vector<unsigned char> demand;   // the picture at full size, where it is of what the shop buys
-        std::vector<unsigned char> picture;  // ...whatever it is of, for the visit's record
-    };
-    // The visit's record, debug\uex_visits\<when>: each picture read and what
-    // was made of it, and why each card went to UEX or did not
-    long long sessionOpenedMs_ = 0;
-    int sessionReads_ = 0;
-    std::vector<std::string> sessionLog_;
-    std::vector<std::pair<long long, std::vector<unsigned char>>> sessionPictures_;
-    void keepVisitRecord(const std::vector<std::string>& lines);
-    std::vector<std::pair<long long, std::vector<unsigned char>>> sessionDemand_;   // ...kept, a few
-    std::future<SessionRead> sessionJob_;
-    // The pictures to read, put in line as they are taken: a picture costs
-    // seconds, a quick visit is over before its pictures are read
-    struct QueuedPicture {
-        long long ms = 0;
-        std::vector<unsigned char> read, shot;
-    };
-    std::deque<QueuedPicture> sessionQueue_;
-    long long sessionQueuedMs_ = 0;       // the last picture looked at for the line
-    bool sessionLeft_ = false;            // three in a row without the list: the player left there
-    long long sessionClosedSeenMs_ = 0;   // the terminal's last line when a visit ended: a new one opens with a later line
-    std::unique_ptr<TextLineReader> sessionLines_;
-    // What went to UEX, by terminal and commodity: when, and the values
-    struct UexRowSent {
-        long long at = 0;
-        int level = -1, stock = -1, price = -1;
-    };
-    std::map<std::pair<int, int>, UexRowSent> uexRowsSent_;
-    void serviceTerminalSession();
-    void finishTerminalSession();
-    void keepDemandPictures(const std::vector<std::pair<long long, std::vector<unsigned char>>>& pictures);
-    static constexpr long long SESSION_READ_MS = 1000;   // a picture read a second at most
-    static constexpr int SESSION_EMPTY_READS = 3;        // ...three without the list: the player has left
-    // A trade held back from UEX: its pictures and what the log said of it,
-    // in debug\uex_held
-    void keepHeldTrade(const Trade& trade, const std::string& label);
-    bool tradeWatch_ = false;
-    bool uexPicturesWanted() const;
-    void keepTradeFrame(const cv::Mat& frame);
-    void setTradeWatch(bool on);
-    bool chooseTradePicture(UexPending& item);
-    static constexpr long long TRADE_FRAMES_MS = 25000;      // kept this long: the hold, and the seconds before it
-    static constexpr long long TRADE_TERMINAL_MS = 120000;   // the terminal in use this long after its last line
     void serviceUexReports();
     void readUexReported();
     void rememberUexReported(const std::string& key);

@@ -2,7 +2,6 @@
 
 #include <map>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace SCMiner {
@@ -55,17 +54,10 @@ public:
     // "Aluminum" there
     static std::string commodityOf(const std::string& ore);
 
-    // What a terminal asked for one SCU of a commodity (`sold` false) or
-    // paid for it (true) as UEX last had it, by UEX's ids; 0 where nobody
-    // reported it in REPORT_DAYS - what a figure read off a terminal is held
-    // against before it is reported
-    double lastPrice(int terminal, int commodity, bool sold) const;
-
 private:
     std::map<std::string, std::vector<UexOffer>> byCommodity_;              // by UEX's name
     std::map<std::string, std::map<std::string, UexOffer>> bestBySystem_;   // ...and system, lower case
     std::map<std::string, UexOffer> cheapestBuy_;
-    std::unordered_map<long long, std::pair<double, double>> byTerminal_;   // terminal, commodity -> asks, pays
 };
 
 }  // namespace SCMiner

@@ -1726,90 +1726,6 @@ int runUexProbe(const std::string& folder) {
     return 0;
 }
 
-// --uexreportprobe <folder> <channel folder>: reporting to UEX, without
-// reporting anything - UEX's lists kept in <folder>, every trade of the
-// channel's logs put to them (which terminal, which commodity, or why none),
-// and one price report sent as a test (is_production 0) with a made-up key:
-// UEX's answer says the request got as far as the key
-int runUexReportProbe(const std::string& folder, const std::string& channel) {
-    namespace fs = std::filesystem;
-    const auto directory = SCMiner::Application::loadUexDirectoryForProbe(folder);
-    if (!directory) {
-        std::cout << "UEX's lists could not be had" << std::endl;
-        return 1;
-    }
-    std::vector<std::pair<fs::file_time_type, fs::path>> logs;
-    std::error_code ec;
-    for (const auto& entry : fs::directory_iterator(fs::path(channel) / "logbackups", ec)) {
-        if (entry.path().extension() == ".log") logs.push_back({fs::last_write_time(entry.path(), ec), entry.path()});
-    }
-    std::sort(logs.begin(), logs.end());
-    const fs::path live = fs::path(channel) / "Game.log";
-    if (fs::exists(live, ec)) logs.push_back({fs::last_write_time(live, ec), live});
-    SCMiner::TradeBook book;
-    for (const auto& [when, path] : logs) {
-        (void)when;
-        std::ifstream in(path, std::ios::binary);
-        const std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        if (SCMiner::TradeBook::hasRequest(data)) book.replay(data);
-    }
-    int reportable = 0, all = 0;
-    int firstTerminal = 0, firstCommodity = 0;
-    for (const SCMiner::Trade& trade : book.trades()) {
-        if (trade.refused) continue;
-        all++;
-        std::string why;
-        const std::string name = SCMiner::TradeBook::nameOf(trade.resource);
-        const int terminal = directory->tradeTerminal(trade.shop, trade.place, why);
-        const int commodity = name.empty() ? 0 : directory->commodity(name);
-        if (terminal && commodity) {
-            reportable++;
-            if (!firstTerminal) {
-                firstTerminal = terminal;
-                firstCommodity = commodity;
-            }
-        }
-        std::cout << trade.stamp.substr(0, 16) << "  " << (trade.sold ? "sold  " : "bought") << "  "
-                  << (name.empty() ? trade.resource : name) << "  " << trade.shop << " | "
-                  << (trade.place.empty() ? "?" : trade.place) << "  ->  "
-                  << (terminal ? directory->terminalName(terminal) + " (" + std::to_string(terminal) + ")" : "none: " + why)
-                  << (commodity ? "" : "  [UEX lists no such commodity]") << std::endl;
-    }
-    std::cout << reportable << " of " << all << " trades could be reported" << std::endl;
-    if (!firstTerminal) return 0;
-    // one test report: a made-up key, the first reportable trade's terminal and commodity
-    const std::string body = SCMiner::UexReports::priceReport(firstTerminal, firstCommodity, true, 1, 0, "", false);
-    SCMiner::HttpAnswer answer;
-    const std::string token = SCMiner::Application::uexTokenForProbe();
-    std::vector<std::string> headers = {"secret-key: " + std::string(40, '0'), "Content-Type: application/json"};
-    if (!token.empty()) headers.push_back("Authorization: Bearer " + token);
-    const bool sent = SCMiner::httpsPost("https://api.uexcorp.uk/2.0/data_submit", headers, body, answer);
-    std::cout << "test report (is_production 0, a made-up key): "
-              << (sent ? "HTTP " + std::to_string(answer.status) + ", " + answer.body.substr(0, 200) : answer.why)
-              << std::endl;
-    return 0;
-}
-
-// --uexshotprobe <picture> <out.jpg>: the picture a price report would
-// carry, made of a saved game frame the way Bedrock makes it of the screen,
-// written out to look at - with its size as UEX gets it
-int runUexShotProbe(const std::string& picture, const std::string& out) {
-    const cv::Mat frame = cv::imread(picture, cv::IMREAD_UNCHANGED);
-    if (frame.empty()) {
-        std::cout << "could not read " << picture << std::endl;
-        return 1;
-    }
-    const std::vector<unsigned char> jpeg = SCMiner::Application::uexPictureJpeg(frame);
-    std::ofstream(out, std::ios::binary).write((const char*)jpeg.data(), (std::streamsize)jpeg.size());
-    const cv::Mat back = cv::imdecode(jpeg, cv::IMREAD_COLOR);
-    const size_t sent = SCMiner::UexReports::base64(jpeg.data(), jpeg.size()).size();
-    std::cout << frame.cols << "x" << frame.rows << " -> " << back.cols << "x" << back.rows << ", JPEG "
-              << jpeg.size() / 1024 << " KB, " << sent / 1024 << " KB as sent (UEX takes up to 10 MB), detail "
-              << SCMiner::Application::tradeFrameDetail(frame) << " (a terminal's list has much, a dialog over it little)"
-              << std::endl;
-    return 0;
-}
-
 // --ranks <channel folder>: the player's rank with each outfit, read out of
 // the game's logs the way the library reads them - into a fresh library,
 // nothing loaded, nothing saved. Per outfit and ladder only; nothing of the
@@ -4311,37 +4227,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             return runRefineryReplay(__argv[i + 1], __argv[i + 2], std::atoll(__argv[i + 3]), std::atof(__argv[i + 4]),
                                      i + 5 < __argc ? std::atoi(__argv[i + 5]) : 4);
         }
-        else if (arg == "--session" && i + 1 < __argc) {
-            setupConsole(true);
-            return runSession(__argv[i + 1]);
-        }
-        else if (arg == "--tradecard" && i + 4 < __argc) {
-            setupConsole(true);
-            return runTradeCard(__argv[i + 1], __argv[i + 2], std::atof(__argv[i + 3]), std::atof(__argv[i + 4]));
-        }
-        else if (arg == "--commodity" && i + 1 < __argc) {
-            // --commodity <pictures, or a folder> [--wanted <commodity>]
-            setupConsole(true);
-            std::vector<std::string> files;
-            std::string wanted;
-            for (int k = i + 1; k < __argc; k++) {
-                const std::string a = __argv[k];
-                if (a == "--wanted" && k + 1 < __argc) {
-                    wanted = __argv[++k];
-                } else if (std::filesystem::is_directory(a)) {
-                    std::vector<std::string> found;
-                    for (const auto& entry : std::filesystem::directory_iterator(a)) {
-                        const std::string ext = entry.path().extension().string();
-                        if (ext == ".jpg" || ext == ".png") found.push_back(entry.path().string());
-                    }
-                    std::sort(found.begin(), found.end());
-                    files.insert(files.end(), found.begin(), found.end());
-                } else {
-                    files.push_back(a);
-                }
-            }
-            return runCommodity(files, wanted);
-        }
         else if (arg == "--refineryshare" && i + 2 < __argc) {
             setupConsole(true);
             return runRefineryShare(__argv[i + 1], __argv[i + 2]);
@@ -4495,14 +4380,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         else if (arg == "--uexprobe" && i + 1 < __argc) {
             setupConsole(true);
             return runUexProbe(__argv[i + 1]);
-        }
-        else if (arg == "--uexreportprobe" && i + 2 < __argc) {
-            setupConsole(true);
-            return runUexReportProbe(__argv[i + 1], __argv[i + 2]);
-        }
-        else if (arg == "--uexshotprobe" && i + 2 < __argc) {
-            setupConsole(true);
-            return runUexShotProbe(__argv[i + 1], __argv[i + 2]);
         }
         else if (arg == "--trades" && i + 1 < __argc) {
             setupConsole(true);

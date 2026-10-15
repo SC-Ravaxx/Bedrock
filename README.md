@@ -33,9 +33,8 @@ executable and start it. The app tells you when a newer version is out.
   recipe with what quality does to it, and the contracts that hand them out.
   Optionally it marks contracts that pay out blueprints with `[BP]` in the
   game's own contract list.
-- **Report to UEX (optional):** connect your UEX account and Bedrock reports
-  the prices you trade at and adds your refinery jobs to your account. Off
-  unless you agree, and UEX only takes reports from registered data runners.
+- **Refinery jobs to UEX (optional):** connect your UEX account and Bedrock
+  adds the refinery jobs you start to it. Off unless you agree.
 
 ## How it reads the game
 
@@ -52,7 +51,8 @@ process or inject anything. The `[BP]` option writes a language file into the
 game folder, the way language packs do.
 
 Network: an update check (official builds only), UEX's public price lists
-while the Ore Finder is open, and price reports only if you switch them on.
+while the Ore Finder is open, and your refinery jobs to UEX only if you switch
+that on.
 
 ## Building
 
@@ -117,7 +117,7 @@ are on your PATH.
   version. Without it, the build never checks for updates. Official builds set
   it; please don't point a changed build at the official address.
 - UEX: a build works without a UEX app token. Prices are still loaded;
-  sending reports to UEX is switched off. If you have your own UEX app token,
+  sending refinery jobs to UEX is switched off. If you have your own UEX app token,
   put it alone in a file `uex_token.txt` in the repository root (git ignores
   it) and run cmake again. The token does not go into the program: the build
   writes it, mixed, into `uex_token.dat` beside it, and Bedrock reads it from

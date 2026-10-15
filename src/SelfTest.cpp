@@ -35,7 +35,6 @@
 #include "TextLineReader.h"
 #include "MiniJson.h"
 #include "RefineryShare.h"
-#include "CommodityTerminal.h"
 #include "UexPrices.h"
 #include "UexReports.h"
 #include "UexMarket.h"
@@ -1118,22 +1117,6 @@ int runSelfTest() {
                            "a finished log's trades are read with the place its own lines put the ship at (got " +
                                std::string(seen.empty() ? "nothing" : seen[0].place) + ")");
 
-        // a commodity terminal in use, to the millisecond: its own lines say
-        // when - as it fills, as the player picks on it, and the request
-        TradeBook watching;
-        const bool unseen = watching.terminalSeenMs() == 0;
-        watching.live("<2026-09-28T11:37:30.250Z> [Notice] <CEntityComponentCommodityUIProvider::LoadShopInventoryData::"
-                      "<lambda_1>::operator ()> AddingCommodityBox - playerId[1234567890123] shopId[9876543210987] "
-                      "[Team_CoreGameplayFeatures][Shops]");
-        const long long opened = watching.terminalSeenMs();
-        watching.live("<2026-09-28T11:37:33.000Z> [Notice] <CreateCommodityInfo> Shopping Kiosk Context");
-        const long long still = watching.terminalSeenMs();
-        watching.live(sale);
-        const long long ms = TradeBook::millisOf("2026-09-28T11:37:34.512");
-        allPassed &= check(unseen && ms == 1790595454512LL && opened == ms - 4262 && still == opened &&
-                               watching.terminalSeenMs() == ms && TradeBook::millisOf("2026-09-28T11:37:34") == ms - 512 &&
-                               TradeBook::millisOf("noon") == -1,
-                           "a commodity terminal's own lines say when it was last in use, to the millisecond");
     }
 
     // --- UEX's prices: the JSON reader, and the five places that
@@ -1243,9 +1226,9 @@ int runSelfTest() {
                                std::to_string(q.size()) + " for Quantainium" + (why.empty() ? "" : ", " + why) + ")");
     }
 
-    // --- Reporting to UEX: which terminal a trade was made at -
-    //     only where exactly one fits -, UEX's names for what the refinery
-    //     calls otherwise, the requests as UEX wants them, its answers ---
+    // --- Reporting to UEX: the refinery a job was placed at - only where
+    //     exactly one fits -, UEX's names for what the refinery calls
+    //     otherwise, the request as UEX wants it, its answers ---
     {
         using SCMiner::UexDirectory;
         namespace R = SCMiner::UexReports;
@@ -1283,41 +1266,7 @@ int runSelfTest() {
         UexDirectory directory;
         std::string why;
         const bool read = directory.read(terminals, commodities, methods, why);
-        std::string ambiguous, gone;
-        const bool trades =
-            read && directory.tradeTerminal("SCShop_Levski_CargoOffice_Commodities", "Crusader", why) == 778 &&
-            directory.tradeTerminal("SCShop_Admin_lt_base_g", "HUR-L1", why) == 100 &&
-            directory.tradeTerminal("SCShop_Trdpst_Warehouse_OTLW_Int_A", "Ignis", why) == 507 &&
-            directory.tradeTerminal("SCShop_Admin_lt_base_g", "Shubin SMO-18", why) == 900 &&
-            directory.tradeTerminal("SCShop_Levski_Refinery_OreSales", "Levski", why) == 786 &&
-            directory.tradeTerminal("SCShop_Trdpst_Warehouse_CFP_Int_A", "Pyro IV", ambiguous) == 0 &&
-            ambiguous.find("2 terminals") != std::string::npos &&
-            directory.tradeTerminal("SCShop_Admin_lt_base_g", "Gone", gone) == 0 &&
-            directory.tradeTerminal("SCShop_Admin_lt_base_g", "", why) == 0;
-        allPassed &= check(trades, "a trade's terminal for UEX: the town its shop is named after before a wrong place, a "
-                                   "station's or an outpost's own name, a moon with one terminal, SMO read as SM0, "
-                                   "ore sales at the raw terminal - and none where two fit or the terminal is gone");
-        // ...and where the game log says a terminal was opened (a purchase at
-        // Pyro Gateway in Stanton): the gateway with its system, a Pyro rest
-        // stop by its name or by its point
-        SCMiner::TradeBook atTerminal;
-        atTerminal.replay(
-            "<2026-10-07T07:06:16.345Z> [Notice] <RequestLocationInventory> Player[Someone] requested inventory for "
-            "Location[RR_JP_StantonPyro] [Team_CoreGameplayFeatures][Inventory]\n"
-            "<2026-10-07T07:08:07.697Z> [Notice] <CEntityComponentCommodityUIProvider::SendCommodityBuyRequest> Sending "
-            "SShopCommodityBuyRequest - playerId[1] shopId[2] shopName[SCShop_Admin_lt_base_g] kioskId[3] "
-            "price[4167.000000] shopPricePerCentiSCU[41.667000] resourceGUID[61189578-ed7a-4491-9774-37ae2f82b8b0] "
-            "autoLoading[0] quantity[100.000000 cSCU]\n");
-        const std::vector<SCMiner::Trade> atGate = atTerminal.trades();
-        const bool located = atGate.size() == 1 && atGate[0].place == "Pyro Gateway (Stanton)" &&
-                             directory.tradeTerminal(atGate[0].shop, atGate[0].place, why) == 252 &&
-                             directory.tradeTerminal("SCShop_Admin_lt_base_g", "Pyro Gateway (Nyx)", why) == 743 &&
-                             directory.tradeTerminal("SCShop_Admin_lt_base_g", "Checkmate", why) == 436 &&
-                             directory.tradeTerminal("SCShop_Admin_lt_base_g", "PYR2 L4", why) == 436;
-        allPassed &= check(located, "a trade where the log said a terminal was opened: Pyro Gateway with its system, "
-                                    "told from Nyx's; Checkmate by its name and by its Lagrange point (got " +
-                                        (atGate.empty() ? std::string("no trade") : atGate[0].place) + ")");
-        const bool names = directory.refineryTerminal("HUR-L1 Green Glade Station", why) == 101 &&
+        const bool names = read && directory.refineryTerminal("HUR-L1 Green Glade Station", why) == 101 &&
                            directory.refineryTerminal("Levski", why) == 788 &&
                            directory.refineryTerminal("Nowhere", why) == 0 && directory.commodity("Gold") == 33 &&
                            directory.commodity("Aluminium") == 5 && directory.commodity("Aluminium (Ore)") == 6 &&
@@ -1327,113 +1276,25 @@ int runSelfTest() {
                            directory.method("PYROMETRIC CHROMALYSIS") == 2 && directory.method("XCR Reaction") == 0;
         allPassed &= check(names, "UEX's names for what the refinery says otherwise: Raw Ice, Stileron (Ore), "
                                   "Construction Rubble, Aluminium, the Cormack Method - and a refinery by its station");
-        const std::string price = R::priceReport(778, 33, true, 24300, 1791300000, "", true);
-        const std::string bought = R::priceReport(100, 33, false, 27550.5, 0, "QUJD", false);
-        const std::string stocked = R::priceReport(436, 21, false, 235, 1791700000, "", true, 24000, 7);
-        const std::string sold = R::priceReport(436, 21, true, 300, 0, "", true, 0, 1);
         SCMiner::UexRefineryJob::Item iron;
         iron.material = "Iron (Ore)";
         iron.quantity = 484;
         iron.yield = 235;
         const std::string job = R::refineryJob(788, 2, 194, 8, {{48, iron}}, false);
-        const bool bodies =
-            price == "{\"id_terminal\":778,\"type\":\"commodity\",\"is_production\":1,\"prices\":[{\"id_commodity\":33,"
-                     "\"price_sell\":24300}],\"date_added\":1791300000}" &&
-            bought == "{\"id_terminal\":100,\"type\":\"commodity\",\"is_production\":0,\"prices\":[{\"id_commodity\":33,"
-                      "\"price_buy\":27550.5}],\"screenshot\":\"QUJD\"}" &&
-            stocked == "{\"id_terminal\":436,\"type\":\"commodity\",\"is_production\":1,\"prices\":[{\"id_commodity\":21,"
-                       "\"price_buy\":235,\"scu_buy\":24000,\"status_buy\":7}],\"date_added\":1791700000}" &&
-            sold == "{\"id_terminal\":436,\"type\":\"commodity\",\"is_production\":1,\"prices\":[{\"id_commodity\":21,"
-                    "\"price_sell\":300,\"scu_sell\":0,\"status_sell\":1}]}" &&
-            job == "{\"is_production\":0,\"id_terminal\":788,\"id_refinery_method\":2,\"cost\":194,\"time_minutes\":8,"
-                   "\"items\":[{\"id_commodity\":48,\"quantity\":484,\"yield\":235}]}";
-        allPassed &= check(bodies, "a price report and a refinery job as UEX's documentation writes them");
-
-        // ...and the commodity terminal's card, its lines as the reader takes
-        // them: the stock's level in the game's words, the stock, the price
-        // of a SCU or of one cargo box, the name with its figures exact
-        bool unitA = true, unitB = false, unitC = true;
-        const bool card =
-            SCMiner::commodityLevelIn("MAX INVENTORY") == 7 && SCMiner::commodityLevelIn("HAX INVENTORY") == 7 &&
-            SCMiner::commodityLevelIn("VERY LOV INVENTORY") == 2 && SCMiner::commodityLevelIn("Low Inventory") == 3 &&
-            SCMiner::commodityLevelIn("HEDIUN INVENTORY") == 4 && SCMiner::commodityLevelIn("Very High Inventory") == 6 &&
-            SCMiner::commodityLevelIn("Out of Stock") == 1 && SCMiner::commodityLevelIn("No Inventory") == 1 &&
-            SCMiner::commodityLevelIn("Inventory Updating") == 0 && SCMiner::commodityLevelIn("NOW INVENTORY") == -1 &&
-            SCMiner::commodityLevelIn("INVENTORY") == -1 && SCMiner::commodityLevelIn("NAX INVENTORY") == 7 &&
-            SCMiner::commodityLevelIn("SHOP QUANTITY") == -1 &&
-            SCMiner::parseShopQuantity("24,000 SCU") == 24000 && SCMiner::parseShopQuantity("4SCU") == 4 &&
-            SCMiner::parseShopQuantity("1,O5O SCU") == 1050 && SCMiner::parseShopQuantity("24,00 SCU") == -1 &&
-            SCMiner::parseShopQuantity("SHOP QUANTITY") == -1 && SCMiner::parseShopQuantity("1050 SCU") == -1 &&
-            SCMiner::parseCommodityPrice("4.167/SCU", unitA) == 4167 && !unitA &&
-            SCMiner::parseCommodityPrice("02.850/SCU", unitA) == -1 && SCMiner::parseShopQuantity("000 SCU") == -1 &&
-            SCMiner::parseShopQuantity("0 SCU") == 0 &&
-            SCMiner::parseCommodityPrice("\xC2\xA4" "1,879/Units", unitB) == 1879 && unitB &&
-            SCMiner::parseCommodityPrice("316/SCU", unitC) == 316 && !unitC &&
-            SCMiner::parseCommodityPrice("1,108", unitC) == -1 && SCMiner::parseCommodityPrice("1316/SCU", unitC) == -1 &&
-            SCMiner::commodityNamed("SHIP AMMUNITION SIZE 1", "Ship Ammunition - Size 1") &&
-            !SCMiner::commodityNamed("SHIP AMMUNITION SIZE 2", "Ship Ammunition - Size 1") &&
-            SCMiner::commodityNamed("HEPHAESTANITE", "Hephaestanite") &&
-            SCMiner::commodityNamed("Agricultural Supplies", "Agricultural Supplies") &&
-            !SCMiner::commodityNamed("IRON", "Tin");
-        allPassed &= check(card, "a commodity terminal's card read: the stock's level in the game's words, the stock, "
-                                 "the price of a SCU or of a cargo box, the name with its figures exact");
-
-        // ...and a visit to its list: what two pictures of the shop's stock
-        // agree on, in as few pictures as show it; the other list apart
-        auto cardOf = [](const char* name, int level, int stock, int price) {
-            SCMiner::CommodityCard c;
-            c.name = name;
-            c.level = level;
-            c.stock = stock;
-            c.price = price;
-            c.priceReads = 2;
-            return c;
-        };
-        SCMiner::CommodityScreen a, b, c, d;
-        a.side = b.side = c.side = 1;
-        d.side = 2;
-        a.cards = {cardOf("ARGON", 7, 24000, 316), cardOf("IRON", 2, 4, 2850)};
-        b.cards = {cardOf("ARGON", 7, 24000, 316), cardOf("IRON", 2, 4, 12850)};
-        c.cards = {cardOf("IRON", 2, 4, 2850), cardOf("GOLD", 2, 23, 26492)};
-        d.cards = {cardOf("WASTE", 7, 75, 229), cardOf("WASTE", 7, 75, 229)};
-        SCMiner::TerminalSession visit;
-        visit.add(1000, a);
-        visit.add(2000, b);
-        visit.add(3000, c);
-        visit.add(4000, d);
-        const auto all = visit.reports([](const SCMiner::TerminalSession::Row&) { return true; });
-        const auto ironOnly = visit.reports([](const SCMiner::TerminalSession::Row& r) { return r.name == "IRON"; });
-        SCMiner::UexPriceRow r1, r2;
-        r1.commodity = 6;
-        r1.price = 316;
-        r1.stock = 24000;
-        r1.level = 7;
-        r2.commodity = 20;
-        r2.price = 2850;
-        r2.stock = 4;
-        r2.level = 2;
-        const std::string two = R::priceReport(22, std::vector<SCMiner::UexPriceRow>{r1, r2}, 1791700000, "", true);
-        const bool visited =
-            visit.sawDemand() && all.size() == 1 && all[0].picture == 0 && all[0].rows.size() == 2 &&
-            ironOnly.size() == 1 && ironOnly[0].picture == 2 && ironOnly[0].rows.size() == 1 &&
-            ironOnly[0].rows[0].price == 2850 &&
-            two == "{\"id_terminal\":22,\"type\":\"commodity\",\"is_production\":1,\"prices\":["
-                   "{\"id_commodity\":6,\"price_buy\":316,\"scu_buy\":24000,\"status_buy\":7},"
-                   "{\"id_commodity\":20,\"price_buy\":2850,\"scu_buy\":4,\"status_buy\":2}],\"date_added\":1791700000}";
-        allPassed &= check(visited, "a visit to a terminal's list: what two pictures of the shop's stock agree on, in as "
-                                    "few pictures as show it - a misread once is outvoted, a card seen once waits - "
-                                    "and the report of several prices");
+        const bool bodies = job == "{\"is_production\":0,\"id_terminal\":788,\"id_refinery_method\":2,\"cost\":194,"
+                                   "\"time_minutes\":8,\"items\":[{\"id_commodity\":48,\"quantity\":484,\"yield\":235}]}";
+        allPassed &= check(bodies, "a refinery job as UEX's documentation writes it");
         std::string user;
         const bool answers =
             R::verdict(200, "{\"status\":\"ok\",\"data\":{\"username\":\"Runner\"}}", &user).empty() && user == "Runner" &&
             R::verdict(200, "{\"status\":\"user_not_verified\"}").find("not verified") != std::string::npos &&
             R::keyTrouble(200, "{\"status\":\"invalid_secret_key\"}") &&
             !R::keyTrouble(200, "{\"status\":\"terminal_not_found\"}") && R::keyTrouble(403, "") &&
-            // ...and the account behind a good key: not yet a data runner,
-            // barred, unverified - the key stays, the next trade tries again
+            // ...and the account behind a good key: restricted, barred,
+            // unverified - the key stays, the next job tries again
             !R::keyTrouble(200, "{\"status\":\"user_not_allowed\"}") &&
             R::accountTrouble(200, "{\"status\":\"user_not_allowed\"}") == "datarunner" &&
-            R::verdict(200, "{\"status\":\"user_not_allowed\"}").find("data runners") != std::string::npos &&
+            R::verdict(200, "{\"status\":\"user_not_allowed\"}").find("this account") != std::string::npos &&
             R::accountTrouble(200, "{\"status\":\"user_disabled\"}") == "blocked" &&
             !R::keyTrouble(200, "{\"status\":\"user_not_verified\"}") &&
             R::accountTrouble(200, "{\"status\":\"user_not_verified\"}") == "unverified" &&
@@ -1445,46 +1306,10 @@ int runSelfTest() {
             R::unmixAppToken("").empty() && R::unmixAppToken("26,x,7").empty() &&
             R::unmixAppToken("26,226,156,256").empty() && R::unmixAppToken("91").empty() &&
             !R::keyLooksRight(std::string(39, 'a') + " ") &&
-            R::base64((const unsigned char*)"Man", 3) == "TWFu" && R::base64((const unsigned char*)"Ma", 2) == "TWE=" &&
-            R::base64((const unsigned char*)"M", 1) == "TQ==" && R::jsonText("a\"b\\c\n") == "\"a\\\"b\\\\c\\n\"";
+            R::jsonText("a\"b\\c\n") == "\"a\\\"b\\\\c\\n\"";
         allPassed &= check(answers, "UEX's answers read: taken, and by whom; the key turned away stops the reports, a "
-                                    "terminal it does not know does not, nor an account that is no data runner yet; a "
-                                    "key has 40 letters and digits");
-        // the picture for a trade, as on the recording of 7 October: the
-        // list 161.5-163.5 s, CONFIRMATION until the request at 165.7,
-        // TRANSACTION COMPLETE until 168.3, the list again - every half second
-        const std::vector<long long> at = {161000, 161500, 162000, 162500, 163000, 163500, 164000, 164500, 165000,
-                                           165500, 166000, 166500, 167000, 167500, 168000, 168500, 169000, 169500};
-        const std::vector<double> seen = {1.6, 8.1, 8.4, 8.7, 8.8, 8.8, 4.3, 3.9, 4.0,
-                                          1.9, 0.9, 1.7, 2.0, 2.0, 2.0, 9.2, 9.1, 9.1};
-        // ...once a second, and the player long in CONFIRMATION: no list
-        // before the request, the one after it, not a dialog
-        const std::vector<long long> slow = {160000, 161000, 162000, 163000, 164000, 165000, 166000, 167000};
-        const std::vector<double> slowSeen = {4.3, 4.2, 4.0, 1.9, 2.0, 2.0, 9.1, 9.2};
-        // ...and the list before it, the player gone where there is more to
-        // see a little after it: the list
-        const bool chosen = R::pictureFor(at, seen, 165697) == 5 && R::pictureFor(slow, slowSeen, 162500) == 6 &&
-                            R::pictureFor({163000, 166000, 168000}, {8.8, 2.0, 12.0}, 165697) == 0 &&
-                            R::pictureFor({163000, 166000, 168000}, {8.8, 2.0, 15.0}, 165697) == 0 &&
-                            R::pictureFor(at, seen, 200000) == -1 && R::pictureFor({}, {}, 165697) == -1 &&
-                            R::pictureFor({165000}, {4.0}, 165697) == 0;
-        allPassed &= check(chosen, "a trade's picture for UEX is the terminal's list - from just before the trade, "
-                                   "else just after it - never a dialog over the prices");
-        // the picture with a report: a 5120x1440 game comes out 3840x1080 -
-        // its terminal readable - a 1080p one as it is, and under UEX's 10 MB
-        cv::Mat wide(1440, 5120, CV_8UC4, cv::Scalar(40, 60, 80, 255));
-        for (int x = 0; x < wide.cols; x += 64) {
-            cv::putText(wide, "15,960", cv::Point(x, 700), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(230, 230, 230, 255), 2);
-        }
-        const std::vector<unsigned char> wideJpeg = SCMiner::Application::uexPictureJpeg(wide);
-        const cv::Mat wideBack = cv::imdecode(wideJpeg, cv::IMREAD_COLOR);
-        const std::vector<unsigned char> plainJpeg =
-            SCMiner::Application::uexPictureJpeg(cv::Mat(1080, 1920, CV_8UC3, cv::Scalar(10, 20, 30)));
-        const cv::Mat plainBack = cv::imdecode(plainJpeg, cv::IMREAD_COLOR);
-        const bool picture = wideBack.cols == 3840 && wideBack.rows == 1080 && plainBack.cols == 1920 &&
-                             plainBack.rows == 1080 && wideJpeg.size() / 3 * 4 < 10u * 1024 * 1024 &&
-                             SCMiner::Application::uexPictureJpeg(cv::Mat()).empty();
-        allPassed &= check(picture, "the picture with a price report: at most 1080 tall, a JPEG under UEX's 10 MB");
+                                    "terminal it does not know does not, nor an account it restricts; a key has 40 "
+                                    "letters and digits");
         // ...and the app token beside the program, where a release carries it:
         // there, it has to read (a package without it reports nothing)
         {
@@ -1495,30 +1320,6 @@ int runSelfTest() {
             } else {
                 std::cout << "  (no uex_token.dat beside the program: this build asks UEX anonymously)" << std::endl;
             }
-        }
-        // ...kept once it has gone, the next one in its place, nothing left
-        // beside it
-        {
-            namespace fs = std::filesystem;
-            std::error_code ec;
-            const fs::path folder = fs::temp_directory_path(ec) / "bedrock-uexshot-selftest";
-            fs::remove_all(folder, ec);
-            const fs::path file = folder / "debug" / "uex_last_screenshot.jpg";
-            auto read = [&]() {
-                std::ifstream in(file, std::ios::binary);
-                return std::vector<unsigned char>((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-            };
-            const bool first = SCMiner::Application::keepUexShot(file, wideJpeg) && read() == wideJpeg;
-            const bool next = SCMiner::Application::keepUexShot(file, plainJpeg) && read() == plainJpeg;
-            const bool none = !SCMiner::Application::keepUexShot(file, {}) && read() == plainJpeg;
-            int files = 0;
-            for (const auto& entry : fs::directory_iterator(folder / "debug", ec)) {
-                (void)entry;
-                files++;
-            }
-            fs::remove_all(folder, ec);
-            allPassed &= check(first && next && none && files == 1,
-                               "the screenshot sent to UEX kept in the debug folder, the next one in its place");
         }
     }
 

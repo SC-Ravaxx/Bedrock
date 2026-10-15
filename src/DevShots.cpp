@@ -1072,7 +1072,7 @@ int runScreenshots(const std::string& dir) {
     SendMessageW(gui.windowHandle(), WM_LBUTTONDOWN, 0, MAKELPARAM(4, 4));
     pump();
     // The first start's UEX offer over the main window: the account, then -
-    // a key pasted - whether to report prices, then the pictures' 90 days
+    // a key pasted - whether to send refinery jobs
     {
         SCMiner::MinerGUI::UexAccount account;
         account.hasToken = true;
@@ -1087,29 +1087,24 @@ int runScreenshots(const std::string& dir) {
         gui.openUexWelcomeForShot(3);
         pump();
         shoot(gui.windowHandle(), "uex_welcome_ask.png");
-        gui.openUexWelcomeForShot(2);
-        pump();
-        shoot(gui.windowHandle(), "uex_welcome_pictures.png");
-        // ...and No said: the account kept, prices not reported
+        // ...and No said: the account kept, no refinery jobs sent
         account.note = "Account connected, reporting off";
         gui.setUexAccount(account);
         gui.openUexWelcomeForShot(1);
         pump();
         shoot(gui.windowHandle(), "uex_welcome_kept.png");
-        // ...and reporting on, the last report taken and its screenshot kept;
-        // then UEX took nothing: the account is no data runner yet - then the
-        // same in the narrowest window
+        // ...and refinery jobs going, the last one taken; then UEX took
+        // nothing from the account - then the same in the narrowest window
         account.on = true;
         account.since = (long long)std::time(nullptr) - 3600;
-        account.lastShot = L"uex_last_screenshot.jpg";
-        account.note = "Hephaestanite bought at Admin - Pyro Gateway (Stanton): accepted by UEX";
+        account.note = "Refinery job at Levski: accepted by UEX";
         account.noteAt = (long long)std::time(nullptr) - 40;
         gui.setUexAccount(account);
         gui.openUexWelcomeForShot(1);
         pump();
         shoot(gui.windowHandle(), "uex_reported.png");
         account.accountTrouble = "datarunner";
-        account.note = "Agricium sold at Commodity Shop - Levski: UEX only takes reports from data runners";
+        account.note = "Refinery job at Levski: UEX doesn't take reports from this account";
         account.noteAt = (long long)std::time(nullptr) - 40;
         gui.setUexAccount(account);
         gui.openUexWelcomeForShot(1);
@@ -1127,7 +1122,6 @@ int runScreenshots(const std::string& dir) {
                      SWP_NOMOVE | SWP_NOZORDER);
         account.on = false;
         account.accountTrouble.clear();
-        account.lastShot.clear();
         gui.openUexWelcomeForShot(0);
         gui.setUexAccount(SCMiner::MinerGUI::UexAccount());
         pump();
@@ -1201,8 +1195,9 @@ int runScreenshots(const std::string& dir) {
     if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_market_gems.png", true);
     gui.openUexTabForShot(nullptr);
     gui.setUexThreads(nullptr);
-    // ...and Report to UEX: what goes there and the key, then the pictures'
-    // 90 days, then on - a made-up name for UEX's answer, never the player's
+    // ...and the UEX account: what it gives and the key, then whether to send
+    // refinery jobs, then on - a made-up name for UEX's answer, never the
+    // player's
     {
         SCMiner::MinerGUI::UexAccount account;
         account.hasToken = true;
@@ -1217,13 +1212,10 @@ int runScreenshots(const std::string& dir) {
         gui.openUexCardForShot(3);
         pump();
         if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_uex_ask.png", true);
-        gui.openUexCardForShot(2);
-        pump();
-        if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_uex_pictures.png", true);
         account.on = true;
         account.since = shotNow - 3 * 86400;
         account.user = "DataRunner";
-        account.note = "Gold sold at Levski: accepted by UEX";
+        account.note = "Refinery job at Levski: accepted by UEX";
         account.noteAt = shotNow - 120;
         gui.setUexAccount(account);
         gui.openUexCardForShot(1);

@@ -134,10 +134,9 @@ public:
         std::string accountTrouble;  // ...or the account: "datarunner", "blocked", "unverified" (UexReports)
         std::string note;            // what came of the last report or press
         long long noteAt = 0;
-        std::string user;            // the data runner's name UEX answered with
+        std::string user;            // the name UEX answered with
         bool hasToken = false;       // the build carries Bedrock's app token: without it nothing is reported
         int keyChanges = 0;          // counts every key kept, so a card waiting for one sees it come
-        std::wstring lastShot;       // the screenshot that went to UEX last (debug folder); "" if none
     };
     void setUexAccount(const UexAccount& account);
     // What was pressed: 1 a key pasted (the clipboard's text), 2 the key
@@ -334,9 +333,6 @@ public:
 
     // Live mode status (updates the toggle button and the status pill)
     void setLiveModeActive(bool active);
-    // At a commodity terminal with a picture owed to UEX: the overlay is kept
-    // out of the pictures meanwhile, as while the scan runs
-    void setTradeWatch(bool on);
 
     // Callback when the system selection changes
     using SystemChangedCallback = std::function<void(const std::string&)>;
@@ -503,8 +499,7 @@ public:
     // Compact always-on-top overlay mode (for use while the game is running)
     void toggleOverlayMode();
     bool isOverlayMode() const { return overlayMode_; }
-    // The overlay out of screen captures while live mode is on or a trade's
-    // picture is owed (setTradeWatch), in them otherwise
+    // The overlay out of screen captures while live mode is on, in them otherwise
     void keepOutOfCaptures();
     // A rock's ores in the overlay: one to a row (true, the overlay two rows
     // taller) or all on one line; kept in window.txt
@@ -674,7 +669,7 @@ public:
     void showRefineryOrdersForShot(bool on);   // ...and its work orders' view
     void openLookingForShot();   // --screenshot only: the ore pick, open
     void setPlanPulseForShot(bool on);   // ...and the Ore Finder's blink held on or off
-    void openUexCardForShot(int step);  // ...and its UEX card: 0 shut, 1 the account, 3 report prices?, 2 the pictures
+    void openUexCardForShot(int step);  // ...and its UEX card: 0 shut, 1 the account, 3 send refinery jobs?
     void openUexWelcomeForShot(int step);   // ...and the first start's offer over the main window, the same steps
     // ...and its UEX tab on an ore - or on a ground family, at one of its
     // gems; nullptr leaves it
@@ -699,7 +694,6 @@ private:
     HINSTANCE hInstance_ = nullptr;
     bool isOpen_ = false;
     bool liveModeActive_ = false;
-    bool tradeWatch_ = false;
     bool pulseOn_ = false;      // Blinking state of the LIVE indicator
     bool overlayMode_ = false;  // compact topmost overlay
     bool overlayOreRows_ = true;   // a rock's ores one to a row in the overlay

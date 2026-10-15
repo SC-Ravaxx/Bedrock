@@ -13,7 +13,6 @@
 #include "RefineryTerminal.h"
 #include "RefineryOrders.h"
 #include "RefineryShare.h"
-#include "CommodityTerminal.h"
 #include "RefineryData.h"
 #include "RefiningData.h"
 #include "Updater.h"
@@ -662,98 +661,6 @@ int runRefineryShare(const std::string& picture, const std::string& service) {
                   << s.sources << " source(s)" << (s.confirmed ? ", confirmed" : "") << std::endl;
     }
     return answer.status >= 200 && answer.status < 300 ? 0 : 1;
-}
-
-int runTradeCard(const std::string& folder, const std::string& commodity, double perScu, double tradeSecond) {
-    SCMiner::TextLineReader* lines = panelLines();
-    if (!lines) return 1;
-    std::vector<std::string> files;
-    for (const auto& entry : std::filesystem::directory_iterator(folder)) {
-        const std::string ext = entry.path().extension().string();
-        if (ext == ".jpg" || ext == ".png") files.push_back(entry.path().string());
-    }
-    std::sort(files.begin(), files.end());
-    std::vector<SCMiner::TerminalPicture> pictures;
-    for (size_t i = 0; i < files.size(); i++) {
-        std::ifstream in(files[i], std::ios::binary);
-        SCMiner::TerminalPicture p;
-        p.ms = (long long)i * 1000;
-        p.jpeg.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
-        pictures.push_back(std::move(p));
-    }
-    const auto t0 = std::chrono::steady_clock::now();
-    const SCMiner::TradeCard card =
-        SCMiner::readTradeCard(pictures, commodity, std::llround(tradeSecond * 1000), perScu, *lines);
-    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
-    std::cout << commodity << " at second " << tradeSecond << ": " << card.read << " pictures read in "
-              << (int)std::lround(ms) << " ms - ";
-    if (card.found) {
-        std::cout << card.price << " a SCU, " << card.stock << " SCU, level " << card.level << ", picture "
-                  << std::filesystem::path(files[card.picture]).filename().string() << std::endl;
-    } else {
-        std::cout << "not found" << std::endl;
-    }
-    return card.found ? 0 : 1;
-}
-
-int runSession(const std::string& folder) {
-    SCMiner::TextLineReader* lines = panelLines();
-    if (!lines) return 1;
-    std::vector<std::string> files;
-    for (const auto& entry : std::filesystem::directory_iterator(folder)) {
-        const std::string ext = entry.path().extension().string();
-        if (ext == ".jpg" || ext == ".png") files.push_back(entry.path().string());
-    }
-    std::sort(files.begin(), files.end());
-    SCMiner::TerminalSession session;
-    std::vector<std::string> added;
-    for (size_t i = 0; i < files.size(); i++) {
-        const cv::Mat frame = cv::imread(files[i], cv::IMREAD_COLOR);
-        if (frame.empty()) continue;
-        const SCMiner::CommodityScreen screen = SCMiner::readCommodityScreen(frame, *lines);
-        if (screen.cards.empty()) continue;
-        session.add((long long)i * 1000, screen);
-        added.push_back(std::filesystem::path(files[i]).filename().string());
-    }
-    std::cout << session.pictures() << " pictures of the list" << (session.sawDemand() ? ", some of what it buys" : "")
-              << std::endl;
-    for (const SCMiner::TerminalSession::Report& report :
-         session.reports([](const SCMiner::TerminalSession::Row&) { return true; })) {
-        std::cout << "  report with " << added[report.picture] << ":" << std::endl;
-        for (const SCMiner::TerminalSession::Row& row : report.rows) {
-            std::cout << "    '" << row.name << "' level " << row.level << ", " << row.stock << " SCU, " << row.price
-                      << " a SCU (read " << row.priceReads << "x)" << std::endl;
-        }
-    }
-    return 0;
-}
-
-int runCommodity(const std::vector<std::string>& files, const std::string& wanted) {
-    SCMiner::TextLineReader* lines = panelLines();
-    if (!lines) return 1;
-    int pictures = 0, withCards = 0, cards = 0, whole = 0;
-    double ms = 0;
-    for (const std::string& file : files) {
-        const cv::Mat frame = cv::imread(file, cv::IMREAD_COLOR);
-        if (frame.empty()) continue;
-        pictures++;
-        const SCMiner::CommodityScreen screen = SCMiner::readCommodityScreen(frame, *lines, wanted);
-        ms += screen.ms;
-        std::cout << std::filesystem::path(file).filename().string() << ": " << screen.cards.size() << " cards, "
-                  << screen.lines << " lines, " << (int)std::lround(screen.ms) << " ms, side " << screen.side << std::endl;
-        if (!screen.cards.empty()) withCards++;
-        for (const SCMiner::CommodityCard& c : screen.cards) {
-            cards++;
-            const bool all = !c.name.empty() && c.level > 0 && c.stock >= 0 && c.price >= 0;
-            if (all) whole++;
-            std::cout << "    " << (all ? "  " : "? ") << "'" << c.name << "' level " << c.level << ", stock "
-                      << c.stock << " SCU, " << c.price << (c.perUnit ? " a box" : " a SCU") << "  at " << c.card.x
-                      << "," << c.card.y << " " << c.card.width << "x" << c.card.height << std::endl;
-        }
-    }
-    std::cout << pictures << " pictures, " << withCards << " with cards: " << cards << " cards, " << whole
-              << " read whole; " << (pictures ? (int)std::lround(ms / pictures) : 0) << " ms a picture" << std::endl;
-    return 0;
 }
 
 int runRefinery(const std::vector<std::string>& files, const std::string& drawDir) {
