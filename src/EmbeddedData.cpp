@@ -47,6 +47,7 @@ BEDROCK_BLOB(bedrock_blob_selftest_prospector, BEDROCK_TESTS_DIR "/scanpanel/pan
 BEDROCK_BLOB(bedrock_blob_selftest_mole, BEDROCK_TESTS_DIR "/scanpanel/panel_mole_cockpit_1440.png")
 BEDROCK_BLOB(bedrock_blob_selftest_panel_1080, BEDROCK_TESTS_DIR "/scanpanel/scan_panel_1080_region.png")
 BEDROCK_BLOB(bedrock_blob_selftest_turret, BEDROCK_TESTS_DIR "/scanpanel/panel_turret_stileron.png")
+BEDROCK_BLOB(bedrock_blob_selftest_turret_volume, BEDROCK_TESTS_DIR "/scanpanel/panel_turret_copper.png")
 BEDROCK_BLOB(bedrock_blob_selftest_golem, BEDROCK_TESTS_DIR "/scanpanel/panel_golem_long_1440.png")
 BEDROCK_BLOB(bedrock_blob_selftest_loadout, BEDROCK_TESTS_DIR "/scanpanel/loadout_prospector_1440.jpg")
 BEDROCK_BLOB(bedrock_blob_selftest_marker_lamp, BEDROCK_TESTS_DIR "/lamp_marker_3170.png")
@@ -87,6 +88,8 @@ bool embeddedResource(const std::string& name, const unsigned char** data, size_
         {"SELFTEST_MOLE", bedrock_blob_selftest_mole_start, bedrock_blob_selftest_mole_end},
         {"SELFTEST_PANEL_1080", bedrock_blob_selftest_panel_1080_start, bedrock_blob_selftest_panel_1080_end},
         {"SELFTEST_TURRET", bedrock_blob_selftest_turret_start, bedrock_blob_selftest_turret_end},
+        {"SELFTEST_TURRET_VOLUME", bedrock_blob_selftest_turret_volume_start,
+         bedrock_blob_selftest_turret_volume_end},
         {"SELFTEST_GOLEM", bedrock_blob_selftest_golem_start, bedrock_blob_selftest_golem_end},
         {"SELFTEST_LOADOUT", bedrock_blob_selftest_loadout_start, bedrock_blob_selftest_loadout_end},
         {"SELFTEST_MARKER_LAMP", bedrock_blob_selftest_marker_lamp_start, bedrock_blob_selftest_marker_lamp_end},

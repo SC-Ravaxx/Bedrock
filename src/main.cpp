@@ -2261,7 +2261,7 @@ int runTurretHarvest(const std::string& truthCsv, const std::string& outDir, cha
 
     struct Glyph {
         char c;
-        int row;             // 0 mass, 1 resistance, 2 instability, 3 COMP., 4 SCU
+        int row;             // 0 mass, 1 resistance, 2 instability, 3 COMP., 4 SCU, 5 the volume
         cv::Rect box;        // pixels
     };
     struct Sample {
@@ -2299,7 +2299,7 @@ int runTurretHarvest(const std::string& truthCsv, const std::string& outDir, cha
                 for (int r = 0; r < 3; r++) {
                     if (!found[r] && tok.text == t.text[r]) row = r;
                 }
-                if (row < 0 && !found[3] && (tok.text == "COMP." || tok.text == "COMP")) row = 3;
+                if (row < 0 && !found[3] && (tok.text == "COMP." || tok.text == "COMP" || tok.text == "COMPOSITION")) row = 3;
                 if (row < 0 && !found[4] && tok.text == "SCU") row = 4;
                 if (row < 0) continue;
                 if (row <= 2 && tok.boxes.size() != tok.text.size()) continue;
@@ -2309,6 +2309,42 @@ int runTurretHarvest(const std::string& truthCsv, const std::string& outDir, cha
                     sample.glyphs.push_back({row == 3 ? 'C' : 'U', row, tok.box});
                 }
                 found[row] = true;
+            }
+        }
+        static const bool tokens = std::getenv("SCMINER_HARVEST_TOKENS") != nullptr;
+        if (tokens && samples.size() < 3) {
+            for (const auto& fl : SCMiner::faceLinesDetailed(frame, region)) {
+                std::cout << "  line:";
+                for (const auto& tok : fl.tokens) {
+                    std::cout << " '" << tok.text << "'@" << tok.box.x << "," << tok.box.y << " " << tok.box.width << "x"
+                              << tok.box.height;
+                }
+                std::cout << std::endl;
+            }
+        }
+        // ...and the volume: on the first line under the instability with a
+        // figure of two places - COMP.'s, which the face reader reads as
+        // "???4?." - the figure's glyphs, one box each; "SCU" may run on in
+        // the same word ("30.925??"), and is left off
+        int instBottom = -1;
+        for (const Glyph& g : sample.glyphs) {
+            if (g.row == 2) instBottom = (std::max)(instBottom, g.box.y + g.box.height);
+        }
+        bool volumeFound = false;
+        for (const auto& fl : SCMiner::faceLinesDetailed(frame, region)) {
+            if (instBottom < 0 || volumeFound) break;
+            for (const auto& tok : fl.tokens) {
+                if (tok.box.y <= instBottom || tok.boxes.size() != tok.text.size()) continue;
+                const std::string& t = tok.text;
+                size_t whole = 0;
+                while (whole < t.size() && t[whole] >= '0' && t[whole] <= '9') whole++;
+                if (whole < 1 || whole > 3 || whole + 3 > t.size() || t[whole] != '.' || t[whole + 1] < '0' ||
+                    t[whole + 1] > '9' || t[whole + 2] < '0' || t[whole + 2] > '9') {
+                    continue;
+                }
+                for (size_t g = 0; g < whole + 3; g++) sample.glyphs.push_back({t[g], 5, tok.boxes[g]});
+                volumeFound = true;
+                break;
             }
         }
         if (found[0] && found[1] && found[2]) samples.push_back(sample);
@@ -2325,6 +2361,7 @@ int runTurretHarvest(const std::string& truthCsv, const std::string& outDir, cha
     };
     std::vector<double> digitH, digitW, advance, stopGap, pctDx, pctW, pctH, stopBase, firstCentre;
     std::vector<double> valueDx[3], bottom[3], compCx, compCy, compW, compH, scuCx, scuCy, scuW, scuH;
+    std::vector<double> volLast, volBottom;
     for (const Sample& sm : samples) {
         const double s = sm.scale;
         auto ux = [&](double px) { return (px - sm.labels.x) / s; };
@@ -2360,6 +2397,19 @@ int runTurretHarvest(const std::string& truthCsv, const std::string& outDir, cha
                     stopGap.push_back(centre(k) - centre(k - 2));
                     stopBase.push_back(uy(row[k - 1]->box.y + row[k - 1]->box.height) - base);
                 }
+            }
+        }
+        {
+            const Glyph* last = nullptr;
+            std::vector<double> bottoms;
+            for (const Glyph& g : sm.glyphs) {
+                if (g.row != 5 || g.c < '0' || g.c > '9') continue;
+                last = &g;
+                bottoms.push_back(uy(g.box.y + g.box.height));
+            }
+            if (last) {
+                volLast.push_back(ux(last->box.x + last->box.width / 2.0));
+                volBottom.push_back(median(bottoms));
             }
         }
         for (const Glyph& g : sm.glyphs) {
@@ -2403,6 +2453,8 @@ int runTurretHarvest(const std::string& truthCsv, const std::string& outDir, cha
     put("scu_cy", median(scuCy), scuCy.size());
     put("scu_w", median(scuW), scuW.size());
     put("scu_h", median(scuH), scuH.size());
+    put("volume_last_centre", median(volLast), volLast.size());
+    put("volume_bottom", median(volBottom), volBottom.size());
 
     // the shapes: a cell about each glyph, cut at the label size, in its row's ink
     const double Hd = median(digitH), Wd = median(digitW);

@@ -3386,6 +3386,31 @@ int runSelfTest() {
                     allPassed &= check(SCMiner::snapOreName("").empty() && SCMiner::snapOreName("XQZ").empty() &&
                                            SCMiner::snapOreName("TARGET").empty(),
                                        "...and a word that is no mineral is still no name");
+                    // The MOLE's turret by its own numerals, and the volume
+                    // under its EASY bar with them, in the same numerals:
+                    // COMP.  19.35 SCU. Not read before 20 October 2026 - the
+                    // turret's rocks came in per cents, not SCU (andydsm).
+                    const cv::Mat copper =
+                        testPicture("scanpanel/panel_turret_copper.png", L"SELFTEST_TURRET_VOLUME");
+                    allPassed &= check(!copper.empty(),
+                                       "the MOLE turret's panel with its volume is beside the build or inside the exe");
+                    if (!copper.empty()) {
+                        cv::Mat towerScreen(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+                        copper.copyTo(towerScreen(cv::Rect(3395, 515, copper.cols, copper.rows)));
+                        SCMiner::ScanPanel tower;
+                        for (int look = 0; look < 4 && !tower.found; look++) {
+                            tower = SCMiner::ScanPanel();
+                            SCMiner::readPanelByShape(towerScreen, tower);
+                        }
+                        const SCMiner::RockStats& c = tower.stats;
+                        allPassed &= check(tower.found && c.mass == 21126.0f && c.resistance == 0.0f &&
+                                               std::abs(c.instability - 23.23f) < 0.005f &&
+                                               std::abs(c.scu - 19.35f) < 0.005f,
+                                           "...and the turret's figures by their shapes, its volume with them: 21126, "
+                                           "0 %, 23.23 and 19.35 SCU (got " + std::to_string((int)c.mass) + ", " +
+                                               std::to_string((int)c.resistance) + " %, " +
+                                               std::to_string(c.instability) + ", " + std::to_string(c.scu) + ")");
+                    }
                     // The MOLE's TURRET, over a sunlit red rock: its figures
                     // are the largest on the screen and no shapes are cut for
                     // that face, so nothing reads them glyph by glyph. The

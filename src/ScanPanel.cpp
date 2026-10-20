@@ -1528,9 +1528,10 @@ const PanelLayout LONG_PANEL{'M', "long", 121.3, 26.05, 10.9, 56.0, 33.5,
 // the face reader's glyph boxes on 320 frames: the figures stand four units
 // lower than the Prospector's (13 against 9) and each row starts 1.8 further
 // left than the one above - 118.7, 116.5, 115.1 - the panel is slightly
-// sheared. Its volume is not read.
+// sheared. Its volume, in the same numerals under the EASY bar, ends 172.7
+// right of the labels' edge and stands 129.8 below - off 305 of them.
 const PanelLayout TURRET_PANEL{'T', "turret", 118.7, 24.7, 13.0, 21.0, 32.0,
-                               true, 25.0, 125.5, 205.5, 122.5, SHAPE_SCU_LAST_CENTRE, SHAPE_SCU_BOTTOM,
+                               true, 25.0, 125.5, 205.5, 122.5, 172.7, 129.8,
                                -1.8, &TURRET_FONT};
 // ...and the same turret with the game's own labels written out (see
 // SHAPE_TURRET_LONG_LABELS, 100 wide). Its places off the face reader's glyph
@@ -1538,9 +1539,10 @@ const PanelLayout TURRET_PANEL{'T', "turret", 118.7, 24.7, 13.0, 21.0, 32.0,
 // further left each row down, the rows 24.3 apart, the mass's bottom 10.9
 // below the MASS label's top - two units higher than with the short labels,
 // whose column shape is anchored a little differently. Not pinned: it writes
-// COMPOSITION for COMP., and no place is known for it.
+// COMPOSITION for COMP., and no place is known for it. Its volume ends 167.6
+// right of the labels' edge and stands 125.5 below, off the same 8 frames.
 const PanelLayout TURRET_LONG_PANEL{'W', "turret long", 115.8, 24.3, 10.9, 47.0, 32.0,
-                                    false, 0.0, 0.0, 0.0, 0.0, SHAPE_SCU_LAST_CENTRE, SHAPE_SCU_BOTTOM,
+                                    false, 0.0, 0.0, 0.0, 0.0, 167.6, 125.5,
                                     -2.2, &TURRET_FONT};
 // The Golem: amber labels of their own (see SHAPE_GOLEM_LABELS, 56 wide), the
 // figures in the turret's numerals. Its places off the face reader's glyph
@@ -1548,16 +1550,17 @@ const PanelLayout TURRET_LONG_PANEL{'W', "turret long", 115.8, 24.3, 10.9, 47.0,
 // row, the rows 24.5 apart, the mass's bottom 12.65 below the MASS label's
 // top. Its size is not pinned - no SCU place is known - so its scale is the
 // labels' own. Its HUD is drawn in the world and grows and shrinks with the
-// view, from 1.15 to 1.8.
+// view, from 1.15 to 1.8. Where its volume stands is not known: it is not
+// read (0.0).
 const PanelLayout GOLEM_PANEL{'G', "golem", 114.5, 24.5, 12.65, 25.0, 32.0,
-                              false, 0.0, 0.0, 0.0, 0.0, SHAPE_SCU_LAST_CENTRE, SHAPE_SCU_BOTTOM,
+                              false, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                               0.0, &GOLEM_FONT};
 // ...and with the game's own labels written out (see SHAPE_GOLEM_LONG_LABELS,
 // 112 wide). Its places measured against that column on 96 frames with white
 // figures, the same way as for the short column: the figures 0.4 further
 // left, the mass a unit higher, the rows 25.15 apart.
 const PanelLayout GOLEM_LONG_PANEL{'H', "golem long", 114.1, 25.15, 11.7, 53.0, 32.0,
-                                   false, 0.0, 0.0, 0.0, 0.0, SHAPE_SCU_LAST_CENTRE, SHAPE_SCU_BOTTOM,
+                                   false, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                                    0.0, &GOLEM_FONT};
 // ...and its pilot seat: the short panel's places exactly, with narrow labels
 // (see SHAPE_COCKPIT_LABELS). With the Prospector's column the search found
@@ -3156,8 +3159,8 @@ bool readPanelByShapeInk(const cv::Mat& frame, const cv::Mat& bgr, int ink, Scan
                             (int)std::lround(215 * s), (int)std::lround(17 * s)) &
                    cv::Rect(0, 0, frame.cols, frame.rows);
 
-    // (the turret's volume stands elsewhere, in its own font, and is not read)
-    if (layout->font) return sure;
+    // (the Golem's volume stands where it is not known, and is not read)
+    if (layout->scuLastCentre <= 0) return sure;
     StageClock scuClock("scu");
     // The volume: "COMP.  21.30 SCU", right-aligned against SCU, so its last
     // numeral sits at the same place whatever its length. Tried from the
@@ -3165,20 +3168,30 @@ bool readPanelByShapeInk(const cv::Mat& frame, const cv::Mat& bgr, int ink, Scan
     // as a perfectly good 1.30, but started too far left the first cell is
     // empty and the reading fails.
     for (int whole = 3; whole >= 1; whole--) {
-        const double firstCentre = layout->scuLastCentre - SHAPE_ADVANCE - SHAPE_STOP_ADVANCE -
-                                   SHAPE_ADVANCE * (whole - 1);
-        const cv::Point leftBottom(column.labels.x + (int)std::lround((firstCentre - SHAPE_FIRST_CENTRE) * s),
+        const double firstCentre = layout->scuLastCentre - font.advance - font.stopAdvance -
+                                   font.advance * (whole - 1);
+        const cv::Point leftBottom(column.labels.x + (int)std::lround((firstCentre - font.firstCentre) * s),
                                    column.labels.y + (int)std::lround(layout->scuBottom * s));
         // the volume is written in white on the MOLE too, beside orange labels
         const cv::Mat& scuInk = ink == 4 ? inkImage(0) : darkest;
-        const ShapeRow scu = readShapeRow(scuInk, leftBottom, s, 2);
+        ShapeRow scu = readShapeRow(scuInk, leftBottom, s, 2, font);
+        // ...in the turret's numerals: in each white ink, the clearest
+        // reading kept, as for its figures (never dark on bright: the white
+        // figures turned over read a bright ground as figures)
+        if (!font.clustered) {
+            for (int which : {5, 1}) {
+                ShapeRow other = readShapeRow(inkImage(which), leftBottom, s, 2, font);
+                if (!other.placed) continue;
+                if (!scu.placed || other.worst + other.lead > scu.worst + scu.lead) scu = other;
+            }
+        }
         if (!scu.placed || scu.text.find('.') != (size_t)whole) continue;
         // ...and a shorter reading only when nothing stands before it: a 5
         // too faint to match over the ice still lifts off the ground, and
         // without it 50.03 was 0.03
-        const cv::Rect before((int)std::lround(column.labels.x + (firstCentre - SHAPE_ADVANCE - 4.5) * s),
-                              leftBottom.y - (int)std::lround(SHAPE_DIGIT_H * s),
-                              (int)std::lround(9 * s), (int)std::lround(SHAPE_DIGIT_H * s));
+        const cv::Rect before((int)std::lround(column.labels.x + (firstCentre - font.advance - 4.5) * s),
+                              leftBottom.y - (int)std::lround(font.digitH * s),
+                              (int)std::lround(9 * s), (int)std::lround(font.digitH * s));
         if (whole < 3 && contrastIn(scuInk, before, scu.ground) >= scu.lift * 0.55f) break;
         panel.stats.scu = faceTwoPlaces(scu.text, true);
         panel.note += " s [" + scu.trace + "]";

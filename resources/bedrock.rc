@@ -15,6 +15,7 @@ SELFTEST_PROSPECTOR RCDATA "../tests/scanpanel/panel_prospector_1440.png"
 SELFTEST_MOLE RCDATA "../tests/scanpanel/panel_mole_cockpit_1440.png"
 SELFTEST_PANEL_1080 RCDATA "../tests/scanpanel/scan_panel_1080_region.png"
 SELFTEST_TURRET RCDATA "../tests/scanpanel/panel_turret_stileron.png"
+SELFTEST_TURRET_VOLUME RCDATA "../tests/scanpanel/panel_turret_copper.png"
 SELFTEST_GOLEM RCDATA "../tests/scanpanel/panel_golem_long_1440.png"
 SELFTEST_LOADOUT RCDATA "../tests/scanpanel/loadout_prospector_1440.jpg"
 // ...and the three signature markers it reads: in a hand-out's folder they
