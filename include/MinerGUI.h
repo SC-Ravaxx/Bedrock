@@ -501,6 +501,9 @@ public:
     bool isOverlayMode() const { return overlayMode_; }
     // The overlay out of screen captures while live mode is on, in them otherwise
     void keepOutOfCaptures();
+    // ...and every click through it to the game while Bedrock is not the
+    // window in front; Alt-Tab to Bedrock, and it takes clicks again
+    void updateClickThrough();
     // A rock's ores in the overlay: one to a row (true, the overlay two rows
     // taller) or all on one line; kept in window.txt
     void setOverlayOreRows(bool rows);
@@ -696,6 +699,7 @@ private:
     bool liveModeActive_ = false;
     bool pulseOn_ = false;      // Blinking state of the LIVE indicator
     bool overlayMode_ = false;  // compact topmost overlay
+    bool appActive_ = true;     // one of Bedrock's windows is the one in front (WM_ACTIVATEAPP)
     bool overlayOreRows_ = true;   // a rock's ores one to a row in the overlay
     // ...its size: what the unseen paint wanted, and since when it wants less
     static constexpr int FIT_SHRINK_MS = 2500;
@@ -969,10 +973,10 @@ private:
     // "SHIP Prospector Hofstede · Hofstede-S1 · Deluge" on the overlay's last
     // line, where nothing drawn down to `above` runs into it
     void drawCompactShip(Gdiplus::Graphics& g, int clientW, int clientH, float above);
-    // Fixed, and as wide as the overlay sized to its content ever gets
-    // (330 and 40 % over it): a width that changes from rock to rock is
-    // too restless.
-    static constexpr int OVERLAY_WIDTH = 462;
+    // Fixed: a width that changes from rock to rock is too restless. As wide
+    // as the longest line it has to hold on one - the MOLE's heads, "also
+    // LEFT at 54 %, RIGHT at 33 % ..." - and a little room
+    static constexpr int OVERLAY_WIDTH = 400;
     int overlayHeight() const;                      // unscaled: taller where there is a ship to name
 
     // The rock view's answer, worked out once and drawn by the full window

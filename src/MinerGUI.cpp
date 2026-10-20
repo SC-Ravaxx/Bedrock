@@ -1196,10 +1196,19 @@ void MinerGUI::toggleOverlayMode() {
         if (overlayPlaceKnown_ && overlayPlaceOnScreen(overlayPlace_, width)) at = overlayPlace_;
         at = overlayOnMonitor(at, width, height);
         SetWindowPos(hwnd_, HWND_TOPMOST, at.x, at.y, width, height, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+        // through to the game at once where it went to the overlay without
+        // Bedrock in front
+#ifdef _WIN32
+        DWORD front = 0;
+        GetWindowThreadProcessId(GetForegroundWindow(), &front);
+        appActive_ = front == GetCurrentProcessId();
+#endif
+        updateClickThrough();
     } else {
         SetWindowLongPtr(hwnd_, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_CLIPCHILDREN);
         LONG_PTR ex = GetWindowLongPtr(hwnd_, GWL_EXSTYLE);
         SetWindowLongPtr(hwnd_, GWL_EXSTYLE, ex & ~WS_EX_LAYERED);
+        updateClickThrough();
 #ifdef _WIN32
         SetWindowDisplayAffinity(hwnd_, WDA_NONE);
 #endif
@@ -2163,6 +2172,23 @@ void MinerGUI::keepOutOfCaptures() {
 #endif
 }
 
+// A click meant for the game that landed on the overlay took the game out of
+// focus - the overlay is a window of its own, and the whole of it a handle to
+// drag it by (andydsm, 20 October 2026). So while Bedrock is not the window
+// in front, the overlay is layered and transparent to the mouse: every click
+// goes through to the game under it. Alt-Tab to Bedrock, and it takes clicks
+// again - LIVE, Full, Rows and dragging it. Windows only: the Linux build
+// keeps it as it was.
+void MinerGUI::updateClickThrough() {
+#ifdef _WIN32
+    if (!hwnd_) return;
+    const bool through = overlayMode_ && !appActive_;
+    const LONG_PTR ex = GetWindowLongPtr(hwnd_, GWL_EXSTYLE);
+    const LONG_PTR want = through ? (ex | WS_EX_TRANSPARENT) : (ex & ~WS_EX_TRANSPARENT);
+    if (want != ex) SetWindowLongPtr(hwnd_, GWL_EXSTYLE, want);
+#endif
+}
+
 void MinerGUI::setLiveModeActive(bool active) {
     liveModeActive_ = active;
     keepOutOfCaptures();
@@ -2690,6 +2716,11 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             }
             break;
         }
+
+        case WM_ACTIVATEAPP:
+            appActive_ = wParam != 0;
+            updateClickThrough();
+            break;
 
         case WM_NCHITTEST: {
             // In overlay mode the whole client area drags the window - which
