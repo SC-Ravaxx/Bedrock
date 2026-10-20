@@ -25,6 +25,12 @@ of the database. A reading loses its token after 48 hours. The rate limit
 holds addresses in memory for an hour, salted and hashed. The log has the
 request line and the status code only.
 
+Requests that come through nginx are counted, by the hour (two weeks) and
+by the day (180 days): what was asked for, the Bedrock version and platform
+from the User-Agent (`Bedrock/2.6.6 (Windows)`), and how many installs asked
+for the stations or sent a reading that day. Installs are told apart by the
+same daily token, kept in memory for the day; only the counts are stored.
+
 All readings can be downloaded by anyone as CSV (`/v1/refinery/export.csv`),
 including whether each was taken as plausible, but never the token.
 
@@ -138,6 +144,14 @@ Every reading stored, as CSV, with `plausible` and `reason`.
 The number of readings stored, and today's counts:
 `{"ok": true, "version": 1, "observations": N, "today": {"accepted": …,
 "duplicate": …, "implausible": …, "limited": …, "rejected": …}}`
+
+### `GET /v1/stats?days=90`
+
+For the operator's admin page, from inside the containers' network only: a
+request through nginx (it carries `X-Real-IP`) gets a 404. The counters by
+day (`req:<route>`, `agent:<version>`, `platform:<os>`, `clients`,
+`senders` and the outcomes above), the requests by hour, the readings and
+quotes received by day, each station's state and how often it was read.
 
 ## Running it
 

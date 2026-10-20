@@ -315,6 +315,63 @@ class ServiceTest(unittest.TestCase):
         finally:
             db.close()
 
+    # ---------------------------------------------------------------- what was asked, counted
+
+    def get(self, path, address=None, agent=None):
+        request = urllib.request.Request(self.base + path)
+        if address:
+            request.add_header("X-Real-IP", address)
+        if agent:
+            request.add_header("User-Agent", agent)
+        try:
+            with urllib.request.urlopen(request, timeout=10) as answer:
+                return answer.status, json.loads(answer.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read().decode("utf-8"))
+
+    def test_requests_are_counted_by_route_version_and_install(self):
+        windows, linux = "Bedrock/2.6.6 (Windows)", "Bedrock/2.6.5.2 (Linux)"
+        self.get("/v1/refinery/stations", "198.51.100.7", windows)
+        self.get("/v1/refinery/stations", "198.51.100.7", windows)
+        self.get("/v1/refinery/stations", "198.51.100.8", linux)
+        self.get("/v1/refinery/quotes", "198.51.100.8", "curl/8.0")
+        self.get("/v1/refinery/stations")          # from inside: the health check, the admin view
+        self.send(address="198.51.100.7")
+        self.send(address="198.51.100.7", station=HUR)
+        code, stats = self.get("/v1/stats")
+        self.assertEqual(code, 200)
+        today = stats["counters"][app.utc_day(time.time())]
+        self.assertEqual(today["req:stations"], 3)
+        self.assertEqual(today["clients"], 2)
+        self.assertEqual(today["req:quotes"], 1)
+        self.assertEqual(today["req:observations"], 2)
+        self.assertEqual(today["senders"], 1)
+        self.assertEqual((today["agent:2.6.6"], today["agent:2.6.5.2"]), (2, 1))
+        self.assertEqual((today["platform:windows"], today["platform:linux"]), (2, 1))
+        self.assertEqual(today["agent:other"], 3)  # curl, and the readings' Python
+        self.assertEqual(stats["hours"][app.utc_hour(time.time())]["req:stations"], 3)
+        self.assertEqual(stats["came_in"][app.utc_day(time.time())]["readings"], 2)
+        self.assertEqual(stats["read"]["Checkmate"]["readings"], 1)
+        with open(self.store.path, "rb") as f:
+            self.assertNotIn(b"198.51.100", f.read())
+
+    def test_the_stats_are_not_handed_out_through_nginx(self):
+        self.assertEqual(self.get("/v1/stats", "198.51.100.7")[0], 404)
+        code, stats = self.get("/v1/stats?days=7")
+        self.assertEqual((code, stats["days"]), (200, 7))
+        self.assertEqual(self.get("/v1/stats?days=x")[0], 400)
+
+    def test_hourly_counts_go_after_two_weeks_and_the_installs_seen_after_the_day(self):
+        self.get("/v1/refinery/stations", "198.51.100.7")
+        self.store.prune(self.now + 15 * 86400)
+        db = sqlite3.connect(self.store.path)
+        try:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM hourly").fetchone()[0], 0)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM counters WHERE name = 'req:stations'").fetchone()[0], 1)
+        finally:
+            db.close()
+        self.assertEqual(self.store.seen, {})
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -12,7 +12,10 @@ quoted.
 Nothing of the player is kept: no name, no account, no address. Senders
 are told apart by a token made of the address with a salt that lives in
 memory for a day; readings lose it after two days. The log has the
-request line and the answer only.
+request line and the answer only. Requests are counted by the hour and
+the day - what was asked for, the Bedrock version and platform the
+User-Agent names, and how many installs asked that day, told apart by the
+same token in memory - never by who.
 
 Since anyone can send anything, nothing sent is taken on its word:
   - a reading has to look like what a terminal shows (validate)
@@ -77,6 +80,19 @@ YIELD_BAND = (0.85, 1.15)     # a quote's yield against the model, where its fac
 COST_BAND = (0.5, 6.0)        # cost likewise, at a station whose cost is known: no surcharge to a large one
 TIME_BAND = (0.1, 20.0)       # time, far looser: how the workload moves it is still to be learned
 COUNTER_DAYS = 180
+HOURLY_DAYS = 14              # requests are kept by the hour this long, by the day for COUNTER_DAYS
+
+# What a request asked for, as the counters name it (req:<name>)
+ROUTE_NAMES = {
+    ("GET", "/v1/refinery/stations"): "stations",
+    ("GET", "/v1/refinery/quotes"): "quotes",
+    ("GET", "/v1/refinery/export.csv"): "export",
+    ("GET", "/v1/health"): "health",
+    ("POST", "/v1/refinery/observations"): "observations",
+}
+# Bedrock's own User-Agent: "Bedrock/2.6.6 (Windows)", "(Linux)" - the
+# version and the platform, which is all it says
+AGENT = re.compile(r"^Bedrock/(\d{1,3}(?:\.\d{1,4}){1,3}) \((Windows|Linux)\)")
 
 # The game's own four (refinery_ui_Capacity_Low/Medium/High/Extreme), in
 # order: light - no surcharge, moderate - small, heavy - moderate, extreme - large
@@ -116,6 +132,10 @@ TABLES = load_tables(os.environ.get("BEDROCK_API_TABLES", os.path.join(HERE, "ta
 
 def utc_day(t):
     return time.strftime("%Y-%m-%d", time.gmtime(t))
+
+
+def utc_hour(t):
+    return time.strftime("%Y-%m-%d %H", time.gmtime(t))
 
 
 # ---------------------------------------------------------------- a report
@@ -306,9 +326,16 @@ CREATE TABLE IF NOT EXISTS quote_items (
 );
 CREATE TABLE IF NOT EXISTS counters (
     day TEXT NOT NULL,                -- UTC
-    name TEXT NOT NULL,               -- accepted, duplicate, implausible, limited, rejected, rejected:<field>
+    name TEXT NOT NULL,               -- accepted, duplicate, implausible, limited, rejected, rejected:<field>;
+                                      -- req:<route>, agent:<version>, platform:<os>, clients, senders
     count INTEGER NOT NULL,
     PRIMARY KEY (day, name)
+);
+CREATE TABLE IF NOT EXISTS hourly (
+    hour TEXT NOT NULL,               -- UTC, 'YYYY-MM-DD HH'
+    name TEXT NOT NULL,               -- req:<route>
+    count INTEGER NOT NULL,
+    PRIMARY KEY (hour, name)
 );
 """
 
@@ -319,6 +346,7 @@ class Store:
         self.lock = threading.Lock()   # one writer at a time
         self.salts = {}                # UTC day -> salt; in memory only, so the tokens cannot be undone
         self.salt_lock = threading.Lock()
+        self.seen = {}                 # (what, UTC day) -> the tokens seen that day; in memory only
         db = self._db()
         try:
             db.execute("PRAGMA journal_mode=WAL")
@@ -415,6 +443,7 @@ class Store:
                 db.close()
 
     def tally(self, now, *names):
+        """One more of each, today - and this hour, for the requests (req:)"""
         with self.lock:
             db = self._db()
             try:
@@ -422,8 +451,22 @@ class Store:
                     for name in names:
                         db.execute("INSERT INTO counters VALUES (?, ?, 1)"
                                    " ON CONFLICT (day, name) DO UPDATE SET count = count + 1", (utc_day(now), name))
+                        if name.startswith("req:"):
+                            db.execute("INSERT INTO hourly VALUES (?, ?, 1)"
+                                       " ON CONFLICT (hour, name) DO UPDATE SET count = count + 1",
+                                       (utc_hour(now), name))
             finally:
                 db.close()
+
+    def first_today(self, what, token, now):
+        """Whether `token` is new today for `what` (clients, senders) - in
+        memory only, so how many asked can be counted without keeping who"""
+        with self.salt_lock:
+            seen = self.seen.setdefault((what, utc_day(now)), set())
+            if token in seen:
+                return False
+            seen.add(token)
+            return True
 
     def counters(self, since_day):
         db = self._db()
@@ -443,9 +486,44 @@ class Store:
         finally:
             db.close()
 
+    def stats(self, now, days):
+        """What the admin view draws (GET /v1/stats): the counters by day and
+        the requests by hour, the readings and quotes that came in by day, and
+        each station's state with how often it was read - counts, never who"""
+        since = now - days * 86400
+        db = self._db()
+        try:
+            counters = collections.defaultdict(dict)
+            for row in db.execute("SELECT day, name, count FROM counters WHERE day >= ?", (utc_day(since),)):
+                counters[row["day"]][row["name"]] = row["count"]
+            hours = collections.defaultdict(dict)
+            for row in db.execute("SELECT hour, name, count FROM hourly WHERE hour >= ?",
+                                  (utc_hour(now - HOURLY_DAYS * 86400),)):
+                hours[row["hour"]][row["name"]] = row["count"]
+            came_in = {}
+            for row in db.execute(
+                    "SELECT strftime('%Y-%m-%d', received, 'unixepoch') AS day, COUNT(*) AS readings,"
+                    " COUNT(method) AS quotes, SUM(plausible = 0) AS implausible FROM observations"
+                    " WHERE received >= ? GROUP BY day", (since,)):
+                came_in[row["day"]] = {"readings": row["readings"], "quotes": row["quotes"],
+                                       "implausible": row["implausible"]}
+            read = {}
+            for row in db.execute(
+                    "SELECT station, MAX(known) AS known, COUNT(*) AS readings, COUNT(method) AS quotes,"
+                    " MAX(observed) AS last FROM observations WHERE received >= ? GROUP BY station", (since,)):
+                read[row["station"]] = {"known": bool(row["known"]), "readings": row["readings"],
+                                        "quotes": row["quotes"], "last": row["last"]}
+            total = db.execute("SELECT COUNT(*), COUNT(method), COUNT(DISTINCT station) FROM observations").fetchone()
+        finally:
+            db.close()
+        return {"generated": now, "days": days, "hourly_days": HOURLY_DAYS, "counters": dict(counters),
+                "hours": dict(hours), "came_in": came_in, "read": read, "stations": self.stations(now),
+                "totals": {"observations": total[0], "quotes": total[1], "stations": total[2]}}
+
     def prune(self, now):
         """Readings lose their sender's token after SOURCE_HOURS, counters go
-        after COUNTER_DAYS, and only today's and yesterday's salt stay"""
+        after COUNTER_DAYS and the hourly ones after HOURLY_DAYS, only today's
+        and yesterday's salt stay, and only today's tokens seen"""
         with self.lock:
             db = self._db()
             try:
@@ -453,12 +531,15 @@ class Store:
                     db.execute("UPDATE observations SET source = NULL WHERE source IS NOT NULL AND received < ?",
                                (now - SOURCE_HOURS * 3600,))
                     db.execute("DELETE FROM counters WHERE day < ?", (utc_day(now - COUNTER_DAYS * 86400),))
+                    db.execute("DELETE FROM hourly WHERE hour < ?", (utc_hour(now - HOURLY_DAYS * 86400),))
             finally:
                 db.close()
         keep = {utc_day(now), utc_day(now - 86400)}
         with self.salt_lock:
             for day in [d for d in self.salts if d not in keep]:
                 del self.salts[day]
+            for key in [k for k in self.seen if k[1] != utc_day(now)]:
+                del self.seen[key]
 
     # -- handing out
 
@@ -656,10 +737,46 @@ class Handler(BaseHTTPRequestHandler):
     def _fail(self, code, why):
         self._send(code, {"ok": False, "error": why})
 
+    def _count(self, now, route):
+        """The request, counted: what it asked for, the Bedrock version and
+        platform its User-Agent names, and - for the stations - whether this
+        install asked already today (by the senders' token, in memory only).
+        Only what came through nginx (X-Real-IP): the container's own health
+        check and the admin view are no players."""
+        address = self.headers.get("X-Real-IP")
+        if not address:
+            return
+        method = "GET" if self.command == "HEAD" else self.command
+        names = ["req:" + ROUTE_NAMES.get((method, route), "other")]
+        agent = AGENT.match(self.headers.get("User-Agent", ""))
+        if agent:
+            names += ["agent:" + agent.group(1), "platform:" + agent.group(2).lower()]
+        else:
+            names.append("agent:other")
+        if route == "/v1/refinery/stations" and self.store.first_today("clients", self.store.source(address, now),
+                                                                       now):
+            names.append("clients")
+        try:
+            self.store.tally(now, *names)
+        except sqlite3.Error as e:    # a count never stands in the way of an answer
+            sys.stderr.write("count: %s\n" % e)
+
     def do_GET(self):
         now = int(time.time())
         route = self._route()
         query = parse_qs(urlsplit(self.path).query)
+        if route == "/v1/stats":
+            # the admin view's, asked from inside the containers' network:
+            # whatever comes through nginx carries X-Real-IP, and is not told
+            # this exists
+            if self.headers.get("X-Real-IP"):
+                return self._fail(404, "not found")
+            try:
+                days = int(query.get("days", ["90"])[0])
+            except ValueError:
+                return self._fail(400, "days is not a number")
+            return self._send(200, self.store.stats(now, max(1, min(COUNTER_DAYS, days))))
+        self._count(now, route)
         if route == "/v1/health":
             today = self.store.counters(utc_day(now)).get(utc_day(now), {})
             return self._send(200, {"ok": True, "version": API_VERSION, "observations": self.store.count(),
@@ -687,6 +804,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         now = int(time.time())
+        self._count(now, self._route())
         if self._route() != "/v1/refinery/observations":
             return self._fail(404, "not found")
         try:
@@ -718,7 +836,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._fail(429, "too many readings of this station, try again later")
         reason = judge(report, self.store.ranges(now))
         stored = self.store.add(report, now, source, reason)
-        self.store.tally(now, ("implausible" if reason else "accepted") if stored else "duplicate")
+        names = [("implausible" if reason else "accepted") if stored else "duplicate"]
+        if self.store.first_today("senders", source, now):
+            names.append("senders")
+        self.store.tally(now, *names)
         # whether it was taken as plausible is not said: that would teach a
         # forger what passes
         return self._send(201 if stored else 200, {"ok": True, "stored": stored})
