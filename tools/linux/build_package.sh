@@ -14,7 +14,8 @@ OUT=${1:-$BUILD}
 export QMAKE=/usr/bin/qmake6
 mkdir -p "$BUILD"
 cmake -S "$SRC" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    -DOpenCV_DIR=/opt/opencv-static/lib/cmake/opencv4 -DBEDROCK_UPDATE_URL="${BEDROCK_UPDATE_URL:-}" > "$BUILD/configure.log" 2>&1 \
+    -DOpenCV_DIR=/opt/opencv-static/lib/cmake/opencv4 -DBEDROCK_UPDATE_URL="${BEDROCK_UPDATE_URL:-}" \
+    -DBEDROCK_REFINERY_URL="${BEDROCK_REFINERY_URL:-}" > "$BUILD/configure.log" 2>&1 \
     || { tail -30 "$BUILD/configure.log"; exit 1; }
 cmake --build "$BUILD" --target bedrock -j "$(nproc)" > "$BUILD/build.log" 2>&1 \
     || { grep -n "error" "$BUILD/build.log" | grep -v Werror | head -20; exit 1; }

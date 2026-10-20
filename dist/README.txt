@@ -46,8 +46,11 @@ Getting started
    shopping list needs blinks the same way on its own, marked ON YOUR LIST.
    The pick is kept in looking_for.txt and survives a restart.
 6. OVERLAY puts the compact view over the game - it opens where you last
-   put it; ORE FINDER (F) opens the ore search, BLUEPRINTS (B) the crafting
-   recipes, REFINERY (R) the station table, NOTES (N) your own notebook.
+   put it, and dragging its bottom-right corner makes it bigger or smaller.
+   On Windows, clicks go through the overlay to the game; to use its
+   buttons, move it or resize it, Alt-Tab to Bedrock first. ORE FINDER (F)
+   opens the ore search, BLUEPRINTS (B) the crafting recipes, REFINERY (R)
+   the station table, NOTES (N) your own notebook.
 7. SHIP, next to PLACE, holds the ships you mine with and what they carry -
    heads, modules, crafted bonus - which is what the rock view works with.
    You can save several, also more than one of the same type, each under its
@@ -70,6 +73,14 @@ the main window shows how many are done. Orders you collect at the terminal
 come off the list by themselves, and "Collected" takes one off by hand.
 Bedrock only looks for the terminal while you're on foot, not while you're
 mining. Tested at Levski, Checkmate and Pyro Gateway.
+
+Workloads: since 4.10.2, a busy refinery charges extra for new work orders,
+and only the refinery terminal shows how busy it is. Bedrock reads this when
+you use a terminal and shows it next to the station: the capacity in per
+cent, the workload in the game's words and how long ago it was read. With
+"Share refinery workloads" ticked (at the top of the window, on by default),
+Bedrock shares these readings and shows the workloads other players have
+seen - see What Bedrock sends.
 
 A dash means the station's profile names no modifier for that material -
 which is not the same as none, and the app will not print a nought it
@@ -366,9 +377,6 @@ for, the loadout, the shopping list, the window) and, in the folder debug\:
                    that the newest replaces the oldest
   - region_config.txt     a copy of your settings, so that the folder debug\
                    holds everything on its own
-  - uex_last_screenshot.jpg   only if you report prices to UEX: the last
-                   screenshot sent with a report (see What Bedrock sends);
-                   the next one replaces it
 No screen recording, no video.
 With the box in Blueprints ticked (see Your library), also game_text_LIVE.ini
 - the game's text, kept until the game's files change - and, in the game's
@@ -387,7 +395,7 @@ written to the registry.
 
 What Bedrock sends
 ------------------
-Two network requests of its own, and a third only if you switch it on:
+Three network requests of its own, and a fourth only if you switch it on:
 
 - The update check: one small text file from the-forsaken.org, once at start
   and once an hour. It carries the version and whether it is the Windows or
@@ -402,28 +410,28 @@ Two network requests of its own, and a third only if you switch it on:
   include Bedrock's version, the platform and Bedrock's UEX app token, which
   identifies the app, not you. The lists are cached in the uex folder. Set
   uex=0 in region_config.txt to turn this off.
-- Your UEX account and price reporting (both optional): on first start,
+- Refinery workloads (on unless you untick "Share refinery workloads" in
+  the Refinery window): when you use a refinery terminal on LIVE, Bedrock
+  sends Bedrock's server (the-forsaken.org) what it read there: the
+  station, its workload (capacity in per cent and the game's word for it)
+  and, for a work order you set up, its method, cost, time and the
+  materials going in and coming out. Nothing about you goes along - no
+  name, no account, nothing of your PC. The server doesn't keep your IP
+  address; to tell senders apart it keeps a token made from it that
+  changes every day, for 48 hours. While the Refinery window is open,
+  Bedrock fetches the latest workload of every station every five
+  minutes, ticked or not.
+- Your UEX account and refinery jobs (both optional): on first start,
   Bedrock asks whether you want to connect your UEX account. You can skip
   this and connect later in the Ore Finder (Connect UEX, bottom right). Get
   key opens your UEX account page, where you'll find your secret key. After
-  you paste it, Bedrock asks whether to report prices. If you say no, your
-  account stays connected and nothing is reported. If you say yes, Bedrock
-  sends UEX every trade you make at a commodity terminal (terminal,
-  commodity, price per SCU and time) and every refinery job you start, which
-  is added to the refinery jobs on your UEX account. A trade is only
-  reported if Bedrock can tell the terminal for certain. UEX only takes
-  reports from data runners. If you aren't one yet, click Sign up on UEX
-  when Bedrock asks, and register there. UEX reviews new
-  data runners during their first 90 days, so for 90 days each price report
-  includes a screenshot of the whole game window, taken right after you
-  trade (it shows whatever is on screen, such as your name and balance on
-  the terminal and the chat if it's open). Bedrock keeps the last
-  screenshot it sent in the debug folder (uex_last_screenshot.jpg), and the
-  UEX account window has a link that opens it. Bedrock
-  asks you about this before anything is sent; if you decline, nothing is
-  reported and your account stays connected. Your key is stored only on this
+  you paste it, Bedrock asks whether to send your refinery jobs to UEX. If
+  you say yes, every refinery job you start is added to the refinery list
+  on your UEX account: the refinery, the method, the cost, the processing
+  time and the materials with their amounts. If you say no, nothing is
+  sent and your account stays connected. Your key is stored only on this
   PC (encrypted for your Windows user) and is never included in backups or
-  the debug folder. You can stop reporting at any time in the Ore Finder.
+  the debug folder. You can stop sending at any time in the Ore Finder.
   With your account connected, the UEX market tab also checks your
   conversations and notifications on the UEX marketplace (every two minutes
   while the tab is open), so clicking a listing you've already messaged
@@ -480,9 +488,9 @@ Where the tables come from
 Signatures, recipes, quality bands and contract sources come from the game
 files of Star Citizen 4.10 itself (Data.p4k, unpacked with unp4k/unforge).
 Mining places and refinery profiles are compiled from scmdb.net, the refining
-tables from Regolith (regolith.rocks). Apart from the update check and UEX
-(see What Bedrock sends) the app needs no internet - it reads the screen and
-the game's own log file.
+tables from Regolith (regolith.rocks). Apart from the update check, UEX and
+the refinery workloads (see What Bedrock sends) the app needs no internet -
+it reads the screen and the game's own log file.
 
 The sell prices come from UEX (uexcorp.space), where players report what the
 terminals pay. They can be days old, so each one says how old it is, and a

@@ -28,7 +28,8 @@ executable and start it. The app tells you when a newer version is out.
   where refined ore sells best right now (prices players report on
   [UEX](https://uexcorp.space)), next to your own trades from the game log.
 - **Refinery:** reads your work orders off the refinery terminal and shows
-  when each one is done.
+  when each one is done, and how busy each station is - shared between
+  players, so you can check a station before you fly there.
 - **Blueprints:** your blueprint library from the game log, every crafting
   recipe with what quality does to it, and the contracts that hand them out.
   Optionally it marks contracts that pay out blueprints with `[BP]` in the
@@ -51,8 +52,10 @@ process or inject anything. The `[BP]` option writes a language file into the
 game folder, the way language packs do.
 
 Network: an update check (official builds only), UEX's public price lists
-while the Ore Finder is open, and your refinery jobs to UEX only if you switch
-that on.
+while the Ore Finder is open, refinery workloads to and from Bedrock's server
+(official builds only; untick "Share refinery workloads" in the Refinery
+window to stop sending - what is sent is listed in `dist/README.txt`), and
+your refinery jobs to UEX only if you switch that on.
 
 ## Building
 
@@ -116,6 +119,10 @@ are on your PATH.
 - `-DBEDROCK_UPDATE_URL=<https address>` sets where the app looks for a newer
   version. Without it, the build never checks for updates. Official builds set
   it; please don't point a changed build at the official address.
+- `-DBEDROCK_REFINERY_URL=<https address>` sets the refinery workload service
+  (`server/refinery`). Without it, the build neither sends nor fetches
+  workloads. Official builds set it; here too, please don't point a changed
+  build at the official address.
 - UEX: a build works without a UEX app token. Prices are still loaded;
   sending refinery jobs to UEX is switched off. If you have your own UEX app token,
   put it alone in a file `uex_token.txt` in the repository root (git ignores
@@ -152,13 +159,13 @@ baseline, which vcpkg installs on its own when cmake runs.
 git clone https://github.com/SC-Ravaxx/Bedrock
 cd Bedrock
 git checkout <commit from BUILDINFO.txt>
-cmake -S . -B build-release -A x64 -DCMAKE_TOOLCHAIN_FILE="$env:USERPROFILE/vcpkg/scripts/buildsystems/vcpkg.cmake" -DBEDROCK_UPDATE_URL=https://the-forsaken.org/bedrock/bedrock-latest.txt
+cmake -S . -B build-release -A x64 -DCMAKE_TOOLCHAIN_FILE="$env:USERPROFILE/vcpkg/scripts/buildsystems/vcpkg.cmake" -DBEDROCK_UPDATE_URL=https://the-forsaken.org/bedrock/bedrock-latest.txt -DBEDROCK_REFINERY_URL=https://the-forsaken.org/bedrock/api
 cmake --build build-release --config Release
 Get-FileHash build-release\Release\Bedrock.exe
 ```
 
-The hash matches the `Bedrock.exe` line of `SHA256SUMS.txt`. The update
-address has to be given exactly as above: it is part of the program.
+The hash matches the `Bedrock.exe` line of `SHA256SUMS.txt`. Both addresses
+have to be given exactly as above: they are part of the program.
 
 ### Linux
 
@@ -166,7 +173,7 @@ The official binary is built in an Ubuntu 22.04 root (GCC 11.4.0, Qt 6.2.4,
 OpenCV 4.10.0 built static): `tools/linux/jammy_setup.sh` makes the root,
 `tools/linux/opencv_static.sh` builds OpenCV in it, and
 `tools/linux/build_package.sh` builds Bedrock there (with
-`BEDROCK_UPDATE_URL` set as above) and prints the binary's sha256. Compare it
+`BEDROCK_UPDATE_URL` and `BEDROCK_REFINERY_URL` set as above) and prints the binary's sha256. Compare it
 with `usr/bin/bedrock` inside the AppImage
 (`./Bedrock-<version>-x86_64.AppImage --appimage-extract`).
 
@@ -200,6 +207,7 @@ to the exe instead, for a USB stick. See `include/AppPaths.h`.
 | `resources/` | icons, fonts, the text-line recognition model, embedded pictures |
 | `tests/` | pictures the self-test reads |
 | `dist/README.txt` | the README that ships to players |
+| `server/refinery/` | the service that keeps the refinery workloads players share (Python and SQLite) |
 | `tools/` | release and packaging scripts |
 
 ## The signature model (Star Citizen 4.10)
