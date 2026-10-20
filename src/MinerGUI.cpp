@@ -1106,12 +1106,14 @@ void MinerGUI::layoutControls() {
     if (overlayMode_) {
         for (HWND h : fullOnly) ShowWindow(h, SW_HIDE);
 
-        // Compact: LIVE toggle + FULL button in the top-right corner
-        const int btnH = scale(20);
-        const int btnY = scale(8);
-        MoveWindow(btnOverlay_, cw - scale(8) - scale(46), btnY, scale(46), btnH, TRUE);
-        MoveWindow(btnLiveMode_, cw - scale(8) - scale(46) - scale(4) - scale(58), btnY,
-                   scale(58), btnH, TRUE);
+        // Compact: LIVE toggle + FULL button in the top-right corner, grown
+        // or shrunk with the overlay
+        auto z = [&](int pixels) { return overlayZoomed(pixels); };
+        const int btnH = z(scale(20));
+        const int btnY = z(scale(8));
+        MoveWindow(btnOverlay_, cw - z(scale(8)) - z(scale(46)), btnY, z(scale(46)), btnH, TRUE);
+        MoveWindow(btnLiveMode_, cw - z(scale(8)) - z(scale(46)) - z(scale(4)) - z(scale(58)), btnY,
+                   z(scale(58)), btnH, TRUE);
         placeOreRowsButton();
         return;
     }
@@ -1191,7 +1193,7 @@ void MinerGUI::toggleOverlayMode() {
         SetWindowTextW(btnOverlay_, L"Full");
         // Where it was put last, while that screen is still there; else the
         // full window's corner.
-        const int width = scale(OVERLAY_WIDTH), height = scale(overlayHeight());
+        const int width = overlayZoomed(scale(OVERLAY_WIDTH)), height = overlayZoomed(scale(overlayHeight()));
         POINT at = {restoreRect_.left, restoreRect_.top};
         if (overlayPlaceKnown_ && overlayPlaceOnScreen(overlayPlace_, width)) at = overlayPlace_;
         at = overlayOnMonitor(at, width, height);
@@ -1259,9 +1261,18 @@ void MinerGUI::placeOreRowsButton() {
     }
     RECT rc;
     GetClientRect(hwnd_, &rc);
-    SetWindowTextW(btnOreRows_, overlayOreRows_ ? L"Rows" : L"Line");
-    MoveWindow(btnOreRows_, rc.right - scale(8) - scale(ORE_ROWS_BUTTON_W), rc.bottom - scale(5) - scale(18),
-               scale(ORE_ROWS_BUTTON_W), scale(18), TRUE);
+    // its word set only when it changes: a button given its text is drawn
+    // again at once, and this runs with every scan
+    const wchar_t* word = overlayOreRows_ ? L"Rows" : L"Line";
+    wchar_t was[8] = {};
+    GetWindowTextW(btnOreRows_, was, 8);
+    if (wcscmp(was, word) != 0) SetWindowTextW(btnOreRows_, word);
+    // ...left of the grip in the corner, at the overlay's size, as tall as
+    // LIVE and Full: at 18 its words did not fit grown or shrunk, and were
+    // left out
+    MoveWindow(btnOreRows_, rc.right - overlayZoomed(scale(14 + ORE_ROWS_BUTTON_W)),
+               rc.bottom - overlayZoomed(scale(5 + 20)), overlayZoomed(scale(ORE_ROWS_BUTTON_W)),
+               overlayZoomed(scale(20)), TRUE);
     if (!IsWindowVisible(btnOreRows_)) ShowWindow(btnOreRows_, SW_SHOWNOACTIVATE);
     RedrawWindow(btnOreRows_, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
 }
@@ -1289,8 +1300,12 @@ void MinerGUI::keepOverlayPlace() {
     mi.cbSize = sizeof(mi);
     if (GetMonitorInfo(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST), &mi)) {
         const RECT& screen = mi.rcMonitor;
-        if (now.left + now.right > screen.left + screen.right) overlayPlace_.x = now.right - scale(OVERLAY_WIDTH);
-        if (now.top + now.bottom > screen.top + screen.bottom) overlayPlace_.y = now.bottom - scale(overlayHeight());
+        if (now.left + now.right > screen.left + screen.right) {
+            overlayPlace_.x = now.right - overlayZoomed(scale(OVERLAY_WIDTH));
+        }
+        if (now.top + now.bottom > screen.top + screen.bottom) {
+            overlayPlace_.y = now.bottom - overlayZoomed(scale(overlayHeight()));
+        }
     }
     overlayPlaceKnown_ = true;
 }
@@ -1364,13 +1379,15 @@ void MinerGUI::measureOverlay() {
 
 void MinerGUI::fitOverlay() {
     fitPosted_ = false;
-    if (!overlayMode_ || !hwnd_) return;
+    if (!overlayMode_ || !hwnd_ || gripDragging_) return;
     RECT win = {};
     if (!GetWindowRect(hwnd_, &win)) return;
     const int curW = win.right - win.left, curH = win.bottom - win.top;
-    // the width is the overlay's own, whatever it shows; only the height fits
-    const int w = scale(OVERLAY_WIDTH);
-    const int wantH = (std::max)(scale(overlayHeight()), (std::min)(overlayMaxHeight(), (int)std::ceil(fitWantH_)));
+    // the width is the overlay's own, whatever it shows; only the height
+    // fits - both at the size it was grown or shrunk to
+    const int w = overlayZoomed(scale(OVERLAY_WIDTH));
+    const int wantH = overlayZoomed(
+        (std::max)(scale(overlayHeight()), (std::min)(overlayMaxHeight(), (int)std::ceil(fitWantH_))));
     int h = (std::max)(curH, wantH);
     const auto now = std::chrono::steady_clock::now();
     if (wantH < curH) {
@@ -1469,6 +1486,7 @@ void MinerGUI::saveWindowPlace() const {
         out << "overlay_top=" << overlayAt.y << std::endl;
     }
     out << "overlay_rows=" << (overlayOreRows_ ? 1 : 0) << std::endl;
+    out << "overlay_zoom=" << (int)std::lround(overlayZoom_ * 100) << std::endl;
 }
 
 int MinerGUI::restoreWindowPlace() {
@@ -1492,6 +1510,7 @@ int MinerGUI::restoreWindowPlace() {
         else if (key == "overlay_left") { overlayAt.x = value; overlaySeen++; }
         else if (key == "overlay_top") { overlayAt.y = value; overlaySeen++; }
         else if (key == "overlay_rows") overlayOreRows_ = value != 0;
+        else if (key == "overlay_zoom") overlayZoom_ = std::clamp(value / 100.0f, OVERLAY_ZOOM_MIN, OVERLAY_ZOOM_MAX);
     }
     // the overlay's place is checked against the screens when it opens
     if (overlaySeen == 2) {
@@ -2172,6 +2191,62 @@ void MinerGUI::keepOutOfCaptures() {
 #endif
 }
 
+int MinerGUI::overlayZoomed(int pixels) const {
+    return (int)std::lround(pixels * overlayZoom_);
+}
+
+// The overlay's lower right corner, OVERLAY_GRIP across at its size: a drag
+// there grows or shrinks it
+bool MinerGUI::overGrip(int clientX, int clientY) const {
+    if (!overlayMode_ || !hwnd_) return false;
+    RECT rc = {};
+    GetClientRect(hwnd_, &rc);
+    const int reach = overlayZoomed(scale(OVERLAY_GRIP));
+    return clientX >= rc.right - reach && clientY >= rc.bottom - reach && clientX < rc.right && clientY < rc.bottom;
+}
+
+// ...drawn in it as a window's size grip is, three short strokes across
+// the corner, faint
+void MinerGUI::drawOverlayGrip(Gdiplus::Graphics& g, float width, float height) const {
+    Gdiplus::Pen stroke(COL_TEXT_FAINT, scaleF(1.2f));
+    for (int i = 1; i <= 3; i++) {
+        const float d = scaleF(3.0f * i + 1.0f);
+        g.DrawLine(&stroke, width - d, height - scaleF(2), width - scaleF(2), height - d);
+    }
+}
+
+// The grip dragged: the overlay grown or shrunk as a whole by how far its
+// corner has gone - across or down, whichever went further for its size -
+// from 60 to 200 %, its top left corner staying where it is
+void MinerGUI::dragOverlayGrip() {
+    if (!hwnd_) return;
+    POINT now = {};
+    GetCursorPos(&now);
+    const float w0 = (float)(std::max)(1L, (long)(gripFromRect_.right - gripFromRect_.left));
+    const float h0 = (float)(std::max)(1L, (long)(gripFromRect_.bottom - gripFromRect_.top));
+    const float across = (now.x - gripFrom_.x) / w0, down = (now.y - gripFrom_.y) / h0;
+    const float grown = std::abs(across) >= std::abs(down) ? across : down;
+    const float zoom = std::clamp(gripFromZoom_ * (1.0f + grown), OVERLAY_ZOOM_MIN, OVERLAY_ZOOM_MAX);
+    if (std::abs(zoom - overlayZoom_) < 0.005f) return;
+    overlayZoom_ = zoom;
+    // what it shows now, at the new size: the fit takes the height on from
+    // there once the drag is over
+    const int w = overlayZoomed(scale(OVERLAY_WIDTH));
+    const int h = (int)std::lround(h0 / gripFromZoom_ * zoom);
+    SetWindowPos(hwnd_, nullptr, gripFromRect_.left, gripFromRect_.top, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+    layoutControls();
+    InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void MinerGUI::setOverlayZoomForShot(float zoom) {
+    overlayZoom_ = std::clamp(zoom, OVERLAY_ZOOM_MIN, OVERLAY_ZOOM_MAX);
+    if (!hwnd_ || !overlayMode_) return;
+    SetWindowPos(hwnd_, nullptr, 0, 0, overlayZoomed(scale(OVERLAY_WIDTH)), overlayZoomed(scale(overlayHeight())),
+                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    layoutControls();
+    InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
 // A click meant for the game that landed on the overlay took the game out of
 // focus - the overlay is a window of its own, and the whole of it a handle to
 // drag it by (andydsm, 20 October 2026). So while Bedrock is not the window
@@ -2262,7 +2337,37 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             return 0;
         }
         case WM_MOUSEMOVE:
+            if (gripDragging_) {
+                dragOverlayGrip();
+                return 0;
+            }
             trackHover(hwnd, hoverMain_, lParam);
+            break;
+        case WM_LBUTTONUP:
+            if (gripDragging_) {
+                ReleaseCapture();   // WM_CAPTURECHANGED ends the drag
+                return 0;
+            }
+            break;
+        case WM_CAPTURECHANGED:
+            if (gripDragging_) {
+                // the size it was left at, kept; the fit takes its height on
+                gripDragging_ = false;
+                keepOverlayPlace();
+                saveWindowPlace();
+                InvalidateRect(hwnd, nullptr, FALSE);
+            }
+            break;
+        case WM_SETCURSOR:
+            if (overlayMode_ && LOWORD(lParam) == HTCLIENT) {
+                POINT at = {};
+                GetCursorPos(&at);
+                ScreenToClient(hwnd, &at);
+                if (overGrip(at.x, at.y)) {
+                    SetCursor(LoadCursor(nullptr, IDC_SIZENWSE));
+                    return TRUE;
+                }
+            }
             break;
         case WM_MOUSELEAVE:
             clearHover(hwnd, hoverMain_);
@@ -2279,6 +2384,13 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             }
             break;
         }
+
+        // An owner-drawn button clears itself in this brush before it is
+        // drawn - Windows' own is a light grey (240, 240, 240), and the
+        // overlay's Rows was a light grey box in a picture of it. It clears
+        // nothing now: drawOwnerButton paints all of it.
+        case WM_CTLCOLORBTN:
+            return (LRESULT)GetStockObject(NULL_BRUSH);
 
         case WM_CTLCOLOREDIT: {
             HDC hdcEdit = (HDC)wParam;
@@ -2486,12 +2598,23 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             // A click on a probable-match row picks the mineral whose
             // locations are shown below the details
             if (overlayMode_) {
+                // The grip in the corner: a drag there grows or shrinks it
+                const int px = (short)LOWORD(lParam), py = (short)HIWORD(lParam);
+                if (overGrip(px, py)) {
+                    gripDragging_ = true;
+                    GetCursorPos(&gripFrom_);
+                    GetWindowRect(hwnd, &gripFromRect_);
+                    gripFromZoom_ = overlayZoom_;
+                    SetCapture(hwnd);
+                    return 0;
+                }
                 // ...except the update chip. It is the one thing this mode
                 // draws that a click is meant to reach, so it is answered
                 // here, above the guard that sends the rest of the window's
-                // hit tests away (see drawCompact and WM_NCHITTEST).
-                const float ox = (float)(short)LOWORD(lParam);
-                const float oy = (float)(short)HIWORD(lParam);
+                // hit tests away (see drawCompact and WM_NCHITTEST). Its
+                // place is the overlay's own, at its own size.
+                const float ox = px / overlayZoom_;
+                const float oy = py / overlayZoom_;
                 if (updateHit_.Width > 0 && updateHit_.Contains(ox, oy)) {
                     updateAsked_ = true;
                     if (updateAction_) updateAction_();
@@ -2732,8 +2855,10 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 if (hit == HTCLIENT) {
                     POINT at = {(LONG)(short)LOWORD(lParam), (LONG)(short)HIWORD(lParam)};
                     ScreenToClient(hwnd, &at);   // NCHITTEST speaks in screen coordinates
+                    // ...and the grip, which a drag grows or shrinks it by
+                    if (overGrip(at.x, at.y)) return HTCLIENT;
                     if (updateHit_.Width > 0 &&
-                        updateHit_.Contains((float)at.x, (float)at.y)) {
+                        updateHit_.Contains(at.x / overlayZoom_, at.y / overlayZoom_)) {
                         return HTCLIENT;
                     }
                     return HTCAPTION;
@@ -2858,7 +2983,15 @@ void MinerGUI::onPaint(HDC hdc) {
 
         if (overlayMode_) {
             measureOverlay();
-            drawCompact(g, cw, ch);
+            // grown or shrunk by its grip (overlayZoom_): drawn at its own
+            // size and scaled as a whole - the letters drawn at the size they
+            // come out at, not a picture stretched
+            const Gdiplus::GraphicsState plain = g.Save();
+            g.ScaleTransform(overlayZoom_, overlayZoom_);
+            const float lw = cw / overlayZoom_, lh = ch / overlayZoom_;
+            drawCompact(g, (int)std::lround(lw), (int)std::lround(lh));
+            drawOverlayGrip(g, lw, lh);
+            g.Restore(plain);
         } else {
             // The window itself, and what drops down over it. Under a sheet
             // (keys, about, backup, what's new, loadout) or a dropped list
@@ -6413,7 +6546,8 @@ void MinerGUI::resizeForScale() {
     };
     // The compact view as toggleOverlayMode makes it; the full window from
     // the two constants.
-    resize(hwnd_, overlayMode_ ? OVERLAY_WIDTH : WINDOW_WIDTH, overlayMode_ ? overlayHeight() : WINDOW_HEIGHT);
+    resize(hwnd_, overlayMode_ ? overlayZoomed(OVERLAY_WIDTH) : WINDOW_WIDTH,
+           overlayMode_ ? overlayZoomed(overlayHeight()) : WINDOW_HEIGHT);
     resize(planner_, PLANNER_WIDTH, PLANNER_HEIGHT);
     resize(crafting_, CRAFTING_WIDTH, CRAFTING_HEIGHT);
     resize(notes_, NOTES_WIDTH, NOTES_HEIGHT);
@@ -14477,7 +14611,8 @@ void MinerGUI::drawCompactShip(Gdiplus::Graphics& g, int cw, int ch, float above
     if (name.empty()) return;
     const float M = scaleF(10);
     const bool button = btnOreRows_ && IsWindowVisible(btnOreRows_);
-    const float right = (float)cw - M - (button ? scaleF(ORE_ROWS_BUTTON_W + 4) : 0.0f);
+    // ...short of the switch, and of the grip in the corner (OVERLAY_GRIP)
+    const float right = (float)cw - M - (button ? scaleF(ORE_ROWS_BUTTON_W + 4) : scaleF(4));
     const float nameH = scaleF(14);
     const float nameY = (float)ch - scaleF(6) - nameH;
     if (nameY < above + scaleF(2)) return;
@@ -14697,14 +14832,36 @@ void MinerGUI::drawCompact(Gdiplus::Graphics& g, int cw, int ch) {
     drawCompactShip(g, cw, ch, y - scaleF(4));
 }
 
+// An owner-drawn button: drawn into a picture first and put on the button
+// in one go, as the windows themselves are painted (onPaint). Drawn straight
+// onto its DC, the overlay's Rows came out with its face and without its
+// word in pictures of it, 20 October 2026.
 void MinerGUI::drawOwnerButton(const DRAWITEMSTRUCT* dis) {
-    Gdiplus::Graphics g(dis->hDC);
-    prepareGraphics(g);
+    const int pw = dis->rcItem.right - dis->rcItem.left, ph = dis->rcItem.bottom - dis->rcItem.top;
+    if (pw <= 0 || ph <= 0) return;
+    HDC mem = CreateCompatibleDC(dis->hDC);
+    HBITMAP picture = CreateCompatibleBitmap(dis->hDC, pw, ph);
+    HGDIOBJ old = SelectObject(mem, picture);
+    {
+        Gdiplus::Graphics g(mem);
+        prepareGraphics(g);
+        paintOwnerButton(g, dis);
+    }
+    BitBlt(dis->hDC, dis->rcItem.left, dis->rcItem.top, pw, ph, mem, 0, 0, SRCCOPY);
+    SelectObject(mem, old);
+    DeleteObject(picture);
+    DeleteDC(mem);
+}
+
+void MinerGUI::paintOwnerButton(Gdiplus::Graphics& g, const DRAWITEMSTRUCT* dis) {
+    // the overlay's buttons grow and shrink with it (overlayZoom_)
+    const float zoom = overlayMode_ ? overlayZoom_ : 1.0f;
+    if (zoom != 1.0f) g.ScaleTransform(zoom, zoom);
 
     const int id = (int)dis->CtlID;
     const bool pressed = (dis->itemState & ODS_SELECTED) != 0;
-    const float w = (float)(dis->rcItem.right - dis->rcItem.left);
-    const float h = (float)(dis->rcItem.bottom - dis->rcItem.top);
+    const float w = (float)(dis->rcItem.right - dis->rcItem.left) / zoom;
+    const float h = (float)(dis->rcItem.bottom - dis->rcItem.top) / zoom;
 
     Gdiplus::SolidBrush underlay(COL_BG);
     g.FillRectangle(&underlay, 0.0f, 0.0f, w, h);

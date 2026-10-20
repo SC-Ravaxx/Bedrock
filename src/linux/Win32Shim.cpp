@@ -1525,6 +1525,7 @@ static HCURSOR stockCursor(uintptr_t id) {
         case 32513: shape = Qt::IBeamCursor; break;
         case 32514: shape = Qt::WaitCursor; break;
         case 32515: shape = Qt::CrossCursor; break;
+        case 32642: shape = Qt::SizeFDiagCursor; break;
         case 32646: shape = Qt::SizeAllCursor; break;
         case 32648: shape = Qt::ForbiddenCursor; break;
         case 32649: shape = Qt::PointingHandCursor; break;

@@ -604,6 +604,10 @@ public:
         p_->rotate(degrees);
         return Ok;
     }
+    Status ScaleTransform(REAL sx, REAL sy) {
+        p_->scale(sx, sy);
+        return Ok;
+    }
     Status ResetTransform() {
         p_->resetTransform();
         return Ok;

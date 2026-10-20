@@ -673,6 +673,7 @@ public:
     void openLookingForShot();   // --screenshot only: the ore pick, open
     void setPlanPulseForShot(bool on);   // ...and the Ore Finder's blink held on or off
     void openUexCardForShot(int step);  // ...and its UEX card: 0 shut, 1 the account, 3 send refinery jobs?
+    void setOverlayZoomForShot(float zoom);   // ...and the overlay grown or shrunk by its grip
     void openUexWelcomeForShot(int step);   // ...and the first start's offer over the main window, the same steps
     // ...and its UEX tab on an ore - or on a ground family, at one of its
     // gems; nullptr leaves it
@@ -977,6 +978,20 @@ private:
     // as the longest line it has to hold on one - the MOLE's heads, "also
     // LEFT at 54 %, RIGHT at 33 % ..." - and a little room
     static constexpr int OVERLAY_WIDTH = 400;
+    // ...grown or shrunk as a whole by the grip in its lower right corner:
+    // drawn at its own size and scaled, its buttons with it (onPaint), from
+    // 60 to 200 %; kept in window.txt
+    float overlayZoom_ = 1.0f;
+    static constexpr float OVERLAY_ZOOM_MIN = 0.6f, OVERLAY_ZOOM_MAX = 2.0f;
+    static constexpr int OVERLAY_GRIP = 14;   // unscaled: the corner the grip answers in
+    int overlayZoomed(int pixels) const;      // pixels at the overlay's own size, as it stands
+    bool overGrip(int clientX, int clientY) const;
+    void drawOverlayGrip(Gdiplus::Graphics& g, float width, float height) const;
+    void dragOverlayGrip();
+    bool gripDragging_ = false;
+    POINT gripFrom_{};                        // where the drag began, on the screen
+    float gripFromZoom_ = 1.0f;
+    RECT gripFromRect_{};
     int overlayHeight() const;                      // unscaled: taller where there is a ship to name
 
     // The rock view's answer, worked out once and drawn by the full window
@@ -1027,6 +1042,7 @@ private:
     void drawFooter(Gdiplus::Graphics& g, int clientW, int clientH);
     void drawCompact(Gdiplus::Graphics& g, int clientW, int clientH);
     void drawOwnerButton(const DRAWITEMSTRUCT* dis);
+    void paintOwnerButton(Gdiplus::Graphics& g, const DRAWITEMSTRUCT* dis);   // ...into a picture of it
 
     // Helpers
     Gdiplus::Color getMineralColor(const std::string& mineral);

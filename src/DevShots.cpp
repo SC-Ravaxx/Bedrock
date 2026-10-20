@@ -605,6 +605,15 @@ int runScreenshots(const std::string& dir) {
             gui.toggleOverlayMode();
             pump();
             shoot(gui.windowHandle(), "overlay_rock_contents_four.png");
+            // ...grown and shrunk by its grip
+            gui.setOverlayZoomForShot(0.75f);
+            pump();
+            shoot(gui.windowHandle(), "overlay_zoom_75.png");
+            gui.setOverlayZoomForShot(1.5f);
+            pump();
+            shoot(gui.windowHandle(), "overlay_zoom_150.png");
+            gui.setOverlayZoomForShot(1.0f);
+            pump();
             gui.toggleOverlayMode();
             pump();
             // ...and the same rock while Gold is ticked in "I'm looking for":
