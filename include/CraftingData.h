@@ -318,7 +318,7 @@ inline const CraftMaterial CRAFT_MATERIALS[] = {
     {"Laranite", "Laranite", false, 353, "", {298, 510, 698, 707, 858, 910, 975, 1000}},
     {"Lindinium", "Lindinium", false, 117, "", {305, 585, 618, 729, 853, 930, 954, 1000}},
     {"Ouratite", "Ouratite", false, 504, "", {310, 523, 647, 779, 860, 912, 960, 1000}},
-    {"Pressurized Ice", "Pressurized Ice", false, 92, "", {0, 0, 0, 0, 0, 0, 0, 0}},
+    {"Pressurized Ice", "Ice", false, 92, "", {322, 561, 659, 714, 873, 922, 966, 1000}},
     {"Quantainium", "Quantainium", false, 3, "", {344, 514, 669, 762, 852, 901, 974, 1000}},
     {"Quartz", "Quartz", false, 28, "", {330, 522, 641, 710, 899, 914, 969, 1000}},
     {"Riccite", "Riccite", false, 96, "", {325, 525, 671, 743, 870, 942, 965, 1000}},

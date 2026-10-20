@@ -117,7 +117,20 @@ blueprints = [b for b in blueprints if b.get("output_name")]
 versions = sorted({b.get("game_version") for b in blueprints if b.get("game_version")})
 
 # --- the ore finder spells a few of these differently ----------------------
-LOCATION_NAME = {"Aluminum": "Aluminium", "Saldynium (Ore)": "Saldynium"}
+# Pressurized Ice is what a rock's ice refines into, as Agricium is what
+# Agricium (Ore) does: Shubin's ship-mining orders ask for it beside Quartz,
+# Iron and Titanium. The ore finder and the signature table call that rock
+# Ice.
+LOCATION_NAME = {"Aluminum": "Aluminium", "Saldynium (Ore)": "Saldynium", "Pressurized Ice": "Ice"}
+# ...and the quality bands a refined material keeps are those of what it is
+# refined from, filed under the mined name: a rock's ice is the game's Raw
+# Ice (mining/mineableelements/ice_raw.xml, quantization_rawice.xml), as the
+# rock view has it (gen_mining_hardware.py, BAND_STEM)
+BAND_NAME = {"Pressurized Ice": "Raw Ice"}
+
+
+def material_bands(name):
+    return bands.get(_band_key(BAND_NAME.get(name, name))) or {}
 
 # Which planets each of Pyro's four contract regions covers. Read out of
 # missiondata/pu_missionlocality/pyro_regions/*.xml, whose location GUIDs
@@ -631,7 +644,7 @@ with io.open(out, "w", encoding="utf-8", newline="\n") as f:
     w("inline const CraftMaterial CRAFT_MATERIALS[] = {\n")
     for n in material_names:
         m = mats[n]
-        b = bands.get(_band_key(n)) or {}
+        b = material_bands(n)
         row = (b.get("bands") or [0] * 8)[:8]
         row += [0] * (8 - len(row))
         w('    {"%s", "%s", %s, %d, "%s", {%s}},\n'
@@ -725,7 +738,7 @@ with io.open(out, "w", encoding="utf-8", newline="\n") as f:
     # ...and the gathering orders' materials. The records say Aluminum and
     # Pressurized Ice; the signature table, which a rock is matched against,
     # says Aluminium and Ice.
-    order_names = dict(LOCATION_NAME, **{"Pressurized Ice": "Ice"})
+    order_names = LOCATION_NAME
     order_ores = []
     for c in reputation.get("contracts", []):
         outfit, ladder, rank, highest, _gain = rep_fields(c.get("need"), [])
@@ -922,7 +935,7 @@ flat = sum(1 for e in effects if e["stat"] and e["atMin"] == e["atMax"])
 print("  %d values moved across %d slots (%d slots move more than one)"
       % (len(effects), len(slots), sum(1 for s in slots if s["effCount"] > 1)))
 print("  where lower is better: %d, where quality changes nothing: %d" % (lower, flat))
-with_bands = sum(1 for n in material_names if (bands.get(_band_key(n)) or {}).get("bands"))
+with_bands = sum(1 for n in material_names if material_bands(n).get("bands"))
 print("  materials with quality bands: %d of %d" % (with_bands, len(material_names)))
 named = sum(1 for r in rows if r["srcCount"])
 print("  blueprints with named contracts: %d, source rows: %d" % (named, len(sources)))
