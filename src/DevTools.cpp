@@ -618,9 +618,14 @@ int runRefineryShare(const std::string& picture, const std::string& service) {
     const auto written = std::filesystem::last_write_time(picture, ec);
     SCMiner::RefineryShare::Reading r;
     r.station = station;
-    r.observed = std::chrono::duration_cast<std::chrono::seconds>(
-                     std::chrono::clock_cast<std::chrono::system_clock>(written).time_since_epoch())
-                     .count();
+#ifdef _WIN32
+    const auto writtenAt = std::chrono::clock_cast<std::chrono::system_clock>(written);
+#else
+    // clock_cast is GCC 13's; the Linux package is built with GCC 11 (see
+    // Application::setPlaceOverride)
+    const auto writtenAt = std::chrono::file_clock::to_sys(written);
+#endif
+    r.observed = std::chrono::duration_cast<std::chrono::seconds>(writtenAt.time_since_epoch()).count();
     r.capacity = screen.capacity;
     r.workload = screen.workload;
     for (const SCMiner::RefineryPanel& panel : screen.panels) {
