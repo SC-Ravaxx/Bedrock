@@ -51,6 +51,7 @@ constexpr double SAME_COLUMN = 3.0;       // how far a line's edge may stand off
 constexpr double LEAN_MOST = 0.15;        // sideways per line of height
 constexpr double SHARE_ENDS = 0.257;      // of the table's width: between the widest share and the names
 constexpr double NAME_BEGINS = 0.262;
+constexpr double SHARE_NUMERAL = 7.5;     // a share's numeral, at size 1: "100.00%" fits 0.257 of the table
 constexpr double QUALITY_BEGINS = 0.85;   // three numerals' room before the table's end, and clear of a turret's INERT MATERIALS
 constexpr double QUALITY_HOLDS = 0.135;   // of the table's width: what three numerals take at its end
 constexpr double NUMERAL_GAP = 6.5;       // the most room between two numerals: a 1 stands narrow in a numeral's width
@@ -496,6 +497,7 @@ bool readList(const cv::Mat& frame, const cv::Rect& region, const cv::Mat& ink, 
     struct Entry {
         int top = 0, bottom = 0;     // of the share's lettering, in the region
         double from = 0, to = 0;     // where the line begins and ends
+        double column = 0;           // ...and where the shares' column begins at its height
         double qualityFrom = 0;      // where its quality begins
     };
     std::vector<Entry> entries;
@@ -519,6 +521,7 @@ bool readList(const cv::Mat& frame, const cv::Rect& region, const cv::Mat& ink, 
         if (tall < 6 * u || tall > 16 * u) continue;
         if (middle < (LIST_FROM - REGION_TOP) * u) continue;   // the composition bar's own row of ticks
         entry.from = beginsAt + lean * middle;
+        entry.column = entry.from;
         entry.to = endsAt + lean * middle;
         // Where its letters do stand apart, the line's own edges are taken
         // for the column's, and its quality is the word it ends with: from
@@ -568,97 +571,126 @@ bool readList(const cv::Mat& frame, const cv::Rect& region, const cv::Mat& ink, 
         return cv::Rect(cv::Point(region.x + (int)std::lround(from), region.y + entry.top - lift),
                         cv::Point(region.x + (int)std::lround(to), region.y + entry.bottom + lift)) & picture;
     };
-    auto shareOf = [&](const Entry& e) { return cropOf(e, e.from - pad, e.from + SHARE_ENDS * width); };
-    auto nameOf = [&](const Entry& e) { return cropOf(e, e.from + NAME_BEGINS * width, e.qualityFrom - u); };
+    // ...the share from the shares' column at the latest: they all begin there,
+    // and a line whose first numeral is too thin or too faint to stand out -
+    // the 1 of 1.04 % over a bright sky - has its own beginning found at the
+    // numeral after it. Cut there, 10.75 came back as 0.75 and 1.04 as .04,
+    // which is no share, and the list ended a line early (turret, 21 October
+    // 2026).
+    auto shareOf = [&](const Entry& e, double shift) {
+        const double from = (std::min)(e.from, e.column) + shift;
+        return cropOf(e, from - pad, from + SHARE_ENDS * width);
+    };
+    auto nameOf = [&](const Entry& e) {
+        return cropOf(e, (std::min)(e.from, e.column) + NAME_BEGINS * width, e.qualityFrom - u);
+    };
     auto qualityOf = [&](const Entry& e) { return cropOf(e, e.qualityFrom, e.to + pad); };
     // The lines, from the first that begins with a share, one under the
     // other, until the rock is accounted for or something else follows -
-    // the Golem has LOCK, TARG and AUTO a line's pitch under its list
-    std::vector<const Entry*> list;
-    bool read = true;
-    double sum = 0;
+    // the Golem has LOCK, TARG and AUTO a line's pitch under its list. The
+    // shares read `shift` off their column.
     int cut = 0;
-    for (const Entry& entry : entries) {
-        const int middle = (entry.top + entry.bottom) / 2;
-        if (list.empty()) {
-            if (middle > (FIRST_BY - REGION_TOP) * u) break;
-        } else {
-            const int step = middle - (list.back()->top + list.back()->bottom) / 2;
-            if (step < PITCH_LEAST * u) continue;
-            if (step > PITCH_MOST * u) break;
-        }
-        RockPartRead part;
-        const cv::Rect share = shareOf(entry), quality = qualityOf(entry);
-        if (share.width < 20 * u || quality.width < 8 * u) continue;
-        part.shareText = lines.read(frame(share)).text;
-        if (dump) {
-            cv::imwrite(std::string(dump) + "_share" + std::to_string(cut) + ".png", frame(share));
-            cv::imwrite(std::string(dump) + "_quality" + std::to_string(cut) + ".png", frame(quality));
-            cv::imwrite(std::string(dump) + "_name" + std::to_string(cut) + ".png", frame(nameOf(entry)));
-            cv::rectangle(drawn, share - region.tl(), cv::Scalar(0, 255, 0));
-            cv::rectangle(drawn, nameOf(entry) - region.tl(), cv::Scalar(255, 160, 0));
-            cv::rectangle(drawn, quality - region.tl(), cv::Scalar(0, 0, 255));
-            cut++;
-        }
-        if (!parseShare(part.shareText, part.percent)) {
-            if (list.empty()) continue;
-            break;
-        }
-        // The quality: three or four numerals, one of the ore's values - no
-        // ore's is under 262. Anything else is the inert rest's 0 or a quality
-        // that did not read, and the 0 itself does not say which: a dotted zero
-        // on its own comes back from the reader as 0, as @, as an 8 or as a
-        // Chinese character, and so does the one numeral left of a 917 the
-        // ground has swallowed the rest of. The line's name says it: INERT
-        // MATERIALS, in every seat.
-        part.qualityText = lines.read(frame(quality)).text;
-        int value = 0;
-        if (parseQuality(part.qualityText, value) && value >= 100) {
-            part.quality = value;
-        } else {
-            const cv::Rect name = nameOf(entry);
-            if (name.width >= 20 * u) part.nameText = lines.read(frame(name)).text;
-            if (saysInert(part.nameText)) {
-                part.quality = 0;
-                part.inert = true;
+    auto pass = [&](double shift) -> bool {
+        out = RockContents();
+        std::vector<const Entry*> list;
+        bool read = true;
+        double sum = 0;
+        for (const Entry& entry : entries) {
+            const int middle = (entry.top + entry.bottom) / 2;
+            if (list.empty()) {
+                if (middle > (FIRST_BY - REGION_TOP) * u) break;
             } else {
-                part.quality = -1;
-                read = false;
+                const int step = middle - (list.back()->top + list.back()->bottom) / 2;
+                if (step < PITCH_LEAST * u) continue;
+                if (step > PITCH_MOST * u) break;
             }
+            RockPartRead part;
+            const cv::Rect share = shareOf(entry, shift), quality = qualityOf(entry);
+            if (share.width < 20 * u || quality.width < 8 * u) continue;
+            part.shareText = lines.read(frame(share)).text;
+            if (dump) {
+                cv::imwrite(std::string(dump) + "_share" + std::to_string(cut) + ".png", frame(share));
+                cv::imwrite(std::string(dump) + "_quality" + std::to_string(cut) + ".png", frame(quality));
+                cv::imwrite(std::string(dump) + "_name" + std::to_string(cut) + ".png", frame(nameOf(entry)));
+                cv::rectangle(drawn, share - region.tl(), cv::Scalar(0, 255, 0));
+                cv::rectangle(drawn, nameOf(entry) - region.tl(), cv::Scalar(255, 160, 0));
+                cv::rectangle(drawn, quality - region.tl(), cv::Scalar(0, 0, 255));
+                cut++;
+            }
+            if (!parseShare(part.shareText, part.percent)) {
+                if (list.empty()) continue;
+                break;
+            }
+            // The quality: three or four numerals, one of the ore's values - no
+            // ore's is under 262. Anything else is the inert rest's 0 or a quality
+            // that did not read, and the 0 itself does not say which: a dotted zero
+            // on its own comes back from the reader as 0, as @, as an 8 or as a
+            // Chinese character, and so does the one numeral left of a 917 the
+            // ground has swallowed the rest of. The line's name says it: INERT
+            // MATERIALS, in every seat.
+            part.qualityText = lines.read(frame(quality)).text;
+            int value = 0;
+            if (parseQuality(part.qualityText, value) && value >= 100) {
+                part.quality = value;
+            } else {
+                const cv::Rect name = nameOf(entry);
+                if (name.width >= 20 * u) part.nameText = lines.read(frame(name)).text;
+                if (saysInert(part.nameText)) {
+                    part.quality = 0;
+                    part.inert = true;
+                } else {
+                    part.quality = -1;
+                    read = false;
+                }
+            }
+            out.parts.push_back(part);
+            list.push_back(&entry);
+            sum += part.percent;
+            if (sumIsTheRock(sum, list.size()) || sum > 100.006 || list.size() == 7) break;
         }
-        out.parts.push_back(part);
-        list.push_back(&entry);
-        sum += part.percent;
-        if (sumIsTheRock(sum, list.size()) || sum > 100.006 || list.size() == 7) break;
-    }
-    if (dump) cv::imwrite(std::string(dump) + "_words.png", drawn);
-    if (list.empty()) return done(false, "no lines under the bar" + table);
-    if (!read) {
-        contentsHold(out);
-        out.whole = false;
-        return done(false, "a quality did not read" + table);
-    }
-    // The names: by the rock's kind where that fits, else read. Either way
-    // the lines have to be a rock's of that kind - see contentsFitRock.
-    auto holds = [&]() {
-        if (!contentsHold(out)) return false;
-        if (rockOre.empty() || contentsFitRock(rockOre, out)) return true;
-        out.whole = false;
-        return false;
+        if (dump) cv::imwrite(std::string(dump) + "_words.png", drawn);
+        if (list.empty()) return done(false, "no lines under the bar" + table);
+        if (!read) {
+            contentsHold(out);
+            out.whole = false;
+            return done(false, "a quality did not read" + table);
+        }
+        // The names: by the rock's kind where that fits, else read. Either way
+        // the lines have to be a rock's of that kind - see contentsFitRock.
+        auto holds = [&]() {
+            if (!contentsHold(out)) return false;
+            if (rockOre.empty() || contentsFitRock(rockOre, out)) return true;
+            out.whole = false;
+            return false;
+        };
+        if (!rockOre.empty() && nameContentsByRock(rockOre, out)) {
+            return done(holds(), "named by the rock's kind" + table);
+        }
+        for (size_t i = 0; i < list.size(); i++) {
+            RockPartRead& part = out.parts[i];
+            if (part.inert) continue;
+            const cv::Rect name = nameOf(*list[i]);
+            if (name.width < 20 * u) continue;
+            part.nameText = lines.read(frame(name)).text;
+            // (a line with a quality that calls itself inert is no line of the list)
+            if (!saysInert(part.nameText)) part.ore = snapOreName(part.nameText);
+        }
+        return done(holds(), "names read" + table);
     };
-    if (!rockOre.empty() && nameContentsByRock(rockOre, out)) {
-        return done(holds(), "named by the rock's kind" + table);
+    if (pass(0)) return true;
+    // ...and once more a numeral further left, where the list did not come
+    // out whole. Where every share's first numeral was too faint to stand out
+    // - a turret's 10.75, 38.47 and 50.76 over a bright sky - the column
+    // itself was found a numeral to the right, and each share lost its first
+    // numeral and took the name's first letter: 0.75%T, 3.47%T, 0.76%IN. The
+    // lines have to add up to the rock again, so a wrong one does not pass.
+    const RockContents first = out;
+    if (pass(-SHARE_NUMERAL * u)) {
+        out.note += ", a numeral left";
+        return true;
     }
-    for (size_t i = 0; i < list.size(); i++) {
-        RockPartRead& part = out.parts[i];
-        if (part.inert) continue;
-        const cv::Rect name = nameOf(*list[i]);
-        if (name.width < 20 * u) continue;
-        part.nameText = lines.read(frame(name)).text;
-        // (a line with a quality that calls itself inert is no line of the list)
-        if (!saysInert(part.nameText)) part.ore = snapOreName(part.nameText);
-    }
-    return done(holds(), "names read" + table);
+    out = first;
+    return false;
 }
 
 }  // namespace

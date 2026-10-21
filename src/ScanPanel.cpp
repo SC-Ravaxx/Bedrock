@@ -929,6 +929,28 @@ float facePercent(const std::string& read) {
     return (float)std::atof(t.c_str());
 }
 
+// A volume read off the panel held against the rock's mass. Over 1,395
+// readings of every seat recorded the rocks weighed 143 to 1,514 kg an SCU,
+// so a volume outside 50 to 5,000 kg an SCU is none of this rock's - and a
+// thousandth of it may be: under one SCU the panel writes thousandths,
+// "364.01m SCU", which a reader that cannot tell the m (the face reader, the
+// old one) reads as 364.01 SCU. `thousandths` says the m was seen, and only
+// a thousandth is taken then; `orThousandths` lets a reading that did not see
+// it be one where only that fits. -1 for neither; the volume as read where
+// the mass is not known, unless it is in thousandths.
+float volumeOfMass(float volume, float mass, bool thousandths, bool orThousandths) {
+    if (volume <= 0) return -1;
+    if (thousandths) volume /= 1000.0f;
+    if (mass <= 0) return thousandths ? -1 : volume;
+    auto fits = [&](float v) {
+        const float perScu = mass / v;
+        return perScu >= 50.0f && perScu <= 5000.0f;
+    };
+    if (fits(volume)) return volume;
+    if (!thousandths && orThousandths && fits(volume / 1000.0f)) return volume / 1000.0f;
+    return -1;
+}
+
 // "13.86" - with nothing after it when `exact`, and anything after it when
 // not (the volume is followed by the letters of SCU)
 float faceTwoPlaces(const std::string& read, bool exact) {
@@ -1344,8 +1366,11 @@ bool readFiguresIn(const cv::Mat& frame, const cv::Rect& region, ScanPanel& pane
         // the volume is on one of the next lines: "COMP.  21.30 SCU"
         for (size_t k = q + 1; k < lines.size() && k < q + 5; k++) {
             for (size_t t = 1; t < lines[k].tokens.size(); t++) {
-                const float scu = faceTwoPlaces(lines[k].tokens[t].text, false);
-                if (scu >= 0 && scu < 500.0f) {
+                const float read = faceTwoPlaces(lines[k].tokens[t].text, false);
+                if (read < 0 || read >= 1000.0f) continue;
+                // (in thousandths where the mass says so: it reads no m)
+                const float scu = volumeOfMass(read, panel.stats.mass, false, true);
+                if (scu > 0) {
                     panel.stats.scu = scu;
                     break;
                 }
@@ -1482,6 +1507,11 @@ constexpr int SHAPE_STOP_ADVANCE = 13;     // the same across a full stop
 constexpr int SHAPE_PCT_ADVANCE = 11;      // last numeral to the per cent sign
 constexpr int SHAPE_FIRST_CENTRE = 4;      // first glyph's centre, right of the figure's left edge
 constexpr double SHAPE_SCU_LAST_CENTRE = 183.5;  // the volume's last numeral, right of the labels' edge
+// ...and how much further left it stands under one SCU, where an m comes
+// between it and SCU ("364.01m SCU"), at the panel's size: tried from 2 to 20
+// (SCMINER_SCU_PROBE), the numerals read from 8.5 to 14.5 further left over
+// 82 turret frames and from 4.5 to 15.5 over 4 cockpit ones (21 October 2026)
+constexpr double SHAPE_M_SHIFT = 11.5;
 constexpr int SHAPE_SCU_BOTTOM = 128;      // ...and its bottom, below the MASS label's top
 
 // The numerals a panel is written in: which shapes, how tall, how far apart.
@@ -3167,35 +3197,67 @@ bool readPanelByShapeInk(const cv::Mat& frame, const cv::Mat& bgr, int ink, Scan
     // longest it can be down: started one numeral too far right, 21.30 reads
     // as a perfectly good 1.30, but started too far left the first cell is
     // empty and the reading fails.
-    for (int whole = 3; whole >= 1; whole--) {
-        const double firstCentre = layout->scuLastCentre - font.advance - font.stopAdvance -
-                                   font.advance * (whole - 1);
-        const cv::Point leftBottom(column.labels.x + (int)std::lround((firstCentre - font.firstCentre) * s),
-                                   column.labels.y + (int)std::lround(layout->scuBottom * s));
-        // the volume is written in white on the MOLE too, beside orange labels
-        const cv::Mat& scuInk = ink == 4 ? inkImage(0) : darkest;
-        ShapeRow scu = readShapeRow(scuInk, leftBottom, s, 2, font);
-        // ...in the turret's numerals: in each white ink, the clearest
-        // reading kept, as for its figures (never dark on bright: the white
-        // figures turned over read a bright ground as figures)
-        if (!font.clustered) {
-            for (int which : {5, 1}) {
-                ShapeRow other = readShapeRow(inkImage(which), leftBottom, s, 2, font);
-                if (!other.placed) continue;
-                if (!scu.placed || other.worst + other.lead > scu.worst + scu.lead) scu = other;
+    auto volumeEndingAt = [&](double lastCentre, ShapeRow& found) -> float {
+        for (int whole = 3; whole >= 1; whole--) {
+            const double firstCentre = lastCentre - font.advance - font.stopAdvance - font.advance * (whole - 1);
+            const cv::Point leftBottom(column.labels.x + (int)std::lround((firstCentre - font.firstCentre) * s),
+                                       column.labels.y + (int)std::lround(layout->scuBottom * s));
+            // the volume is written in white on the MOLE too, beside orange labels
+            const cv::Mat& scuInk = ink == 4 ? inkImage(0) : darkest;
+            ShapeRow scu = readShapeRow(scuInk, leftBottom, s, 2, font);
+            // ...in the turret's numerals: in each white ink, the clearest
+            // reading kept, as for its figures (never dark on bright: the white
+            // figures turned over read a bright ground as figures)
+            if (!font.clustered) {
+                for (int which : {5, 1}) {
+                    ShapeRow other = readShapeRow(inkImage(which), leftBottom, s, 2, font);
+                    if (!other.placed) continue;
+                    if (!scu.placed || other.worst + other.lead > scu.worst + scu.lead) scu = other;
+                }
             }
+            if (!scu.placed || scu.text.find('.') != (size_t)whole) continue;
+            // ...and a shorter reading only when nothing stands before it: a 5
+            // too faint to match over the ice still lifts off the ground, and
+            // without it 50.03 was 0.03
+            const cv::Rect before((int)std::lround(column.labels.x + (firstCentre - font.advance - 4.5) * s),
+                                  leftBottom.y - (int)std::lround(font.digitH * s),
+                                  (int)std::lround(9 * s), (int)std::lround(font.digitH * s));
+            if (whole < 3 && contrastIn(scuInk, before, scu.ground) >= scu.lift * 0.55f) return -1;
+            found = scu;
+            return faceTwoPlaces(scu.text, true);
         }
-        if (!scu.placed || scu.text.find('.') != (size_t)whole) continue;
-        // ...and a shorter reading only when nothing stands before it: a 5
-        // too faint to match over the ice still lifts off the ground, and
-        // without it 50.03 was 0.03
-        const cv::Rect before((int)std::lround(column.labels.x + (firstCentre - font.advance - 4.5) * s),
-                              leftBottom.y - (int)std::lround(font.digitH * s),
-                              (int)std::lround(9 * s), (int)std::lround(font.digitH * s));
-        if (whole < 3 && contrastIn(scuInk, before, scu.ground) >= scu.lift * 0.55f) break;
-        panel.stats.scu = faceTwoPlaces(scu.text, true);
+        return -1;
+    };
+    ShapeRow scu;
+    const float read = volumeEndingAt(layout->scuLastCentre, scu);
+    // ...and held against the mass: a volume no rock of this mass has is a
+    // misreading, kept out
+    const float volume = volumeOfMass(read, panel.stats.mass, false, false);
+    if (volume > 0) {
+        panel.stats.scu = volume;
         panel.note += " s [" + scu.trace + "]";
-        break;
+        return sure;
+    }
+    if (read > 0) return sure;
+    // Under one SCU in thousandths, "364.01m SCU": the m stands between the
+    // last numeral and SCU, so every numeral stands an m's width further
+    // left. Taken only where the mass says it is a thousandth of an SCU.
+    // (SCMINER_SCU_PROBE: every shift tried, for measuring one)
+    if (DEV_ENV("SCMINER_SCU_PROBE")) {
+        std::cout << "PROBE mass " << panel.stats.mass << " glyph " << layout->labels << " scale " << s << ":";
+        for (int tenth = 20; tenth <= 200; tenth += 5) {
+            ShapeRow at;
+            const float v = volumeEndingAt(layout->scuLastCentre - tenth / 10.0, at);
+            if (v > 0) std::cout << " " << tenth / 10.0 << "=" << at.text << "/" << at.worst << "/" << at.lead;
+        }
+        std::cout << std::endl;
+    }
+    ShapeRow milli;
+    const float thousandths = volumeEndingAt(layout->scuLastCentre - SHAPE_M_SHIFT, milli);
+    const float small = volumeOfMass(thousandths, panel.stats.mass, true, false);
+    if (small > 0) {
+        panel.stats.scu = small;
+        panel.note += " s m [" + milli.trace + "]";
     }
     return sure;
 }
@@ -4440,8 +4502,10 @@ void readOnePanel(const cv::Mat& frame, ScanPanel& panel, OCREngine& ocr, GlyphR
                                           after[i].end - after[i].start + 4));
         }
         for (const cv::Rect& where : candidates) {
-            const float scu = agreedNumber(where, 2);
-            if (scu > 0.05f && scu < 500.0f) {
+            const float read = agreedNumber(where, 2);
+            if (read <= 0.05f || read >= 1000.0f) continue;
+            const float scu = volumeOfMass(read, panel.stats.mass, false, true);
+            if (scu > 0) {
                 panel.stats.scu = scu;
                 break;
             }

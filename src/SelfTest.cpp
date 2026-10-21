@@ -3411,6 +3411,29 @@ int runSelfTest() {
                                                std::to_string((int)c.resistance) + " %, " +
                                                std::to_string(c.instability) + ", " + std::to_string(c.scu) + ")");
                     }
+                    // ...and a rock under one SCU, whose volume the turret
+                    // writes in thousandths: COMP.  582.28m SCU. Not read
+                    // before 21 October 2026 - its parts came in per cents
+                    // (andydsm); the m puts every numeral an m's width
+                    // further left.
+                    const cv::Mat milli =
+                        testPicture("scanpanel/panel_turret_milli.png", L"SELFTEST_TURRET_MILLI");
+                    allPassed &= check(!milli.empty(),
+                                       "the MOLE turret's panel of a rock under one SCU is beside the build or "
+                                       "inside the exe");
+                    if (!milli.empty()) {
+                        cv::Mat towerScreen(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+                        milli.copyTo(towerScreen(cv::Rect(3395, 430, milli.cols, milli.rows)));
+                        SCMiner::ScanPanel tower;
+                        for (int look = 0; look < 4 && !tower.found; look++) {
+                            tower = SCMiner::ScanPanel();
+                            SCMiner::readPanelByShape(towerScreen, tower);
+                        }
+                        const SCMiner::RockStats& c = tower.stats;
+                        allPassed &= check(tower.found && c.mass == 745.0f && std::abs(c.scu - 0.58228f) < 0.000005f,
+                                           "...and a volume in thousandths: 745 kg and 582.28m SCU, 0.58228 SCU (got " +
+                                               std::to_string((int)c.mass) + " kg, " + std::to_string(c.scu) + ")");
+                    }
                     // The MOLE's TURRET, over a sunlit red rock: its figures
                     // are the largest on the screen and no shapes are cut for
                     // that face, so nothing reads them glyph by glyph. The
