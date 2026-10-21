@@ -15,7 +15,8 @@ memory for a day; readings lose it after two days. The log has the
 request line and the answer only. Requests are counted by the hour and
 the day - what was asked for, the Bedrock version and platform the
 User-Agent names, and how many installs asked that day, told apart by the
-same token in memory - never by who.
+number Bedrock sends since 2.6.7 (X-Bedrock-Install) or else the address,
+salted like the token and in memory only - never by who.
 
 Since anyone can send anything, nothing sent is taken on its word:
   - a reading has to look like what a terminal shows (validate)
@@ -26,6 +27,9 @@ Since anyone can send anything, nothing sent is taken on its word:
     saw the same in the last hours, and outvoted where two or more senders
     agree on something else (consensus)
   - one sender reports a station a few times an hour at most
+  - an install that sends too many readings that do not fit is held back
+    for ten minutes - by its number and by its address, as a number is
+    easily made up
   - what slipped through can be found and taken out (--purge, --stats)
 
 Standard library only, SQLite beside it. See README.md.
@@ -93,6 +97,14 @@ ROUTE_NAMES = {
 # Bedrock's own User-Agent: "Bedrock/2.6.6 (Windows)", "(Linux)" - the
 # version and the platform, which is all it says
 AGENT = re.compile(r"^Bedrock/(\d{1,3}(?:\.\d{1,4}){1,3}) \((Windows|Linux)\)")
+# ...and since 2.6.7 the install's own number, 32 hex characters it makes
+# itself the first time (stats=0 leaves it out). Installs are counted by it;
+# readings are still told apart by the address, as a number is easily made up.
+INSTALL = re.compile(r"^[0-9a-f]{32}$")
+# Readings that do not fit - turned down, or kept as implausible - from one
+# install or one address in an hour before it is held back, and for how long
+MISFITS_PER_HOUR = int(os.environ.get("BEDROCK_API_MISFITS_PER_HOUR", "5"))
+MISFIT_HOLD_SECONDS = int(os.environ.get("BEDROCK_API_MISFIT_HOLD_SECONDS", "600"))
 
 # The game's own four (refinery_ui_Capacity_Low/Medium/High/Extreme), in
 # order: light - no surcharge, moderate - small, heavy - moderate, extreme - large
@@ -326,7 +338,7 @@ CREATE TABLE IF NOT EXISTS quote_items (
 );
 CREATE TABLE IF NOT EXISTS counters (
     day TEXT NOT NULL,                -- UTC
-    name TEXT NOT NULL,               -- accepted, duplicate, implausible, limited, rejected, rejected:<field>;
+    name TEXT NOT NULL,               -- accepted, duplicate, implausible, limited, held, rejected, rejected:<field>;
                                       -- req:<route>, agent:<version>, platform:<os>, clients, senders
     count INTEGER NOT NULL,
     PRIMARY KEY (day, name)
@@ -706,6 +718,45 @@ class Limiter:
             return True
 
 
+class Misfits:
+    """The readings that did not fit over the last hour, per install and per
+    address - in memory, salted and hashed with a salt that dies with the
+    process: where either reaches MISFITS_PER_HOUR, its reports are refused
+    for MISFIT_HOLD_SECONDS"""
+
+    def __init__(self, per_hour=MISFITS_PER_HOUR, hold=MISFIT_HOLD_SECONDS):
+        self.per_hour = per_hour
+        self.hold = hold
+        self.salt = secrets.token_bytes(16)
+        self.lock = threading.Lock()
+        self.seen = {}
+        self.until = {}
+
+    def _key(self, who):
+        return hashlib.sha256(self.salt + who.encode("utf-8", "replace")).digest()
+
+    def add(self, keys, now):
+        hour = now - 3600
+        with self.lock:
+            for key in map(self._key, keys):
+                times = self.seen.setdefault(key, collections.deque())
+                while times and times[0] <= hour:
+                    times.popleft()
+                times.append(now)
+                if len(times) >= self.per_hour:
+                    self.until[key] = now + self.hold
+                    times.clear()
+            if len(self.seen) > 10000 or len(self.until) > 10000:
+                for k in [k for k, v in self.seen.items() if not v or v[-1] <= hour]:
+                    del self.seen[k]
+                for k in [k for k, t in self.until.items() if t <= now]:
+                    del self.until[k]
+
+    def held(self, keys, now):
+        with self.lock:
+            return any(self.until.get(key, 0) > now for key in map(self._key, keys))
+
+
 # ---------------------------------------------------------------- the service
 
 class Handler(BaseHTTPRequestHandler):
@@ -713,6 +764,7 @@ class Handler(BaseHTTPRequestHandler):
     sys_version = ""
     store = None
     limiter = None
+    misfits = None
 
     def log_message(self, fmt, *args):
         # the request and the answer, never the address or the agent
@@ -737,6 +789,16 @@ class Handler(BaseHTTPRequestHandler):
     def _fail(self, code, why):
         self._send(code, {"ok": False, "error": why})
 
+    def _install(self):
+        number = (self.headers.get("X-Bedrock-Install") or "").strip().lower()
+        return number if INSTALL.match(number) else None
+
+    def _who(self, address):
+        """Whom to count a request as: its install, by the number it sends,
+        else its address"""
+        install = self._install()
+        return "install:" + install if install else address
+
     def _count(self, now, route):
         """The request, counted: what it asked for, the Bedrock version and
         platform its User-Agent names, and - for the stations - whether this
@@ -753,8 +815,8 @@ class Handler(BaseHTTPRequestHandler):
             names += ["agent:" + agent.group(1), "platform:" + agent.group(2).lower()]
         else:
             names.append("agent:other")
-        if route == "/v1/refinery/stations" and self.store.first_today("clients", self.store.source(address, now),
-                                                                       now):
+        if route == "/v1/refinery/stations" and self.store.first_today(
+                "clients", self.store.source(self._who(address), now), now):
             names.append("clients")
         try:
             self.store.tally(now, *names)
@@ -781,7 +843,8 @@ class Handler(BaseHTTPRequestHandler):
             today = self.store.counters(utc_day(now)).get(utc_day(now), {})
             return self._send(200, {"ok": True, "version": API_VERSION, "observations": self.store.count(),
                                     "today": {name: today.get(name, 0) for name in
-                                              ("accepted", "duplicate", "implausible", "limited", "rejected")}})
+                                              ("accepted", "duplicate", "implausible", "limited", "held",
+                                               "rejected")}})
         if route == "/v1/refinery/stations":
             return self._send(200, {"generated": now, "days": STATION_DAYS, "window": CONSENSUS_SECONDS,
                                     "stations": self.store.stations(now)})
@@ -818,6 +881,13 @@ class Handler(BaseHTTPRequestHandler):
         # nginx puts the address it saw here; the service is reachable from
         # the containers' network only
         address = self.headers.get("X-Real-IP") or self.client_address[0]
+        # held back by its install's number and by its address: a number is
+        # easily made up
+        install = self._install()
+        misfit = [address] + (["install:" + install] if install else [])
+        if self.misfits.held(misfit, now):
+            self.store.tally(now, "held")
+            return self._fail(429, "too many readings that did not fit, try again in a few minutes")
         if not self.limiter.allow(address, now):
             self.store.tally(now, "limited")
             return self._fail(429, "too many reports, try again later")
@@ -825,9 +895,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             report = validate(json.loads(raw.decode("utf-8")), now)
         except (UnicodeDecodeError, json.JSONDecodeError):
+            self.misfits.add(misfit, now)
             self.store.tally(now, "rejected", "rejected:json")
             return self._fail(400, "not JSON")
         except Invalid as e:
+            self.misfits.add(misfit, now)
             self.store.tally(now, "rejected", "rejected:" + e.code)
             return self._fail(400, str(e))
         source = self.store.source(address, now)
@@ -836,8 +908,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._fail(429, "too many readings of this station, try again later")
         reason = judge(report, self.store.ranges(now))
         stored = self.store.add(report, now, source, reason)
+        if reason and stored:
+            self.misfits.add(misfit, now)
         names = [("implausible" if reason else "accepted") if stored else "duplicate"]
-        if self.store.first_today("senders", source, now):
+        if self.store.first_today("senders", self.store.source(self._who(address), now), now):
             names.append("senders")
         self.store.tally(now, *names)
         # whether it was taken as plausible is not said: that would teach a
@@ -845,10 +919,11 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(201 if stored else 200, {"ok": True, "stored": stored})
 
 
-def serve(store, limiter, host="0.0.0.0", port=PORT):
+def serve(store, limiter, host="0.0.0.0", port=PORT, misfits=None):
     """The service, not started yet: serve_forever() on the result. A thread
     beside it prunes every ten minutes (Store.prune)."""
-    handler = type("BoundHandler", (Handler,), {"store": store, "limiter": limiter})
+    handler = type("BoundHandler", (Handler,), {"store": store, "limiter": limiter,
+                                                "misfits": misfits or Misfits()})
     server = ThreadingHTTPServer((host, port), handler)
     server.daemon_threads = True
 

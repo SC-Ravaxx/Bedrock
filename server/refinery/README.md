@@ -25,11 +25,20 @@ of the database. A reading loses its token after 48 hours. The rate limit
 holds addresses in memory for an hour, salted and hashed. The log has the
 request line and the status code only.
 
+Since 2.6.7, Bedrock also sends a random number it made for its install the
+first time (`X-Bedrock-Install`; `stats=0` in its config leaves it out). The
+service counts installs by it and holds back an install that sends too many
+readings that do not fit (see Limits below). The number is not stored
+either: it is held in memory, salted and hashed like the addresses.
+Readings are still told apart by the address, since a number is easily
+made up.
+
 Requests that come through nginx are counted, by the hour (two weeks) and
 by the day (180 days): what was asked for, the Bedrock version and platform
 from the User-Agent (`Bedrock/2.6.6 (Windows)`), and how many installs asked
-for the stations or sent a reading that day. Installs are told apart by the
-same daily token, kept in memory for the day; only the counts are stored.
+for the stations or sent a reading that day. Installs are told apart by
+their number, or by the address for older versions, with the same daily
+salt, kept in memory for the day; only the counts are stored.
 
 All readings can be downloaded by anyone as CSV (`/v1/refinery/export.csv`),
 including whether each was taken as plausible, but never the token.
@@ -44,8 +53,8 @@ nothing is taken on its word:
    fields, numbers in range, a time within the last three days, a known
    workload level. Anything else is turned down with `400`.
 2. **The game's rules.** A reading that does not fit is kept but marked
-   implausible, and it is never handed out. The sender is not told, so a
-   forger does not learn what passes.
+   implausible, and it is never handed out. The answer is the same as for
+   a plausible reading.
    - A workload level is accepted only at the capacities other senders saw
      it at. The span is the 10th to the 90th percentile over 30 days, plus
      10 points either side. It is used once 10 readings from 3 senders are
@@ -66,9 +75,13 @@ nothing is taken on its word:
    newest reading, the newest of theirs stands instead.
 4. **Limits.** One sender can report a station at most 12 times an hour,
    and an address can send at most 120 readings an hour in total. nginx
-   adds its own limit in front.
+   adds its own limit in front. An install that sends five readings in an
+   hour that are turned down or do not fit is held back: its reports are
+   refused with `429` for ten minutes, and Bedrock waits that long before
+   it sends again. This goes by its number and by its address, so a
+   made-up number does not get around it.
 5. **Cleaning up.** `--stats` shows what came in each day: readings
-   accepted, duplicate, implausible, limited and rejected. `--purge` finds
+   accepted, duplicate, implausible, limited, held and rejected. `--purge` finds
    readings by time, station and plausibility, and removes them only when
    run again with `--yes`.
 
@@ -114,7 +127,8 @@ One reading, `Content-Type: application/json`, at most 16 KB:
 The answer is `201 {"ok": true, "stored": true}`, or `200` with
 `"stored": false` when the same reading was already stored. Errors: `400`
 for a reading that does not fit the format, `413` when it is too large,
-`415` when the content type is not JSON, and `429` when a limit is reached.
+`415` when the content type is not JSON, and `429` when a limit is reached
+or the install is held back.
 
 ### `GET /v1/refinery/stations`
 
@@ -143,7 +157,7 @@ Every reading stored, as CSV, with `plausible` and `reason`.
 
 The number of readings stored, and today's counts:
 `{"ok": true, "version": 1, "observations": N, "today": {"accepted": …,
-"duplicate": …, "implausible": …, "limited": …, "rejected": …}}`
+"duplicate": …, "implausible": …, "limited": …, "held": …, "rejected": …}}`
 
 ### `GET /v1/stats?days=90`
 

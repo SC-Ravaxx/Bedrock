@@ -35,12 +35,14 @@ class ServiceTest(unittest.TestCase):
         self.server.server_close()
         self.folder.cleanup()
 
-    def call(self, path, body=None, kind="application/json", address="203.0.113.1", raw=None):
+    def call(self, path, body=None, kind="application/json", address="203.0.113.1", raw=None, install=None):
         data = raw if raw is not None else (None if body is None else json.dumps(body).encode("utf-8"))
         request = urllib.request.Request(self.base + path, data=data, method="POST" if data is not None else "GET")
         if data is not None:
             request.add_header("Content-Type", kind)
             request.add_header("X-Real-IP", address)
+        if install:
+            request.add_header("X-Bedrock-Install", install)
         try:
             with urllib.request.urlopen(request, timeout=10) as answer:
                 text = answer.read().decode("utf-8")
@@ -49,8 +51,8 @@ class ServiceTest(unittest.TestCase):
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read().decode("utf-8"))
 
-    def send(self, address="203.0.113.1", **changes):
-        return self.call("/v1/refinery/observations", self.reading(**changes), address=address)
+    def send(self, address="203.0.113.1", install=None, **changes):
+        return self.call("/v1/refinery/observations", self.reading(**changes), address=address, install=install)
 
     def reading(self, **changes):
         # each a little earlier than the last, so no two are the same reading
@@ -88,7 +90,7 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertEqual(answer["observations"], 1)
         self.assertEqual(answer["today"], {"accepted": 1, "duplicate": 0, "implausible": 0, "limited": 0,
-                                           "rejected": 1})
+                                           "held": 0, "rejected": 1})
 
     def test_a_reading_is_kept_once(self):
         body = self.reading()
@@ -113,8 +115,9 @@ class ServiceTest(unittest.TestCase):
             self.reading(quote=self.quote(items=[{"material": "Iron (Ore)", "quantity": -5}])),
             [1, 2, 3],
         ]
-        for body in bad:
-            code, answer = self.call("/v1/refinery/observations", body)
+        # (each from an address of its own: five from one would hold it back)
+        for i, body in enumerate(bad):
+            code, answer = self.call("/v1/refinery/observations", body, address="192.0.2.%d" % i)
             self.assertEqual(code, 400, body)
             self.assertFalse(answer["ok"])
         self.assertEqual(self.store.count(), 0)
@@ -317,12 +320,14 @@ class ServiceTest(unittest.TestCase):
 
     # ---------------------------------------------------------------- what was asked, counted
 
-    def get(self, path, address=None, agent=None):
+    def get(self, path, address=None, agent=None, install=None):
         request = urllib.request.Request(self.base + path)
         if address:
             request.add_header("X-Real-IP", address)
         if agent:
             request.add_header("User-Agent", agent)
+        if install:
+            request.add_header("X-Bedrock-Install", install)
         try:
             with urllib.request.urlopen(request, timeout=10) as answer:
                 return answer.status, json.loads(answer.read().decode("utf-8"))
@@ -371,6 +376,55 @@ class ServiceTest(unittest.TestCase):
         finally:
             db.close()
         self.assertEqual(self.store.seen, {})
+
+    # ---------------------------------------------------------------- the install's number
+
+    ONE, OTHER = "0123456789abcdef0123456789abcdef", "fedcba9876543210fedcba9876543210"
+
+    def test_installs_are_counted_by_their_number_and_readings_told_apart_by_the_address(self):
+        self.send(address="198.51.100.7", install=self.ONE)
+        self.send(address="198.51.100.7", install=self.OTHER)
+        self.send(address="198.51.100.7", install="NOT-A-NUMBER")   # as an older Bedrock: by its address
+        self.get("/v1/refinery/stations", "198.51.100.7", install=self.ONE)
+        self.get("/v1/refinery/stations", "198.51.100.7", install=self.OTHER)
+        self.get("/v1/refinery/stations", "198.51.100.7", install=self.ONE)
+        today = self.get("/v1/stats")[1]["counters"][app.utc_day(time.time())]
+        self.assertEqual((today["senders"], today["clients"]), (3, 2))
+        # a number is easily made up: the readings keep their address's token,
+        # so one address does not pass for several senders
+        self.assertEqual(len({r["source"] for r in self.rows()}), 1)
+        kept = b"".join(open(p, "rb").read() for p in (self.store.path, self.store.path + "-wal")
+                        if os.path.exists(p))
+        self.assertNotIn(self.ONE.encode(), kept)
+        self.assertNotIn(b"198.51.100", kept)
+
+    def test_an_install_that_sends_what_does_not_fit_is_held_back(self):
+        for _ in range(app.MISFITS_PER_HOUR):
+            self.assertEqual(self.send(install=self.ONE, station=HUR, quote=self.quote(cost=5000))[0], 201)
+        code, answer = self.send(install=self.ONE)
+        self.assertEqual(code, 429)
+        self.assertIn("did not fit", answer["error"])
+        # ...from another address too, and so is its address with another number
+        self.assertEqual(self.send(address="198.51.100.9", install=self.ONE)[0], 429)
+        self.assertEqual(self.send(install=self.OTHER)[0], 429)
+        self.assertEqual(self.send(address="198.51.100.9", install=self.OTHER)[0], 201)
+        today = self.get("/v1/stats")[1]["counters"][app.utc_day(time.time())]
+        self.assertEqual((today["implausible"], today["held"], today["accepted"]), (app.MISFITS_PER_HOUR, 3, 1))
+
+    def test_what_did_not_fit_holds_back_for_ten_minutes_and_is_forgotten_after_an_hour(self):
+        misfits = app.Misfits(per_hour=3, hold=600)
+        misfits.add(["203.0.113.1", "install:x"], 1000)
+        misfits.add(["203.0.113.1", "install:x"], 1000)
+        self.assertFalse(misfits.held(["203.0.113.1", "install:x"], 1001))
+        misfits.add(["198.51.100.9", "install:x"], 1002)                  # x's third, from elsewhere
+        self.assertTrue(misfits.held(["192.0.2.5", "install:x"], 1003))   # by its number
+        self.assertFalse(misfits.held(["203.0.113.1", "install:y"], 1003))
+        self.assertFalse(misfits.held(["192.0.2.5", "install:x"], 1602))  # ten minutes on
+        misfits.add(["203.0.113.1"], 4700)                                # its two of an hour ago are gone
+        self.assertFalse(misfits.held(["203.0.113.1"], 4701))
+        for _ in range(3):
+            misfits.add(["203.0.113.1"], 4800)                            # turned down, or not: the same
+        self.assertTrue(misfits.held(["203.0.113.1", "install:z"], 4801))
 
 
 if __name__ == "__main__":
