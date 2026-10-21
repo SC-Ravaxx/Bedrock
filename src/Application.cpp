@@ -196,6 +196,7 @@ constexpr int STUCK_LIMIT = 40;          // ~15 s at the usual scan interval
 constexpr int STUCK_DRIFT_PX = 3;        // what still counts as "the same pixel"
 constexpr int BLACKLIST_SCANS = 150;     // ~1 min before it may be tried again
 const char* const REGION_CONFIG_FILE = "region_config.txt";
+const char* const INSTALL_ID_FILE = "install_id.txt";
 
 // Everything the app writes goes under AppPaths::data() - %LOCALAPPDATA%\Bedrock,
 // or beside the exe when portable.txt says so. Never simply beside the exe:
@@ -599,6 +600,12 @@ bool Application::initialize() {
     // Nothing is downloaded by asking and nothing is installed without
     // being asked; update=0 in region_config.txt stops it entirely.
     updater_.configure(updateUrl_.empty() ? BEDROCK_UPDATE_URL : updateUrl_, updateCheck_);
+    // ...with the install's own number, so that installs are counted rather
+    // than addresses - unless stats=0 (see Updater::installId). The refinery
+    // workloads carry it too: the service holds back an install that sends
+    // too many readings that do not fit.
+    installId_ = statsWanted_ ? Updater::installId(AppPaths::file(INSTALL_ID_FILE)) : std::string();
+    updater_.setInstallId(installId_);
     updater_.checkInBackground();
     lastUpdateCheck_ = std::chrono::steady_clock::now();
 
@@ -3644,6 +3651,8 @@ void Application::saveRegionConfig() {
         // Written back, not only read: this file is rewritten on every close, so
         // a value set by hand (update=0) would otherwise last one session.
         file << "update=" << (updateCheck_ ? 1 : 0) << std::endl;
+        // stats=0: the update check goes without install_id.txt's number
+        file << "stats=" << (statsWanted_ ? 1 : 0) << std::endl;
         file << "gametexts=" << (gameTextsWanted_ ? 1 : 0) << std::endl;
         // sharerefinery=0: the box in the Refinery window unticked - see
         // RefineryShare. On until then; an earlier test build's
@@ -3734,6 +3743,7 @@ void Application::loadRegionConfig() {
                 else if (key == "keepgb") maxKeepGb_ = std::clamp(value, 1, 10000);
                 else if (key == "live") startLive_ = (value != 0);
                 else if (key == "update") updateCheck_ = (value != 0);
+                else if (key == "stats") statsWanted_ = (value != 0);
                 else if (key == "uex") uexWanted_ = (value != 0);
                 else if (key == "uexoffered") uexOffered_ = (value != 0);
                 // gametexts=1: the box in the Blueprints window - see GameTexts
@@ -4241,6 +4251,11 @@ void Application::takeRefineryScreen(const RefineryScreen& read, const std::stri
 
 // ---- refinery workloads (RefineryShare) ---------------------------------
 
+std::vector<std::string> Application::installHeader() const {
+    if (installId_.empty()) return {};
+    return {"X-Bedrock-Install: " + installId_};
+}
+
 std::string Application::refineryServiceUrl() {
     if (const char* dev = DEV_ENV("SCMINER_REFINERY_URL")) return dev;
 #ifdef BEDROCK_REFINERY_URL
@@ -4330,8 +4345,9 @@ void Application::serviceRefineryShare() {
             if (refineryShare_) shareQueue_.push_front(shareSending_);
             shareRetryAt_ = now + std::chrono::minutes(1);
         } else if (status == 429) {
-            // enough of this station - or from this address - for now: a
-            // fresher reading comes along, so this one goes, and the rest wait
+            // enough of this station - or from this install, or of readings
+            // that did not fit - for now: a fresher reading comes along, so
+            // this one goes, and the rest wait
             shareRetryAt_ = now + std::chrono::minutes(10);
         } else if (status >= 400) {
             std::cout << "\nRefinery workloads: the service turned a report down (" << status << ")" << std::endl;
@@ -4341,9 +4357,12 @@ void Application::serviceRefineryShare() {
     if (!shareJob_.valid() && refineryShare_ && !shareQueue_.empty() && now >= shareRetryAt_) {
         shareSending_ = shareQueue_.front();
         shareQueue_.pop_front();
-        shareJob_ = std::async(std::launch::async, [url = base + "/v1/refinery/observations", body = shareSending_]() {
+        std::vector<std::string> headers = installHeader();
+        headers.push_back("Content-Type: application/json");
+        shareJob_ = std::async(std::launch::async, [url = base + "/v1/refinery/observations", body = shareSending_,
+                                                    headers]() {
             HttpAnswer answer;
-            httpsPost(url, {"Content-Type: application/json"}, body, answer, 64 * 1024);
+            httpsPost(url, headers, body, answer, 64 * 1024);
             return answer.status;
         });
     }
@@ -4360,10 +4379,10 @@ void Application::serviceRefineryShare() {
     if (!stationsJob_.valid() && gui_ && gui_->refineryShown() &&
         (!asked || now - stationsAsked_ >= std::chrono::minutes(5))) {
         stationsAsked_ = now;
-        stationsJob_ = std::async(std::launch::async, [url = base + "/v1/refinery/stations"]() {
+        stationsJob_ = std::async(std::launch::async, [url = base + "/v1/refinery/stations", headers = installHeader()]() {
             std::string body, why;
             std::map<std::string, RefineryShare::StationState> states;
-            if (httpsGet(url, {}, body, why, 1024 * 1024)) RefineryShare::readStations(body, states, why);
+            if (httpsGet(url, headers, body, why, 1024 * 1024)) RefineryShare::readStations(body, states, why);
             return std::make_pair(why, states);
         });
     }

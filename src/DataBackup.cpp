@@ -82,6 +82,9 @@ bool carried(const std::string& path) {
     // the player's UEX secret key goes nowhere but where it was put - a
     // backup is a file people hand around
     if (top == "uex_key.dat") return false;
+    // ...and the install's own number stays with the install: a backup
+    // restored on another PC is another install
+    if (top == "install_id.txt") return false;
     return !isPicture(top);
 }
 

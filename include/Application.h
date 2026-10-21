@@ -318,6 +318,14 @@ private:
     // version, updateurl= points it somewhere else. Looking sends nothing
     // but the request itself, and installs nothing without being asked.
     bool updateCheck_ = true;
+    // stats=0: the update check and the refinery workloads go without the
+    // install's own number (Updater::installId), and only the version and
+    // platform are sent
+    bool statsWanted_ = true;
+    // ...the number itself, "" with stats=0: sent with the update check and
+    // with the refinery workloads (X-Bedrock-Install)
+    std::string installId_;
+    std::vector<std::string> installHeader() const;
     std::string updateUrl_;
     Updater updater_;
     // Asked at start and once an hour after that: a companion window can stay

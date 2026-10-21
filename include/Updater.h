@@ -85,6 +85,17 @@ public:
     // The manifest URL, and whether to look at all. Both come from
     // region_config.txt, falling back to what the build was made with.
     void configure(const std::string& manifestUrl, bool enabled);
+    // The install's own number (installId), sent along with the check - and
+    // the download, where it lies beside the version file - as
+    // X-Bedrock-Install, so that installs are counted, not addresses; ""
+    // sends none (stats=0)
+    void setInstallId(const std::string& id) { installId_ = id; }
+    // The install's own number: 32 hex characters from the system's random
+    // source, made the first time and kept in `file` (install_id.txt). Made
+    // of nothing of the machine, the player or the game; "" when it can be
+    // neither read nor kept
+    static std::string installId(const std::string& file);
+    static bool validInstallId(const std::string& id);
 
     // Asks, in the background. Safe to call when switched off - it does
     // nothing then, and says so.
@@ -120,9 +131,12 @@ public:
 private:
     void join();
 
+    std::vector<std::string> installHeader() const;
+
     std::atomic<State> state_{State::Idle};
     std::atomic<int> percent_{0};
     std::string url_;
+    std::string installId_;
     bool enabled_ = false;
     Release latest_;
     std::string error_;

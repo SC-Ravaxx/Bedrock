@@ -1816,6 +1816,9 @@ int runSelfTest() {
                                !DB::carried("previous/2026-09-30 2015/craft_list.txt"),
                            "a backup carries the lists and a note's pictures, not a copy of the "
                            "game's texts, a loose picture or debug\\");
+        allPassed &= check(!DB::carried("install_id.txt") && !DB::carried("uex_key.dat"),
+                           "...nor the install's own number or the UEX key: a backup restored elsewhere is another "
+                           "install");
     }
 
     // --- ...and the round trip over a real folder, which is where the
@@ -2133,6 +2136,28 @@ int runSelfTest() {
             allPassed &= check(full && bare.empty(),
                                "the update script calls tasklist, find, ping, powershell and xcopy by their "
                                "full path (bare:" + (bare.empty() ? std::string(" none") : bare) + ")");
+        }
+        {
+            // The install's own number: 32 hex characters, made once and kept
+            const std::filesystem::path file = std::filesystem::temp_directory_path() / "bedrock_selftest_install_id.txt";
+            std::error_code ec;
+            std::filesystem::remove(file, ec);
+            const std::string first = SCMiner::Updater::installId(file.string());
+            const std::string again = SCMiner::Updater::installId(file.string());
+            {
+                std::ofstream spoilt(file, std::ios::trunc);
+                spoilt << "not a number\n";
+            }
+            const std::string anew = SCMiner::Updater::installId(file.string());
+            std::filesystem::remove(file, ec);
+            allPassed &= check(SCMiner::Updater::validInstallId(first) && again == first &&
+                                   SCMiner::Updater::validInstallId(anew) && anew != first,
+                               "the install's number is 32 hex characters, kept, and made anew where the file "
+                               "holds none");
+            allPassed &= check(!SCMiner::Updater::validInstallId("") &&
+                                   !SCMiner::Updater::validInstallId("0123456789ABCDEF0123456789abcdef") &&
+                                   !SCMiner::Updater::validInstallId("0123456789abcdef0123456789abcde"),
+                               "...and nothing else passes for one");
         }
         allPassed &= check(SCMiner::Updater::isNewer("4.10.0", "4.9.0"),
                            "4.10.0 counts as newer than 4.9.0");

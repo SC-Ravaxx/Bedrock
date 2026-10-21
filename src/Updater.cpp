@@ -16,10 +16,12 @@
 #endif
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <random>
 #include <sstream>
 #include <vector>
 
@@ -49,6 +51,17 @@ std::string trim(const std::string& s) {
     while (a < b && (unsigned char)s[a] <= ' ') a++;
     while (b > a && (unsigned char)s[b - 1] <= ' ') b--;
     return s.substr(a, b - a);
+}
+
+// A URL's host, in lower case: "the-forsaken.org" of
+// "https://the-forsaken.org/bedrock/bedrock-latest.txt"
+std::string hostOf(const std::string& url) {
+    const size_t scheme = url.find("://");
+    if (scheme == std::string::npos) return "";
+    const size_t from = scheme + 3, to = url.find_first_of("/:?#", from);
+    std::string host = url.substr(from, to == std::string::npos ? std::string::npos : to - from);
+    for (char& c : host) c = (char)std::tolower((unsigned char)c);
+    return host;
 }
 
 #ifdef _WIN32
@@ -429,13 +442,49 @@ void Updater::configure(const std::string& manifestUrl, bool enabled) {
                url_.find("OWNER/REPO") == std::string::npos;
 }
 
+bool Updater::validInstallId(const std::string& id) {
+    if (id.size() != 32) return false;
+    for (char c : id) {
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return false;
+    }
+    return true;
+}
+
+std::string Updater::installId(const std::string& file) {
+    {
+        std::ifstream in(file);
+        std::string kept;
+        if (in && std::getline(in, kept)) {
+            while (!kept.empty() && (kept.back() == '\r' || kept.back() == ' ')) kept.pop_back();
+            if (validInstallId(kept)) return kept;
+        }
+    }
+    // random_device is the system's own source on both: rand_s on Windows,
+    // /dev/urandom on Linux
+    std::random_device random;
+    static const char* const HEX = "0123456789abcdef";
+    std::string id;
+    for (int word = 0; word < 4; word++) {
+        const unsigned int value = random();
+        for (int nibble = 0; nibble < 8; nibble++) id += HEX[(value >> (nibble * 4)) & 15];
+    }
+    std::ofstream out(file, std::ios::trunc);
+    out << id << "\n";
+    return out ? id : std::string();
+}
+
+std::vector<std::string> Updater::installHeader() const {
+    if (installId_.empty()) return {};
+    return {"X-Bedrock-Install: " + installId_};
+}
+
 void Updater::checkInBackground() {
     if (!enabled_ || state_ == State::Checking || state_ == State::Downloading) return;
     join();
     state_ = State::Checking;
     worker_ = std::thread([this] {
         std::string body, why;
-        if (!fetch(url_, body, why, nullptr, 256 * 1024)) {
+        if (!fetch(url_, body, why, nullptr, 256 * 1024, installHeader())) {
             error_ = why;
             state_ = State::Failed;
             return;
@@ -458,7 +507,11 @@ void Updater::downloadInBackground() {
     state_ = State::Downloading;
     worker_ = std::thread([this] {
         std::string body, why;
-        if (!fetch(latest_.url, body, why, &percent_)) {
+        // the install's number only where the update lies beside the
+        // version file - not to GitHub or wherever else url= points
+        const bool beside = hostOf(latest_.url) == hostOf(url_);
+        if (!fetch(latest_.url, body, why, &percent_, 64ll * 1024 * 1024,
+                   beside ? installHeader() : std::vector<std::string>())) {
             error_ = why;
             state_ = State::Failed;
             return;
