@@ -10,7 +10,7 @@
 // wherever it is not 0.
 #define BEDROCK_VERSION_MAJOR 2
 #define BEDROCK_VERSION_MINOR 6
-#define BEDROCK_VERSION_PATCH 6
+#define BEDROCK_VERSION_PATCH 7
 #define BEDROCK_VERSION_BUILD 0
 
 #define BEDROCK_STR2(x) #x

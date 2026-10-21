@@ -13479,6 +13479,28 @@ void MinerGUI::drawWhatsNewCard(Gdiplus::Graphics& g, int cw, int ch) {
     // however softly put, turns that into a collection. The jar sits behind the
     // ? button and along the foot of the main window. Plain words, like a patch
     // note.
+    version(L"2.6.7", L"21 October");
+    note(L"Thanks to andydsm for the screenshots from the MOLE turrets!");
+    gap(10);
+    group(L"IMPROVED");
+    item(L"MOLE turrets");
+    note(L"Rocks under 1 SCU now show in SCU as well. The turret writes their size");
+    note(L"in thousandths (\u201C364.01m SCU\u201D), and Bedrock reads that now.");
+    gap(6);
+    item(L"What\u2019s in a rock");
+    note(L"The list of what\u2019s in a rock shows up more reliably. Over a bright");
+    note(L"background it sometimes didn\u2019t show at all.");
+    gap(10);
+    group(L"CHANGED");
+    item(L"Install number");
+    note(L"Bedrock now makes a random number for your install and sends it when it");
+    note(L"checks for updates and when it shares refinery workloads. Bedrock\u2019s");
+    note(L"statistics count installs by this number instead of by IP address. It");
+    note(L"says nothing about you or your PC. An install that sends a lot of");
+    note(L"refinery readings that can\u2019t be right is held back from sharing for");
+    note(L"ten minutes. To leave the number out, close Bedrock and set stats=0 in");
+    note(L"region_config.txt (in %LOCALAPPDATA%\\Bedrock).");
+    gap(10);
     version(L"2.6.6", L"20 October");
     note(L"Thanks to andydsm for the feedback on the overlay and the MOLE turrets!");
     gap(10);
@@ -19967,10 +19989,16 @@ bool MinerGUI::createNews() {
     return true;
 }
 
-void MinerGUI::showNews() {
+void MinerGUI::showNews() { openNews(false); }
+
+void MinerGUI::showThanks() { openNews(true); }
+
+void MinerGUI::openNews(bool thanks) {
     if (!news_ && !createNews()) return;
     newsVisible_ = true;
+    newsThanks_ = thanks;
     newsPage_ = 0;   // the newest first
+    SetWindowTextW(news_, thanks ? L"Bedrock " BEDROCK_VERSION_W : L"Bedrock 2.5");
     if (headless_) {
         SetWindowPos(news_, HWND_BOTTOM, -32000, -30000, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
     } else {
@@ -19991,6 +20019,8 @@ void MinerGUI::showNews() {
 }
 
 void MinerGUI::showNewsForShot() { showNews(); }
+
+void MinerGUI::showThanksForShot() { showThanks(); }
 
 void MinerGUI::newsPageForShot(int page) {
     newsPage_ = page;
@@ -20074,7 +20104,20 @@ Gdiplus::Bitmap* MinerGUI::uexBadge(int height) {
 void MinerGUI::hideNewsForShot() {
     if (!news_) return;
     newsVisible_ = false;
+    newsThanks_ = false;   // put away for the picture, without the card after it
     ShowWindow(news_, SW_HIDE);
+}
+
+// The news window put away, however it was closed - and after 2.6.7's
+// thank-you the "what's new" card: the thank-you is not the release notes,
+// and what changed is still to be said
+void MinerGUI::closeNews() {
+    newsVisible_ = false;
+    if (news_) ShowWindow(news_, SW_HIDE);
+    if (newsThanks_) {
+        newsThanks_ = false;
+        showWhatsNew();
+    }
 }
 
 void MinerGUI::paintNewsTo(HDC hdc) {
@@ -20179,7 +20222,7 @@ void MinerGUI::paintNews(HDC hdc) {
 
         // the words, on the left
         const float M = scaleF(30);
-        const float textW = scaleF(newsPage_ == 0 ? 400 : 420);
+        const float textW = scaleF(newsThanks_ ? 490 : newsPage_ == 0 ? 400 : 420);
         float y = scaleF(24);
         const auto para = [&](const std::wstring& text, const Gdiplus::Font& font, Gdiplus::Brush& brush,
                               float after) {
@@ -20196,21 +20239,113 @@ void MinerGUI::paintNews(HDC hdc) {
         // show selected; the arrow keys turn the page as well.
         const float bw = scaleF(110), bh = scaleF(34);
         newsButton_ = Gdiplus::RectF(M, (float)ch - scaleF(30) - bh, bw, bh);
-        // (No hover is followed in this window, so the buttons never light.)
-        drawButton(g, newsButton_, L"Got it", buttonFont, ButtonKind::Primary, false, scaleF(R_CONTROL));
-        const wchar_t* tabNames[2] = {L"2.5", L"2.0"};
-        float tx = newsButton_.GetRight() + scaleF(12);
-        for (int i = 0; i < 2; i++) {
-            newsTabs_[i] = Gdiplus::RectF(tx, newsButton_.Y, scaleF(56), bh);
-            drawButton(g, newsTabs_[i], tabNames[i], buttonFont,
-                       newsPage_ == i ? ButtonKind::Selected : ButtonKind::Secondary, false, scaleF(R_CONTROL));
-            tx = newsTabs_[i].GetRight() + scaleF(6);
+        if (newsThanks_) {
+            // 2.6.7's thank-you is one page, and the way on is to what's new
+            newsButton_.Width = scaleF(150);
+            drawButton(g, newsButton_, L"See what\u2019s new", buttonFont, ButtonKind::Primary, false,
+                       scaleF(R_CONTROL));
+            newsTabs_[0] = newsTabs_[1] = Gdiplus::RectF();
+        } else {
+            // (No hover is followed in this window, so the buttons never light.)
+            drawButton(g, newsButton_, L"Got it", buttonFont, ButtonKind::Primary, false, scaleF(R_CONTROL));
+            const wchar_t* tabNames[2] = {L"2.5", L"2.0"};
+            float tx = newsButton_.GetRight() + scaleF(12);
+            for (int i = 0; i < 2; i++) {
+                newsTabs_[i] = Gdiplus::RectF(tx, newsButton_.Y, scaleF(56), bh);
+                drawButton(g, newsTabs_[i], tabNames[i], buttonFont,
+                           newsPage_ == i ? ButtonKind::Selected : ButtonKind::Secondary, false, scaleF(R_CONTROL));
+                tx = newsTabs_[i].GetRight() + scaleF(6);
+            }
+            g.DrawString(L"Esc closes it too", -1, &smallFont,
+                         Gdiplus::RectF(tx + scaleF(8), newsButton_.Y, M + textW - tx - scaleF(8), bh), &leftMid,
+                         &faintBrush);
         }
-        g.DrawString(L"Esc closes it too", -1, &smallFont,
-                     Gdiplus::RectF(tx + scaleF(8), newsButton_.Y, M + textW - tx - scaleF(8), bh), &leftMid,
-                     &faintBrush);
 
-        if (newsPage_ == 0) {
+        if (newsThanks_) {
+            // 2.6.7: thank you, to everyone using Bedrock - a letter rather
+            // than a list. On the right what it is about: the installs that
+            // checked for an update in a week, mid-September (49 and 47) and
+            // in the week before this release (104), by the site's own count.
+            // A letter, to be read at leisure: a size up from the other pages
+            Gdiplus::Font letterTitle(&markFamily(), scaleF(36), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+            Gdiplus::Font letterLead(&textFamily(), scaleF(16), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+            Gdiplus::Font letterFont(&textFamily(), scaleF(14), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+            g.DrawString(L"Thank you!", -1, &letterTitle, Gdiplus::PointF(M - scaleF(2), y), &textBrush);
+            y += scaleF(54);
+            para(L"Bedrock " BEDROCK_VERSION_W L"  \u00B7  a few words before what\u2019s new", subFont, faintBrush,
+                 22);
+            para(L"More and more of you are using Bedrock.", letterLead, textBrush, 12);
+            para(L"In mid-September, about 50 of you used it in a week. Last week it was more than 100. That "
+                 L"means a lot to me \u2013 thank you for giving Bedrock a place next to your game.",
+                 letterFont, dimBrush, 18);
+            para(L"Thank you for every bug report, screenshot and idea you\u2019ve sent. A lot of what gets "
+                 L"better in an update starts with one of them. This time it was andydsm\u2019s screenshots "
+                 L"from the MOLE\u2019s turrets: small rocks there now show their SCU too.",
+                 letterFont, dimBrush, 18);
+            para(L"And to everyone who shares refinery workloads: thank you as well. Every reading you share "
+                 L"helps another player find a refinery that isn\u2019t busy.",
+                 letterFont, dimBrush, 18);
+            para(L"Bedrock is free, and it stays free. If something reads wrong, please keep telling me "
+                 L"\u2013 Ctrl+Alt+S in the game saves a snapshot of what Bedrock saw, and that\u2019s what "
+                 L"makes it fixable.",
+                 letterFont, dimBrush, 18);
+            para(L"Good luck with the rocks, and see you out there!", letterFont, dimBrush, 14);
+            para(L"\u2013 Ravaxx", letterLead, textBrush, 0);
+
+            // Then and now, on a pane of glass like the other pages' pictures:
+            // the figures standing on one line, the words under each, and
+            // what the figures say along the bottom, level with the button
+            const float top = scaleF(32);
+            const float roomLeft = M + textW + scaleF(36);
+            const Gdiplus::RectF pane(roomLeft, top, (float)cw - scaleF(30) - roomLeft,
+                                      newsButton_.GetBottom() - top);
+            refplanGlassPane(g, pane, scaleF(R_CARD), scaleF(14), COL_BG);
+            Gdiplus::Font thenFont(&markFamily(), scaleF(56), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+            Gdiplus::Font nowFont(&markFamily(), scaleF(104), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+            Gdiplus::Font arrowFont(&textFamily(), scaleF(34), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+            Gdiplus::Font oneFont(&markFamily(), scaleF(20), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+            // drawn at y, a line of a face stands on y + its ascent
+            const auto ascent = [](const Gdiplus::Font& font, const Gdiplus::FontFamily& family) {
+                return font.GetSize() * (float)family.GetCellAscent(Gdiplus::FontStyleRegular) /
+                       (float)family.GetEmHeight(Gdiplus::FontStyleRegular);
+            };
+            Gdiplus::RectF thenW, arrowW, nowW;
+            g.MeasureString(L"50", -1, &thenFont, Gdiplus::PointF(0, 0), &thenW);
+            g.MeasureString(L"\u2192", -1, &arrowFont, Gdiplus::PointF(0, 0), &arrowW);
+            g.MeasureString(L"100+", -1, &nowFont, Gdiplus::PointF(0, 0), &nowW);
+            const float apart = scaleF(14);
+            const float thenX = pane.X + (pane.Width - (thenW.Width + arrowW.Width + nowW.Width + 2 * apart)) / 2.0f;
+            const float arrowX = thenX + thenW.Width + apart;
+            const float nowX = arrowX + arrowW.Width + apart;
+            // the figures, their words and the line under them, in the middle
+            // of the pane above its caption - numerals are about seven tenths
+            // of their face's size tall
+            const float numeralH = scaleF(104) * 0.72f;
+            const float groupH = numeralH + scaleF(16 + 20 + 44 + 28);
+            const float baseline = pane.Y + (newsButton_.Y - pane.Y - groupH) / 2.0f + numeralH;
+            g.DrawString(L"50", -1, &thenFont, Gdiplus::PointF(thenX, baseline - ascent(thenFont, markFamily())),
+                         &dimBrush);
+            const float thenMiddle = baseline - scaleF(56) * 0.36f;
+            g.DrawString(L"\u2192", -1, &arrowFont, Gdiplus::PointF(arrowX, thenMiddle - arrowW.Height / 2.0f),
+                         &faintBrush);
+            g.DrawString(L"100+", -1, &nowFont, Gdiplus::PointF(nowX, baseline - ascent(nowFont, markFamily())),
+                         &accentBrush);
+            Gdiplus::StringFormat centredTop;
+            centredTop.SetAlignment(Gdiplus::StringAlignmentCenter);
+            const float wordsY = baseline + scaleF(16);
+            const auto under = [&](const wchar_t* words, float centre, Gdiplus::Brush& brush) {
+                g.DrawString(words, -1, &subFont, Gdiplus::RectF(centre - scaleF(110), wordsY, scaleF(220), scaleF(20)),
+                             &centredTop, &brush);
+            };
+            under(L"a week, mid-September", thenX + thenW.Width / 2.0f, faintBrush);
+            under(L"last week", nowX + nowW.Width / 2.0f, dimBrush);
+            g.DrawString(L"Thank you for being one of them.", -1, &oneFont,
+                         Gdiplus::RectF(pane.X, wordsY + scaleF(20 + 44), pane.Width, scaleF(28)), &centredTop,
+                         &textBrush);
+            g.DrawString(L"Installs that checked for an update in a week", -1, &smallFont,
+                         Gdiplus::RectF(pane.X + scaleF(16), newsButton_.Y, pane.Width - scaleF(32), bh), &leftMid,
+                         &faintBrush);
+        } else if (newsPage_ == 0) {
             // 2.5: Bedrock in the game's own contract texts. With a language pack
             // of one's own, moving its global.ini away is all it takes.
             {
@@ -20351,8 +20486,8 @@ LRESULT MinerGUI::handleNewsMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM 
         case WM_LBUTTONDOWN: {
             const float px = (float)(short)LOWORD(lParam), py = (float)(short)HIWORD(lParam);
             if (newsButton_.Contains(px, py)) {
-                newsVisible_ = false;
-                ShowWindow(hwnd, SW_HIDE);
+                closeNews();
+                return 0;
             }
             for (int i = 0; i < 2; i++) {
                 if (newsTabs_[i].Contains(px, py) && newsPage_ != i) {
@@ -20363,12 +20498,11 @@ LRESULT MinerGUI::handleNewsMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM 
             return 0;
         }
         case WM_KEYDOWN:
-            if (wParam == VK_ESCAPE) {
-                newsVisible_ = false;
-                ShowWindow(hwnd, SW_HIDE);
+            if (wParam == VK_ESCAPE || (newsThanks_ && wParam == VK_RETURN)) {
+                closeNews();
                 return 0;
             }
-            if (wParam == VK_LEFT || wParam == VK_RIGHT) {
+            if (!newsThanks_ && (wParam == VK_LEFT || wParam == VK_RIGHT)) {
                 const int to = (wParam == VK_LEFT) ? 0 : 1;
                 if (to != newsPage_) {
                     newsPage_ = to;
@@ -20378,8 +20512,7 @@ LRESULT MinerGUI::handleNewsMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM 
             }
             break;
         case WM_CLOSE:
-            newsVisible_ = false;
-            ShowWindow(hwnd, SW_HIDE);
+            closeNews();
             return 0;
     }
     return DefWindowProcW(hwnd, uMsg, wParam, lParam);

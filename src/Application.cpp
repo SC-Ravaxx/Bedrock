@@ -25,6 +25,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstdint>
+#include <cstring>
 #include <ctime>
 #include <opencv2/core/utility.hpp>   // cv::setNumThreads
 
@@ -3600,15 +3601,23 @@ void Application::maybeShowWhatsNew() {
     // marker): the news window, since the rock view and the game's contract
     // texts change what the window is for and a scrolling card would bury
     // them. From 2.5 on: the What's New card.
-    int major = 0, minor = 0;
+    int major = 0, minor = 0, patch = 0;
     {
         size_t at = 0;
         while (at < seen.size() && std::isdigit((unsigned char)seen[at])) major = major * 10 + (seen[at++] - '0');
         if (at < seen.size() && seen[at] == '.') at++;
         while (at < seen.size() && std::isdigit((unsigned char)seen[at])) minor = minor * 10 + (seen[at++] - '0');
+        if (at < seen.size() && seen[at] == '.') at++;
+        while (at < seen.size() && std::isdigit((unsigned char)seen[at])) patch = patch * 10 + (seen[at++] - '0');
     }
     const bool before25 = seen.empty() || major < 2 || (major == 2 && minor < 5);
+    // 2.6.7 says thank you first, in the news window, to everyone coming
+    // from before it - the card follows when that is closed. A hotfix of it
+    // does not say it twice, and the release after it no longer at all.
+    const bool thanks = std::strncmp(BEDROCK_VERSION, "2.6.7", 5) == 0 &&
+                        (major < 2 || (major == 2 && (minor < 6 || (minor == 6 && patch < 7))));
     if (before25) gui_->showNews();
+    else if (thanks) gui_->showThanks();
     else gui_->showWhatsNew();
 }
 

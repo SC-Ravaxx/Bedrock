@@ -476,6 +476,10 @@ public:
     void showNewsForShot();
     void newsPageForShot(int page);   // --screenshot only: the other page
     void hideNewsForShot();
+    // ...and 2.6.7's thank-you, the same window with one page of its own;
+    // closed, it puts up the "what's new" card
+    void showThanks();
+    void showThanksForShot();
     HWND newsHandle() const { return news_; }
     void paintNewsTo(HDC hdc);
     // A blueprint ticked or unticked by hand (index, now owned)
@@ -1598,9 +1602,11 @@ private:
     // Windows opens pictures with.
     HWND shot_ = nullptr;
     bool shotVisible_ = false;
-    // The news window: 2.5 first, 2.0 a page on, a tab for each
+    // The news window: 2.5 first, 2.0 a page on, a tab for each - or 2.6.7's
+    // thank-you, on its own
     HWND news_ = nullptr;
     bool newsVisible_ = false;
+    bool newsThanks_ = false;
     Gdiplus::RectF newsButton_;
     int newsPage_ = 0;                            // 0: 2.5, 1: 2.0
     Gdiplus::RectF newsTabs_[2];
@@ -1611,6 +1617,8 @@ private:
     int uexBadgeHeight_ = 0;
     Gdiplus::Bitmap* uexBadge(int height);
     bool createNews();
+    void openNews(bool thanks);
+    void closeNews();
     void paintNews(HDC hdc);
     void drawRockDemo(Gdiplus::Graphics& g, float x, float y, int width);
     static LRESULT CALLBACK NewsProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);

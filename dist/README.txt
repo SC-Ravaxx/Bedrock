@@ -398,10 +398,10 @@ What Bedrock sends
 Three network requests of its own, and a fourth only if you switch it on:
 
 - The update check: one small text file from the-forsaken.org, once at start
-  and once an hour. It carries the version and whether it is the Windows or
-  the Linux build - nothing about you, your machine or your game. update=0 in
-  region_config.txt turns it off, and an update itself is only downloaded
-  when you click it.
+  and once an hour. It carries the version, whether it is the Windows or the
+  Linux build, and your install's number (see below) - nothing about you,
+  your machine or your game. update=0 in region_config.txt turns it off, and
+  an update itself is only downloaded when you click it.
 - Ore prices from UEX: while the Ore Finder is open, Bedrock downloads the
   price list from uexcorp.space (at most every 30 minutes) and UEX's list of
   terminals (once a week). The UEX market tab loads the player listings for
@@ -415,12 +415,13 @@ Three network requests of its own, and a fourth only if you switch it on:
   sends Bedrock's server (the-forsaken.org) what it read there: the
   station, its workload (capacity in per cent and the game's word for it)
   and, for a work order you set up, its method, cost, time and the
-  materials going in and coming out. Nothing about you goes along - no
-  name, no account, nothing of your PC. The server doesn't keep your IP
-  address; to tell senders apart it keeps a token made from it that
-  changes every day, for 48 hours. While the Refinery window is open,
-  Bedrock fetches the latest workload of every station every five
-  minutes, ticked or not.
+  materials going in and coming out, with your install's number. Nothing
+  about you goes along - no name, no account, nothing of your PC. The
+  server doesn't keep your IP address; to tell senders apart it keeps a
+  token made from it that changes every day, for 48 hours. An install that
+  sends a lot of readings that can't be right is held back from sharing
+  for ten minutes. While the Refinery window is open, Bedrock fetches the
+  latest workload of every station every five minutes, ticked or not.
 - Your UEX account and refinery jobs (both optional): on first start,
   Bedrock asks whether you want to connect your UEX account. You can skip
   this and connect later in the Ore Finder (Connect UEX, bottom right). Get
@@ -436,6 +437,14 @@ Three network requests of its own, and a fourth only if you switch it on:
   conversations and notifications on the UEX marketplace (every two minutes
   while the tab is open), so clicking a listing you've already messaged
   about opens that conversation.
+
+Your install's number: the first time it starts, Bedrock makes a random
+number for this install and keeps it in install_id.txt in its data folder
+(%LOCALAPPDATA%\Bedrock). It is made of nothing of you, your PC or the game.
+It goes along with the update check and the refinery workloads, so that I
+can count installs instead of IP addresses: Bedrock's statistics keep the
+number instead of your IP address. A backup doesn't carry it. To leave it
+out, close Bedrock and set stats=0 in region_config.txt.
 
 A cleanly read value no table knows (e.g. 70,000) is shown as read after four
 identical scans, with the nearest table values beside it - as an unknown

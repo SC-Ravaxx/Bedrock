@@ -1145,6 +1145,12 @@ int runScreenshots(const std::string& dir) {
     if (gui.newsHandle()) shoot(gui.newsHandle(), "news_2_0.png", true);
     gui.hideNewsForShot();
     pump();
+    // ...and 2.6.7's thank-you: the same window, one page of its own
+    gui.showThanksForShot();
+    pump();
+    if (gui.newsHandle()) shoot(gui.newsHandle(), "news_thanks.png", true);
+    gui.hideNewsForShot();
+    pump();
     gui.openLookingForShot();
     pump();
     shoot(gui.windowHandle(), "looking_for.png");
