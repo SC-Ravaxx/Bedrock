@@ -678,6 +678,7 @@ public:
     void setPlanPulseForShot(bool on);   // ...and the Ore Finder's blink held on or off
     void openUexCardForShot(int step);  // ...and its UEX card: 0 shut, 1 the account, 3 send refinery jobs?
     void setOverlayZoomForShot(float zoom);   // ...and the overlay grown or shrunk by its grip
+    void setOverlayTextForShot(float text);   // ...or only its text bigger or smaller
     void openUexWelcomeForShot(int step);   // ...and the first start's offer over the main window, the same steps
     // ...and its UEX tab on an ore - or on a ground family, at one of its
     // gems; nullptr leaves it
@@ -987,6 +988,15 @@ private:
     // 60 to 200 %; kept in window.txt
     float overlayZoom_ = 1.0f;
     static constexpr float OVERLAY_ZOOM_MIN = 0.6f, OVERLAY_ZOOM_MAX = 2.0f;
+    // ...and its text, a size of its own: Ctrl+plus and Ctrl+minus while the
+    // overlay is up make the letters bigger or smaller, and the lines with
+    // them, while its width, margins and buttons stay; from 80 to 200 %,
+    // kept in window.txt
+    float overlayText_ = 1.0f;
+    static constexpr float OVERLAY_TEXT_MIN = 0.8f, OVERLAY_TEXT_MAX = 2.0f;
+    void setOverlayText(float text);
+    void stepOverlayText(int direction);
+    float textF(float value) const { return scaleF(value * overlayText_); }   // a size of the overlay's text
     static constexpr int OVERLAY_GRIP = 14;   // unscaled: the corner the grip answers in
     int overlayZoomed(int pixels) const;      // pixels at the overlay's own size, as it stands
     bool overGrip(int clientX, int clientY) const;

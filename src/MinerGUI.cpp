@@ -1357,7 +1357,9 @@ int MinerGUI::overlayMaxWidth() const {
 }
 
 int MinerGUI::overlayMaxHeight() const {
-    return scale(overlayHeight()) * 14 / 10;
+    // ...and as much more as its text was made bigger, so a line is not left
+    // off for it
+    return (int)std::lround(scale(overlayHeight()) * 1.4f * (std::max)(1.0f, overlayText_));
 }
 
 void MinerGUI::measureOverlay() {
@@ -1487,6 +1489,7 @@ void MinerGUI::saveWindowPlace() const {
     }
     out << "overlay_rows=" << (overlayOreRows_ ? 1 : 0) << std::endl;
     out << "overlay_zoom=" << (int)std::lround(overlayZoom_ * 100) << std::endl;
+    out << "overlay_text=" << (int)std::lround(overlayText_ * 100) << std::endl;
 }
 
 int MinerGUI::restoreWindowPlace() {
@@ -1511,6 +1514,7 @@ int MinerGUI::restoreWindowPlace() {
         else if (key == "overlay_top") { overlayAt.y = value; overlaySeen++; }
         else if (key == "overlay_rows") overlayOreRows_ = value != 0;
         else if (key == "overlay_zoom") overlayZoom_ = std::clamp(value / 100.0f, OVERLAY_ZOOM_MIN, OVERLAY_ZOOM_MAX);
+        else if (key == "overlay_text") overlayText_ = std::clamp(value / 100.0f, OVERLAY_TEXT_MIN, OVERLAY_TEXT_MAX);
     }
     // the overlay's place is checked against the screens when it opens
     if (overlaySeen == 2) {
@@ -2093,23 +2097,28 @@ bool MinerGUI::processMessages() {
                     case VK_F1:
                         showKeys(!keysOpen_);
                         continue;
+                    // ...in the overlay its text alone: its size is the
+                    // grip's, so the two are each the player's to set
                     case VK_OEM_PLUS:
                     case VK_ADD:
                         if (GetKeyState(VK_CONTROL) & 0x8000) {
-                            stepUiScale(1);
+                            if (overlayMode_) stepOverlayText(1);
+                            else stepUiScale(1);
                             continue;
                         }
                         break;
                     case VK_OEM_MINUS:
                     case VK_SUBTRACT:
                         if (GetKeyState(VK_CONTROL) & 0x8000) {
-                            stepUiScale(-1);
+                            if (overlayMode_) stepOverlayText(-1);
+                            else stepUiScale(-1);
                             continue;
                         }
                         break;
                     case '0':
                         if (GetKeyState(VK_CONTROL) & 0x8000) {
-                            setUiScale(100);
+                            if (overlayMode_) setOverlayText(1.0f);
+                            else setUiScale(100);
                             continue;
                         }
                         break;
@@ -2237,6 +2246,45 @@ void MinerGUI::dragOverlayGrip() {
     layoutControls();
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
+
+// The overlay's text a size bigger or smaller: the overlay keeps its width,
+// margins and buttons, and is only as much taller as the bigger lines need
+// (fitOverlay) - smaller at once, not after the usual wait
+void MinerGUI::setOverlayText(float text) {
+    text = std::clamp(text, OVERLAY_TEXT_MIN, OVERLAY_TEXT_MAX);
+    if (std::abs(text - overlayText_) < 0.005f) return;
+    overlayText_ = text;
+    if (overlayMode_ && hwnd_) {
+        // measured and fitted here and now: a fit still on its way from the
+        // last paint would find the old lines' height and start the wait
+        fitSmallerSince_ = std::chrono::steady_clock::now() - std::chrono::milliseconds(FIT_SHRINK_MS);
+        measureOverlay();
+        fitOverlay();
+    }
+    if (!headless_) saveWindowPlace();
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void MinerGUI::stepOverlayText(int direction) {
+    static const int notches[] = {80, 90, 100, 110, 125, 150, 175, 200};
+    const int now = (int)std::lround(overlayText_ * 100);
+    int to = now;
+    if (direction > 0) {
+        for (int n : notches) {
+            if (n > now) {
+                to = n;
+                break;
+            }
+        }
+    } else {
+        for (int n : notches) {
+            if (n < now) to = n;
+        }
+    }
+    setOverlayText(to / 100.0f);
+}
+
+void MinerGUI::setOverlayTextForShot(float text) { setOverlayText(text); }
 
 void MinerGUI::setOverlayZoomForShot(float zoom) {
     overlayZoom_ = std::clamp(zoom, OVERLAY_ZOOM_MIN, OVERLAY_ZOOM_MAX);
@@ -13160,8 +13208,8 @@ void MinerGUI::drawKeysCard(Gdiplus::Graphics& g, int cw, int ch) {
     row(L"O", L"Overlay", L"\u2013 the compact view, over the game");
 
     group(L"SIZE");
-    row(L"Ctrl +", nullptr, L"everything bigger");
-    row(L"Ctrl -", nullptr, L"everything smaller");
+    row(L"Ctrl +", nullptr, L"everything bigger \u2013 in the overlay, just the text");
+    row(L"Ctrl -", nullptr, L"everything smaller \u2013 in the overlay, just the text");
     row(L"Ctrl 0", nullptr, L"back to the standard size");
 
     group(L"SCANNING");
@@ -14251,10 +14299,12 @@ void MinerGUI::drawCompactUpdateChip(Gdiplus::Graphics& g, int cw, float leftOf)
 // that the window has no room for are left off the bottom, the same way the
 // match rows are.
 void MinerGUI::drawCompactRock(Gdiplus::Graphics& g, int cw, int ch) {
-    Gdiplus::Font massFont(&numeralFamily(), scaleF(26), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font lineFont(&textFamily(), scaleF(11), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font infoFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font labelFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    // (the letters, and the lines they stand on, in the overlay's text size;
+    // its margins and widths are the overlay's own)
+    Gdiplus::Font massFont(&numeralFamily(), textF(26), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font lineFont(&textFamily(), textF(11), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font infoFont(&textFamily(), textF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font labelFont(&textFamily(), textF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
 
     Gdiplus::SolidBrush accentBrush(COL_ACCENT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
@@ -14282,7 +14332,7 @@ void MinerGUI::drawCompactRock(Gdiplus::Graphics& g, int cw, int ch) {
         Gdiplus::RectF unitW;
         g.MeasureString(L"kg", -1, &infoFont, Gdiplus::PointF(0, 0), &unitW);
         const float room = (std::max)(0.0f, buttonsLeft - scaleF(10) - right);
-        g.DrawString(L"kg", -1, &infoFont, Gdiplus::RectF(right, scaleF(15), room, scaleF(16)), &tagLine,
+        g.DrawString(L"kg", -1, &infoFont, Gdiplus::RectF(right, scaleF(4) + textF(11), room, textF(16)), &tagLine,
                      &faintBrush);
         right += (std::min)(unitW.Width, room);
         if (!rock_.ore.empty()) {
@@ -14290,7 +14340,7 @@ void MinerGUI::drawCompactRock(Gdiplus::Graphics& g, int cw, int ch) {
             Gdiplus::RectF oreW;
             g.MeasureString(ore.c_str(), -1, &infoFont, Gdiplus::PointF(0, 0), &oreW);
             const float oreRoom = (std::max)(0.0f, buttonsLeft - scaleF(10) - right);
-            g.DrawString(ore.c_str(), -1, &infoFont, Gdiplus::RectF(right, scaleF(15), oreRoom, scaleF(16)),
+            g.DrawString(ore.c_str(), -1, &infoFont, Gdiplus::RectF(right, scaleF(4) + textF(11), oreRoom, textF(16)),
                          &tagLine, &dimBrush);
             right += (std::min)(oreW.Width, oreRoom);
             wantWidth(M + scaleF(4) + measured.Width + unitW.Width + oreW.Width + ((float)cw - buttonsLeft) + scaleF(10));
@@ -14300,8 +14350,8 @@ void MinerGUI::drawCompactRock(Gdiplus::Graphics& g, int cw, int ch) {
     }
     drawCompactUpdateChip(g, cw, right);
 
-    float y = scaleF(40);
-    const float step = scaleF(17);
+    float y = scaleF(4) + textF(36);
+    const float step = textF(17);
     Gdiplus::StringFormat oneLine;
     oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
     oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
@@ -14483,7 +14533,7 @@ void MinerGUI::drawCompactRock(Gdiplus::Graphics& g, int cw, int ch) {
         // them apart at a glance, and the unit - the same on every line -
         // stays out of the way. Both plain are harder to read at a glance;
         // all bold runs the number and the SCU together.
-        Gdiplus::Font unitFont(&textFamily(), scaleF(7.5f), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font unitFont(&textFamily(), textF(7.5f), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
         const Gdiplus::Font& numberFont = labelFont;
         Gdiplus::Brush& unitBrush = dimBrush;
         const float numberAsc = fontAscent(numberFont), unitAsc = fontAscent(unitFont);
@@ -14515,7 +14565,7 @@ void MinerGUI::drawCompactRock(Gdiplus::Graphics& g, int cw, int ch) {
             const float qualityW = widthOf(quality, qualityFont), numberW = widthOf(number, numberFont);
             if (beats) {
                 drawWantedBeat(g, Gdiplus::RectF(x - scaleF(2), y, qualityW + scaleF(4) + figureWidth(p) + scaleF(4),
-                                                 scaleF(14)),
+                                                 textF(14)),
                                scaleF(3));
             }
             Gdiplus::SolidBrush tone(qualityColor(p->quality));
@@ -14674,11 +14724,11 @@ void MinerGUI::drawCompactShip(Gdiplus::Graphics& g, int cw, int ch, float above
     const bool button = btnOreRows_ && IsWindowVisible(btnOreRows_);
     // ...short of the switch, and of the grip in the corner (OVERLAY_GRIP)
     const float right = (float)cw - M - (button ? scaleF(ORE_ROWS_BUTTON_W + 4) : scaleF(4));
-    const float nameH = scaleF(14);
+    const float nameH = textF(14);
     const float nameY = (float)ch - scaleF(6) - nameH;
     if (nameY < above + scaleF(2)) return;
-    Gdiplus::Font infoFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font labelFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font infoFont(&textFamily(), textF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font labelFont(&textFamily(), textF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
     Gdiplus::StringFormat oneLine;
@@ -14716,10 +14766,11 @@ void MinerGUI::drawCompactShip(Gdiplus::Graphics& g, int cw, int ch, float above
 }
 
 void MinerGUI::drawCompact(Gdiplus::Graphics& g, int cw, int ch) {
-    Gdiplus::Font sigFont(&numeralFamily(), scaleF(26), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font nameFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font infoFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font pctFont(&numeralFamily(), scaleF(13), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    // (the letters, and the rows they stand in, in the overlay's text size)
+    Gdiplus::Font sigFont(&numeralFamily(), textF(26), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font nameFont(&markFamily(), textF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font infoFont(&textFamily(), textF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font pctFont(&numeralFamily(), textF(13), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
 
     Gdiplus::SolidBrush accentBrush(COL_ACCENT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
@@ -14759,36 +14810,36 @@ void MinerGUI::drawCompact(Gdiplus::Graphics& g, int cw, int ch) {
             Gdiplus::RectF confW;
             g.MeasureString(conf.c_str(), -1, &infoFont, Gdiplus::PointF(0, 0), &confW);
             g.DrawString(conf.c_str(), -1, &infoFont,
-                         Gdiplus::PointF(sigRight, scaleF(15)), &faintBrush);
+                         Gdiplus::PointF(sigRight, scaleF(4) + textF(11)), &faintBrush);
             sigRight += confW.Width;
         }
     } else {
         g.DrawString(L"\u2014", -1, &sigFont, Gdiplus::PointF(M + scaleF(4), scaleF(4)), &faintBrush);
-        sigRight += scaleF(20);
+        sigRight += textF(20);
     }
     // ...clear of LIVE and FULL
     wantWidth(sigRight + scaleF(10) + scaleF(8 + 46 + 4 + 58));
 
     drawCompactUpdateChip(g, cw, sigRight);
 
-    float y = scaleF(42);
+    float y = scaleF(4) + textF(38);
     if (currentResults_.empty()) {
         if (currentSignature_ > MAX_VALID_SIGNATURE) {
             Gdiplus::SolidBrush warnBrush(COL_YELLOW);
-            Gdiplus::RectF r(M, y, (float)cw - 2 * M, scaleF(60));
+            Gdiplus::RectF r(M, y, (float)cw - 2 * M, textF(60));
             g.DrawString(L"Above every known signature \u2014 most likely a misread.",
                          -1, &infoFont, r, nullptr, &warnBrush);
         } else {
-            g.DrawString(L"waiting for a scan", -1, &infoFont, Gdiplus::PointF(M, y + scaleF(8)), &faintBrush);
+            g.DrawString(L"waiting for a scan", -1, &infoFont, Gdiplus::PointF(M, y + textF(8)), &faintBrush);
         }
-        drawCompactShip(g, cw, ch, y + scaleF(40));
+        drawCompactShip(g, cw, ch, y + textF(40));
         return;
     }
 
     if (currentResults_[0].difference >= 1.0) {
         Gdiplus::SolidBrush warnBrush(COL_YELLOW);
-        g.DrawString(L"no exact match \u2014 nearest values", -1, &infoFont, Gdiplus::PointF(M, y - scaleF(4)), &warnBrush);
-        y += scaleF(12);
+        g.DrawString(L"no exact match \u2014 nearest values", -1, &infoFont, Gdiplus::PointF(M, y - textF(4)), &warnBrush);
+        y += textF(12);
     }
 
     int count = 0;
@@ -14798,11 +14849,11 @@ void MinerGUI::drawCompact(Gdiplus::Graphics& g, int cw, int ch) {
     // spaced, and as many are shown as the window has room for: it is
     // resizable, and a window dragged bigger should show more rather than
     // the same three with a void beneath them.
-    const float rowH = scaleF(38);
+    const float rowH = textF(38);
     const float radius = scaleF(R_CONTROL);
     // ...under them the ship, on a line the rows leave free: three matches
     // and "no exact match" filling the window must not push it off
-    const float shipLine = fitTitle().empty() ? 0.0f : scaleF(20);
+    const float shipLine = fitTitle().empty() ? 0.0f : textF(20);
     const int fits = (std::max)(1, (int)(((float)ch - y - scaleF(8) - shipLine) / (rowH + scaleF(4))));
     wantHeight(y + (float)(std::min)(currentResults_.size(), (size_t)5) * (rowH + scaleF(4)) + scaleF(8) + shipLine);
     for (const auto& result : currentResults_) {
@@ -14834,9 +14885,9 @@ void MinerGUI::drawCompact(Gdiplus::Graphics& g, int cw, int ch) {
         Gdiplus::Color chipColor = getMineralColor(result.name);
         if (dimmed) chipColor = tint(chipColor, 110);
         Gdiplus::SolidBrush oreDot((wanted && pulseOn_) ? COL_RED : chipColor);
-        const float dot = scaleF(6);
+        const float dot = textF(6);
         g.FillEllipse(&oreDot, M + scaleF(9), y + (rowH - dot) / 2.0f, dot, dot);
-        const float textX = M + scaleF(19);
+        const float textX = M + scaleF(13) + dot;
 
         std::wstring label = toW(result.name);
         if (result.clusterSize > 1) label += L" \u00D7" + std::to_wstring(result.clusterSize);
@@ -14861,7 +14912,7 @@ void MinerGUI::drawCompact(Gdiplus::Graphics& g, int cw, int ch) {
             nameLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
             nameLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
             const float nameRoom = (std::max)(scaleF(20), M + rowW - scaleF(8) - rightW.Width - scaleF(12) - textX);
-            g.DrawString(label.c_str(), -1, &nameFont, Gdiplus::RectF(textX, y + scaleF(5), nameRoom, scaleF(18)),
+            g.DrawString(label.c_str(), -1, &nameFont, Gdiplus::RectF(textX, y + textF(5), nameRoom, textF(18)),
                          &nameLine, &nameBrush);
         }
 
@@ -14870,12 +14921,12 @@ void MinerGUI::drawCompact(Gdiplus::Graphics& g, int cw, int ch) {
             if (dimmed) rc = tint(rc, 110);
             Gdiplus::SolidBrush rarityBrush(rc);
             g.DrawString(toW(rarityName(result.rarity)).c_str(), -1, &infoFont,
-                         Gdiplus::PointF(textX, y + scaleF(20)), &rarityBrush);
+                         Gdiplus::PointF(textX, y + textF(20)), &rarityBrush);
         }
 
         Gdiplus::StringFormat rightAlign;
         rightAlign.SetAlignment(Gdiplus::StringAlignmentFar);
-        Gdiplus::RectF r(M, y + scaleF(11), rowW - scaleF(8), scaleF(16));
+        Gdiplus::RectF r(M, y + textF(11), rowW - scaleF(8), textF(16));
         if (dimmed) {
             const std::wstring note = outOfScopeNote(result);
             g.DrawString(note.c_str(), -1, &infoFont, r, &rightAlign, &faintBrush);

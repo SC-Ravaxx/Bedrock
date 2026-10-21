@@ -439,6 +439,11 @@ int runScreenshots(const std::string& dir) {
     gui.toggleOverlayMode();
     pump();
     shoot(gui.windowHandle(), "overlay.png");
+    gui.setOverlayTextForShot(1.5f);
+    pump();
+    shoot(gui.windowHandle(), "overlay_text_150_matches.png");
+    gui.setOverlayTextForShot(1.0f);
+    pump();
     // ...and the same window with an update waiting. The chip in the corner
     // is the only thing in this mode a click can reach, and the only place
     // a player who never leaves the overlay is told there is one at all.
@@ -613,6 +618,19 @@ int runScreenshots(const std::string& dir) {
             pump();
             shoot(gui.windowHandle(), "overlay_zoom_150.png");
             gui.setOverlayZoomForShot(1.0f);
+            pump();
+            // ...and only its text bigger (Ctrl+plus in the overlay): as wide
+            // as before, taller only by the bigger lines
+            gui.setOverlayTextForShot(1.25f);
+            pump();
+            shoot(gui.windowHandle(), "overlay_text_125.png");
+            gui.setOverlayTextForShot(1.5f);
+            pump();
+            shoot(gui.windowHandle(), "overlay_text_150.png");
+            gui.setOverlayTextForShot(0.8f);
+            pump();
+            shoot(gui.windowHandle(), "overlay_text_80.png");
+            gui.setOverlayTextForShot(1.0f);
             pump();
             gui.toggleOverlayMode();
             pump();
