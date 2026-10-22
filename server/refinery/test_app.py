@@ -180,6 +180,40 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual((rows[-2]["plausible"], rows[-1]["plausible"]), (0, 1))
         self.assertIn("capacity 20 % where moderate was seen at 94-122 %", rows[-2]["reason"])
 
+    def test_the_lowest_level_has_no_floor_and_the_highest_no_ceiling_near_what_was_seen(self):
+        # the spans of 22 October 2026
+        ranges = {"light": (26, 87), "moderate": (105, 162), "extreme": (317, 613)}
+        at = lambda capacity, level: {"station": "Levski", "capacity": capacity, "workload": level, "quote": None}
+        self.assertEqual(app.judge(at(11, "light"), ranges), "")      # Nyx Gateway, quiet
+        self.assertEqual(app.judge(at(631, "extreme"), ranges), "")   # Levski, busy
+        self.assertEqual(app.judge(at(1200, "extreme"), ranges), "")
+        self.assertIn("capacity 10796 %", app.judge(at(10796, "extreme"), ranges))
+        self.assertIn("capacity 100 %", app.judge(at(100, "light"), ranges))      # light where moderate is
+        self.assertIn("capacity 250 %", app.judge(at(250, "extreme"), ranges))    # extreme where it is not
+        self.assertIn("capacity 90 %", app.judge(at(90, "moderate"), ranges))
+
+    def test_a_quote_may_cost_far_off_the_model_but_not_absurdly(self):
+        # the model has 69.5 for this one; terminals asked 0.26 to 9.6 times the model in October 2026
+        for cost in (625, 18, 2085):     # 9, a quarter, 30 times
+            self.assertEqual(self.send(station=HUR, quote=self.quote(cost=cost))[0], 201)
+        self.assertEqual([r["plausible"] for r in self.rows()], [1, 1, 0])
+
+    def test_implausible_readings_are_judged_again_by_the_rules_as_they_stand(self):
+        self.send(station=HUR, quote=self.quote(cost=625))
+        self.send(station=HUR, quote=self.quote(cost=5000))
+        db = sqlite3.connect(self.store.path)
+        try:
+            with db:   # as the old rules had them
+                db.execute("UPDATE observations SET plausible = 0, reason = 'cost 625 where the model has 70'"
+                           " WHERE cost = 625")
+        finally:
+            db.close()
+        self.assertEqual(self.store.rejudge(self.now), (2, 1))
+        self.assertEqual([r["plausible"] for r in self.rows()], [0, 0])
+        self.assertEqual(self.store.rejudge(self.now, really=True), (2, 1))
+        self.assertEqual([(r["plausible"], r["reason"]) for r in self.rows()],
+                         [(1, None), (0, "cost 5000 where the model has 69")])
+
     def test_levels_that_contradict_the_game_order_judge_nothing(self):
         for i in range(10):
             self.send(address="192.0.2.%d" % i, capacity=150, workload="light")

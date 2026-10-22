@@ -81,8 +81,9 @@ RANGE_MIN_READINGS = 10       # ...from this many readings
 RANGE_MIN_SOURCES = 3         # ...by this many senders
 RANGE_MARGIN = 10             # percentage points beyond the span that are still taken
 YIELD_BAND = (0.85, 1.15)     # a quote's yield against the model, where its factors are known
-COST_BAND = (0.5, 6.0)        # cost likewise, at a station whose cost is known: no surcharge to a large one
-TIME_BAND = (0.1, 20.0)       # time, far looser: how the workload moves it is still to be learned
+COST_BAND = (0.1, 20.0)       # cost and time far looser: what moves them is still to be learned - over
+TIME_BAND = (0.1, 20.0)       # the quotes of October 2026 the model's cost came out 0.26 to 9.6 times what
+                              # the terminal asked, while every yield matched it within 3 %
 COUNTER_DAYS = 180
 HOURLY_DAYS = 14              # requests are kept by the hour this long, by the day for COUNTER_DAYS
 
@@ -240,7 +241,13 @@ def judge(r, ranges, tables=None):
     cap, level = r["capacity"], r["workload"]
     if cap is not None and level is not None and level in ranges:
         low, high = ranges[level]
-        if cap < low - RANGE_MARGIN or cap > high + RANGE_MARGIN:
+        # The lowest level has no floor - Nyx Gateway stood at 11 % - and the
+        # highest no ceiling near what was seen: Levski at 631 % is busy, not
+        # wrong. Only a capacity many times the busiest seen, 10796 % at
+        # HUR-L2 the same night, is more likely a misreading than a refinery.
+        floor = -1 if level == WORKLOADS[0] else low - RANGE_MARGIN
+        ceiling = 2 * high + RANGE_MARGIN if level == WORKLOADS[-1] else high + RANGE_MARGIN
+        if cap < floor or cap > ceiling:
             return "capacity %d %% where %s was seen at %d-%d %%" % (cap, level, low, high)
     q = r["quote"]
     if not q:
@@ -674,6 +681,43 @@ class Store:
             finally:
                 db.close()
 
+    def rejudge(self, now, really=False):
+        """The implausible readings judged again by the rules as they stand
+        (judge, ranges): how many there are and how many would pass, and with
+        `really` those are taken as plausible - after a rule was found too
+        strict. The day's counters keep what they counted."""
+        ranges = self.ranges(now)
+        db = self._db()
+        try:
+            rows = db.execute("SELECT * FROM observations WHERE plausible = 0 ORDER BY id").fetchall()
+            items = collections.defaultdict(list)
+            for item in db.execute("SELECT * FROM quote_items WHERE observation IN"
+                                   " (SELECT id FROM observations WHERE plausible = 0) ORDER BY observation, position"):
+                items[item["observation"]].append({"material": item["material"], "quantity": item["quantity"],
+                                                   "quality": item["quality"], "yield": item["yield"]})
+        finally:
+            db.close()
+        passing = []
+        for row in rows:
+            quote = None
+            if row["method"]:
+                quote = {"method": row["method"], "cost": row["cost"], "seconds": row["seconds"],
+                         "items": items[row["id"]]}
+            report = {"station": row["station"], "capacity": row["capacity"], "workload": row["workload"],
+                      "quote": quote}
+            if not judge(report, ranges):
+                passing.append(row["id"])
+        if really and passing:
+            with self.lock:
+                db = self._db()
+                try:
+                    with db:
+                        db.executemany("UPDATE observations SET plausible = 1, reason = NULL WHERE id = ?",
+                                       [(i,) for i in passing])
+                finally:
+                    db.close()
+        return len(rows), len(passing)
+
     def backup(self, target):
         """A consistent copy while the service runs (SQLite's online backup)"""
         src = self._db()
@@ -956,6 +1000,9 @@ def main(argv=None):
     parser.add_argument("--purge", action="store_true",
                         help="take readings out: those observed from --since to --until (UTC), of --station or "
                              "all, all or --implausible ones; says how many, and takes them out with --yes")
+    parser.add_argument("--rejudge", action="store_true",
+                        help="judge the implausible readings again by the rules as they stand: says how many "
+                             "would pass, and takes them as plausible with --yes")
     parser.add_argument("--since", default="0")
     parser.add_argument("--until", default=None)
     parser.add_argument("--station")
@@ -970,6 +1017,12 @@ def main(argv=None):
     if args.stats:
         for day, names in sorted(store.counters(utc_day(time.time() - 13 * 86400)).items()):
             print(day, "  ".join("%s %d" % (name, n) for name, n in sorted(names.items())))
+        return 0
+    if args.rejudge:
+        total, passing = store.rejudge(int(time.time()), args.yes)
+        print("%d of %d implausible reading%s %s" % (passing, total, "" if total == 1 else "s",
+                                                      "taken as plausible" if args.yes and passing
+                                                      else "would pass - again with --yes to take them"))
         return 0
     if args.purge:
         since = parse_time(args.since)

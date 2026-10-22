@@ -57,15 +57,17 @@ nothing is taken on its word:
    a plausible reading.
    - A workload level is accepted only at the capacities other senders saw
      it at. The span is the 10th to the 90th percentile over 30 days, plus
-     10 points either side. It is used once 10 readings from 3 senders are
+     10 points either side - except below light, which has no floor, and
+     above extreme, whose ceiling is twice its span's top. It is used once 10 readings from 3 senders are
      in, and only while the levels' medians rise in the game's order
      (light, moderate, heavy, extreme).
    - A quote cannot yield more than was put in. Where Bedrock's refining
      model has the factors (`tables.json`), the yield has to match the
      model within 15 % (the model matched every work order measured), and
-     cost and time have to stay within wide bands around it (0.5 to 6 times
-     and 0.1 to 20 times). Those bands leave room for the workload
-     surcharge, which still has to be learned.
+     cost and time have to stay within wide bands around it (0.1 to 20
+     times). Those bands leave room for the workload surcharge and whatever
+     else moves the cost, which still has to be learned: in October 2026
+     terminals asked 0.26 to 9.6 times the model's cost.
 3. **Several senders.** A station's current state is its newest reading
    of the last three hours, each sender's newest counting once - hours
    rather than minutes while few players send, as a workload moves slowly.
@@ -83,7 +85,9 @@ nothing is taken on its word:
 5. **Cleaning up.** `--stats` shows what came in each day: readings
    accepted, duplicate, implausible, limited, held and rejected. `--purge` finds
    readings by time, station and plausibility, and removes them only when
-   run again with `--yes`.
+   run again with `--yes`. `--rejudge` judges the implausible readings
+   again by the rules as they stand, after one was found too strict, and
+   takes those that pass as plausible with `--yes`.
 
 ## API
 
