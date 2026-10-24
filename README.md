@@ -253,7 +253,9 @@ its name (`Mil/1/D Tundra`: military, size 1, grade D - with `Civ`, `Ind`,
 torpedo's tracking signal and size before its own (`[IR10]`, `[EM2]`,
 `[CS1]`), the way MrKraken's StarStrings names them. Bedrock reads them off
 the game's own item descriptions, so they follow every patch; the names
-themselves stay the game's. The file goes once both boxes are unticked.
+themselves stay the game's, except that a missile's name drops the size
+numeral the prefix already shows (`[CS1] Spark Missile` for `Spark I
+Missile`). The file goes once both boxes are unticked.
 
 ## Updating the game data
 

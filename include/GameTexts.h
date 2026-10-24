@@ -24,7 +24,9 @@ namespace SCMiner {
 // MrKraken's StarStrings writes them. They are read off the game's own
 // descriptions ("Item Type: Cooler\nManufacturer: ...\nSize: 1\nGrade: D\n
 // Class: Military"), so they follow every patch with nothing to update here.
-// The name itself is the game's, whatever StarStrings' list still has.
+// The name itself is the game's, whatever StarStrings' list still has - but
+// for the numeral a missile's name gives its size in, which the prefix says
+// already: "Spark I Missile" is "[CS1] Spark Missile".
 //
 // How: the game reads data\Localization\english\global.ini beside Data.p4k in
 // place of its own when user.cfg says g_language = english. The file written

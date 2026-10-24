@@ -296,9 +296,10 @@ its name - Mil/1/D Tundra is a military cooler of size 1, grade D; the
 classes are Civ, Mil, Ind, Sth (stealth) and Cmp (competition) - and each
 missile's and torpedo's tracking signal and size before its own: [IR10] is
 infrared, size 10, [EM] electromagnetic, [CS] cross section. That is the
-way MrKraken's StarStrings names them. The app reads them off the game's own
-descriptions, so they are right after every patch. Untick both boxes and the
-app deletes its file.
+way MrKraken's StarStrings names them. A missile's name drops its size
+numeral, since the prefix shows the size: [CS1] Spark Missile, not Spark I
+Missile. The app reads them off the game's own descriptions, so they are
+right after every patch. Untick both boxes and the app deletes its file.
 
 Notes (key N)
 -------------

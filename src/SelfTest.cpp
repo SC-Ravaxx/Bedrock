@@ -1526,6 +1526,16 @@ int runSelfTest() {
                 "item_NameMISL_S01_CS_BEHR_Spearhead_Ground=Spearhead GVI-CS Missile\r\n"
                 "item_DescMISL_S01_CS_BEHR_Spearhead_Ground=Manufacturer: Behring\\nTracking Signal: Cross Section\\n"
                 "Size: 1 (Ground Vehicle Only)\\n\\nA missile.\r\n"
+                "item_NameMISL_S01_CS_FSKI_Spark=Spark I Missile\r\n"
+                "item_NameMISL_S01_CS_FSKI_Spark_short=Spark I\r\n"
+                "item_DescMISL_S01_CS_FSKI_Spark=Manufacturer: FireStorm Kinetics\\nTracking Signal: Cross Section\\n"
+                "Size: 1\\n\\nA missile.\r\n"
+                "item_NameGMISL_S02_CS_THCN_StrikeForce=StrikeForce II-G Missile\r\n"
+                "item_DescGMISL_S02_CS_THCN_StrikeForce=Manufacturer: Thermyte Concern\\nTracking Signal: Cross Section\\n"
+                "Size: 2\\n\\nA missile.\r\n"
+                "item_NameMISL_S12_CS_TALN_Calamity=Calamity XII-CS Torpedo\r\n"
+                "item_DescMISL_S12_CS_TALN_Calamity=Manufacturer: Talon\\nTracking Signal: Cross Section\\nSize: 12\\n\\n"
+                "A torpedo.\r\n"
                 "item_NameKSAR_Rifle=Karna\r\n"
                 "item_DescKSAR_Rifle=Manufacturer: Kastak Arms\\nItem Type: Assault Rifle\\nClass: Energy (Plasma)\\n\\n"
                 "A rifle.\r\n"
@@ -1535,7 +1545,7 @@ int runSelfTest() {
             int names = -1;
             const int marks = GameTexts::compose(items, owns({}), named, false, true, &names);
             auto has = [&named](const std::string& line) { return named.find(line) != std::string::npos; };
-            allPassed &= check(marks == 0 && names == 8 &&
+            allPassed &= check(marks == 0 && names == 12 &&
                                    has("\xEF\xBB\xBFitem_NameCOOL_AEGS_S01_Bracer=Mil/1/C Bracer\r\n") &&
                                    has("\nitem_NameCOOL_AEGS_S01_Bracer_SCItem=Mil/1/C Bracer\r\n") &&
                                    has("\nitem_Name_SHLD_ASAS_S01_Veil=Sth/1/B Veil\r\n") &&
@@ -1550,11 +1560,21 @@ int runSelfTest() {
                                "a component's class, size and grade and a missile's tracking signal and size go before "
                                "their names, off the descriptions, and before nothing else (" +
                                    std::to_string(names) + " named)");
+            // ...and a missile's size once, in the prefix: the numeral its
+            // name carries it in goes, a size inside a model's code stays
+            allPassed &= check(has("\nitem_NameMISL_S01_CS_FSKI_Spark=[CS1] Spark Missile\r\n") &&
+                                   has("\nitem_NameMISL_S01_CS_FSKI_Spark_short=[CS1] Spark\r\n") &&
+                                   has("\nitem_NameGMISL_S02_CS_THCN_StrikeForce=[CS2] StrikeForce-G Missile\r\n") &&
+                                   has("\nitem_NameMISL_S12_CS_TALN_Calamity=[CS12] Calamity-CS Torpedo\r\n"),
+                               "a missile's size stands once: Spark I is [CS1] Spark, Calamity XII-CS [CS12] Calamity-CS, "
+                               "and EX-T12-IR and GVI-CS keep theirs");
             std::string plain, twice;
             GameTexts::compose(items, owns({}), plain, false, false);
             GameTexts::compose(named, owns({}), twice, false, true);
             allPassed &= check(plain.compare(0, items.size(), items) == 0 &&
                                    twice.find("Mil/1/C Mil/1/C") == std::string::npos &&
+                                   twice.find("[CS1] [CS1]") == std::string::npos &&
+                                   twice.find("=[CS1] Spark Missile\r\n") != std::string::npos &&
                                    named.find("Untick the boxes in its Blueprints window") != std::string::npos,
                                "without the names the game's text comes back as it is, and a name gets its prefix once");
         }

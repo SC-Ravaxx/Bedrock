@@ -119,6 +119,34 @@ std::string prefixFor(const std::string& description) {
     return std::string(c) + "/" + size + "/" + (char)(g >= 'a' ? g - 32 : g) + " ";
 }
 
+// A missile's or torpedo's name without the numeral it carries its size in -
+// "Spark I Missile", "Spark I-G", "Calamity XII-CS Torpedo" - as the prefix
+// says the size already: "[CS1] Spark Missile", "[CS1] Spark-G". Only its own
+// size, and only as a word of its own: "EX-T10-IR" and "GVI-CS" stay as they
+// are.
+std::string withoutSizeNumeral(const std::string& value, const std::string& prefix) {
+    size_t d = 0;
+    while (d < prefix.size() && !(prefix[d] >= '0' && prefix[d] <= '9')) d++;
+    int size = 0;
+    while (d < prefix.size() && prefix[d] >= '0' && prefix[d] <= '9') size = size * 10 + (prefix[d++] - '0');
+    static const struct {
+        int value;
+        const char* letters;
+    } ROMAN[] = {{90, "XC"}, {50, "L"}, {40, "XL"}, {10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"}};
+    std::string numeral;
+    for (const auto& r : ROMAN) {
+        for (; size >= r.value; size -= r.value) numeral += r.letters;
+    }
+    if (numeral.empty()) return value;
+    for (size_t at = value.find(numeral); at != std::string::npos; at = value.find(numeral, at + 1)) {
+        const size_t after = at + numeral.size();
+        if (at == 0 || value[at - 1] != ' ') continue;
+        if (after < value.size() && value[after] != ' ' && value[after] != '-') continue;
+        return value.substr(0, at - 1) + value.substr(after);
+    }
+    return value;
+}
+
 // "item_NameCOOL_..." and "item_Name_COOL_..." are about one item: the key
 // after its word, in lower case and without the underscore some put after
 // it. Empty when the key does not begin with the word.
@@ -334,12 +362,14 @@ int GameTexts::compose(const std::string& base, const OwnedFn& owned, std::strin
             std::string key = line.substr(0, eq);
             if (at == 0 && key.compare(0, 3, "\xEF\xBB\xBF") == 0) key.erase(0, 3);
             const std::string lowerKey = lower(key);
-            // the name's prefix goes in front of the game's value - once
+            // the name's prefix goes in front of the game's value - once - and
+            // a missile's size stands in it alone
             const auto prefix = prefixes.find(lowerKey);
             if (prefix != prefixes.end() && line.compare(eq + 1, prefix->second.size(), prefix->second) != 0) {
                 out.append(line, 0, eq + 1);
                 out += prefix->second;
-                out.append(line, eq + 1, std::string::npos);
+                const std::string value = line.substr(eq + 1);
+                out += prefix->second[0] == '[' ? withoutSizeNumeral(value, prefix->second) : value;
                 renamed++;
             } else {
                 out += line;
