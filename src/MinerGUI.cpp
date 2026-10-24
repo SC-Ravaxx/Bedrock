@@ -3820,12 +3820,13 @@ std::vector<int> MinerGUI::fewestHeadsNeeded() const {
     return picked;
 }
 
-// What a new fit of a kind starts with: the head built into it, or the
-// strongest one that fits, on every hardpoint
+// What a new fit of a kind starts with: the head it comes with where no other
+// ship takes that one (the Golem's Pitman), or the strongest one that fits,
+// on every hardpoint
 static std::vector<MiningLoadout> startingHeads(const MiningShip& ship) {
     MiningLoadout start;
-    if (ship.fixedLaser) {
-        start.laser = laserById(ship.fixedLaser);
+    if (ship.ownLaser) {
+        start.laser = laserById(ship.ownLaser);
     } else {
         for (int i = 0; i < MINING_LASER_COUNT; i++) {
             const MiningLaser& l = MINING_LASERS[i];
@@ -4008,7 +4009,7 @@ void MinerGUI::fitHeads(const MiningShip& ship, std::vector<MiningLoadout>& head
     heads.resize((size_t)(ship.heads > 0 ? ship.heads : 1));
     for (MiningLoadout& h : heads) {
         if (h.laser && !laserFits(*h.laser, ship)) h.laser = nullptr;
-        if (!h.laser && ship.fixedLaser) h.laser = laserById(ship.fixedLaser);
+        if (!h.laser && ship.ownLaser) h.laser = laserById(ship.ownLaser);
         if (h.laser && (int)h.modules.size() > h.laser->slots) {
             h.modules.resize(h.laser->slots);
         }
@@ -4261,18 +4262,11 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
     // read there is this fit's from then on (setSeenLoadout) - said here, or
     // a head picked on this card would seem not to stick
     if (ship_ && ship_->heads == 1) {
-        g.DrawString(ship_->fixedLaser ? L"modules follow the ship's mining HUD while you fly it"
-                                       : L"head and modules follow the ship's mining HUD while you fly it",
+        g.DrawString(L"head and modules follow the ship's mining HUD while you fly it",
                      -1, &noteFont, Gdiplus::RectF(left, y + scaleF(1), wide, scaleF(14)), &right, &faintBrush);
     }
     y += scaleF(17);
-    if (ship_ && ship_->fixedLaser) {
-        g.DrawString(loadout_.laser ? toW(loadout_.laser->name).c_str() : L"-", -1, &rowFont,
-                     Gdiplus::PointF(left, y), &textBrush);
-        g.DrawString(L"part of the ship - cannot be swapped", -1, &noteFont,
-                     Gdiplus::PointF(left, y + scaleF(16)), &faintBrush);
-        y += scaleF(42);
-    } else if (ship_) {
+    if (ship_) {
         const float rowH = scaleF(24);
         for (int i = 0; i < MINING_LASER_COUNT; i++) {
             const MiningLaser& l = MINING_LASERS[i];
@@ -5570,8 +5564,7 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
 // When what is on the ship will not hold the rock: the head that would, off
 // the shop shelf - stock if stock is enough, with the strongest modules it
 // has room for if not - or the plain word that nothing that fits this ship
-// does. The Golem's head is part of the ship, so for it the answer is modules
-// on that head or nothing.
+// does. On a Golem the Pitman it came with is one of them.
 MinerGUI::Suggestion MinerGUI::headSuggestion() const {
     Suggestion s;
     if (rock_.mass <= 0 || !loadout_.laser) return s;
@@ -5582,31 +5575,8 @@ MinerGUI::Suggestion MinerGUI::headSuggestion() const {
     const float needs = own.mass * BREAK_DECAY_PER_MASS;
     wchar_t text[192];
 
-    if (ship_ && ship_->fixedLaser) {
-        const MiningLaser* fixed = laserById(ship_->fixedLaser);
-        if (fixed && fixed->slots > 0) {
-            MiningLoadout fitted;
-            fitted.laser = fixed;
-            fitted.modules = detail::bestModules(fitted, own);
-            const LaserOutput best = outputOf(fitted, rock_.distance);
-            const float through = best.atRange * resistanceLetsThrough(own.resistance, best.resistance);
-            if (through > 0 && needs / through <= 1.0f) {
-                s.line = L"this head" + moduleWords(fitted.modules);
-                std::swprintf(text, 192, L"%.0f %% laser power holds it steady, more makes it climb",
-                              needs / through * 100.0f);
-                s.note = text;
-                s.good = true;
-            }
-        }
-        if (s.line.empty()) {
-            s.line = L"nothing that fits this ship";
-            s.note = L"its head cannot be swapped - this rock is a MOLE crew's";
-        }
-        return s;
-    }
-
     const int8_t size = ship_ ? ship_->size : loadout_.laser->size;
-    const std::vector<LaserSuggestion> picks = suggestLasers(own, size, 0.0f);
+    const std::vector<LaserSuggestion> picks = suggestLasers(own, size, 0.0f, ship_);
     const LaserSuggestion* best = nullptr;
     for (const LaserSuggestion& p : picks) {
         if (!p.laser || (ship_ && !laserFits(*p.laser, *ship_))) continue;
@@ -19878,8 +19848,7 @@ int MinerGUI::fitToAdapt(const std::vector<ShipFit>& fits, int current, const Mi
 
 bool MinerGUI::kindCarries(const MiningShip& kind, const MiningLaser& laser,
                            const std::vector<const MiningModule*>& modules) {
-    if (kind.heads != 1) return false;
-    if (kind.fixedLaser ? std::strcmp(laser.id, kind.fixedLaser) != 0 : !laserFits(laser, kind)) return false;
+    if (kind.heads != 1 || !laserFits(laser, kind)) return false;
     int fitted = 0;
     for (const MiningModule* m : modules) fitted += m ? 1 : 0;
     return fitted <= laser.slots;

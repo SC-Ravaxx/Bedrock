@@ -637,15 +637,15 @@ inline std::vector<const MiningGadget*> rankFor(MiningGoal goal) {
 // ---------------------------------------------------------------------------
 // The ships, and what they can carry.
 //
-// This is the one table here that is not generated: the extract holds the
-// game's components but not its vehicle definitions, so the hardpoints are
-// written down rather than read. Three facts, and they decide which lasers a
-// suggestion is even allowed to name:
+// This is the one table here that is not generated. It is written down from
+// the records of the parts the heads sit in - the Prospector's and the
+// Golem's mining gimbals, the MOLE's three turrets - and decides which lasers
+// a suggestion is even allowed to name:
 //
 //   Prospector  one S1 head, swappable
 //   MOLE        three S2 heads, swappable, each with its own modules
-//   Golem       one head that is part of the ship - the Pitman - but its two
-//               module slots are free
+//   Golem       one S1 head, swappable; it comes with the Pitman, which no
+//               other ship takes
 //
 // A ship not listed here still works: pass the size and count directly.
 // ---------------------------------------------------------------------------
@@ -653,8 +653,8 @@ struct MiningShip {
     const char* id;
     const char* name;
     int8_t heads;            // how many lasers it flies
-    int8_t size;             // the biggest head its hardpoints take
-    const char* fixedLaser;  // null when the head can be swapped
+    int8_t size;             // the size of head its hardpoints take
+    const char* ownLaser;    // the head it comes with that no other ship takes, null when none
 };
 
 inline const MiningShip MINING_SHIPS[] = {
@@ -664,14 +664,14 @@ inline const MiningShip MINING_SHIPS[] = {
 };
 inline constexpr int MINING_SHIP_COUNT = 3;
 
-// A laser that is part of a ship rather than a thing you buy and bolt on.
-// The Golem's Pitman is the only one: it has no shop entry and no hardpoint
-// anywhere else. As an S1 head it would otherwise pass as a fit for a
-// MOLE's S2 mount.
-inline const MiningShip* shipBuiltInto(const MiningLaser& laser) {
+// The one ship a laser goes on, where it goes on one only. The Golem's
+// Pitman is the only such head: it asks for a hardpoint tagged DRAK_Golem,
+// which only the Golem's gimbal has, and it has no shop entry. The Golem's
+// gimbal takes every other S1 head as well.
+inline const MiningShip* onlyShipFor(const MiningLaser& laser) {
     for (int i = 0; i < MINING_SHIP_COUNT; i++) {
         const MiningShip& ship = MINING_SHIPS[i];
-        if (ship.fixedLaser && std::strcmp(ship.fixedLaser, laser.id) == 0) return &ship;
+        if (ship.ownLaser && std::strcmp(ship.ownLaser, laser.id) == 0) return &ship;
     }
     return nullptr;
 }
@@ -679,11 +679,11 @@ inline const MiningShip* shipBuiltInto(const MiningLaser& laser) {
 // A hardpoint takes its own size and anything smaller - a MOLE can fly an S1
 // head on an S2 mount, which is not a corner case but a normal way to fit the
 // ship: the S1 Helix out-fractures three of the six S2 heads and gives up
-// reach for it. What it will not take is a head welded into another hull.
+// reach for it. What it will not take is a head made for another hull.
 inline bool laserFits(const MiningLaser& laser, const MiningShip& ship) {
     if (laser.size > ship.size) return false;
-    const MiningShip* home = shipBuiltInto(laser);
-    return home == nullptr || home == &ship;
+    const MiningShip* only = onlyShipFor(laser);
+    return only == nullptr || only == &ship;
 }
 
 // One way to fit a ship, and what it gets you against a particular rock.
@@ -772,10 +772,12 @@ inline std::vector<const MiningModule*> bestModules(const MiningLoadout& bare, c
 //
 // The rock's resistance goes in as its OWN figure, and each head takes it
 // through its own factor: a Klein at -45 % gets more of its power through a
-// hard rock than a Helix at -30 %.
+// hard rock than a Helix at -30 %. A head made for one ship only - the
+// Golem's Pitman - is named only when that ship is the one asking.
 inline std::vector<LaserSuggestion> suggestLasers(const RockStats& rock,
                                                   int8_t hardpointSize,
-                                                  float craftedPower = 0.0f) {
+                                                  float craftedPower = 0.0f,
+                                                  const MiningShip* ship = nullptr) {
     std::vector<LaserSuggestion> out;
     const float givesBack = rock.mass * BREAK_DECAY_PER_MASS;
     const auto through = [&](const LaserOutput& o) {
@@ -786,10 +788,9 @@ inline std::vector<LaserSuggestion> suggestLasers(const RockStats& rock,
         const MiningLaser& l = MINING_LASERS[i];
         // anything up to the mount's size, not only its exact size
         if (l.size > hardpointSize) continue;
-        // ...but never a head that is part of another ship. A suggestion is
-        // only ever asked for by a ship whose heads can be swapped, so one
-        // that cannot be bought is never the answer.
-        if (shipBuiltInto(l)) continue;
+        // ...but never a head made for another ship
+        const MiningShip* only = onlyShipFor(l);
+        if (only && only != ship) continue;
 
         MiningLoadout bare;
         bare.laser = &l;

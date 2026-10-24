@@ -2625,22 +2625,47 @@ int runSelfTest() {
                            "while another is fitted - in loadout.txt too - and back with it");
 
         // What a ship of the kind cannot carry changes nothing: the Golem's
-        // own laser on a Prospector, another on a Golem, more modules than
-        // the head has slots, and a ship of three heads at all
-        MinerGUI::ShipFit ownLaser = fits[2];
+        // own laser on a Prospector, more modules than the head has slots,
+        // and a ship of three heads at all
         MinerGUI::ShipFit threeHeads;
         for (int i = 0; i < SCMiner::MINING_SHIP_COUNT; i++) {
             if (std::string(SCMiner::MINING_SHIPS[i].id) == "mole") threeHeads.ship = &SCMiner::MINING_SHIPS[i];
         }
         threeHeads.heads.assign(3, SCMiner::MiningLoadout{});
-        const bool refused = !MinerGUI::fitTakes(flown, *pitman, {}) && !MinerGUI::fitTakes(ownLaser, *helix, {}) &&
+        const bool refused = !MinerGUI::fitTakes(flown, *pitman, {}) &&
                              !MinerGUI::fitTakes(flown, *hofstede, {focus3, rieger3}) &&
                              !MinerGUI::fitTakes(threeHeads, *helix, {}) && flown.heads[0].laser == helix &&
-                             ownLaser.heads[0].laser == pitman && threeHeads.heads[0].laser == nullptr &&
-                             MinerGUI::fitTakes(ownLaser, *pitman, {focus3}) &&
-                             ownLaser.heads[0].modules == Modules{focus3};
-        allPassed &= check(refused, "a reading no ship of the kind could carry changes no fit: another ship's laser, "
-                                    "more modules than slots, a MOLE");
+                             threeHeads.heads[0].laser == nullptr;
+        allPassed &= check(refused, "a reading no ship of the kind could carry changes no fit: the Golem's own "
+                                    "laser on a Prospector, more modules than slots, a MOLE");
+
+        // ...but the Golem's head is not part of the ship: its gimbal takes
+        // every S1 head, from the HUD too, and the Pitman it came with back.
+        // The Pitman goes on no other ship, so only a Golem is told of it.
+        {
+            bool everyS1 = true;
+            for (int i = 0; i < SCMiner::MINING_LASER_COUNT; i++) {
+                const SCMiner::MiningLaser& l = SCMiner::MINING_LASERS[i];
+                if (l.size == 1) everyS1 = everyS1 && SCMiner::laserFits(l, *golem);
+            }
+            MinerGUI::ShipFit golemFit = fits[2];
+            const bool swaps = MinerGUI::fitTakes(golemFit, *helix, {focus3}) && golemFit.heads[0].laser == helix &&
+                               golemFit.heads[0].modules == Modules{focus3} &&
+                               MinerGUI::fitTakes(golemFit, *pitman, {}) && golemFit.heads[0].laser == pitman;
+            SCMiner::RockStats rock;
+            rock.mass = 9000.0f;
+            rock.resistance = 20.0f;
+            auto suggests = [&](const SCMiner::MiningShip* asking) {
+                for (const SCMiner::LaserSuggestion& p : SCMiner::suggestLasers(rock, 1, 0.0f, asking)) {
+                    if (p.laser == pitman) return true;
+                }
+                return false;
+            };
+            allPassed &= check(everyS1 && swaps && !SCMiner::laserFits(*pitman, *prospector) && suggests(golem) &&
+                                   !suggests(prospector) && !suggests(nullptr),
+                               "the Golem takes every S1 head, from its HUD too, and the Pitman back; the Pitman "
+                               "goes on no other ship and is suggested to a Golem only");
+        }
 
         // ...and whose HUD it is: by the scan panel's labels, and with no
         // panel up by the ship the log has the player sitting in
