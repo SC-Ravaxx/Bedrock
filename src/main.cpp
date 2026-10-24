@@ -1410,6 +1410,28 @@ int runGameTexts(const std::string& channel, const std::string& outFile, const s
     return out.good() ? 0 : 1;
 }
 
+// --gamenames <global.ini> <out file>: that file with the names the box
+// beside it puts in - a component's class, size and grade, a missile's
+// tracking signal and size - and nothing else; no channel, no archive. How
+// the names are compared byte for byte with a reference made in Python, on
+// a game text taken out with unp4k.
+int runGameNames(const std::string& inFile, const std::string& outFile) {
+    std::ifstream in(inFile, std::ios::binary);
+    if (!in) {
+        std::cout << "cannot read " << inFile << std::endl;
+        return 1;
+    }
+    std::ostringstream read;
+    read << in.rdbuf();
+    std::string text;
+    int named = 0;
+    SCMiner::GameTexts::compose(read.str(), [](int) { return false; }, text, false, true, &named);
+    std::ofstream out(outFile, std::ios::binary);
+    out.write(text.data(), (std::streamsize)text.size());
+    std::cout << named << " names, " << text.size() << " bytes -> " << outFile << std::endl;
+    return out.good() ? 0 : 1;
+}
+
 // --locatecrop <x> <y> <w> <h> <frames...>: the locator over the whole search
 // area against the locator over what captureSignatureCandidates hands it while
 // a marker is locked - the aim box (x y w h, in the frame) and the marker, each
@@ -4420,6 +4442,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         else if (arg == "--gametexts" && i + 2 < __argc) {
             setupConsole(true);
             return runGameTexts(__argv[i + 1], __argv[i + 2], i + 3 < __argc ? __argv[i + 3] : "");
+        }
+        else if (arg == "--gamenames" && i + 2 < __argc) {
+            setupConsole(true);
+            return runGameNames(__argv[i + 1], __argv[i + 2]);
         }
         else if (arg == "--payouts" && i + 1 < __argc) {
             setupConsole(true);

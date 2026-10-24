@@ -42,6 +42,97 @@ std::string bare(const std::string& key) {
     return k;
 }
 
+// --- The names (see namePrefixes) ---
+
+// Spaces round a value, the no-break one too: "Class:" and a U+00A0 before
+// "Competition" is how the QuikCool's description has it
+std::string trimmed(std::string s) {
+    for (;;) {
+        if (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.erase(0, 1);
+        else if (s.compare(0, 2, "\xC2\xA0") == 0) s.erase(0, 2);
+        else if (!s.empty() && (s.back() == ' ' || s.back() == '\t')) s.pop_back();
+        else if (s.size() >= 2 && s.compare(s.size() - 2, 2, "\xC2\xA0") == 0) s.resize(s.size() - 2);
+        else return s;
+    }
+}
+
+// One line of the head the game writes over an item's description -
+// "Item Type: Cooler\nManufacturer: ...\nSize: 1\nGrade: D\nClass: Military" -
+// by its name: at the very start, or after a \n, up to the next one. Empty
+// when it is not there.
+std::string headLine(const std::string& value, const std::string& name) {
+    const std::string find = name + ":";
+    for (size_t at = value.find(find); at != std::string::npos; at = value.find(find, at + 1)) {
+        if (at != 0 && (at < 2 || value.compare(at - 2, 2, "\\n") != 0)) continue;
+        const size_t from = at + find.size();
+        size_t to = value.find('\\', from);
+        if (to == std::string::npos) to = value.size();
+        return trimmed(value.substr(from, to - from));
+    }
+    return std::string();
+}
+
+// "1", "12", "1 (Ground Vehicle Only)": the number a size starts with, of one
+// or two digits - or nothing
+std::string sizeOf(const std::string& s) {
+    size_t n = 0;
+    while (n < s.size() && s[n] >= '0' && s[n] <= '9') n++;
+    return n >= 1 && n <= 2 ? s.substr(0, n) : std::string();
+}
+
+// What goes before an item's name, by its description: "Mil/1/D " for a
+// military component of size 1 and grade D, "[IR10] " for an infrared
+// missile or torpedo of size 10, nothing for anything else
+std::string prefixFor(const std::string& description) {
+    const std::string size = sizeOf(headLine(description, "Size"));
+    const std::string signal = lower(headLine(description, "Tracking Signal"));
+    if (!signal.empty()) {
+        // "Infrared" - and "Infared", as the S12 Executor has it
+        const char* s = signal.compare(0, 3, "inf") == 0   ? "IR"
+                        : signal.compare(0, 3, "ele") == 0 ? "EM"
+                        : signal.compare(0, 3, "cro") == 0 ? "CS"
+                                                           : nullptr;
+        return s && !size.empty() ? "[" + std::string(s) + size + "] " : std::string();
+    }
+    // the Burke QD's head says "Type:", every other one "Item Type:"
+    std::string kind = headLine(description, "Item Type");
+    if (kind.empty()) kind = headLine(description, "Type");
+    kind = lower(kind);
+    static const char* const COMPONENTS[] = {"cooler",       "power plant",      "shield generator",
+                                             "quantum drive", "life support",    "radar",
+                                             "computer",     "jump module",      "quantum dampener",
+                                             "quantum enforcement device"};
+    bool component = false;
+    for (const char* one : COMPONENTS) component = component || kind == one;
+    if (!component) return std::string();
+    const std::string grade = headLine(description, "Grade");
+    const char g = grade.size() == 1 ? grade[0] : '\0';
+    if (size.empty() || !((g >= 'A' && g <= 'Z') || (g >= 'a' && g <= 'z'))) return std::string();
+    const std::string cls = lower(headLine(description, "Class"));
+    const char* c = cls == "civilian"      ? "Civ"
+                    : cls == "military"    ? "Mil"
+                    : cls == "industrial"  ? "Ind"
+                    : cls == "stealth"     ? "Sth"
+                    : cls == "competition" ? "Cmp"
+                                           : nullptr;
+    if (!c) return std::string();
+    return std::string(c) + "/" + size + "/" + (char)(g >= 'a' ? g - 32 : g) + " ";
+}
+
+// "item_NameCOOL_..." and "item_Name_COOL_..." are about one item: the key
+// after its word, in lower case and without the underscore some put after
+// it. Empty when the key does not begin with the word.
+std::string stemAfter(const std::string& lowerKey, const std::string& word) {
+    if (lowerKey.compare(0, word.size(), word) != 0) return std::string();
+    std::string s = lowerKey.substr(word.size());
+    if (!s.empty() && s[0] == '_') s.erase(0, 1);
+    return s;
+}
+
+bool endsWith(const std::string& s, const std::string& end) {
+    return s.size() >= end.size() && s.compare(s.size() - end.size(), end.size(), end) == 0;
+}
+
 // Two names that Windows, and Wine, take for one: the same but for case.
 // Compared in the system's own spelling of a path, so that a name with
 // letters no code page has cannot throw.
@@ -215,7 +306,8 @@ std::string GameTexts::render(const char* text, const std::string& value, const 
     return out;
 }
 
-int GameTexts::compose(const std::string& base, const OwnedFn& owned, std::string& out) {
+int GameTexts::compose(const std::string& base, const OwnedFn& owned, std::string& out, bool marks, bool names,
+                       int* named) {
     // The marks by key: as spelt, and without the ',P' some keys carry,
     // which a patch has been known to add or drop
     static const auto byKey = [] {
@@ -224,28 +316,44 @@ int GameTexts::compose(const std::string& base, const OwnedFn& owned, std::strin
         for (int i = 0; i < GAME_TEXT_MARK_COUNT; i++) m.emplace(bare(GAME_TEXT_MARKS[i].key), i);
         return m;
     }();
+    const std::unordered_map<std::string, std::string> prefixes =
+        names ? namePrefixes(base) : std::unordered_map<std::string, std::string>();
     out.clear();
     out.reserve(base.size() + 512 * 1024);
     const bool crlf = base.find("\r\n") != std::string::npos;
     const std::string nl = crlf ? "\r\n" : "\n";
-    int marked = 0;
+    int marked = 0, renamed = 0;
     size_t at = 0;
     while (at <= base.size()) {
         size_t end = base.find(nl, at);
         if (end == std::string::npos) end = base.size();
         const std::string line = base.substr(at, end - at);
-        out += line;
         const size_t eq = line.find('=');
         if (eq != std::string::npos && eq > 0) {
             // the BOM belongs to the file, not to the first key
             std::string key = line.substr(0, eq);
             if (at == 0 && key.compare(0, 3, "\xEF\xBB\xBF") == 0) key.erase(0, 3);
-            auto it = byKey.find(lower(key));
-            if (it == byKey.end()) it = byKey.find(bare(key));
-            if (it != byKey.end()) {
-                out += render(GAME_TEXT_MARKS[it->second].text, line.substr(eq + 1), owned);
-                marked++;
+            const std::string lowerKey = lower(key);
+            // the name's prefix goes in front of the game's value - once
+            const auto prefix = prefixes.find(lowerKey);
+            if (prefix != prefixes.end() && line.compare(eq + 1, prefix->second.size(), prefix->second) != 0) {
+                out.append(line, 0, eq + 1);
+                out += prefix->second;
+                out.append(line, eq + 1, std::string::npos);
+                renamed++;
+            } else {
+                out += line;
             }
+            if (marks) {
+                auto it = byKey.find(lowerKey);
+                if (it == byKey.end()) it = byKey.find(bare(key));
+                if (it != byKey.end()) {
+                    out += render(GAME_TEXT_MARKS[it->second].text, line.substr(eq + 1), owned);
+                    marked++;
+                }
+            }
+        } else {
+            out += line;
         }
         if (end == base.size()) break;
         out += nl;
@@ -255,8 +363,56 @@ int GameTexts::compose(const std::string& base, const OwnedFn& owned, std::strin
     // whose file this is - and so whose it is to rewrite or take away
     if (!out.empty() && out.compare(out.size() - nl.size(), nl.size(), nl) != 0) out += nl;
     out += std::string(MARKER_KEY) + "=Written by Bedrock " + BEDROCK_VERSION +
-           ". Untick the box in its Blueprints window to take this file away again.";
+           ". Untick the boxes in its Blueprints window to take this file away again.";
+    if (named) *named = renamed;
     return marked;
+}
+
+std::unordered_map<std::string, std::string> GameTexts::namePrefixes(const std::string& base) {
+    // The descriptions first, by what follows "item_Desc" - the first of a
+    // spelling that has a head to read - then the names that go with them:
+    // the same, or the same but for "_SCItem" (item_NameCOOL_..._SCItem and
+    // item_DescCOOL_..., either way round), or a missile's "_short" name,
+    // "Spark I" beside "Spark I Missile". A component's short name keeps as
+    // it is, as in StarStrings.
+    const std::string nl = base.find("\r\n") != std::string::npos ? "\r\n" : "\n";
+    std::unordered_map<std::string, std::string> byDescription;
+    std::vector<std::string> nameKeys;
+    size_t at = 0;
+    while (at <= base.size()) {
+        size_t end = base.find(nl, at);
+        if (end == std::string::npos) end = base.size();
+        const size_t eq = base.find('=', at);
+        if (eq != std::string::npos && eq > at && eq < end) {
+            std::string key = base.substr(at, eq - at);
+            if (at == 0 && key.compare(0, 3, "\xEF\xBB\xBF") == 0) key.erase(0, 3);
+            key = lower(key);
+            const std::string description = stemAfter(key, "item_desc");
+            if (!description.empty()) {
+                if (byDescription.find(description) == byDescription.end()) {
+                    std::string prefix = prefixFor(base.substr(eq + 1, end - eq - 1));
+                    if (!prefix.empty()) byDescription.emplace(description, std::move(prefix));
+                }
+            } else if (!stemAfter(key, "item_name").empty()) {
+                nameKeys.push_back(std::move(key));
+            }
+        }
+        if (end == base.size()) break;
+        at = end + nl.size();
+    }
+    std::unordered_map<std::string, std::string> out;
+    for (const std::string& key : nameKeys) {
+        const std::string s = stemAfter(key, "item_name");
+        const std::string other = endsWith(s, "_scitem") ? s.substr(0, s.size() - 7) : s + "_scitem";
+        auto found = byDescription.find(s);
+        if (found == byDescription.end()) found = byDescription.find(other);
+        if (found == byDescription.end() && endsWith(s, "_short")) {
+            const auto missile = byDescription.find(s.substr(0, s.size() - 6));
+            if (missile != byDescription.end() && missile->second[0] == '[') found = missile;
+        }
+        if (found != byDescription.end()) out[key] = found->second;
+    }
+    return out;
 }
 
 bool GameTexts::isOurs(const std::string& text) {
@@ -299,22 +455,25 @@ bool GameTexts::wantEnglish(std::string& cfg, std::string& language, bool& chang
 }
 
 bool GameTexts::build(const std::filesystem::path& channel, const std::vector<bool>& owned,
-                      std::string& text, int& marked, std::string& note) {
+                      std::string& text, int& marked, std::string& note, bool marks, bool names) {
     std::string base, error;
     if (!baseText(channel, base, error)) {
         note = "the game's text could not be read: " + error;
         return false;
     }
     const OwnedFn isOwned = [&owned](int b) { return b >= 0 && b < (int)owned.size() && owned[b]; };
-    marked = compose(base, isOwned, text);
-    if (marked == 0) {
-        note = "none of the contracts Bedrock knows is in this game's text";
+    int named = 0;
+    marked = compose(base, isOwned, text, marks, names, &named);
+    if (marked == 0 && named == 0) {
+        note = marks ? "none of the contracts Bedrock knows is in this game's text"
+                     : "no component's class and grade in this game's text";
         return false;
     }
     return true;
 }
 
-GameTexts::Outcome GameTexts::write(const std::filesystem::path& channel, const std::vector<bool>& owned) {
+GameTexts::Outcome GameTexts::write(const std::filesystem::path& channel, const std::vector<bool>& owned, bool marks,
+                                    bool names) {
     Outcome o;
     // The file in every spelling there is. Someone else's in any of them keeps
     // Bedrock out - and Bedrock's own goes, should it stand beside a pack in
@@ -348,7 +507,7 @@ GameTexts::Outcome GameTexts::write(const std::filesystem::path& channel, const 
     }
     std::string text;
     int marked = 0;
-    if (!build(channel, owned, text, marked, o.note)) return o;
+    if (!build(channel, owned, text, marked, o.note, marks, names)) return o;
     std::error_code ec;
     std::filesystem::create_directories(file.parent_path(), ec);
     // Written beside and then put in place: a game starting this very moment

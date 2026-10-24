@@ -312,6 +312,7 @@ private:
     void loadPlaceOverride();
     void setPlaceOverride(const std::string& placeName);
     void setGameTextsWanted(bool wanted);   // the box in the Blueprints window
+    void setGameNamesWanted(bool wanted);   // ...and the one beside it, for the components' names
     void applyGameState();
     std::string gameLogOverride_;    // region_config.txt: gamelog=<path to Game.log>
     // region_config.txt: update=0 stops the app ever looking for a newer
@@ -350,6 +351,10 @@ private:
     // gametexts= in region_config.txt. Off until asked for: it writes into
     // the game's folder.
     bool gameTextsWanted_ = false;
+    // ...and the box beside it: a component's class, size and grade before
+    // its name, a missile's tracking signal and size, in the same file.
+    // gamenames= in region_config.txt; off until asked for as well.
+    bool gameNamesWanted_ = false;
     bool settingsHeld_ = false;      // a backup was put back: region_config.txt is its until the next start
     bool gameTextsDue_ = true;       // a write is owed - once per run, and after each change
     std::chrono::steady_clock::time_point gameTextsDueAt_{};
@@ -572,6 +577,7 @@ private:
     void pushContracts();            // ...and the contracts of the moment
     void applyGadget();              // a gadget stuck on a rock, or taken off it
     void serviceGameTexts();         // starts an owed write, collects a finished one
+    void gameTextsChosen();          // either box changed: the file written anew, or taken away
     void serviceUex();               // asks UEX when the Ore Finder wants prices, collects the answer
 
 public:

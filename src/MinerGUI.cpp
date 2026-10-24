@@ -10439,45 +10439,60 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
     g.MeasureString(L"Grind Planner", -1, &buttonFont, Gdiplus::PointF(0, 0), &grindText);
     const float grindLeft = (float)cw - M - grindText.Width - scaleF(32);
 
-    // The box that puts Bedrock's marks into the game's own contract texts -
-    // [BP] on the titles, the blueprints listed, the missing ones blue (see
-    // GameTexts). Beside the planner: both are about what to go and earn.
-    // Drawn the way the recipe's "Mark as owned" is - a quiet button that
-    // carries its tick box - so the two switches read alike. What the last
-    // write said sits under it, between the buttons and the search, and never
-    // further left than the button: the heading's line runs there.
-    float boxLeft = grindLeft;
+    // The boxes that write into the game's own texts (see GameTexts): the
+    // marks on the contracts - [BP] on the titles, the blueprints listed, the
+    // missing ones blue - and, left of it, the names: class and grade before
+    // a component's, tracking signal and size before a missile's. Beside the
+    // planner: both are about what to go and get. Drawn the way the recipe's
+    // "Mark as owned" is - a quiet button that carries its tick box - so the
+    // switches read alike. What the last write said sits under the contracts
+    // box, between the buttons and the search, and never further left than
+    // it: the heading's line runs there.
+    float textsLeft = grindLeft;   // where the contracts box begins
     {
-        const wchar_t* label = L"Show them in the game's contracts";
-        Gdiplus::RectF w;
-        g.MeasureString(label, -1, &buttonFont, Gdiplus::PointF(0, 0), &w);
+        struct Box {
+            const wchar_t* label;
+            bool on;
+            int hit;
+        };
+        const Box boxes[2] = {{L"Show them in the game's contracts", gameTextsOn_, 44},
+                              {L"Show class and grade in component names", gameNamesOn_, 45}};
         const float boxS = scaleF(11), pad = scaleF(10);
-        const float bw = pad + boxS + scaleF(7) + w.Width + pad;
-        const Gdiplus::RectF b(grindLeft - scaleF(10) - bw, (float)scale(14), bw, scaleF(28));
-        const bool hot = isHot(hoverCraft_, b);
-        drawButton(g, b, L"", buttonFont, ButtonKind::Secondary, hot, scaleF(R_CONTROL));
-        const Gdiplus::RectF box(b.X + pad, b.Y + (b.Height - boxS) / 2.0f, boxS, boxS);
-        if (gameTextsOn_) {
-            fillRoundRect(g, box, scaleF(2), COL_ACCENT);
-            Gdiplus::Pen tick(COL_ACCENT_INK, scaleF(1.8f));
-            g.DrawLine(&tick, box.X + scaleF(2.5f), box.Y + scaleF(5.5f), box.X + scaleF(4.5f), box.Y + scaleF(8));
-            g.DrawLine(&tick, box.X + scaleF(4.5f), box.Y + scaleF(8), box.X + scaleF(8.5f), box.Y + scaleF(3));
-        } else {
-            strokeRoundRect(g, box, scaleF(2), hot ? COL_TEXT_DIM : COL_TEXT_FAINT);
+        float right = grindLeft - scaleF(10);
+        Gdiplus::RectF texts;
+        for (int i = 0; i < 2; i++) {
+            const Box& one = boxes[i];
+            Gdiplus::RectF w;
+            g.MeasureString(one.label, -1, &buttonFont, Gdiplus::PointF(0, 0), &w);
+            const float bw = pad + boxS + scaleF(7) + w.Width + pad;
+            const Gdiplus::RectF b(right - bw, (float)scale(14), bw, scaleF(28));
+            const bool hot = isHot(hoverCraft_, b);
+            drawButton(g, b, L"", buttonFont, ButtonKind::Secondary, hot, scaleF(R_CONTROL));
+            const Gdiplus::RectF box(b.X + pad, b.Y + (b.Height - boxS) / 2.0f, boxS, boxS);
+            if (one.on) {
+                fillRoundRect(g, box, scaleF(2), COL_ACCENT);
+                Gdiplus::Pen tick(COL_ACCENT_INK, scaleF(1.8f));
+                g.DrawLine(&tick, box.X + scaleF(2.5f), box.Y + scaleF(5.5f), box.X + scaleF(4.5f), box.Y + scaleF(8));
+                g.DrawLine(&tick, box.X + scaleF(4.5f), box.Y + scaleF(8), box.X + scaleF(8.5f), box.Y + scaleF(3));
+            } else {
+                strokeRoundRect(g, box, scaleF(2), hot ? COL_TEXT_DIM : COL_TEXT_FAINT);
+            }
+            Gdiplus::StringFormat middleLeft;
+            middleLeft.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+            Gdiplus::SolidBrush ink(hot ? COL_TEXT : tint(COL_TEXT, 215));
+            g.DrawString(one.label, -1, &buttonFont,
+                         Gdiplus::RectF(box.GetRight() + scaleF(7), b.Y, w.Width + pad, b.Height), &middleLeft, &ink);
+            craftHits_.push_back({b, one.hit, 0});
+            if (i == 0) texts = b;
+            right = b.X - scaleF(10);
         }
-        Gdiplus::StringFormat middleLeft;
-        middleLeft.SetLineAlignment(Gdiplus::StringAlignmentCenter);
-        Gdiplus::SolidBrush ink(hot ? COL_TEXT : tint(COL_TEXT, 215));
-        g.DrawString(label, -1, &buttonFont,
-                     Gdiplus::RectF(box.GetRight() + scaleF(7), b.Y, w.Width + pad, b.Height), &middleLeft, &ink);
-        craftHits_.push_back({b, 44, 0});
-        boxLeft = b.X;
-        if (gameTextsOn_ && !gameTextsNote_.empty()) {
+        textsLeft = texts.X;
+        if ((gameTextsOn_ || gameNamesOn_) && !gameTextsNote_.empty()) {
             Gdiplus::StringFormat note;
             note.SetAlignment(Gdiplus::StringAlignmentFar);
             note.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
             note.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
-            const Gdiplus::RectF where(b.X, b.GetBottom() + scaleF(2), b.Width, scaleF(14));
+            const Gdiplus::RectF where(texts.X, texts.GetBottom() + scaleF(2), texts.Width, scaleF(14));
             g.DrawString(toW(gameTextsNote_).c_str(), -1, &subFont, where, &note, &faintBrush);
         }
     }
@@ -10486,11 +10501,14 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
                            L" recipes  \u00B7  click one for its slots and what quality does to it";
         if (ownedCount() > 0) sub += L"  \u00B7  " + std::to_wstring(ownedCount()) + L" in your library";
         if (!ownedNote_.empty()) sub += L"  \u00B7  " + toW(ownedNote_);
-        // cut short of the box and its word, rather than running under them
+        // Under the boxes, on the line of what the last write said, and cut
+        // short of that rather than running under it: beside the heading two
+        // boxes would leave it too little room
         Gdiplus::StringFormat cut;
         cut.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
         cut.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
-        const Gdiplus::RectF where(M + scaleF(15), (float)scale(36), boxLeft - scaleF(16) - (M + scaleF(15)), scaleF(18));
+        const Gdiplus::RectF where(M + scaleF(15), (float)scale(44), textsLeft - scaleF(16) - (M + scaleF(15)),
+                                   scaleF(18));
         g.DrawString(sub.c_str(), -1, &subFont, where, &cut, &dimBrush);
     }
 
@@ -12855,6 +12873,10 @@ LRESULT MinerGUI::handleCraftingMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
                     // and tells the window back what came of it
                     gameTextsOn_ = !gameTextsOn_;
                     if (onGameTexts_) onGameTexts_(gameTextsOn_);
+                } else if (hit.kind == 45) {
+                    // ...and the one beside it, for the names, the same way
+                    gameNamesOn_ = !gameNamesOn_;
+                    if (onGameNames_) onGameNames_(gameNamesOn_);
                 } else if (hit.kind == 26) {
                     craftSystem_ = hit.value;
                     craftScroll_ = 0;

@@ -1497,6 +1497,68 @@ int runSelfTest() {
                                !GameTexts::isOurs("a=b <EM4>Potential Blueprints</EM4>"),
                            "Bedrock's file is known as Bedrock's, a pack's is not");
 
+        // ...and the names: class, size and grade before a component's,
+        // tracking signal and size before a missile's - read off the game's
+        // own descriptions, whichever way their heads are written - and
+        // nothing before anything else. A component's short name keeps as it
+        // is, as in StarStrings; a missile's gets its prefix too.
+        {
+            const std::string items =
+                "\xEF\xBB\xBFitem_NameCOOL_AEGS_S01_Bracer=Bracer\r\n"
+                "item_NameCOOL_AEGS_S01_Bracer_SCItem=Bracer\r\n"
+                "item_DescCOOL_AEGS_S01_Bracer=Item Type: Cooler\\nManufacturer: Aegis Dynamics\\nSize: 1\\nGrade: C\\n"
+                "Class: Military\\n\\nA cooler.\r\n"
+                "item_Name_SHLD_ASAS_S01_Veil=Veil\r\n"
+                "item_Desc_SHLD_ASAS_S01_Veil=Item Type: Shield Generator\\nManufacturer: Ascension Astro\\nSize: 1\\n"
+                "Grade: B\\nClass: Stealth\r\n"
+                "item_NameCOOL_ACOM_S01_QuickCool=QuikCool\r\n"
+                "item_DescCOOL_ACOM_S01_QuickCool=Item Type: Cooler\\nManufacturer: ACOM\\nSize: 1\\nGrade: D\\n"
+                "Class:\xC2\xA0"
+                "Competition\\n\\nFast.\r\n"
+                "item_NameQDMP_WETK_S01_Burke=Burke QD\r\n"
+                "item_NameQDMP_WETK_S01_Burke_short=Burke\r\n"
+                "item_DescQDMP_WETK_S01_Burke=Manufacturer: Wei-Tek\\nType: Quantum Dampener\\nSize: 1\\nGrade: A\\n"
+                "Class: Military\\n\\nA dampener.\r\n"
+                "item_NameMISL_S12_IR_BEHR_Executor=EX-T12-IR \"Executor\" Torpedo\r\n"
+                "item_NameMISL_S12_IR_BEHR_Executor_Short=EX-T12-IR Torpedo\r\n"
+                "item_DescMISL_S12_IR_BEHR_Executor=Manufacturer: Behring\\nTracking Signal: Infared\\nSize: 12\\n\\n"
+                "A torpedo.\r\n"
+                "item_NameMISL_S01_CS_BEHR_Spearhead_Ground=Spearhead GVI-CS Missile\r\n"
+                "item_DescMISL_S01_CS_BEHR_Spearhead_Ground=Manufacturer: Behring\\nTracking Signal: Cross Section\\n"
+                "Size: 1 (Ground Vehicle Only)\\n\\nA missile.\r\n"
+                "item_NameKSAR_Rifle=Karna\r\n"
+                "item_DescKSAR_Rifle=Manufacturer: Kastak Arms\\nItem Type: Assault Rifle\\nClass: Energy (Plasma)\\n\\n"
+                "A rifle.\r\n"
+                "item_NameSHLD_NONE_S01_Odd=Odd\r\n"
+                "item_DescSHLD_NONE_S01_Odd=Item Type: Shield Generator\\nSize: 1\\nGrade: B\\nClass: Unknown\r\n";
+            std::string named;
+            int names = -1;
+            const int marks = GameTexts::compose(items, owns({}), named, false, true, &names);
+            auto has = [&named](const std::string& line) { return named.find(line) != std::string::npos; };
+            allPassed &= check(marks == 0 && names == 8 &&
+                                   has("\xEF\xBB\xBFitem_NameCOOL_AEGS_S01_Bracer=Mil/1/C Bracer\r\n") &&
+                                   has("\nitem_NameCOOL_AEGS_S01_Bracer_SCItem=Mil/1/C Bracer\r\n") &&
+                                   has("\nitem_Name_SHLD_ASAS_S01_Veil=Sth/1/B Veil\r\n") &&
+                                   has("\nitem_NameCOOL_ACOM_S01_QuickCool=Cmp/1/D QuikCool\r\n") &&
+                                   has("\nitem_NameQDMP_WETK_S01_Burke=Mil/1/A Burke QD\r\n") &&
+                                   has("\nitem_NameQDMP_WETK_S01_Burke_short=Burke\r\n") &&
+                                   has("\nitem_NameMISL_S12_IR_BEHR_Executor=[IR12] EX-T12-IR \"Executor\" Torpedo\r\n") &&
+                                   has("\nitem_NameMISL_S12_IR_BEHR_Executor_Short=[IR12] EX-T12-IR Torpedo\r\n") &&
+                                   has("\nitem_NameMISL_S01_CS_BEHR_Spearhead_Ground=[CS1] Spearhead GVI-CS Missile\r\n") &&
+                                   has("\nitem_NameKSAR_Rifle=Karna\r\n") && has("\nitem_NameSHLD_NONE_S01_Odd=Odd\r\n") &&
+                                   has("\nitem_DescCOOL_AEGS_S01_Bracer=Item Type: Cooler\\n"),
+                               "a component's class, size and grade and a missile's tracking signal and size go before "
+                               "their names, off the descriptions, and before nothing else (" +
+                                   std::to_string(names) + " named)");
+            std::string plain, twice;
+            GameTexts::compose(items, owns({}), plain, false, false);
+            GameTexts::compose(named, owns({}), twice, false, true);
+            allPassed &= check(plain.compare(0, items.size(), items) == 0 &&
+                                   twice.find("Mil/1/C Mil/1/C") == std::string::npos &&
+                                   named.find("Untick the boxes in its Blueprints window") != std::string::npos,
+                               "without the names the game's text comes back as it is, and a name gets its prefix once");
+        }
+
         std::string cfg, language;
         bool changed = false;
         allPassed &= check(GameTexts::wantEnglish(cfg, language, changed) && changed && cfg == "g_language = english\r\n",

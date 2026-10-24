@@ -824,14 +824,17 @@ void Application::runWithGUI(HINSTANCE hInstance) {
 
     // Live mode callback
     gui_->setPlaceOverrideCallback([this](const std::string& place) { setPlaceOverride(place); });
-    // The Blueprints window's box that puts the marks into the game's texts
+    // The Blueprints window's box that puts the marks into the game's texts,
+    // and the one beside it for the names
     gui_->setGameTexts(gameTextsWanted_, gameTextsNote_);
+    gui_->setGameNames(gameNamesWanted_);
     // Reporting to UEX: the player's key, where they gave one, and what the
     // window says of it
     uexKey_ = UexKey::load();
     gui_->setUexAccountCallback([this](int action, const std::string& text) { uexAccountAction(action, text); });
     pushUexAccount();
     gui_->setGameTextsCallback([this](bool on) { setGameTextsWanted(on); });
+    gui_->setGameNamesCallback([this](bool on) { setGameNamesWanted(on); });
     // The Refinery window's box that shares refinery workloads
     gui_->setRefineryShare(refineryShare_, !refineryServiceUrl().empty());
     gui_->setRefineryShareCallback([this](bool on) { setRefineryShare(on); });
@@ -3663,6 +3666,7 @@ void Application::saveRegionConfig() {
         // stats=0: the update check goes without install_id.txt's number
         file << "stats=" << (statsWanted_ ? 1 : 0) << std::endl;
         file << "gametexts=" << (gameTextsWanted_ ? 1 : 0) << std::endl;
+        file << "gamenames=" << (gameNamesWanted_ ? 1 : 0) << std::endl;
         // sharerefinery=0: the box in the Refinery window unticked - see
         // RefineryShare. On until then; an earlier test build's
         // "refineryshare" was off before anyone could choose, and is let go.
@@ -3757,6 +3761,8 @@ void Application::loadRegionConfig() {
                 else if (key == "uexoffered") uexOffered_ = (value != 0);
                 // gametexts=1: the box in the Blueprints window - see GameTexts
                 else if (key == "gametexts") gameTextsWanted_ = (value != 0);
+                // gamenames=1: the box beside it, for the components' names
+                else if (key == "gamenames") gameNamesWanted_ = (value != 0);
                 else if (key == "sharerefinery") refineryShare_ = (value != 0);
                 else if (key == "hudscale") hudScalePercent_ = std::clamp(value, 0, 500);
                 else if (key == "uiscale") uiScalePercent_ = std::clamp(value, 0, 250);
@@ -4544,17 +4550,30 @@ void Application::pollLibrary() {
     }
 }
 
-// The box in the Blueprints window. Ticked, the game's texts are written at
-// once and again whenever the library changes; unticked, Bedrock's file is
-// taken away and the game shows its own texts from its next start. Either way
-// the choice is gametexts= in region_config.txt, written at once.
+// The two boxes in the Blueprints window: the marks on the contracts, and the
+// names - class and grade before the components', tracking signal and size
+// before the missiles'. Either ticked, the game's texts are written at once
+// and again whenever the library changes; both unticked, Bedrock's file is
+// taken away and the game shows its own texts from its next start. Either
+// way the choice is gametexts= and gamenames= in region_config.txt, written
+// at once.
 void Application::setGameTextsWanted(bool wanted) {
     gameTextsWanted_ = wanted;
+    gameTextsChosen();
+}
+
+void Application::setGameNamesWanted(bool wanted) {
+    gameNamesWanted_ = wanted;
+    gameTextsChosen();
+}
+
+void Application::gameTextsChosen() {
     saveRegionConfig();
     if (gameTextsJob_.valid()) {
         // a write in flight finishes first - it must not land after a removal
         gameTextsNote_ = gameTextsJob_.get().note;
     }
+    const bool wanted = gameTextsWanted_ || gameNamesWanted_;
     if (wanted) {
         gameTextsDue_ = true;
         gameTextsDueAt_ = std::chrono::steady_clock::now();
@@ -4571,9 +4590,13 @@ void Application::setGameTextsWanted(bool wanted) {
             if (channel == followed) gameTextsNote_ = taken.note;
         }
     }
-    std::cout << "\nGame texts: " << (wanted ? "on" : "off")
-              << (gameTextsNote_.empty() ? "" : " - " + gameTextsNote_) << std::endl;
-    if (gui_) gui_->setGameTexts(gameTextsWanted_, gameTextsNote_);
+    std::cout << "\nGame texts: contracts " << (gameTextsWanted_ ? "on" : "off") << ", names "
+              << (gameNamesWanted_ ? "on" : "off") << (gameTextsNote_.empty() ? "" : " - " + gameTextsNote_)
+              << std::endl;
+    if (gui_) {
+        gui_->setGameTexts(gameTextsWanted_, gameTextsNote_);
+        gui_->setGameNames(gameNamesWanted_);
+    }
 }
 
 // Collects a write that has finished, and starts one that is owed: only once
@@ -4586,14 +4609,16 @@ void Application::serviceGameTexts() {
         std::cout << "\nGame texts: " << done.note << std::endl;
         if (gui_) gui_->setGameTexts(gameTextsWanted_, gameTextsNote_);
     }
-    if (!gameTextsWanted_ || !gameTextsDue_ || gameTextsJob_.valid()) return;
+    if (!(gameTextsWanted_ || gameNamesWanted_) || !gameTextsDue_ || gameTextsJob_.valid()) return;
     if (library_.gameLog().empty() || library_.historyPending()) return;
     if (std::chrono::steady_clock::now() < gameTextsDueAt_) return;
     gameTextsDue_ = false;
     std::vector<bool> owned(CRAFT_BLUEPRINT_COUNT);
     for (int b = 0; b < CRAFT_BLUEPRINT_COUNT; b++) owned[b] = library_.owned(b);
     const std::filesystem::path channel = library_.gameLog().parent_path();
-    gameTextsJob_ = std::async(std::launch::async, [channel, owned]() { return GameTexts::write(channel, owned); });
+    const bool marks = gameTextsWanted_, names = gameNamesWanted_;
+    gameTextsJob_ = std::async(std::launch::async,
+                               [channel, owned, marks, names]() { return GameTexts::write(channel, owned, marks, names); });
 }
 
 // UEX's API, at the address its documentation gives (api.uexcorp.space answers too)
@@ -5204,7 +5229,7 @@ void Application::keepGameTextsFresh() {
         long long& answered = gameTextsAnswered_[channel.string()];
         if (answered == patch) continue;
         answered = patch;
-        if (channel == followed && gameTextsWanted_) {
+        if (channel == followed && (gameTextsWanted_ || gameNamesWanted_)) {
             std::cout << "\nGame texts: the game was updated - written anew from its own text" << std::endl;
             gameTextsDue_ = true;
             gameTextsDueAt_ = now;

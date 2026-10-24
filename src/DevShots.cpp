@@ -1476,11 +1476,13 @@ int runScreenshots(const std::string& dir) {
     gui.toggleCrafting();
     pump();
     if (gui.craftingHandle()) shoot(gui.craftingHandle(), "blueprints.png", true);
-    // ...with the box for the game's texts ticked, and what a write said
+    // ...with the boxes for the game's texts ticked, and what a write said
     gui.setGameTexts(true, "in the game from its next start (written 20:31)");
+    gui.setGameNames(true);
     pump();
     if (gui.craftingHandle()) shoot(gui.craftingHandle(), "blueprints_game_texts.png", true);
     gui.setGameTexts(false, "");
+    gui.setGameNames(false);
     // ...and one recipe opened up, which is where the sliders live
     gui.cartForShot();
     pump();

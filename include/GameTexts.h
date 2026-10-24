@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <functional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace SCMiner {
@@ -17,12 +18,21 @@ namespace SCMiner {
 // start, so this is the next start's picture, rewritten whenever the
 // library changes.
 //
+// And, with the box beside it, the names: a ship component's class, size and
+// grade before its name - "Tundra" is "Mil/1/D Tundra" - and a missile's or
+// torpedo's tracking signal and size - "[IR10] EX-T10-IR Torpedo" - the way
+// MrKraken's StarStrings writes them. They are read off the game's own
+// descriptions ("Item Type: Cooler\nManufacturer: ...\nSize: 1\nGrade: D\n
+// Class: Military"), so they follow every patch with nothing to update here.
+// The name itself is the game's, whatever StarStrings' list still has.
+//
 // How: the game reads data\Localization\english\global.ini beside Data.p4k in
 // place of its own when user.cfg says g_language = english. The file written
 // there is the game's own text, byte for byte, taken out of Data.p4k (and
 // kept in Bedrock's data folder until the game's files change), with the
-// marks of GameTextMarks.h added at the end of their values and one line of
-// Bedrock's own at the very end. Nothing else is changed.
+// marks of GameTextMarks.h added at the end of their values, the names'
+// prefixes at the start of theirs, and one line of Bedrock's own at the very
+// end. Nothing else is changed.
 //
 // Whose file it is decides everything: one Bedrock wrote (that last line, or
 // the list heading an older hand-made one carried) is rewritten and, when the
@@ -58,14 +68,17 @@ public:
 
     // Writes <channel>\data\Localization\english\global.ini - channel is the
     // folder of the game's Data.p4k and Game.log (LIVE, PTU, ...). owned: one
-    // flag per CRAFT_BLUEPRINTS row. Slow the first time per game build (the
-    // game's text comes out of the 160 GB archive), quick after.
-    static Outcome write(const std::filesystem::path& channel, const std::vector<bool>& owned);
+    // flag per CRAFT_BLUEPRINTS row. marks: the contracts' marks; names: the
+    // components' and missiles' prefixes - one of them at least. Slow the
+    // first time per game build (the game's text comes out of the 160 GB
+    // archive), quick after.
+    static Outcome write(const std::filesystem::path& channel, const std::vector<bool>& owned, bool marks = true,
+                         bool names = false);
     // What write() would put there, without putting it anywhere - for
     // --gametexts, which compares it with gen_game_texts.py's reference.
     // False with the reason in note.
     static bool build(const std::filesystem::path& channel, const std::vector<bool>& owned,
-                      std::string& text, int& marked, std::string& note);
+                      std::string& text, int& marked, std::string& note, bool marks = true, bool names = false);
     // Takes Bedrock's file away again, and only Bedrock's
     static Outcome remove(const std::filesystem::path& channel);
     // Bedrock's file in this channel stands on an older build of the game:
@@ -82,8 +95,14 @@ public:
 
     // The pieces, public for the self-test
     static std::string render(const char* text, const std::string& value, const OwnedFn& owned);
-    // The game's text with the marks; returns how many of its values got one
-    static int compose(const std::string& base, const OwnedFn& owned, std::string& out);
+    // The game's text with the marks and/or the names; returns how many of
+    // its values got a mark, and puts how many got a name in `named`
+    static int compose(const std::string& base, const OwnedFn& owned, std::string& out, bool marks = true,
+                       bool names = false, int* named = nullptr);
+    // What goes before each name, by its key in lower case: "Mil/1/D " for a
+    // military cooler of size 1 and grade D, "[IR10] " for an infrared
+    // torpedo of size 10 - from the descriptions in the game's text
+    static std::unordered_map<std::string, std::string> namePrefixes(const std::string& base);
     // Bedrock's file, by its last line - or the list heading of a hand-made one
     static bool isOurs(const std::string& text);
     // user.cfg as the game needs it for this: g_language english, added when

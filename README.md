@@ -48,8 +48,8 @@ window covers the game. The overlay is a normal window on top of the game.
 
 It also reads `Game.log`, the log the game writes itself, for places, trades,
 contracts and blueprints. It does not read the game's memory, attach to its
-process or inject anything. The `[BP]` option writes a language file into the
-game folder, the way language packs do.
+process or inject anything. The `[BP]` option and the component names write a
+language file into the game folder, the way language packs do.
 
 Network: an update check (official builds only), UEX's public price lists
 while the Ore Finder is open, refinery workloads to and from Bedrock's server
@@ -245,6 +245,15 @@ at its next start. `user.cfg` gets `g_language = english` if it names no
 language. A language file that is not Bedrock's (a translation, a community
 pack) is left alone. Unticking the box deletes Bedrock's file and nothing
 else. See `include/GameTexts.h`.
+
+The box beside it, "Show class and grade in component names", puts the same
+file to a second use: each ship component's class, size and grade go before
+its name (`Mil/1/D Tundra`: military, size 1, grade D - with `Civ`, `Ind`,
+`Sth` for stealth and `Cmp` for competition), and each missile's and
+torpedo's tracking signal and size before its own (`[IR10]`, `[EM2]`,
+`[CS1]`), the way MrKraken's StarStrings names them. Bedrock reads them off
+the game's own item descriptions, so they follow every patch; the names
+themselves stay the game's. The file goes once both boxes are unticked.
 
 ## Updating the game data
 

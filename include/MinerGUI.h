@@ -355,6 +355,9 @@ public:
     // game's own contract texts (GameTexts), and what the last write said
     using GameTextsCallback = std::function<void(bool on)>;
     void setGameTextsCallback(GameTextsCallback callback) { onGameTexts_ = std::move(callback); }
+    // ...and the box beside it: the components' class and grade, and the
+    // missiles' tracking signal and size, before their names in those texts
+    void setGameNamesCallback(GameTextsCallback callback) { onGameNames_ = std::move(callback); }
 
     // Each refinery's workload as last seen - by the player at its terminal,
     // or by other players through the service (RefineryShare) - beside its
@@ -376,6 +379,10 @@ public:
     void setGameTexts(bool on, const std::string& note) {
         gameTextsOn_ = on;
         gameTextsNote_ = note;
+        if (crafting_) InvalidateRect(crafting_, nullptr, TRUE);
+    }
+    void setGameNames(bool on) {
+        gameNamesOn_ = on;
         if (crafting_) InvalidateRect(crafting_, nullptr, TRUE);
     }
 
@@ -944,6 +951,7 @@ private:
     void choosePlace(const std::string& placeName);
     PlaceOverrideCallback onPlaceOverride_;
     GameTextsCallback onGameTexts_;
+    GameTextsCallback onGameNames_;
     std::string placeOverride_;            // "" while the log has it
     bool placePickerOpen_ = false;
     Gdiplus::RectF placeField_{};          // the header line, as last painted
@@ -1110,6 +1118,8 @@ private:
     // The Blueprints window's box for the game's texts, and its last word
     bool gameTextsOn_ = false;
     std::string gameTextsNote_;
+    // ...and the box beside it, for the names
+    bool gameNamesOn_ = false;
     std::map<std::string, RefineryWorkload> refineryWorkloads_;
     bool refineryShareOn_ = false;
     bool refineryShareAvailable_ = false;
