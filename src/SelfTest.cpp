@@ -2749,6 +2749,43 @@ int runSelfTest() {
                                "goes on no other ship and is suggested to a Golem only");
         }
 
+        // ...and no mount takes a head of another size: each one's record gives
+        // the same MinSize as MaxSize - S2 on the MOLE's turrets, S1 on the
+        // Prospector's and the Golem's gimbals - so the MOLE's list holds no S1
+        // head and none is suggested to it, nor an S2 head to the others
+        {
+            const SCMiner::MiningShip* mole = SCMiner::shipById("mole");
+            bool exact = mole != nullptr;
+            int onMole = 0, onProspector = 0, onGolem = 0;
+            for (int i = 0; exact && i < SCMiner::MINING_LASER_COUNT; i++) {
+                const SCMiner::MiningLaser& l = SCMiner::MINING_LASERS[i];
+                const bool m = SCMiner::laserFits(l, *mole);
+                const bool p = SCMiner::laserFits(l, *prospector);
+                const bool g = SCMiner::laserFits(l, *golem);
+                exact = m == (l.size == 2) && p == (l.size == 1 && &l != pitman) && g == (l.size == 1);
+                onMole += m ? 1 : 0;
+                onProspector += p ? 1 : 0;
+                onGolem += g ? 1 : 0;
+            }
+            SCMiner::RockStats rock;
+            rock.mass = 30000.0f;
+            rock.resistance = 40.0f;
+            bool sized = exact;
+            int named = 0;
+            for (int pass = 0; sized && pass < 3; pass++) {
+                const SCMiner::MiningShip* asking = pass == 0 ? mole : pass == 1 ? prospector : golem;
+                for (const SCMiner::LaserSuggestion& s : SCMiner::suggestLasers(rock, asking->size, 0.0f, asking)) {
+                    sized = sized && s.laser && SCMiner::laserFits(*s.laser, *asking);
+                    named++;
+                }
+            }
+            allPassed &= check(exact && sized && onMole > 0 && onProspector > 0 && named > 0,
+                               "a mount takes its own size only: the MOLE " + std::to_string(onMole) +
+                                   " S2 heads and no S1, the Prospector " + std::to_string(onProspector) +
+                                   " and the Golem " + std::to_string(onGolem) +
+                                   " S1 heads, and only those suggested (" + std::to_string(named) + ")");
+        }
+
         // ...and whose HUD it is: by the scan panel's labels, and with no
         // panel up by the ship the log has the player sitting in
         using SCMiner::hudShipOf;
@@ -3182,6 +3219,13 @@ int runSelfTest() {
             allPassed &= check(trimmed.fits.size() == 2 && trimmed.fits[0].heads.size() == 1 &&
                                    !trimmed.fits[0].heads[0].laser && trimmed.fits[1].heads.size() == 3,
                                "an S2 head written under the Prospector is dropped, and the MOLE gets its three");
+            // ...and an S1 head written under the MOLE, whose turrets take S2
+            std::istringstream moleFile("ship=mole\n[mole]\nhead=thcn_helix_s1\nhead=thcn_helix_s2\nhead=shin_hofstede_s2\n");
+            const MinerGUI::LoadoutFile kept = MinerGUI::readLoadoutFile(moleFile);
+            allPassed &= check(kept.fits.size() == 1 && kept.fits[0].heads.size() == 3 && !kept.fits[0].heads[0].laser &&
+                                   kept.fits[0].heads[1].laser == SCMiner::laserById("thcn_helix_s2") &&
+                                   kept.fits[0].heads[2].laser == SCMiner::laserById("shin_hofstede_s2"),
+                               "...and an S1 head written under the MOLE as well, the other two kept");
         }
 
         // The Golem with the game's own labels written out - MASS:,

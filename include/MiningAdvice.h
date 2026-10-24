@@ -676,12 +676,13 @@ inline const MiningShip* onlyShipFor(const MiningLaser& laser) {
     return nullptr;
 }
 
-// A hardpoint takes its own size and anything smaller - a MOLE can fly an S1
-// head on an S2 mount, which is not a corner case but a normal way to fit the
-// ship: the S1 Helix out-fractures three of the six S2 heads and gives up
-// reach for it. What it will not take is a head made for another hull.
+// A hardpoint takes heads of its own size and no other. Every mining mount's
+// record gives the same MinSize as MaxSize - 1 on the Prospector's and the
+// Golem's gimbals, 2 on each of the MOLE's three turrets - so an S1 head does
+// not go on a MOLE, nor an S2 head on a Prospector. Nor does a head made for
+// another hull.
 inline bool laserFits(const MiningLaser& laser, const MiningShip& ship) {
-    if (laser.size > ship.size) return false;
+    if (laser.size != ship.size) return false;
     const MiningShip* only = onlyShipFor(laser);
     return only == nullptr || only == &ship;
 }
@@ -786,8 +787,8 @@ inline std::vector<LaserSuggestion> suggestLasers(const RockStats& rock,
 
     for (int i = 0; i < MINING_LASER_COUNT; i++) {
         const MiningLaser& l = MINING_LASERS[i];
-        // anything up to the mount's size, not only its exact size
-        if (l.size > hardpointSize) continue;
+        // the mount's own size only, as the game has it (laserFits)
+        if (l.size != hardpointSize) continue;
         // ...but never a head made for another ship
         const MiningShip* only = onlyShipFor(l);
         if (only && only != ship) continue;

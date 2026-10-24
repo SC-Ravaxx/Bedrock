@@ -509,19 +509,20 @@ int runScreenshots(const std::string& dir) {
     pump();
     // The rock view: what the window shows while the game's scan panel is up.
     // The figures are the ones off the screenshot in tests/scanpanel - a Tin
-    // rock of 22,593 at 28.4 m, read by a Helix I with Focus III and
-    // Rieger-C3. At that distance the laser is at 55 %, so the advice is to
-    // close in rather than to fit anything, which is the case worth having a
-    // picture of.
+    // rock of 22,593, read at 28.4 m by a Helix I with Focus III and
+    // Rieger-C3. Here the MOLE's Helix II carries the same two; it reaches
+    // twice as far, so the rock stands at 57 m, where it is at 55 % as the
+    // Helix I was at 28.4. The advice is to close in rather than to fit
+    // anything, which is the case worth having a picture of.
     {
                 // A ship picked, so the header shows the ship row rather than the
         // notice - and the loadout card has something to be about.
         gui.pickShipForShot("mole");
         // A MOLE fitted the way one actually gets fitted: a forgiving wide
-        // head, a hard one, and an S1 Helix on an S2 mount - which the game
-        // allows and which out-fractures half the S2 range.
+        // head, a hard one, and a Helix II with Focus III and Rieger-C3 -
+        // S2 heads all, as its turrets take no other size.
         SCMiner::MiningLoadout fit;
-        fit.laser = SCMiner::laserById("thcn_helix_s1");
+        fit.laser = SCMiner::laserById("thcn_helix_s2");
         fit.modules = {SCMiner::moduleById("passive_focus_mk3"),
                        SCMiner::moduleById("passive_rieger_mk3")};
         gui.setHeadForShot(0, fit);
@@ -536,6 +537,9 @@ int runScreenshots(const std::string& dir) {
         // it on the item: "Laser Power: +0.00 % -> +28.84 %"
         SCMiner::MiningLoadout crafted = fit;
         crafted.craftedPower = 28.84f;
+        // ...and the screenshot's Helix I, for the Prospector further down
+        SCMiner::MiningLoadout helixOne = fit;
+        helixOne.laser = SCMiner::laserById("thcn_helix_s1");
 
         SCMiner::RockStats rock;
         rock.ore = "TIN (ORE)";
@@ -543,7 +547,7 @@ int runScreenshots(const std::string& dir) {
         rock.resistance = 0;
         rock.instability = 3.52f;
         rock.scu = 30.21f;
-        rock.distance = 28.4f;
+        rock.distance = 57.0f;
         gui.updateRock(rock);
         pump();
         shoot(gui.windowHandle(), "rock_far.png");
@@ -837,7 +841,7 @@ int runScreenshots(const std::string& dir) {
         gui.toggleOverlayMode();
         pump();
         gui.pickShipForShot("prospector");
-        gui.setHeadForShot(0, fit);
+        gui.setHeadForShot(0, helixOne);
         rock.ore = "QUANTAINIUM (RAW)";
         rock.mass = 13147;
         rock.resistance = 47;
@@ -956,12 +960,12 @@ int runScreenshots(const std::string& dir) {
                   << (std::abs(gui.craftedForShot() - 28.84f) < 0.01f ? "  OK" : "  WRONG")
                   << std::endl;
 
-        // ...and the same head with two of the same module, which a
-        // two-slot head takes: the multipliers stack, so 1.25 x 1.25 is a
-        // real fit.
+        // ...and the same head with two of the same module, which a head
+        // with the slots for them takes: the multipliers stack, so 1.25 x
+        // 1.25 is a real fit.
         {
             SCMiner::MiningLoadout stacked;
-            stacked.laser = SCMiner::laserById("thcn_helix_s1");
+            stacked.laser = SCMiner::laserById("thcn_helix_s2");
             stacked.modules = {SCMiner::moduleById("passive_rieger_mk3"),
                                SCMiner::moduleById("passive_rieger_mk3")};
             gui.setHeadForShot(0, stacked);
@@ -970,13 +974,13 @@ int runScreenshots(const std::string& dir) {
             // ...and Brandt beside Stampede, which cut each other off: the
             // card says so under the list, and which of the two counts
             SCMiner::MiningLoadout cutOff;
-            cutOff.laser = SCMiner::laserById("thcn_helix_s1");
+            cutOff.laser = SCMiner::laserById("thcn_helix_s2");
             cutOff.modules = {SCMiner::moduleById("active_brandt"), SCMiner::moduleById("active_stampede")};
             gui.setHeadForShot(0, cutOff);
             pump();
             shoot(gui.windowHandle(), "loadout_cut_off.png");
             const SCMiner::LaserOutput both = SCMiner::outputOf(stacked, 0);
-            std::cout << "  two Rieger-C3 on a Helix I: " << both.fracture
+            std::cout << "  two Rieger-C3 on a Helix II: " << both.fracture
                       << " fracture power" << std::endl;
             gui.setHeadForShot(0, fit);
             pump();
