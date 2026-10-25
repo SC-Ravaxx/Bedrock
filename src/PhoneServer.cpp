@@ -164,6 +164,7 @@ bool PhoneServer::start(const std::string& token, int port, bool loopbackOnly) {
         error_.clear();
         for (Shown& shown : shown_) shown = Shown{};
         peers_.clear();
+        taps_.clear();
     }
     const auto fail = [&](const std::string& why) {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -308,12 +309,19 @@ void PhoneServer::answer(intptr_t client, const std::string& peer, const std::st
         send(reply("400 Bad Request", "text/plain", "Not a request.\n"));
         return;
     }
-    if (request.method != "GET") {
-        send(reply("405 Method Not Allowed", "text/plain", "Only to look at.\n", "Allow: GET\r\n"));
-        return;
+    const Route where = route(request, token_);
+    // Behind the token, a tap is the one thing sent, and the rest is only
+    // asked for. Without it, nothing is there - whatever the method.
+    if (where != Route::NotFound) {
+        const bool tap = where == Route::Tap;
+        if (request.method != (tap ? "POST" : "GET")) {
+            send(reply("405 Method Not Allowed", "text/plain", "Not that way.\n",
+                       tap ? "Allow: POST\r\n" : "Allow: GET\r\n"));
+            return;
+        }
     }
     const View view = queryValue(request.query, "view") == "window" ? View::Window : View::Overlay;
-    switch (route(request, token_)) {
+    switch (where) {
         case Route::AddSlash:
             send(reply("301 Moved Permanently", "text/plain", "", "Location: /" + token_ + "/\r\n"));
             return;
@@ -352,6 +360,7 @@ void PhoneServer::answer(intptr_t client, const std::string& peer, const std::st
                     json += ",\"width\":" + std::to_string(shown.picture->width) +
                             ",\"height\":" + std::to_string(shown.picture->height);
                 }
+                json += std::string(",\"control\":") + (control_ ? "true" : "false");
                 if (!status_.empty()) json += "," + status_;
                 json += "}";
             }
@@ -385,6 +394,29 @@ void PhoneServer::answer(intptr_t client, const std::string& peer, const std::st
                 }
             }
             send(reply("200 OK", "image/png", std::string(encoded->begin(), encoded->end())));
+            return;
+        }
+        case Route::Tap: {
+            if (!control_) {
+                send(reply("403 Forbidden", "text/plain", "Only to look at.\n"));
+                return;
+            }
+            Tap tap;
+            tap.view = view;
+            tap.x = std::clamp(std::atoi(queryValue(request.query, "x").c_str()), 0, 100000);
+            tap.y = std::clamp(std::atoi(queryValue(request.query, "y").c_str()), 0, 100000);
+            tap.right = queryValue(request.query, "b") == "r";
+            tap.frame = (std::max)(0, std::atoi(queryValue(request.query, "n").c_str()));
+            bool taken = false;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                if (taps_.size() < MAX_TAPS) {
+                    taps_.push_back(tap);
+                    taken = true;
+                }
+                peers_[peer] = Clock::now();
+            }
+            send(reply("200 OK", "application/json", taken ? "{\"taken\":true}" : "{\"taken\":false}"));
             return;
         }
         case Route::NotFound:
@@ -448,6 +480,13 @@ void PhoneServer::setStatus(const std::string& members) {
     status_ = members;
 }
 
+std::vector<PhoneServer::Tap> PhoneServer::takeTaps() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<Tap> taken;
+    taken.swap(taps_);
+    return taken;
+}
+
 // ---- what needs no network ----------------------------------------------
 
 bool PhoneServer::parseRequest(const std::string& head, Request& out) {
@@ -491,6 +530,7 @@ PhoneServer::Route PhoneServer::route(const Request& request, const std::string&
     if (rest.empty()) return Route::Page;
     if (rest == "state") return Route::State;
     if (rest == "frame") return Route::Frame;
+    if (rest == "tap") return Route::Tap;
     return Route::NotFound;
 }
 
@@ -590,7 +630,7 @@ std::vector<uint8_t> PhoneServer::png(const Picture& picture) {
     return out;
 }
 
-std::string PhoneServer::fetchLocal(int port, const std::string& path) {
+std::string PhoneServer::fetchLocal(int port, const std::string& path, const std::string& method) {
     if (!netReady()) return {};
     const Socket s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (s == NO_SOCKET) return {};
@@ -601,7 +641,8 @@ std::string PhoneServer::fetchLocal(int port, const std::string& path) {
     at.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     std::string got;
     if (connect(s, reinterpret_cast<const sockaddr*>(&at), sizeof(at)) == 0) {
-        const std::string ask = "GET " + path + " HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+        const std::string ask = method + " " + path +
+                                " HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
         if (sendAll(s, ask.data(), ask.size())) {
             char buffer[4096];
             int n;
@@ -639,9 +680,14 @@ header{display:flex;align-items:center;gap:10px;padding:8px 10px}
 button{font:inherit;color:var(--dim);background:none;border:0;border-radius:7px;padding:6px 13px;cursor:pointer}
 .views button.on{color:var(--accent);background:var(--bg);box-shadow:inset 0 0 0 1px var(--accent)}
 #full{padding:7px 8px;line-height:0}
-#stage{flex:1;min-height:0;position:relative;margin:0 6px 6px}
-#shot{position:absolute;left:0;right:0;top:0;margin:0 auto;max-width:100%;max-height:100%;transition:opacity .3s}
+#stage{flex:1;min-height:0;position:relative;margin:0 6px 6px;overflow:hidden}
+#shot{position:absolute;left:0;right:0;top:0;margin:0 auto;max-width:100%;max-height:100%;transition:opacity .3s;-webkit-touch-callout:none;touch-action:manipulation}
+body.control #shot{cursor:pointer}
 #note{position:absolute;left:0;right:0;top:40%;margin:auto;max-width:24em;padding:0 20px;text-align:center;color:var(--dim)}
+.ring{position:absolute;width:40px;height:40px;margin:-20px 0 0 -20px;border-radius:50%;border:2px solid var(--accent);pointer-events:none;transition:transform .4s ease-out,opacity .4s ease-out}
+.ring.long{border-style:dashed}
+#toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%);max-width:90%;padding:9px 15px;border-radius:9px;background:var(--card);box-shadow:0 0 0 1px rgba(255,255,255,.1);text-align:center;opacity:0;transition:opacity .25s;pointer-events:none}
+#toast.on{opacity:1}
 </style>
 </head>
 <body>
@@ -650,16 +696,19 @@ button{font:inherit;color:var(--dim);background:none;border:0;border-radius:7px;
 <div class="views"><button data-view="overlay">Overlay</button><button data-view="window">Window</button></div>
 <button id="full" title="Full screen" aria-label="Full screen"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 6V1h5M12 1h5v5M17 12v5h-5M6 17H1v-5"/></svg></button>
 </header>
-<div id="stage"><img id="shot" alt="" hidden><div id="note">Waiting for Bedrock&hellip;</div></div>
+<div id="stage"><img id="shot" alt="" hidden draggable="false"><div id="note">Waiting for Bedrock&hellip;</div></div>
+<div id="toast" role="status"></div>
 <script>
 'use strict';
 const $=id=>document.getElementById(id);
-const img=$('shot'),note=$('note'),stage=$('stage'),root=document.documentElement;
+const img=$('shot'),note=$('note'),stage=$('stage'),toastBox=$('toast'),root=document.documentElement;
 // the view in the address (#window, #overlay), else the one last looked at
 const asked=location.hash.slice(1);
 let view=asked==='window'||asked==='overlay'?asked:localStorage.getItem('bedrock-view')==='window'?'window':'overlay';
-let shown=0,busy=false,loading=false,misses=0,gone=false,url=null,colours='';
+let shown=0,busy=false,loading=false,misses=0,gone=false,url=null,colours='',control=false,heard=-1,toastTimer=0;
 function say(t){note.textContent=t;note.hidden=!t;img.style.opacity=t&&!img.hidden?'.3':'1'}
+function toast(t){toastBox.textContent=t;toastBox.classList.add('on');clearTimeout(toastTimer);
+ toastTimer=setTimeout(()=>toastBox.classList.remove('on'),2600)}
 function choose(v){view=v;localStorage.setItem('bedrock-view',v);history.replaceState(null,'','#'+v);shown=0;
  for(const b of document.querySelectorAll('.views button'))b.classList.toggle('on',b.dataset.view===v);poll()}
 for(const b of document.querySelectorAll('.views button'))b.onclick=()=>choose(b.dataset.view);
@@ -674,7 +723,11 @@ function wear(s){const c=[s.bg,s.card,s.text,s.dim,s.accent].join();if(!s.bg||c=
 async function poll(){if(busy||gone)return;busy=true;const v=view;
  try{const r=await fetch('state?view='+v+'&w='+wide(),{cache:'no-store'});
   if(r.status===404){gone=true;say('This address no longer works. Scan the new code in Bedrock\u2019s settings.');return}
-  const s=await r.json();misses=0;wear(s);if(v!==view)return;
+  const s=await r.json();misses=0;wear(s);
+  control=!!s.control;document.body.classList.toggle('control',control);
+  // what Bedrock says about a tap - a word it has said before is not said again
+  if(typeof s.noteN==='number'){if(heard>=0&&s.noteN!==heard&&s.note)toast(s.note);heard=s.noteN}
+  if(v!==view)return;
   if(!s.frame){if(!shown)say('Waiting for Bedrock\u2026');return}
   if(s.frame!==shown&&!loading)load(v,s.frame);else if(!loading&&shown)say('')}
  catch(e){if(++misses>=4)say('Bedrock is not answering. Is it still running, with this device on the same network?')}
@@ -685,6 +738,28 @@ async function load(v,n){loading=true;
   await new Promise((ok,no)=>{img.onload=ok;img.onerror=no;img.src=u});
   if(url)URL.revokeObjectURL(url);url=u;img.hidden=false;shown=n;say('')}
  catch(e){}finally{loading=false}}
+// A tap on the picture is a click there in Bedrock, a long press a right
+// click: sent as the place in the picture's own pixels, and the picture
+// asked for again soon after, for what the click did
+function ring(cx,cy,long){const s=stage.getBoundingClientRect(),d=document.createElement('div');
+ d.className=long?'ring long':'ring';d.style.left=(cx-s.left)+'px';d.style.top=(cy-s.top)+'px';stage.appendChild(d);
+ requestAnimationFrame(()=>requestAnimationFrame(()=>{d.style.transform='scale(1.8)';d.style.opacity='0'}));
+ setTimeout(()=>d.remove(),450)}
+function tap(cx,cy,long){const r=img.getBoundingClientRect();if(!r.width||!r.height||!img.naturalWidth)return;
+ const x=Math.floor((cx-r.left)*img.naturalWidth/r.width),y=Math.floor((cy-r.top)*img.naturalHeight/r.height);
+ if(x<0||y<0||x>=img.naturalWidth||y>=img.naturalHeight)return;
+ ring(cx,cy,long);if(long&&navigator.vibrate)navigator.vibrate(15);
+ fetch('tap?view='+view+'&x='+x+'&y='+y+'&n='+shown+(long?'&b=r':''),{method:'POST',cache:'no-store'})
+  .then(r=>{if(r.status===403){control=false;document.body.classList.remove('control')}}).catch(()=>{});
+ for(const d of[120,350,700,1300])setTimeout(poll,d)}
+let press=null;
+img.addEventListener('contextmenu',e=>e.preventDefault());
+img.addEventListener('pointerdown',e=>{if(!control||img.hidden||!e.isPrimary)return;
+ const p={x:e.clientX,y:e.clientY,long:false};
+ p.timer=setTimeout(()=>{if(press!==p)return;p.long=true;tap(p.x,p.y,true)},550);press=p});
+img.addEventListener('pointermove',e=>{if(press&&Math.hypot(e.clientX-press.x,e.clientY-press.y)>12){clearTimeout(press.timer);press=null}});
+function lift(e){if(!press)return;const p=press;press=null;clearTimeout(p.timer);if(!p.long&&e.type==='pointerup')tap(p.x,p.y,false)}
+img.addEventListener('pointerup',lift);img.addEventListener('pointercancel',lift);
 const full=$('full'),ask=root.requestFullscreen||root.webkitRequestFullscreen;
 if(!ask)full.hidden=true;
 full.onclick=()=>{if(document.fullscreenElement||document.webkitFullscreenElement)(document.exitFullscreen||document.webkitExitFullscreen).call(document);else ask.call(root)};

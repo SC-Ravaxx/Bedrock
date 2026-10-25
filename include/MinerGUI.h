@@ -512,6 +512,11 @@ public:
     // settings has an address in it that is the same every time)
     bool phoneForShot(const std::string& lanAddress);
     void phoneOffForShot();
+    // ...a tap on what a phone was sent of a view, at a place in its pixels,
+    // as if it came from the phone - and where a thing is in that picture:
+    // "looking" (the ores field), "live" (the LIVE button)
+    void phoneTapForShot(PhoneServer::View view, int x, int y, bool right = false);
+    bool phoneSpotForShot(PhoneServer::View view, const std::string& what, int& x, int& y);
     // ...what a phone would be sent of a view, as wide as `devicePixels`
     PhoneServer::Picture phonePictureForShot(PhoneServer::View view, int devicePixels);
     int phonePort() const { return phone_ ? phone_->port() : 0; }
@@ -1705,8 +1710,9 @@ private:
     POINT hoverSettings_ = {-1, -1};
     struct SettingsHit { Gdiplus::RectF rect; int kind; int value; };
     // kind 0 a set, 1 a colour, 2 the hex field, 3 back to Bedrock's colour,
-    // 4 a slider (SettingsSlider), 5 the preview seen as, 6 the phone off or
-    // on, 7 its address copied, 8 a new address for it
+    // 4 a slider (SettingsSlider), 5 the preview seen as, 6 the phone off,
+    // to look at or to use (setPhoneMode), 7 its address copied, 8 a new
+    // address for it
     std::vector<SettingsHit> settingsHits_;
     enum SettingsSlider { SLIDE_HUE, SLIDE_SATURATION, SLIDE_LIGHTNESS, SLIDE_OPACITY, SLIDE_TEXT, SLIDE_SIZE };
     int settingsRole_ = Colours::Legendary;   // the colour on the sliders
@@ -1750,11 +1756,13 @@ private:
     static constexpr int PHONE_COLUMN = 280;
 
     // ---- the phone or tablet: Bedrock in its browser (PhoneServer) ----
-    // Switched on in the settings, and kept in phone.txt with the token -
-    // the part of the address only a device shown the code knows - and the
-    // port it had, so an address saved on the phone keeps working.
+    // Switched on in the settings - to look at, or to use as well - and
+    // kept in phone.txt with the token - the part of the address only a
+    // device shown the code knows - and the port it had, so an address
+    // saved on the phone keeps working.
     std::unique_ptr<PhoneServer> phone_;
     bool phoneOn_ = false;
+    bool phoneControl_ = false;     // ...and taps on it are clicks here
     std::string phoneToken_;
     int phonePort_ = PhoneServer::FIRST_PORT;
     std::string phoneLan_;          // this PC's address in the home network
@@ -1769,7 +1777,7 @@ private:
     // may have changed. Not when phoneTick drew it itself.
     bool phoneDirty_ = true;
     bool phoneRepainting_ = false;
-    std::chrono::steady_clock::time_point phoneDrawn_{};
+    std::chrono::steady_clock::time_point phoneDrawnAt_{};
     // ...and per view, overlay and window: whether a device was looking at
     // it, and how wide it was drawn for it
     bool phoneWanted_[2] = {false, false};
@@ -1777,10 +1785,37 @@ private:
     // The full window's size when it was last on screen, unscaled: the
     // phone's picture of it has its shape whether it is up or the overlay is
     SIZE phoneWindowSize_ = {0, 0};
+    // A picture as it was drawn for the phone: how much bigger than
+    // unscaled (the DPI it was drawn at, over 96), its size unscaled, and
+    // the overlay's update chip in its pixels. The last few that went out,
+    // by their number, so a tap is taken where it landed on the picture the
+    // phone was showing - a phone turned on its side was sent another.
+    struct PhoneFrame {
+        int frame = 0;
+        float k = 0.0f;
+        float width = 0.0f, height = 0.0f;
+        Gdiplus::RectF updateChip;
+    };
+    PhoneFrame phoneDrawn_[2];                 // the last drawn of each view
+    std::vector<PhoneFrame> phoneSent_[2];     // ...and the last sent
+    // A tap from the phone being taken: WM_LBUTTONDOWN leaves out what
+    // only works at the PC (phoneSay says so on the phone)
+    bool phoneTapping_ = false;
+    std::string phoneNote_;
+    int phoneNoteN_ = 0;
+    static constexpr const char* PHONE_OPENS_ON_PC = "That opens on the PC only.";
+    static constexpr const char* PHONE_WORKS_ON_PC = "That works on the PC only.";
+    static constexpr const char* PHONE_TYPING_ON_PC = "Typing works on the PC only.";
+    void phoneSay(const char* words);
+    bool phoneTaps();                          // true where there were any
+    void phoneTap(const PhoneServer::Tap& tap);
+    bool phoneShowsButton(HWND button, bool overlay) const;
+    void phoneLayOutWindow(int& cw, int& ch);
     static constexpr const char* PHONE_FILE = "phone.txt";
     void loadPhone();
     void savePhone() const;
-    void setPhoneOn(bool on);
+    // 0 off, 1 to look at, 2 to use as well
+    void setPhoneMode(int mode);
     void newPhoneToken();
     bool startPhone(bool loopbackOnly = false);
     std::string phoneAddress() const;   // http://...:port/token/, "" without one

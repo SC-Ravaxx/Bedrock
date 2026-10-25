@@ -5111,8 +5111,9 @@ int runSelfTest() {
         allPassed &= check(routeOf("/0123456789ab/") == PhoneServer::Route::Page &&
                                routeOf("/0123456789ab") == PhoneServer::Route::AddSlash &&
                                routeOf("/0123456789ab/state") == PhoneServer::Route::State &&
-                               routeOf("/0123456789ab/frame") == PhoneServer::Route::Frame,
-                           "phone: the page, its state and its pictures are behind the token");
+                               routeOf("/0123456789ab/frame") == PhoneServer::Route::Frame &&
+                               routeOf("/0123456789ab/tap") == PhoneServer::Route::Tap,
+                           "phone: the page, its state, its pictures and its taps are behind the token");
         allPassed &= check(routeOf("/") == PhoneServer::Route::NotFound &&
                                routeOf("/0123456789ac/") == PhoneServer::Route::NotFound &&
                                routeOf("/0123456789a/") == PhoneServer::Route::NotFound &&
@@ -5180,7 +5181,8 @@ int runSelfTest() {
             const std::string before = PhoneServer::fetchLocal(port, "/" + token + "/state?view=overlay&w=1170");
             int pixels = 0;
             const bool wanted = server.wanted(PhoneServer::View::Overlay, &pixels);
-            allPassed &= check(before.find("{\"frame\":0}") != std::string::npos && wanted && pixels == 1170 &&
+            allPassed &= check(before.find("{\"frame\":0,\"control\":false}") != std::string::npos && wanted &&
+                                   pixels == 1170 &&
                                    !server.wanted(PhoneServer::View::Window) && server.watching() == 1,
                                "phone: a page asking for the overlay is looking at it, at its width (" +
                                    std::to_string(pixels) + ")");
@@ -5189,8 +5191,8 @@ int runSelfTest() {
             const bool again = server.publish(PhoneServer::View::Overlay, picture);
             const std::string state = PhoneServer::fetchLocal(port, "/" + token + "/state?view=overlay&w=1170");
             allPassed &= check(fresh && !again && server.frame(PhoneServer::View::Overlay) == 1 &&
-                                   state.find("{\"frame\":1,\"width\":3,\"height\":2,\"bg\":\"#0F1013\"}") !=
-                                       std::string::npos,
+                                   state.find("{\"frame\":1,\"width\":3,\"height\":2,\"control\":false,"
+                                              "\"bg\":\"#0F1013\"}") != std::string::npos,
                                "phone: a new picture is a new frame, the same one again is not");
             const std::string frame = PhoneServer::fetchLocal(port, "/" + token + "/frame?view=overlay&n=1");
             const size_t body = frame.find("\r\n\r\n");
@@ -5201,6 +5203,35 @@ int runSelfTest() {
                                "phone: the frame is the picture's PNG");
             allPassed &= check(PhoneServer::fetchLocal(port, "/" + token + "/frame?view=window").rfind("HTTP/1.1 404", 0) == 0,
                                "phone: a view not drawn yet has no frame");
+            // Taps: only where control is on, only sent (POST), and taken
+            // as they came - where on which picture, and a long press as such
+            const std::string base = "/" + token + "/tap?view=window&x=120&y=345&n=1";
+            const std::string offTap = PhoneServer::fetchLocal(port, base, "POST");
+            allPassed &= check(offTap.rfind("HTTP/1.1 403", 0) == 0 && server.takeTaps().empty() &&
+                                   state.find("\"control\":false") != std::string::npos,
+                               "phone: with control off a tap is turned away, and the page is told");
+            server.setControl(true);
+            const std::string asked = PhoneServer::fetchLocal(port, base, "GET");
+            const std::string onTap = PhoneServer::fetchLocal(port, base, "POST");
+            const std::string longTap =
+                PhoneServer::fetchLocal(port, "/" + token + "/tap?view=overlay&x=-5&y=40&b=r&n=7", "POST");
+            const std::vector<PhoneServer::Tap> taps = server.takeTaps();
+            allPassed &= check(asked.rfind("HTTP/1.1 405", 0) == 0 && onTap.rfind("HTTP/1.1 200", 0) == 0 &&
+                                   longTap.rfind("HTTP/1.1 200", 0) == 0 && taps.size() == 2 &&
+                                   taps[0].view == PhoneServer::View::Window && taps[0].x == 120 && taps[0].y == 345 &&
+                                   !taps[0].right && taps[0].frame == 1 && taps[1].view == PhoneServer::View::Overlay &&
+                                   taps[1].x == 0 && taps[1].y == 40 && taps[1].right && taps[1].frame == 7 &&
+                                   server.takeTaps().empty(),
+                               "phone: with control on a tap is taken as sent, and asked for (GET) it is not");
+            allPassed &= check(PhoneServer::fetchLocal(port, "/" + token + "/", "POST").rfind("HTTP/1.1 405", 0) == 0 &&
+                                   PhoneServer::fetchLocal(port, "/0123456789ac/tap?x=1&y=1", "POST").rfind("HTTP/1.1 404", 0) == 0 &&
+                                   PhoneServer::fetchLocal(port, "/" + token + "/state?view=window&w=900")
+                                           .find("\"control\":true") != std::string::npos,
+                               "phone: the page is not sent to, a tap without the token finds nothing, and the "
+                               "page is told control is on");
+            for (size_t i = 0; i < PhoneServer::MAX_TAPS + 4; i++) PhoneServer::fetchLocal(port, base, "POST");
+            allPassed &= check(server.takeTaps().size() == PhoneServer::MAX_TAPS,
+                               "phone: no more than " + std::to_string(PhoneServer::MAX_TAPS) + " taps wait to be taken");
             // ...and stopped, and started again at once on the port it had:
             // a phone keeps its address when the phone is switched off and on
             server.stop();

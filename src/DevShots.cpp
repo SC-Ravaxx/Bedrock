@@ -504,6 +504,21 @@ int runScreenshots(const std::string& dir) {
             shoot(gui.settingsHandle(), "settings_phone.png", true);
             shootPhone(PhoneServer::View::Window, 1170, "phone_window.png");
             shootPhone(PhoneServer::View::Window, 1640, "phone_window_tablet.png");
+            // ...and used from there: a tap on the ores field opens their
+            // list on the phone's picture, a tap off it shuts it again
+            int tx = 0, ty = 0;
+            shootPhone(PhoneServer::View::Window, 1170, "phone_window_before_tap.png");
+            if (gui.phoneSpotForShot(PhoneServer::View::Window, "looking", tx, ty)) {
+                std::cout << "phone tap on the ores field at " << tx << "," << ty << std::endl;
+                gui.phoneTapForShot(PhoneServer::View::Window, tx, ty);
+                pump();
+                shootPhone(PhoneServer::View::Window, 1170, "phone_window_tapped.png");
+                gui.phoneTapForShot(PhoneServer::View::Window, 6, 6);
+                pump();
+                shootPhone(PhoneServer::View::Window, 1170, "phone_window_tapped_off.png");
+            } else {
+                std::cout << "phone_window_tapped.png: no ores field to tap" << std::endl;
+            }
             // BEDROCK_SHOT_PHONE_HOLD=30 keeps it up that many seconds more,
             // drawing for a device as it does, for a browser on this machine
             // to be pointed at the address it prints
@@ -662,6 +677,21 @@ int runScreenshots(const std::string& dir) {
             // the overlay is what is on screen
             shootPhone(SCMiner::PhoneServer::View::Overlay, 1170, "phone_overlay_rock.png");
             shootPhone(SCMiner::PhoneServer::View::Window, 1170, "phone_window_rock.png");
+            // ...and LIVE pressed on the phone's overlay, and pressed again
+            {
+                int lx = 0, ly = 0;
+                if (gui.phoneForShot("192.168.178.20") &&
+                    gui.phoneSpotForShot(SCMiner::PhoneServer::View::Overlay, "live", lx, ly)) {
+                    gui.phoneTapForShot(SCMiner::PhoneServer::View::Overlay, lx, ly);
+                    pump();
+                    shootPhone(SCMiner::PhoneServer::View::Overlay, 1170, "phone_overlay_live_tapped.png");
+                    gui.phoneTapForShot(SCMiner::PhoneServer::View::Overlay, lx, ly);
+                    pump();
+                } else {
+                    std::cout << "phone_overlay_live_tapped.png: no LIVE to tap" << std::endl;
+                }
+                gui.phoneOffForShot();
+            }
             gui.toggleOverlayMode();
             pump();
             // An iron rock while an ore pod is on the shopping list, whose

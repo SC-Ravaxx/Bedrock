@@ -2779,6 +2779,12 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             // The first start's UEX offer before anything: its buttons, and a
             // click off it skips it
             if (uexWelcome_.step) {
+                // (from the phone: answered at the PC, where the browser and
+                // the clipboard are)
+                if (phoneTapping_) {
+                    phoneSay(PHONE_WORKS_ON_PC);
+                    return 0;
+                }
                 const float wx = (float)(short)LOWORD(lParam);
                 const float wy = (float)(short)HIWORD(lParam);
                 for (const auto& hit : uexWelcome_.hits) {
@@ -2806,8 +2812,8 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 // The one place in the app that opens a browser, and it
                 // takes a click on the line itself to do it
                 if (aboutKofiHit_.Width > 0 && aboutKofiHit_.Contains(ax, ay)) {
-                    ShellExecuteW(hwnd, L"open", L"https://ko-fi.com/ravaxx",
-                                  nullptr, nullptr, SW_SHOWNORMAL);
+                    if (phoneTapping_) phoneSay(PHONE_OPENS_ON_PC);
+                    else ShellExecuteW(hwnd, L"open", L"https://ko-fi.com/ravaxx", nullptr, nullptr, SW_SHOWNORMAL);
                     return 0;
                 }
                 // Discord has no address that can be opened, so the handle
@@ -2836,7 +2842,9 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             }
             // A click on a probable-match row picks the mineral whose
             // locations are shown below the details
-            if (overlayMode_) {
+            // (A tap from the phone on its picture of the window is the
+            // window's, whatever is on screen.)
+            if (overlayMode_ && !phoneTapping_) {
                 // The grip in the corner: a drag there grows or shrinks it
                 const int px = (short)LOWORD(lParam), py = (short)HIWORD(lParam);
                 if (overGrip(px, py)) {
@@ -2868,11 +2876,19 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 // open after either: the dialog is where the choice is made,
                 // and the card is the one place with room to say how it went.
                 if (backupDoHit_.Width > 0 && backupDoHit_.Contains(px, py)) {
+                    if (phoneTapping_) {
+                        phoneSay(PHONE_WORKS_ON_PC);
+                        return 0;
+                    }
                     backUpData();
                     InvalidateRect(hwnd, nullptr, TRUE);
                     return 0;
                 }
                 if (restoreDoHit_.Width > 0 && restoreDoHit_.Contains(px, py)) {
+                    if (phoneTapping_) {
+                        phoneSay(PHONE_WORKS_ON_PC);
+                        return 0;
+                    }
                     restoreData();
                     InvalidateRect(hwnd, nullptr, TRUE);
                     return 0;
@@ -2897,6 +2913,10 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                     if (hit.kind != 6) endNameEditing(true);
                     if (hit.kind != 7) removeArmed_ = false;
                     if (hit.kind == 6) {
+                        if (phoneTapping_) {
+                            phoneSay(PHONE_TYPING_ON_PC);
+                            return 0;
+                        }
                         if (!nameEditing_) {
                             nameEditing_ = true;
                             nameEntry_ = fitTitle();
@@ -2941,6 +2961,10 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                     } else if (hit.kind == 2) {
                         pickGadget(&MINING_GADGETS[hit.value]);
                     } else if (hit.kind == 3) {
+                        if (phoneTapping_) {
+                            phoneSay(PHONE_TYPING_ON_PC);
+                            return 0;
+                        }
                         craftedEditing_ = true;
                         SetFocus(hwnd);   // the digits have to land here
                     } else if (hit.kind == 4) {
@@ -3013,7 +3037,7 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                     if (added >= 0) {
                         pickFit(added, true);
                         showLoadout(true);
-                        nameEditing_ = true;
+                        nameEditing_ = !phoneTapping_;   // (the typing is the PC's)
                         nameEntry_.clear();
                     }
                     return 0;
@@ -3058,11 +3082,15 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             // The tip line along the foot - the app's only other way out to
             // a browser, and it takes a click on the address itself
             if (footerKofiHit_.Width > 0 && footerKofiHit_.Contains(px, py)) {
-                ShellExecuteW(hwnd, L"open", L"https://ko-fi.com/ravaxx",
-                              nullptr, nullptr, SW_SHOWNORMAL);
+                if (phoneTapping_) phoneSay(PHONE_OPENS_ON_PC);
+                else ShellExecuteW(hwnd, L"open", L"https://ko-fi.com/ravaxx", nullptr, nullptr, SW_SHOWNORMAL);
                 return 0;
             }
             if (updateHit_.Width > 0 && updateHit_.Contains(px, py)) {
+                if (phoneTapping_) {
+                    phoneSay(PHONE_WORKS_ON_PC);
+                    return 0;
+                }
                 updateAsked_ = true;
                 if (updateAction_) updateAction_();
                 return 0;
@@ -20921,6 +20949,8 @@ void MinerGUI::loadPhone() {
         const std::string key = line.substr(0, eq), value = line.substr(eq + 1);
         if (key == "on") {
             phoneOn_ = value == "1";
+        } else if (key == "control") {
+            phoneControl_ = value == "1";
         } else if (key == "token" && PhoneServer::tokenOk(value)) {
             phoneToken_ = value;
         } else if (key == "port") {
@@ -20937,6 +20967,7 @@ void MinerGUI::savePhone() const {
     out << "# address only a device shown the code knows, and the port the one it" << std::endl;
     out << "# had - both kept, so an address saved on the phone keeps working." << std::endl;
     out << "on=" << (phoneOn_ ? 1 : 0) << std::endl;
+    out << "control=" << (phoneControl_ ? 1 : 0) << std::endl;
     if (!phoneToken_.empty()) out << "token=" << phoneToken_ << std::endl;
     out << "port=" << phonePort_ << std::endl;
 }
@@ -20959,7 +20990,10 @@ bool MinerGUI::startPhone(bool loopbackOnly) {
         }
         phoneLan_ = PhoneServer::lanAddress();
         phoneDirty_ = true;
-        if (hwnd_) SetTimer(hwnd_, TIMER_PHONE, 250, nullptr);
+        phone_->setControl(phoneControl_);
+        // taps are looked for with every tick: more often, where there are
+        // taps to take
+        if (hwnd_) SetTimer(hwnd_, TIMER_PHONE, phoneControl_ ? 100 : 250, nullptr);
     } else {
         phoneError_ = phone_->error();
         if (hwnd_) KillTimer(hwnd_, TIMER_PHONE);
@@ -20969,11 +21003,17 @@ bool MinerGUI::startPhone(bool loopbackOnly) {
     return ok;
 }
 
-void MinerGUI::setPhoneOn(bool on) {
-    phoneOn_ = on;
-    if (on) {
+void MinerGUI::setPhoneMode(int mode) {
+    phoneOn_ = mode > 0;
+    phoneControl_ = mode == 2;
+    if (phoneOn_) {
         // ...and on again where it had failed: perhaps the port is free now
-        if (!phone_ || !phone_->running()) startPhone();
+        if (!phone_ || !phone_->running()) {
+            startPhone();
+        } else {
+            phone_->setControl(phoneControl_);
+            if (hwnd_) SetTimer(hwnd_, TIMER_PHONE, phoneControl_ ? 100 : 250, nullptr);
+        }
     } else {
         if (phone_) phone_->stop();
         if (hwnd_) KillTimer(hwnd_, TIMER_PHONE);
@@ -21008,27 +21048,32 @@ static std::string hexColour(const Gdiplus::Color& c) {
     return text;
 }
 
-// Every quarter of a second while the phone is on: the views a device is
-// looking at drawn again, where the window has changed since they were
+// Every quarter of a second while the phone is on, every tenth where it
+// may be used: its taps taken, and the views a device is looking at drawn
+// again, where the window has changed since they were
 void MinerGUI::phoneTick() {
     if (!phone_ || !phone_->running()) return;
+    const bool tapped = phoneTaps();
     const int watching = phone_->watching();
     if (watching != phoneWatching_) {
         phoneWatching_ = watching;
         if (settings_ && settingsVisible_) InvalidateRect(settings_, nullptr, FALSE);
     }
-    // the page round the picture wears the window's colours
+    // the page round the picture wears the window's colours, and says what
+    // there is to say about a tap (phoneSay)
     phone_->setStatus("\"bg\":\"" + hexColour(COL_BG) + "\",\"card\":\"" + hexColour(COL_CARD) + "\",\"text\":\"" +
                       hexColour(COL_TEXT) + "\",\"dim\":\"" + hexColour(COL_TEXT_DIM) + "\",\"accent\":\"" +
-                      hexColour(COL_ACCENT) + "\"");
+                      hexColour(COL_ACCENT) + "\",\"note\":" + PhoneServer::jsonString(phoneNote_) +
+                      ",\"noteN\":" + std::to_string(phoneNoteN_));
     // On screen, the window is drawn whenever anything in it changes, and
     // that is when its pictures are drawn again - and every few seconds
     // anyway. Minimised it is not drawn at all, and says nothing of what
     // changed: its pictures are drawn twice a second.
     const auto now = std::chrono::steady_clock::now();
     const bool shown = IsWindowVisible(hwnd_) && !IsIconic(hwnd_);
-    const bool due = shown ? (phoneDirty_ || now - phoneDrawn_ > std::chrono::seconds(3))
-                           : now - phoneDrawn_ >= std::chrono::milliseconds(480);
+    // (what a tap did is drawn at once)
+    const bool due = tapped || (shown ? (phoneDirty_ || now - phoneDrawnAt_ > std::chrono::seconds(3))
+                                      : now - phoneDrawnAt_ >= std::chrono::milliseconds(480));
     bool any = false, asShown = false;
     const PhoneServer::View views[2] = {PhoneServer::View::Overlay, PhoneServer::View::Window};
     for (int v = 0; v < 2; v++) {
@@ -21040,14 +21085,20 @@ void MinerGUI::phoneTick() {
         phoneWanted_[v] = wanted;
         if (!wanted || !(due || fresh)) continue;
         phonePixels_[v] = pixels;
-        phone_->publish(views[v], phonePicture(views[v], pixels));
+        if (phone_->publish(views[v], phonePicture(views[v], pixels))) {
+            // ...and kept by its number, for the taps that come on it
+            PhoneFrame sent = phoneDrawn_[v];
+            sent.frame = phone_->frame(views[v]);
+            phoneSent_[v].push_back(sent);
+            if (phoneSent_[v].size() > 4) phoneSent_[v].erase(phoneSent_[v].begin());
+        }
         any = true;
         if ((views[v] == PhoneServer::View::Overlay) == overlayMode_) asShown = true;
     }
     if (!any) return;
     if (due) {
         phoneDirty_ = false;
-        phoneDrawn_ = now;
+        phoneDrawnAt_ = now;
     }
     // A picture of what is on screen leaves the places the pointer finds
     // things at - lines, buttons, fields - where they were in the picture,
@@ -21102,6 +21153,12 @@ PhoneServer::Picture MinerGUI::phonePicture(PhoneServer::View view, int devicePi
         w = scale(baseW);
         h = scale(baseH);
     }
+    PhoneFrame& drawn = phoneDrawn_[(int)view];
+    drawn.frame = 0;
+    drawn.k = dpi_ / 96.0f;
+    drawn.width = w / drawn.k;
+    drawn.height = h / drawn.k;
+    drawn.updateChip = Gdiplus::RectF();
     {
         // (premultiplied, as GDI+ draws fastest into it - and the same as
         // straight where everything is opaque, as here)
@@ -21114,8 +21171,12 @@ PhoneServer::Picture MinerGUI::phonePicture(PhoneServer::View view, int devicePi
             g.SetTextRenderingHint(Gdiplus::TextRenderingHintAntiAlias);
             Gdiplus::SolidBrush bg(COL_BG);
             g.FillRectangle(&bg, 0, 0, w, h);
-            if (overlay) drawCompact(g, w, h);
-            else paintWindowBody(g, w, h);
+            if (overlay) {
+                drawCompact(g, w, h);
+                drawn.updateChip = updateHit_;   // (in the picture's pixels)
+            } else {
+                paintWindowBody(g, w, h);
+            }
             drawPhoneButtons(g, overlay, w, h);
         }
         Gdiplus::BitmapData data{};
@@ -21143,19 +21204,23 @@ PhoneServer::Picture MinerGUI::phonePicture(PhoneServer::View view, int devicePi
 // The window's buttons are windows of their own, which a picture of the
 // window does not have in it: drawn into it where they stand, as they draw
 // themselves, and those only that are up
-void MinerGUI::drawPhoneButtons(Gdiplus::Graphics& g, bool overlay, int cw, int ch) {
+bool MinerGUI::phoneShowsButton(HWND b, bool overlay) const {
+    if (!b) return false;
+    // (Rows only for a rock's ores, as placeOreRowsButton has it)
+    if (overlay) return b != btnOreRows_ || (rockInView_ && !rockContents_.parts.empty());
+    // ...and as layoutControls has them: under the first start's UEX offer
+    // none, under a panel not the four of the action row
+    if (uexWelcome_.step) return false;
     const bool underPanel = lookingOpen_ || loadoutOpen_ || shipPickerOpen_ || placePickerOpen_;
+    return !(underPanel && (b == btnRefinery_ || b == btnPlan_ || b == btnCraft_ || b == btnNotes_));
+}
+
+void MinerGUI::drawPhoneButtons(Gdiplus::Graphics& g, bool overlay, int cw, int ch) {
     for (const ButtonPlace& place : buttonPlaces(overlay, cw, ch, 1.0f)) {
         const HWND b = place.button;
+        if (!phoneShowsButton(b, overlay)) continue;
         const wchar_t* words = nullptr;
-        if (overlay) {
-            if (b == btnOreRows_ && !(rockInView_ && !rockContents_.parts.empty())) continue;
-            if (b == btnOverlay_) words = L"Full";
-        } else {
-            if (uexWelcome_.step) continue;
-            if (underPanel && (b == btnRefinery_ || b == btnPlan_ || b == btnCraft_ || b == btnNotes_)) continue;
-            if (b == btnOverlay_) words = L"Overlay";
-        }
+        if (b == btnOverlay_) words = overlay ? L"Full" : L"Overlay";
         DRAWITEMSTRUCT item{};
         item.CtlType = ODT_BUTTON;
         item.CtlID = (UINT)GetDlgCtrlID(b);
@@ -21168,8 +21233,158 @@ void MinerGUI::drawPhoneButtons(Gdiplus::Graphics& g, bool overlay, int cw, int 
     }
 }
 
+void MinerGUI::phoneSay(const char* words) {
+    phoneNote_ = words;
+    phoneNoteN_++;
+}
+
+bool MinerGUI::phoneTaps() {
+    if (!phone_) return false;
+    const std::vector<PhoneServer::Tap> taps = phone_->takeTaps();
+    for (const PhoneServer::Tap& tap : taps) phoneTap(tap);
+    if (taps.empty()) return false;
+    // what they did, on screen and on the phone at once
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+    phoneDirty_ = true;
+    return true;
+}
+
+// The window laid out unseen at its own size - the size it has on screen,
+// or had there last - so the places the pointer finds things at are its
+// own: the last drawn may have been a picture for the phone, at the
+// phone's size, or the overlay
+void MinerGUI::phoneLayOutWindow(int& cw, int& ch) {
+    RECT rc{};
+    if (!overlayMode_ && GetClientRect(hwnd_, &rc) && rc.right > 0 && rc.bottom > 0) {
+        cw = rc.right;
+        ch = rc.bottom;
+    } else {
+        cw = scale(phoneWindowSize_.cx > 0 ? (int)phoneWindowSize_.cx : WINDOW_WIDTH);
+        ch = scale(phoneWindowSize_.cy > 0 ? (int)phoneWindowSize_.cy : WINDOW_HEIGHT);
+    }
+    const POINT keptHover = hoverMain_;
+    hoverMain_ = {-1, -1};
+    {
+        Gdiplus::Bitmap scratch(cw, ch, PixelFormat32bppPARGB);
+        Gdiplus::Graphics g(&scratch);
+        prepareGraphics(g);
+        paintWindowBody(g, cw, ch);
+    }
+    hoverMain_ = keptHover;
+}
+
+// A tap from the phone, as a click where it landed. On the picture it was
+// on, it is in that picture's pixels: unscaled first, then at the window's
+// own size. The window's buttons are windows of their own and are pressed
+// as such; those that open a window of their own on the PC - the Ore
+// Finder, Blueprints, Notes, the Refinery, the settings - are not, and the
+// phone is told so. In the window, WM_LBUTTONDOWN takes it (phoneTapping_
+// leaves out there what works at the PC only).
+void MinerGUI::phoneTap(const PhoneServer::Tap& tap) {
+    if (!phoneControl_ || !hwnd_) return;
+    const int v = (int)tap.view;
+    const bool overlay = tap.view == PhoneServer::View::Overlay;
+    PhoneFrame frame = phoneDrawn_[v];
+    for (const PhoneFrame& sent : phoneSent_[v]) {
+        if (sent.frame == tap.frame) frame = sent;
+    }
+    if (frame.k <= 0.0f) return;
+    const float ux = tap.x / frame.k, uy = tap.y / frame.k;
+
+    const UINT keptDpi = dpi_;
+    const int keptScale = uiScale_;
+    dpi_ = 96;   // (the places unscaled)
+    uiScale_ = 100;
+    const std::vector<ButtonPlace> places =
+        buttonPlaces(overlay, (int)std::lround(frame.width), (int)std::lround(frame.height), 1.0f);
+    dpi_ = keptDpi;
+    uiScale_ = keptScale;
+    for (const ButtonPlace& place : places) {
+        const HWND b = place.button;
+        if (ux < place.rect.left || ux >= place.rect.right || uy < place.rect.top || uy >= place.rect.bottom) continue;
+        if (!phoneShowsButton(b, overlay)) continue;
+        if (tap.right) return;
+        if (b == btnLiveMode_ || b == btnOreRows_ || b == btnKeys_ || b == btnAbout_) {
+            SendMessage(hwnd_, WM_COMMAND, MAKEWPARAM(GetDlgCtrlID(b), BN_CLICKED), (LPARAM)b);
+        } else if (b == btnOverlay_) {
+            // Full on the overlay, Overlay on the window: what it says, where
+            // that is not so already
+            if (overlay == overlayMode_) toggleOverlayMode();
+        } else {
+            phoneSay(PHONE_OPENS_ON_PC);
+        }
+        return;
+    }
+    if (overlay) {
+        // the one other thing in the overlay a click reaches
+        if (frame.updateChip.Width > 0 && frame.updateChip.Contains((float)tap.x, (float)tap.y)) {
+            phoneSay(PHONE_WORKS_ON_PC);
+        }
+        return;
+    }
+    // (the window's foot has an update strip where the overlay has its
+    // chip, in the same place: the overlay's own back after)
+    const Gdiplus::RectF keptUpdateHit = updateHit_;
+    int cw = 0, ch = 0;
+    phoneLayOutWindow(cw, ch);
+    const float unit = dpi_ * uiScale_ / 9600.0f;
+    const int x = std::clamp((int)std::lround(ux * unit), 0, (std::max)(0, cw - 1));
+    const int y = std::clamp((int)std::lround(uy * unit), 0, (std::max)(0, ch - 1));
+    phoneTapping_ = true;
+    handleMessage(hwnd_, tap.right ? WM_RBUTTONDOWN : WM_LBUTTONDOWN, tap.right ? MK_RBUTTON : MK_LBUTTON,
+                  MAKELPARAM(x, y));
+    phoneTapping_ = false;
+    if (overlayMode_) updateHit_ = keptUpdateHit;
+}
+
+void MinerGUI::phoneTapForShot(PhoneServer::View view, int x, int y, bool right) {
+    PhoneServer::Tap tap;
+    tap.view = view;
+    tap.x = x;
+    tap.y = y;
+    tap.right = right;
+    phoneTap(tap);
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+bool MinerGUI::phoneSpotForShot(PhoneServer::View view, const std::string& what, int& x, int& y) {
+    const PhoneFrame& frame = phoneDrawn_[(int)view];
+    if (frame.k <= 0.0f) return false;
+    const bool overlay = view == PhoneServer::View::Overlay;
+    if (what == "live") {
+        const UINT keptDpi = dpi_;
+        const int keptScale = uiScale_;
+        dpi_ = 96;
+        uiScale_ = 100;
+        const std::vector<ButtonPlace> places =
+            buttonPlaces(overlay, (int)std::lround(frame.width), (int)std::lround(frame.height), 1.0f);
+        dpi_ = keptDpi;
+        uiScale_ = keptScale;
+        for (const ButtonPlace& place : places) {
+            if (place.button != btnLiveMode_) continue;
+            x = (int)std::lround((place.rect.left + place.rect.right) / 2.0f * frame.k);
+            y = (int)std::lround((place.rect.top + place.rect.bottom) / 2.0f * frame.k);
+            return true;
+        }
+        return false;
+    }
+    if (what == "looking" && !overlay) {
+        const Gdiplus::RectF keptUpdateHit = updateHit_;
+        int cw = 0, ch = 0;
+        phoneLayOutWindow(cw, ch);
+        if (overlayMode_) updateHit_ = keptUpdateHit;
+        if (lookingField_.Width <= 0) return false;
+        const float unit = dpi_ * uiScale_ / 9600.0f;
+        x = (int)std::lround((lookingField_.X + lookingField_.Width / 2) / unit * frame.k);
+        y = (int)std::lround((lookingField_.Y + lookingField_.Height / 2) / unit * frame.k);
+        return true;
+    }
+    return false;
+}
+
 bool MinerGUI::phoneForShot(const std::string& lanAddress) {
     phoneOn_ = true;
+    phoneControl_ = true;
     phoneToken_ = "0123456789ab";
     phoneLanForShot_ = lanAddress;
     return startPhone(true);
@@ -21177,6 +21392,7 @@ bool MinerGUI::phoneForShot(const std::string& lanAddress) {
 
 void MinerGUI::phoneOffForShot() {
     phoneOn_ = false;
+    phoneControl_ = false;
     if (phone_) phone_->stop();
     if (hwnd_) KillTimer(hwnd_, TIMER_PHONE);
     phoneLanForShot_.clear();
@@ -22121,22 +22337,28 @@ void MinerGUI::paintSettings(HDC hdc) {
             float py = top + scaleF(12);
             g.DrawString(L"PHONE OR TABLET", -1, &smallFont, Gdiplus::PointF(qx, py), &faintBrush);
             py += scaleF(22);
-            // off and on, picked as the colour sets are
+            // off, to look at, to use as well - picked as the colour sets are
+            const int mode = phoneOn_ ? (phoneControl_ ? 2 : 1) : 0;
             {
+                static const wchar_t* const MODES[3] = {L"Off", L"View", L"Control"};
                 float x = qx;
-                for (int v = 0; v < 2; v++) {
-                    const wchar_t* word = v ? L"On" : L"Off";
-                    const Gdiplus::RectF chip(x, py, widthOf(word, chipFont) + scaleF(24), scaleF(26));
-                    drawButton(g, chip, word, chipFont, (v == 1) == phoneOn_ ? ButtonKind::Selected : ButtonKind::Secondary,
+                for (int v = 0; v < 3; v++) {
+                    const Gdiplus::RectF chip(x, py, widthOf(MODES[v], chipFont) + scaleF(24), scaleF(26));
+                    drawButton(g, chip, MODES[v], chipFont, v == mode ? ButtonKind::Selected : ButtonKind::Secondary,
                                isHot(hoverSettings_, chip), scaleF(R_CONTROL));
                     settingsHits_.push_back({chip, 6, v});
                     x += chip.Width + scaleF(6);
                 }
             }
             py += scaleF(36);
-            g.DrawString(L"The overlay or the whole window, in the browser of a phone or tablet on your network. "
-                         L"Nothing to install, and only to look at.",
-                         -1, &noteFont, Gdiplus::RectF(qx, py, qw, scaleF(44)), nullptr, &dimBrush);
+            const wchar_t* modeWords[3] = {
+                L"The overlay or the whole window, in the browser of a phone or tablet on your network. "
+                L"Nothing to install.",
+                L"The overlay or the whole window, in the browser of a phone or tablet on your network. "
+                L"Nothing to install, and only to look at.",
+                L"The overlay or the whole window, in the browser of a phone or tablet on your network. "
+                L"Nothing to install, and a tap on it works like a click here."};
+            g.DrawString(modeWords[mode], -1, &noteFont, Gdiplus::RectF(qx, py, qw, scaleF(44)), nullptr, &dimBrush);
             py += scaleF(52);
 
             const std::string address = phoneAddress();
@@ -22193,6 +22415,11 @@ void MinerGUI::paintSettings(HDC hdc) {
                                                    : std::to_wstring(watching) + L" devices are watching.";
                 Gdiplus::SolidBrush whoBrush(watching > 0 ? COL_GREEN : COL_TEXT_FAINT);
                 g.DrawString(who.c_str(), -1, &labelFont, Gdiplus::PointF(qx, py), &whoBrush);
+                if (phoneControl_) {
+                    py += scaleF(24);
+                    g.DrawString(L"A long press is a right click. What opens a window of its own stays on the PC.", -1,
+                                 &noteFont, Gdiplus::RectF(qx, py, qw, scaleF(30)), nullptr, &dimBrush);
+                }
             } else if (phoneOn_) {
                 // on, and no address to give: why not
                 const std::wstring why = !phoneError_.empty()
@@ -22343,7 +22570,7 @@ LRESULT MinerGUI::handleSettingsMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
                         settingsVision_ = hit.value;
                         break;
                     case 6:
-                        setPhoneOn(hit.value == 1);
+                        setPhoneMode(hit.value);
                         break;
                     case 7: {
                         const std::string address = phoneAddress();

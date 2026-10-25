@@ -45,7 +45,8 @@ executable and start it. The app tells you when a newer version is out.
   there too.
 - **Phone or tablet:** the overlay or the whole window in the browser of a
   phone or tablet on your network, with nothing to install. Switch it on in
-  the settings and scan the code. Only to look at.
+  the settings and scan the code: View is only to look at, and with Control
+  a tap on it works like a click in Bedrock.
 
 ## How it reads the game
 

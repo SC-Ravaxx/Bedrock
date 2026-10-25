@@ -21,10 +21,11 @@ namespace SCMiner {
 // take the colours that are set. The page asks every half second whether
 // there is a newer picture of the view it shows, and fetches it only then.
 //
-// Only looking, nothing to press: the server answers GET and nothing else,
-// and the page cannot change anything in Bedrock. Its address carries a
-// token of twelve hex digits, so a device on the same network that has not
-// been shown the code finds nothing there either.
+// To look at, and where control is switched on (setControl), to use: a tap
+// on the picture comes as a POST of where it landed, which the window takes
+// as a click there (takeTaps). Otherwise the server answers GET alone. Its
+// address carries a token of twelve hex digits, so a device on the same
+// network that has not been shown the code finds nothing there either.
 //
 // Off unless it is switched on. Listening on the network is what makes
 // Windows ask whether Bedrock may use it - once, when it is first switched
@@ -72,6 +73,24 @@ public:
     // without the braces - "live":true,"place":"...",...
     void setStatus(const std::string& members);
 
+    // A tap on the picture of a view, where the page showed it: in the
+    // picture's own pixels, on picture number `frame`; `right` for a long
+    // press, which the window takes as a right click
+    struct Tap {
+        View view = View::Overlay;
+        int x = 0, y = 0;
+        bool right = false;
+        int frame = 0;
+    };
+    // Whether taps are taken. Off, the page is only to look at, and a tap
+    // gets a 403.
+    void setControl(bool on) { control_ = on; }
+    bool control() const { return control_; }
+    // The taps that came since the last call, oldest first - no more than
+    // MAX_TAPS of them wait, the rest are dropped
+    std::vector<Tap> takeTaps();
+    static constexpr size_t MAX_TAPS = 16;
+
     // ---- what needs no network, for the self-test ----
 
     struct Request {
@@ -81,7 +100,7 @@ public:
     static bool parseRequest(const std::string& head, Request& out);
     // One value out of a query string - "view=window&w=900", "w" -> "900"
     static std::string queryValue(const std::string& query, const std::string& key);
-    enum class Route { NotFound, AddSlash, Page, State, Frame };
+    enum class Route { NotFound, AddSlash, Page, State, Frame, Tap };
     static Route route(const Request& request, const std::string& token);
     // A string as JSON has it: quoted, and escaped where it has to be
     static std::string jsonString(const std::string& text);
@@ -101,7 +120,7 @@ public:
     static std::vector<uint8_t> png(const Picture& picture);
     // What the server answers on this machine at `port` for `path`: the
     // status line, the head and the body as they came. For the self-test.
-    static std::string fetchLocal(int port, const std::string& path);
+    static std::string fetchLocal(int port, const std::string& path, const std::string& method = "GET");
 
 private:
     void serve();
@@ -109,6 +128,7 @@ private:
 
     std::atomic<bool> running_{false};
     std::atomic<bool> stopping_{false};
+    std::atomic<bool> control_{false};
     std::atomic<int> port_{0};
     intptr_t listener_ = -1;
     std::thread thread_;
@@ -128,6 +148,7 @@ private:
     };
     std::array<Shown, VIEW_COUNT> shown_;
     std::map<std::string, std::chrono::steady_clock::time_point> peers_;
+    std::vector<Tap> taps_;
 };
 
 }  // namespace SCMiner
