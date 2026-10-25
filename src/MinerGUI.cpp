@@ -65,6 +65,7 @@ constexpr int HOTKEY_SNAPSHOT = 2;
 #define ID_BTN_REFINERY    1019
 #define ID_BTN_ABOUT       1020
 #define ID_BTN_ORE_ROWS    1021
+#define ID_BTN_SETTINGS    1022
 constexpr int ORE_ROWS_BUTTON_W = 40;   // the overlay's Rows/Line switch
 #define ID_EDIT_NOTE       1030
 #define ID_EDIT_NOTE_NAME  1031
@@ -74,6 +75,7 @@ constexpr int ORE_ROWS_BUTTON_W = 40;   // the overlay's Rows/Line switch
 #define TIMER_FIT          10   // the overlay smaller again, a while after its content got shorter
 #define TIMER_PLAN_PULSE   11   // the Ore Finder's best-paid ore, blinking
 #define TIMER_REFINERY_DONE 12  // the Refinery button's count of finished work orders, kept up to time
+#define TIMER_SETTINGS_PULSE 13 // the settings' preview, blinking as the overlay does
 #ifndef WM_APP
 #define WM_APP 0x8000   // (the Linux shim has none)
 #endif
@@ -89,41 +91,108 @@ namespace {
 // Three steps of surface - the window, a card on it, something raised on
 // the card - each a clear step apart, and a hairline that only just shows:
 // the cards are told apart by their tone, not by their frames.
-const Gdiplus::Color COL_BG(15, 16, 19);
-const Gdiplus::Color COL_CARD(24, 26, 30);        // a surface
-const Gdiplus::Color COL_CARD_HI(34, 37, 43);     // a raised surface
-const Gdiplus::Color COL_BORDER(44, 47, 54);      // the hairline
-const Gdiplus::Color COL_HOVER(46, 50, 58);       // under the pointer
-const Gdiplus::Color COL_TEXT(238, 239, 241);
-const Gdiplus::Color COL_TEXT_DIM(160, 166, 176);
-const Gdiplus::Color COL_TEXT_FAINT(108, 115, 127);
-const Gdiplus::Color COL_ACCENT(238, 178, 70);
-const Gdiplus::Color COL_ACCENT_HI(250, 196, 98);  // the amber under the pointer
-const Gdiplus::Color COL_ORANGE(238, 178, 70);
-const Gdiplus::Color COL_GREEN(96, 202, 132);
-const Gdiplus::Color COL_RED(234, 94, 86);
-const Gdiplus::Color COL_YELLOW(224, 186, 92);
-const Gdiplus::Color COL_ACCENT_INK(28, 20, 6);    // words on an amber face
+//
+// These are Bedrock's own. Every one of them can be changed in the settings
+// (the gear), and they are set from what the player picked when the app
+// starts and whenever a colour changes (paintWith) - each window is painted
+// with them as they stand at that moment.
+Gdiplus::Color COL_BG(15, 16, 19);
+Gdiplus::Color COL_CARD(24, 26, 30);        // a surface
+Gdiplus::Color COL_CARD_HI(34, 37, 43);     // a raised surface
+Gdiplus::Color COL_BORDER(44, 47, 54);      // the hairline
+Gdiplus::Color COL_HOVER(46, 50, 58);       // under the pointer
+Gdiplus::Color COL_TEXT(238, 239, 241);
+Gdiplus::Color COL_TEXT_DIM(160, 166, 176);
+Gdiplus::Color COL_TEXT_FAINT(108, 115, 127);
+Gdiplus::Color COL_ACCENT(238, 178, 70);
+Gdiplus::Color COL_ACCENT_HI(250, 196, 98);  // the amber under the pointer
+Gdiplus::Color COL_GREEN(96, 202, 132);      // good: it breaks, the best match, done
+Gdiplus::Color COL_RED(234, 94, 86);         // bad: it will not hold, something went wrong
+Gdiplus::Color COL_YELLOW(224, 186, 92);     // caution: only with help, slow, nearly full
+Gdiplus::Color COL_ACCENT_INK(28, 20, 6);    // words on an amber face
+// What is looked for, and what blinks with it: the ores ticked, the rows
+// they are in, the live dot - red like bad until the player says otherwise
+Gdiplus::Color COL_WANTED(234, 94, 86);
+// The rarities (getRarityColor), and a part's quality by its band
+Gdiplus::Color COL_LEGENDARY(238, 178, 70);
+Gdiplus::Color COL_EPIC(171, 139, 214);
+Gdiplus::Color COL_RARE(106, 166, 226);
+Gdiplus::Color COL_UNCOMMON(96, 202, 132);
+Gdiplus::Color COL_COMMON(160, 166, 176);
 
 // Frosted glass: the body of a sheet lying over the window lets the blurred
 // window show through it, and a rim of light runs round its edge
-const Gdiplus::Color COL_GLASS(172, 38, 42, 50);       // a sheet, over the frosted window
-const Gdiplus::Color COL_GLASS_PANE(196, 38, 42, 50);  // a dropped list, over the blurred window
+Gdiplus::Color COL_GLASS(172, 38, 42, 50);       // a sheet, over the frosted window
+Gdiplus::Color COL_GLASS_PANE(196, 38, 42, 50);  // a dropped list, over the blurred window
 const Gdiplus::Color COL_GLASS_RIM(40, 255, 255, 255);
-const Gdiplus::Color COL_FROST_TINT(70, 6, 7, 9);      // over the blurred window
+Gdiplus::Color COL_FROST_TINT(70, 6, 7, 9);      // over the blurred window
 
 // Corner radii, in unscaled pixels: a card or a sheet, a control on it
 // (button, field, row), and the small things (chips, tick boxes' kin)
 constexpr float R_CARD = 10.0f;
 constexpr float R_CONTROL = 6.0f;
 
-const COLORREF CR_BG = RGB(15, 16, 19);
-const COLORREF CR_EDIT_BG = RGB(34, 37, 43);
+COLORREF CR_BG = RGB(15, 16, 19);
+COLORREF CR_EDIT_BG = RGB(34, 37, 43);
 // The note is written on the darkest surface there is: it is the one
 // place on the window where the eye should settle, and a page lighter
 // than its own frame reads as a hole punched in the window.
-const COLORREF CR_NOTE_BG = RGB(17, 18, 21);
-const COLORREF CR_EDIT_TEXT = RGB(238, 239, 241);
+COLORREF CR_NOTE_BG = RGB(17, 18, 21);
+COLORREF CR_EDIT_TEXT = RGB(238, 239, 241);
+
+Gdiplus::Color colourOf(Colours::Rgb c, int alpha = 255) {
+    return Gdiplus::Color((BYTE)alpha, (BYTE)Colours::redOf(c), (BYTE)Colours::greenOf(c), (BYTE)Colours::blueOf(c));
+}
+
+COLORREF colourRef(const Gdiplus::Color& c) { return RGB(c.GetR(), c.GetG(), c.GetB()); }
+
+// Everything above, from a scheme of the player's. The surfaces are
+// Bedrock's own steps up from whatever the background is, and the quieter
+// inks lie as far from the background towards the text as Bedrock's own do
+// - so Bedrock's scheme gives back every figure above to the last unit.
+void paintWith(const Colours::Scheme& s) {
+    using namespace Colours;
+    const Rgb bg = s[Background], text = s[Text];
+    const auto stepped = [](Rgb c, int dr, int dg, int db, int alpha = 255) {
+        return Gdiplus::Color((BYTE)alpha, (BYTE)std::clamp(redOf(c) + dr, 0, 255),
+                              (BYTE)std::clamp(greenOf(c) + dg, 0, 255), (BYTE)std::clamp(blueOf(c) + db, 0, 255));
+    };
+    COL_BG = colourOf(bg);
+    COL_CARD = stepped(bg, 9, 10, 11);
+    COL_CARD_HI = stepped(bg, 19, 21, 24);
+    COL_BORDER = stepped(bg, 29, 31, 35);
+    COL_HOVER = stepped(bg, 31, 34, 39);
+    COL_GLASS = stepped(bg, 23, 26, 31, 172);
+    COL_GLASS_PANE = stepped(bg, 23, 26, 31, 196);
+    COL_FROST_TINT = stepped(bg, -9, -9, -10, 70);
+    COL_TEXT = colourOf(text);
+    COL_TEXT_DIM = colourOf(dimInk(s));
+    COL_TEXT_FAINT = colourOf(faintInk(s));
+    COL_ACCENT = colourOf(s[Highlight]);
+    COL_ACCENT_HI = stepped(s[Highlight], 12, 18, 28);
+    // Words on the accent's face: a deep shade of it, the way Bedrock's
+    // amber has its own near-black brown - and on an accent too dark for
+    // that, the text's own colour
+    if (luminance(s[Highlight]) >= 0.18) {
+        COL_ACCENT_INK = Gdiplus::Color((BYTE)(redOf(s[Highlight]) * 28 / 238), (BYTE)(greenOf(s[Highlight]) * 20 / 178),
+                                        (BYTE)(blueOf(s[Highlight]) * 6 / 70));
+    } else {
+        COL_ACCENT_INK = colourOf(text);
+    }
+    COL_GREEN = colourOf(s[Good]);
+    COL_YELLOW = colourOf(s[Caution]);
+    COL_RED = colourOf(s[Bad]);
+    COL_WANTED = colourOf(s[LookedFor]);
+    COL_LEGENDARY = colourOf(s[Legendary]);
+    COL_EPIC = colourOf(s[Epic]);
+    COL_RARE = colourOf(s[Rare]);
+    COL_UNCOMMON = colourOf(s[Uncommon]);
+    COL_COMMON = colourOf(s[Common]);
+    CR_BG = colourRef(COL_BG);
+    CR_EDIT_BG = colourRef(COL_CARD_HI);
+    CR_NOTE_BG = colourRef(stepped(bg, 2, 2, 2));
+    CR_EDIT_TEXT = colourRef(COL_TEXT);
+}
 
 std::wstring toW(const std::string& s) {
     // The game's own text is UTF-8 - the briefings are full of curly
@@ -267,6 +336,13 @@ Gdiplus::Color tint(const Gdiplus::Color& c, int alpha) {
     return Gdiplus::Color((BYTE)alpha, c.GetR(), c.GetG(), c.GetB());
 }
 
+// What words or a tick are drawn in on a face of colour: the background's
+// near-black on a light one, as on Bedrock's own, and the text's white on a
+// face somebody made dark
+Gdiplus::Color inkOn(const Gdiplus::Color& face) {
+    return Colours::luminance(Colours::rgb(face.GetR(), face.GetG(), face.GetB())) >= 0.18 ? COL_BG : COL_TEXT;
+}
+
 // The picked one of several: a wash of the colour under it and a 1 px line
 // of it round it
 void selectionFrame(Gdiplus::Graphics& g, const Gdiplus::RectF& r, float radius,
@@ -323,6 +399,35 @@ void drawButton(Gdiplus::Graphics& g, const Gdiplus::RectF& r, const wchar_t* la
     centred.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
     Gdiplus::SolidBrush brush(ink);
     g.DrawString(label, -1, &font, r, &centred, &brush);
+}
+
+// A gear, for the settings: eight flat-topped teeth round a ring, and a
+// hole in the middle that the button shows through. Drawn rather than a
+// glyph, because not every system has a font with one in it.
+void drawGear(Gdiplus::Graphics& g, float cx, float cy, float radius, const Gdiplus::Color& ink) {
+    constexpr int TEETH = 8;
+    constexpr float PI_F = 3.14159265f;
+    const float outer = radius, inner = radius * 0.72f;
+    const auto at = [&](float r, float degrees) {
+        const float a = degrees * PI_F / 180.0f;
+        return Gdiplus::PointF(cx + r * std::cos(a), cy + r * std::sin(a));
+    };
+    std::vector<Gdiplus::PointF> ring;
+    for (int i = 0; i < TEETH; i++) {
+        const float middle = i * 360.0f / TEETH;
+        ring.push_back(at(inner, middle - 14.0f));
+        ring.push_back(at(outer, middle - 8.0f));
+        ring.push_back(at(outer, middle + 8.0f));
+        ring.push_back(at(inner, middle + 14.0f));
+    }
+    Gdiplus::GraphicsPath path;
+    path.SetFillMode(Gdiplus::FillModeAlternate);
+    for (size_t i = 0; i + 1 < ring.size(); i++) path.AddLine(ring[i].X, ring[i].Y, ring[i + 1].X, ring[i + 1].Y);
+    path.CloseFigure();
+    const float hole = radius * 0.34f;
+    path.AddEllipse(cx - hole, cy - hole, 2 * hole, 2 * hole);
+    Gdiplus::SolidBrush brush(ink);
+    g.FillPath(&brush, &path);
 }
 
 // ---- frosted glass --------------------------------------------------------
@@ -842,6 +947,7 @@ MinerGUI::~MinerGUI() {
     shotImage_.reset();
     newsShot_.reset();   // the news picture - the same
     uexBadge_.reset();   // ...and UEX's badge in the Ore Finder
+    settingsPreview_.reset();   // ...and the settings' preview
     for (FrostCache* cache : {&frostMain_, &frostCraft_, &frostGrind_, &frostRef_}) cache->clear();
     Gdiplus::GdiplusShutdown(gdiplusToken_);
     g_guiInstance = nullptr;
@@ -857,6 +963,9 @@ bool MinerGUI::initialize(HINSTANCE hInstance) {
         return false;
     }
 
+    // The colours the player picked, before anything is made with them: the
+    // window classes' brushes below take theirs from them
+    loadColours();
     editBrush_ = CreateSolidBrush(CR_EDIT_BG);
 
     // Register the window class
@@ -971,6 +1080,17 @@ bool MinerGUI::initialize(HINSTANCE hInstance) {
         return false;
     }
 
+    // ...and the settings'
+    UnregisterClassW(L"BedrockSettings", hInstance_);
+    WNDCLASSEXW stc = wc;
+    stc.lpfnWndProc = SettingsProc;
+    stc.lpszClassName = L"BedrockSettings";
+    stc.hbrBackground = CreateSolidBrush(CR_BG);
+    if (!RegisterClassExW(&stc)) {
+        std::cerr << "[GUI] RegisterClassEx (settings) failed! Error: " << GetLastError() << std::endl;
+        return false;
+    }
+
     // Compute the initial window size for the system DPI
     // How big to draw, before anything is measured. A screen that has NOT
     // been told to scale reports 96 DPI, and then every size in this file is
@@ -1058,7 +1178,8 @@ void MinerGUI::createControls() {
     const DWORD editStyle = WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_NUMBER | ES_CENTER;
     const DWORD btnStyle = WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW;
 
-    // The header's buttons: live, overlay, keys and the ? (about).
+    // The header's buttons: live, overlay, keys, the gear (settings) and the
+    // ? (about).
     btnLiveMode_ = CreateWindowW(L"BUTTON", L"Live off", btnStyle,
         0, 0, 10, 10, hwnd_, (HMENU)ID_BTN_LIVEMODE, hInstance_, nullptr);
 
@@ -1070,6 +1191,11 @@ void MinerGUI::createControls() {
 
     btnAbout_ = CreateWindowW(L"BUTTON", L"?", btnStyle,
         0, 0, 10, 10, hwnd_, (HMENU)ID_BTN_ABOUT, hInstance_, nullptr);
+
+    // ...and beside the ? the gear, for the settings: drawn, its name there
+    // for a screen reader only (paintOwnerButton)
+    btnSettings_ = CreateWindowW(L"BUTTON", L"Settings", btnStyle,
+        0, 0, 10, 10, hwnd_, (HMENU)ID_BTN_SETTINGS, hInstance_, nullptr);
 
     // The action row holds the things to look something up in; LIVE is in
     // the header.
@@ -1101,7 +1227,7 @@ void MinerGUI::layoutControls() {
     const int gap = scale(8);
 
     // Controls that only exist in the full window
-    HWND fullOnly[] = {btnPlan_, btnCraft_, btnNotes_, btnKeys_, btnRefinery_, btnAbout_};
+    HWND fullOnly[] = {btnPlan_, btnCraft_, btnNotes_, btnKeys_, btnRefinery_, btnAbout_, btnSettings_};
 
     if (overlayMode_) {
         for (HWND h : fullOnly) ShowWindow(h, SW_HIDE);
@@ -1130,17 +1256,20 @@ void MinerGUI::layoutControls() {
     }
     // ...and the first start's UEX offer lies over all of them, the header's too
     if (uexWelcome_.step) {
-        for (HWND b : {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_, btnOverlay_, btnRefinery_, btnAbout_}) {
+        for (HWND b : {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_, btnOverlay_, btnRefinery_, btnAbout_,
+                       btnSettings_}) {
             if (b) ShowWindow(b, SW_HIDE);
         }
     }
 
-    // The header row, right to left: ?, OVERLAY, KEYS, LIVE. LIVE sits with
-    // them because it is a switch, not a place to look something up, and the
-    // ? is last because it is the one nobody needs twice.
+    // The header row, right to left: ?, the gear, OVERLAY, KEYS, LIVE. LIVE
+    // sits with them because it is a switch, not a place to look something
+    // up, and the ? is last because it is the one nobody needs twice - the
+    // gear, the settings, next to it for the same reason.
     const int qW = scale(24);
     MoveWindow(btnAbout_, cw - M - qW, scale(14), qW, scale(24), TRUE);
-    const int headRight = cw - M - qW - scale(4);
+    MoveWindow(btnSettings_, cw - M - qW - scale(4) - qW, scale(14), qW, scale(24), TRUE);
+    const int headRight = cw - M - 2 * qW - scale(8);
     MoveWindow(btnOverlay_, headRight - scale(78), scale(14), scale(78), scale(24), TRUE);
     MoveWindow(btnKeys_, headRight - scale(78) - scale(52), scale(14), scale(48), scale(24), TRUE);
     MoveWindow(btnLiveMode_, headRight - scale(78) - scale(52) - scale(66), scale(14),
@@ -1182,7 +1311,7 @@ void MinerGUI::toggleOverlayMode() {
         SetWindowLongPtr(hwnd_, GWL_STYLE, WS_POPUP | WS_VISIBLE | WS_CLIPCHILDREN);
         LONG_PTR ex = GetWindowLongPtr(hwnd_, GWL_EXSTYLE);
         SetWindowLongPtr(hwnd_, GWL_EXSTYLE, ex | WS_EX_LAYERED);
-        SetLayeredWindowAttributes(hwnd_, 0, 235, LWA_ALPHA);  // slightly translucent
+        SetLayeredWindowAttributes(hwnd_, 0, overlayAlpha(), LWA_ALPHA);  // a little of the game through it
         // Exclude the overlay from screen capture: the scan reads the desktop, and
         // the overlay's own figures would be read back as a signature. It also
         // hides the overlay from screenshots and streams, so the full window is
@@ -1490,6 +1619,7 @@ void MinerGUI::saveWindowPlace() const {
     out << "overlay_rows=" << (overlayOreRows_ ? 1 : 0) << std::endl;
     out << "overlay_zoom=" << (int)std::lround(overlayZoom_ * 100) << std::endl;
     out << "overlay_text=" << (int)std::lround(overlayText_ * 100) << std::endl;
+    out << "overlay_opacity=" << overlayOpacity_ << std::endl;
 }
 
 int MinerGUI::restoreWindowPlace() {
@@ -1515,6 +1645,7 @@ int MinerGUI::restoreWindowPlace() {
         else if (key == "overlay_rows") overlayOreRows_ = value != 0;
         else if (key == "overlay_zoom") overlayZoom_ = std::clamp(value / 100.0f, OVERLAY_ZOOM_MIN, OVERLAY_ZOOM_MAX);
         else if (key == "overlay_text") overlayText_ = std::clamp(value / 100.0f, OVERLAY_TEXT_MIN, OVERLAY_TEXT_MAX);
+        else if (key == "overlay_opacity") overlayOpacity_ = std::clamp((int)value, OVERLAY_OPACITY_MIN, 100);
     }
     // the overlay's place is checked against the screens when it opens
     if (overlaySeen == 2) {
@@ -2082,7 +2213,8 @@ bool MinerGUI::processMessages() {
             // these shortcuts run BEFORE the window sees the key, so
             // without this a stray letter opens another window in the
             // middle of entering a figure.
-            const bool inAmount = (refineryTyping_ >= 0 && msg.hwnd == refinery_);
+            const bool inAmount = (refineryTyping_ >= 0 && msg.hwnd == refinery_) ||
+                                  (settingsTyping_ && msg.hwnd == settings_);
 
             if (!inEdit && !inAmount) {
                 switch (msg.wParam) {
@@ -2245,12 +2377,13 @@ void MinerGUI::dragOverlayGrip() {
     SetWindowPos(hwnd_, nullptr, gripFromRect_.left, gripFromRect_.top, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
     layoutControls();
     InvalidateRect(hwnd_, nullptr, FALSE);
+    if (settings_ && settingsVisible_) InvalidateRect(settings_, nullptr, FALSE);   // its slider
 }
 
 // The overlay's text a size bigger or smaller: the overlay keeps its width,
 // margins and buttons, and is only as much taller as the bigger lines need
 // (fitOverlay) - smaller at once, not after the usual wait
-void MinerGUI::setOverlayText(float text) {
+void MinerGUI::setOverlayText(float text, bool keep) {
     text = std::clamp(text, OVERLAY_TEXT_MIN, OVERLAY_TEXT_MAX);
     if (std::abs(text - overlayText_) < 0.005f) return;
     overlayText_ = text;
@@ -2261,8 +2394,36 @@ void MinerGUI::setOverlayText(float text) {
         measureOverlay();
         fitOverlay();
     }
-    if (!headless_) saveWindowPlace();
+    if (keep && !headless_) saveWindowPlace();
     if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+    if (settings_ && settingsVisible_) InvalidateRect(settings_, nullptr, FALSE);
+}
+
+// The overlay grown or shrunk as a whole, as its grip does it - from the
+// settings' slider, its top left corner staying where it is
+void MinerGUI::setOverlayZoom(float zoom, bool keep) {
+    zoom = std::clamp(zoom, OVERLAY_ZOOM_MIN, OVERLAY_ZOOM_MAX);
+    if (std::abs(zoom - overlayZoom_) < 0.005f) return;
+    overlayZoom_ = zoom;
+    if (overlayMode_ && hwnd_) {
+        SetWindowPos(hwnd_, nullptr, 0, 0, overlayZoomed(scale(OVERLAY_WIDTH)), overlayZoomed(scale(overlayHeight())),
+                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        layoutControls();
+        fitSmallerSince_ = std::chrono::steady_clock::now() - std::chrono::milliseconds(FIT_SHRINK_MS);
+        InvalidateRect(hwnd_, nullptr, FALSE);
+    }
+    if (settings_ && settingsVisible_) InvalidateRect(settings_, nullptr, FALSE);
+    if (keep && !headless_) saveWindowPlace();
+}
+
+// ...and how much of the game shows through it
+void MinerGUI::setOverlayOpacity(int percent, bool keep) {
+    percent = std::clamp(percent, OVERLAY_OPACITY_MIN, 100);
+    if (percent == overlayOpacity_) return;
+    overlayOpacity_ = percent;
+    if (overlayMode_ && hwnd_) SetLayeredWindowAttributes(hwnd_, 0, overlayAlpha(), LWA_ALPHA);
+    if (settings_ && settingsVisible_) InvalidateRect(settings_, nullptr, FALSE);
+    if (keep && !headless_) saveWindowPlace();
 }
 
 void MinerGUI::stepOverlayText(int direction) {
@@ -2466,6 +2627,9 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             else if (wmId == ID_BTN_ABOUT) {
                 aboutCopied_ = false;
                 showAbout(!aboutOpen_);
+            }
+            else if (wmId == ID_BTN_SETTINGS) {
+                toggleSettings();
             }
             else if (wmId == ID_BTN_KEYS) {
                 showKeys(!keysOpen_);
@@ -3207,7 +3371,7 @@ void MinerGUI::drawHeader(Gdiplus::Graphics& g, int cw) {
     // a ship name behind the version runs in under them. Out of the seat
     // the ship is shown fainter, not longer.
     const float subX = M + scaleF(15);
-    const float subRight = (float)cw - M - scaleF(234) - scaleF(10);
+    const float subRight = (float)cw - M - scaleF(262) - scaleF(10);
     Gdiplus::StringFormat oneLine;
     oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
     oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
@@ -3230,16 +3394,16 @@ void MinerGUI::drawHeader(Gdiplus::Graphics& g, int cw) {
     // The scanning pulse, left of the LIVE button. No word with it: the
     // button already says on or off.
     if (liveModeActive_) {
-        Gdiplus::SolidBrush dot(pulseOn_ ? COL_RED : tint(COL_RED, 110));
-        // ...and it moves with them: the ? takes 28 px on the right
-        const float dotX = (float)cw - M - scaleF(234), dotY = (float)scale(23);
+        Gdiplus::SolidBrush dot(pulseOn_ ? COL_WANTED : tint(COL_WANTED, 110));
+        // ...and it moves with them: the ? and the gear take 56 px on the right
+        const float dotX = (float)cw - M - scaleF(262), dotY = (float)scale(23);
         if (pulseOn_) {
             // the beat has a glow round it, which is what makes it read as
             // light rather than as a red full stop: faint rings that pile
             // up towards the dot, since one flat disc read as a dark fringe.
             // No wider than the gap to LIVE, which is a window of its own
             // and would cut it off.
-            Gdiplus::SolidBrush glow(tint(COL_RED, 16));
+            Gdiplus::SolidBrush glow(tint(COL_WANTED, 16));
             for (int k = 3; k >= 1; k--) {
                 const float grow = scaleF(0.8f) * (float)k;
                 g.FillEllipse(&glow, dotX - grow, dotY - grow, scaleF(7) + 2 * grow, scaleF(7) + 2 * grow);
@@ -3370,7 +3534,7 @@ void MinerGUI::drawLookingField(Gdiplus::Graphics& g, int cw) {
     Gdiplus::Font rowFont(&textFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
     Gdiplus::SolidBrush textBrush(COL_TEXT);
-    Gdiplus::SolidBrush redBrush(COL_RED);
+    Gdiplus::SolidBrush redBrush(COL_WANTED);
 
     const float M = (float)scale(MARGIN);
     const float top = (float)scale(LY_SYSTEM) + extraTop();
@@ -3495,8 +3659,8 @@ void MinerGUI::drawLookingPanel(Gdiplus::Graphics& g, int cw, int ch) {
             // a tick box, filled when the ore is being watched for
             Gdiplus::RectF box(row.X + scaleF(4), row.Y + rowH / 2 - scaleF(6), scaleF(12), scaleF(12));
             if (on) {
-                fillRoundRect(g, box, scaleF(3), COL_RED);
-                Gdiplus::Pen tick(COL_BG, scaleF(1.8f));
+                fillRoundRect(g, box, scaleF(3), COL_WANTED);
+                Gdiplus::Pen tick(inkOn(COL_WANTED), scaleF(1.8f));
                 tick.SetStartCap(Gdiplus::LineCapRound);
                 tick.SetEndCap(Gdiplus::LineCapRound);
                 g.DrawLine(&tick, box.X + scaleF(2.5f), box.Y + scaleF(6), box.X + scaleF(5), box.Y + scaleF(8.5f));
@@ -5963,13 +6127,13 @@ int MinerGUI::drawResults(Gdiplus::Graphics& g, int cw, int yPos) {
         // An ore the shopping list wants: the card blinks red over
         // whatever it is otherwise, so it catches the eye of someone
         // looking at the game rather than at this window
-        if (wanted && pulseOn_) fillRoundRect(g, row, radius, tint(COL_RED, 58));
+        if (wanted && pulseOn_) fillRoundRect(g, row, radius, tint(COL_WANTED, 58));
 
         // The best match is framed in green; the picked row (whose places
         // are listed below) is the chosen one, in amber - one pixel each,
         // the colour does the talking. The blink's frame beats with it.
         if (wanted) {
-            strokeRoundRect(g, row, radius, pulseOn_ ? COL_RED : tint(COL_RED, 170),
+            strokeRoundRect(g, row, radius, pulseOn_ ? COL_WANTED : tint(COL_WANTED, 170),
                             pulseOn_ ? scaleF(1.6f) : 1.0f);
         } else if (best) {
             strokeRoundRect(g, row, radius, tint(COL_GREEN, 200));
@@ -5980,7 +6144,7 @@ int MinerGUI::drawResults(Gdiplus::Graphics& g, int cw, int yPos) {
         // Ore colour chip - red while the blink is on, so the row reads as
         // one thing rather than a red frame around an ore-coloured dot
         if (dimmed) chipColor = tint(chipColor, 120);
-        Gdiplus::SolidBrush chipBrush((wanted && pulseOn_) ? COL_RED : chipColor);
+        Gdiplus::SolidBrush chipBrush((wanted && pulseOn_) ? COL_WANTED : chipColor);
         g.FillEllipse(&chipBrush, M + scaleF(12), y + rowH / 2 - scaleF(5), scaleF(10), scaleF(10));
 
         // Name and cluster size
@@ -6005,8 +6169,8 @@ int MinerGUI::drawResults(Gdiplus::Graphics& g, int cw, int yPos) {
             // only where it does not run into the percentage at the right
             if (markX + markWidth < M + rowW - scaleF(62)) {
                 Gdiplus::RectF mark(markX, y + scaleF(8), markWidth, scaleF(13));
-                fillRoundRect(g, mark, mark.Height / 2, COL_RED);
-                Gdiplus::SolidBrush ink(COL_BG);
+                fillRoundRect(g, mark, mark.Height / 2, COL_WANTED);
+                Gdiplus::SolidBrush ink(inkOn(COL_WANTED));
                 Gdiplus::StringFormat centreMark;
                 centreMark.SetAlignment(Gdiplus::StringAlignmentCenter);
                 centreMark.SetLineAlignment(Gdiplus::StringAlignmentCenter);
@@ -13258,7 +13422,7 @@ void MinerGUI::showAbout(bool on) {
     // Same as the keys card: a card drawn by the parent cannot cover a child
     // window, so the buttons take turns with it.
     HWND buttons[] = {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_,
-                      btnOverlay_, btnRefinery_, btnAbout_};
+                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_};
     for (HWND b : buttons) {
         if (b) ShowWindow(b, on ? SW_HIDE : SW_SHOW);
     }
@@ -13391,7 +13555,7 @@ void MinerGUI::showWhatsNew(bool on) {
     // Same trade as the ? card: a card drawn by the parent cannot cover a
     // child window, so the buttons take turns with it.
     HWND buttons[] = {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_,
-                      btnOverlay_, btnRefinery_, btnAbout_};
+                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_};
     for (HWND b : buttons) {
         if (b) ShowWindow(b, on ? SW_HIDE : SW_SHOW);
     }
@@ -14109,7 +14273,7 @@ void MinerGUI::showBackup(bool on) {
     // by the parent cannot cover a child window, so the action row steps
     // aside while it is up.
     HWND buttons[] = {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_,
-                      btnOverlay_, btnRefinery_, btnAbout_};
+                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_};
     for (HWND b : buttons) {
         if (b) ShowWindow(b, on ? SW_HIDE : SW_SHOW);
     }
@@ -14124,7 +14288,7 @@ void MinerGUI::showKeys(bool on) {
     // drawn by the parent cannot cover a child window, so the card and the
     // buttons take turns.
     HWND buttons[] = {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_,
-                      btnOverlay_, btnRefinery_, btnAbout_};
+                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_};
     for (HWND b : buttons) {
         if (b) ShowWindow(b, on ? SW_HIDE : SW_SHOW);
     }
@@ -14777,7 +14941,7 @@ void MinerGUI::drawCompact(Gdiplus::Graphics& g, int cw, int ch) {
     Gdiplus::Pen framePen(COL_GLASS_RIM, 1.0f);
     g.DrawRectangle(&framePen, 0.5f, 0.5f, cw - 1.0f, ch - 1.0f);
     if (liveModeActive_) {
-        Gdiplus::SolidBrush dot(pulseOn_ ? COL_RED : tint(COL_RED, 110));
+        Gdiplus::SolidBrush dot(pulseOn_ ? COL_WANTED : tint(COL_WANTED, 110));
         g.FillEllipse(&dot, scaleF(6), scaleF(6), scaleF(5), scaleF(5));
     }
 
@@ -14861,8 +15025,8 @@ void MinerGUI::drawCompact(Gdiplus::Graphics& g, int cw, int ch) {
         const Gdiplus::RectF card(M, y, rowW, rowH);
         const bool wanted = !dimmed && blinkFor(result);
         if (wanted) {
-            fillRoundRect(g, card, radius, tint(COL_RED, pulseOn_ ? 64 : 24));
-            strokeRoundRect(g, card, radius, pulseOn_ ? COL_RED : tint(COL_RED, 150),
+            fillRoundRect(g, card, radius, tint(COL_WANTED, pulseOn_ ? 64 : 24));
+            strokeRoundRect(g, card, radius, pulseOn_ ? COL_WANTED : tint(COL_WANTED, 150),
                             pulseOn_ ? scaleF(1.5f) : 1.0f);
         } else if (best) {
             fillRoundRect(g, card, radius, COL_CARD);
@@ -14876,7 +15040,7 @@ void MinerGUI::drawCompact(Gdiplus::Graphics& g, int cw, int ch) {
         // one thing rather than an ore-coloured dot on a red card
         Gdiplus::Color chipColor = getMineralColor(result.name);
         if (dimmed) chipColor = tint(chipColor, 110);
-        Gdiplus::SolidBrush oreDot((wanted && pulseOn_) ? COL_RED : chipColor);
+        Gdiplus::SolidBrush oreDot((wanted && pulseOn_) ? COL_WANTED : chipColor);
         const float dot = textF(6);
         g.FillEllipse(&oreDot, M + scaleF(9), y + (rowH - dot) / 2.0f, dot, dot);
         const float textX = M + scaleF(13) + dot;
@@ -14976,6 +15140,8 @@ void MinerGUI::paintOwnerButton(Gdiplus::Graphics& g, const DRAWITEMSTRUCT* dis)
     GetWindowTextW(dis->hwndItem, label, 31);
     // the overlay's switch says the way it is, whatever its text was last set to
     if (id == ID_BTN_ORE_ROWS) wcscpy_s(label, overlayOreRows_ ? L"Rows" : L"Line");
+    // ...and the gear's name is for a screen reader: the gear says it here
+    if (id == ID_BTN_SETTINGS) label[0] = L'\0';
     Gdiplus::Font font(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     const Gdiplus::RectF face(0.5f, 0.5f, w - 1.0f, h - 1.0f);
     const float radius = scaleF(R_CONTROL);
@@ -14991,6 +15157,13 @@ void MinerGUI::paintOwnerButton(Gdiplus::Graphics& g, const DRAWITEMSTRUCT* dis)
     }
     const bool on = (id == ID_BTN_AUTO_REGION && regionAuto_);
     drawButton(g, face, label, font, on ? ButtonKind::Selected : ButtonKind::Secondary, pressed, radius);
+    // The settings' button: a gear on it rather than a word, in the ink a
+    // word would have - amber while the settings are open
+    if (id == ID_BTN_SETTINGS) {
+        const Gdiplus::Color ink = settingsVisible_ ? COL_ACCENT : (pressed ? COL_TEXT : tint(COL_TEXT, 215));
+        drawGear(g, w / 2.0f, h / 2.0f, scaleF(7.0f), ink);
+        return;
+    }
     // The work orders that are done, waiting at their refinery: a green
     // badge with their number at the button's right end
     if (id == ID_BTN_REFINERY) {
@@ -15015,7 +15188,7 @@ void MinerGUI::paintOwnerButton(Gdiplus::Graphics& g, const DRAWITEMSTRUCT* dis)
             into.Translate(badge.X + (badge.Width - outline.Width) / 2 - outline.X,
                            badge.Y + (badge.Height - outline.Height) / 2 - outline.Y);
             numeral.Transform(&into);
-            Gdiplus::SolidBrush ink(COL_BG);
+            Gdiplus::SolidBrush ink(inkOn(COL_GREEN));
             g.FillPath(&ink, &numeral);
         }
     }
@@ -15037,11 +15210,11 @@ Gdiplus::Color MinerGUI::getMineralColor(const std::string& mineral) {
 
 Gdiplus::Color MinerGUI::getRarityColor(Rarity rarity) {
     switch (rarity) {
-        case Rarity::Legendary: return COL_ACCENT;
-        case Rarity::Epic:      return Gdiplus::Color(171, 139, 214);
-        case Rarity::Rare:      return Gdiplus::Color(106, 166, 226);
-        case Rarity::Uncommon:  return COL_GREEN;
-        case Rarity::Common:    return COL_TEXT_DIM;
+        case Rarity::Legendary: return COL_LEGENDARY;
+        case Rarity::Epic:      return COL_EPIC;
+        case Rarity::Rare:      return COL_RARE;
+        case Rarity::Uncommon:  return COL_UNCOMMON;
+        case Rarity::Common:    return COL_COMMON;
         default:                return COL_TEXT_DIM;
     }
 }
@@ -15377,7 +15550,7 @@ void MinerGUI::showUexWelcome(int step) {
     // a card drawn by the parent cannot cover a child window: the buttons
     // take turns with it, as with the other cards
     HWND buttons[] = {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_,
-                      btnOverlay_, btnRefinery_, btnAbout_};
+                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_};
     for (HWND b : buttons) {
         if (b) ShowWindow(b, step ? SW_HIDE : SW_SHOW);
     }
@@ -15959,8 +16132,8 @@ void MinerGUI::paintPlanner(HDC hdc) {
             // beating as a wanted ore beats in the reader, its frame with it
             const bool most = !paysMost.empty() && name == paysMost;
             if (most) {
-                if (planPulse_) fillRoundRect(g, row, scaleF(R_CONTROL), tint(COL_RED, 58));
-                strokeRoundRect(g, row, scaleF(R_CONTROL), planPulse_ ? COL_RED : tint(COL_RED, 170),
+                if (planPulse_) fillRoundRect(g, row, scaleF(R_CONTROL), tint(COL_WANTED, 58));
+                strokeRoundRect(g, row, scaleF(R_CONTROL), planPulse_ ? COL_WANTED : tint(COL_WANTED, 170),
                                 planPulse_ ? scaleF(1.6f) : 1.0f);
                 planBlinkRow_ = row;
             } else if (chosen) {
@@ -15972,8 +16145,8 @@ void MinerGUI::paintPlanner(HDC hdc) {
             const bool watched = lookingForOre(watchName(name));
             Gdiplus::RectF box(M + scaleF(8), y + rowH / 2 - scaleF(6), scaleF(12), scaleF(12));
             if (watched) {
-                fillRoundRect(g, box, scaleF(2), COL_RED);
-                Gdiplus::Pen tick(COL_BG, scaleF(1.8f));
+                fillRoundRect(g, box, scaleF(2), COL_WANTED);
+                Gdiplus::Pen tick(inkOn(COL_WANTED), scaleF(1.8f));
                 g.DrawLine(&tick, box.X + scaleF(2.5f), box.Y + scaleF(6), box.X + scaleF(5), box.Y + scaleF(8.5f));
                 g.DrawLine(&tick, box.X + scaleF(5), box.Y + scaleF(8.5f), box.X + scaleF(9.5f), box.Y + scaleF(3.5f));
             } else {
@@ -15981,7 +16154,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
                 strokeRoundRect(g, box, scaleF(2), isHot(hoverPlan_, row) ? COL_TEXT_FAINT : COL_BORDER);
             }
             // the chip red while the blink is on, so the row reads as one thing
-            Gdiplus::SolidBrush chip((most && planPulse_) ? COL_RED : chipColor);
+            Gdiplus::SolidBrush chip((most && planPulse_) ? COL_WANTED : chipColor);
             g.FillEllipse(&chip, M + scaleF(26), y + rowH / 2 - scaleF(3), scaleF(6), scaleF(6));
             g.DrawString(toW(name).c_str(), -1, &rowFont, Gdiplus::PointF(M + scaleF(38), y + scaleF(2)),
                          (chosen || most) ? &textBrush : &dimBrush);
@@ -16634,7 +16807,8 @@ void MinerGUI::paintPlanner(HDC hdc) {
         // the left's words, as many of them as end before it
         std::wstring footer = L"F / Esc close  \u00B7  tick an ore to have it blink in the reader";
         if (!paysMost.empty()) {
-            const std::wstring longer = footer + L"  \u00B7  red: sells for the most right now";
+            // (not "red": the colour is the player's to pick - the beat is not)
+            const std::wstring longer = footer + L"  \u00B7  blinking: sells for the most right now";
             Gdiplus::RectF longW;
             g.MeasureString(longer.c_str(), -1, &subFont, Gdiplus::PointF(0, 0), &longW);
             if (M + longW.Width <= footerRoom) footer = longer;
@@ -16890,8 +17064,8 @@ bool MinerGUI::rockPartWanted(const RockPartRead& part) const {
 }
 
 void MinerGUI::drawWantedBeat(Gdiplus::Graphics& g, const Gdiplus::RectF& behind, float radius) {
-    if (pulseOn_) fillRoundRect(g, behind, radius, tint(COL_RED, 58));
-    strokeRoundRect(g, behind, radius, pulseOn_ ? COL_RED : tint(COL_RED, 170), pulseOn_ ? scaleF(1.4f) : 1.0f);
+    if (pulseOn_) fillRoundRect(g, behind, radius, tint(COL_WANTED, 58));
+    strokeRoundRect(g, behind, radius, pulseOn_ ? COL_WANTED : tint(COL_WANTED, 170), pulseOn_ ? scaleF(1.4f) : 1.0f);
 }
 
 bool MinerGUI::anyWantedResult() const {
@@ -20555,6 +20729,1198 @@ LRESULT MinerGUI::handleNewsMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM 
             break;
         case WM_CLOSE:
             closeNews();
+            return 0;
+    }
+    return DefWindowProcW(hwnd, uMsg, wParam, lParam);
+}
+
+// ---------------------------------------------------------------------------
+// Settings, behind the gear in the header: the colours every window and the
+// overlay are painted in, and how the overlay sits over the game. Bedrock's
+// own colours, a set made for each kind of colour blindness, or the
+// player's own - any colour of any set taken and moved on three sliders.
+// Beside them the overlay over a piece of game and the main window's
+// pieces, as they will look, and as someone with each kind of colour
+// blindness sees them. Everything applies at once, to every window open.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+const wchar_t* const COLOUR_NAMES[Colours::ROLE_COUNT] = {
+    L"Legendary", L"Epic", L"Rare", L"Uncommon", L"Common",
+    L"Highlight", L"Good", L"Caution", L"Bad", L"Looked for",
+    L"Background", L"Text",
+};
+// What each one paints, under its name while it is on the sliders
+const wchar_t* const COLOUR_USES[Colours::ROLE_COUNT] = {
+    L"The rarity, and a rock part's quality from 900 up.",
+    L"The rarity, and a rock part's quality from 800 to 899.",
+    L"The rarity, and a rock part's quality from 700 to 799.",
+    L"The rarity, and a rock part's quality from 600 to 699.",
+    L"The rarity, and a rock part's quality under 600.",
+    L"The figures that count, what you picked, the main buttons.",
+    L"It breaks, the best match, done.",
+    L"Only with help, slow, nearly full.",
+    L"It won't hold, something went wrong.",
+    L"The ores you look for, blinking, and the live dot.",
+    L"Every window and the overlay. Kept dark, so the words stay readable.",
+    L"Words and figures. Kept light enough to read on the background.",
+};
+const wchar_t* const SET_NAMES[(int)Colours::Set::COUNT] = {
+    L"Bedrock", L"Protanopia", L"Deuteranopia", L"Tritanopia", L"Own",
+};
+const wchar_t* const SET_USES[(int)Colours::Set::COUNT] = {
+    L"Bedrock's own colours.",
+    L"Red-weak sight: red looks darker and close to green. Nothing here relies on red against green, "
+    L"and the reds are lighter.",
+    L"Green-weak sight, the most common kind: red and green look alike. Nothing here relies on telling them apart.",
+    L"Blue-weak sight: blue looks like green, and yellow like pink. Nothing here relies on telling those apart.",
+    L"Your own colours. Picking a set above keeps them to come back to.",
+};
+const wchar_t* const VISION_NAMES[(int)Colours::Vision::COUNT] = {
+    L"Normal sight", L"Protanopia", L"Deuteranopia", L"Tritanopia",
+};
+// ...and in a sentence
+const wchar_t* const VISION_WORDS[(int)Colours::Vision::COUNT] = {
+    L"", L"protanopia", L"deuteranopia", L"tritanopia",
+};
+// Under this (CIEDE2000) two small coloured words are hard to tell apart
+// at a glance - the preview says so beneath it
+constexpr double LOOK_ALIKE = 10.0;
+
+// How far the lightness slider goes for a colour: the background only
+// through the dark, the words only through the light
+void lightnessRange(int role, double& lo, double& hi) {
+    lo = 0.0;
+    hi = 1.0;
+    if (role == Colours::Background) hi = 0.24;
+    if (role == Colours::Text) lo = 0.55;
+}
+
+// The corners outside a rounded rectangle painted over: a picture laid in
+// a rectangle gets the rounded corners every card has
+void cornersOff(Gdiplus::Graphics& g, const Gdiplus::RectF& r, float radius, const Gdiplus::Color& colour) {
+    const float d = 2 * radius;
+    Gdiplus::SolidBrush brush(colour);
+    const struct { float x, y, cornerX, cornerY, start; } corners[4] = {
+        {r.X, r.Y, r.X, r.Y, 180.0f},
+        {r.GetRight() - d, r.Y, r.GetRight(), r.Y, 270.0f},
+        {r.GetRight() - d, r.GetBottom() - d, r.GetRight(), r.GetBottom(), 0.0f},
+        {r.X, r.GetBottom() - d, r.X, r.GetBottom(), 90.0f},
+    };
+    for (const auto& c : corners) {
+        // the arc's ends, and the corner between them
+        const float a0 = c.start * 3.14159265f / 180.0f, a1 = (c.start + 90.0f) * 3.14159265f / 180.0f;
+        const float cx = c.x + radius, cy = c.y + radius;
+        Gdiplus::GraphicsPath path;
+        path.AddLine(cx + radius * std::cos(a1), cy + radius * std::sin(a1), c.cornerX, c.cornerY);
+        path.AddLine(c.cornerX, c.cornerY, cx + radius * std::cos(a0), cy + radius * std::sin(a0));
+        path.AddArc(c.x, c.y, d, d, c.start, 90.0f);
+        path.CloseFigure();
+        g.FillPath(&brush, &path);
+    }
+}
+
+}  // namespace
+
+void MinerGUI::loadColours() {
+    colours_ = Colours::defaults();
+    // The screenshot run paints Bedrock's own, whatever lies in its folder
+    if (!headless_) {
+        std::ifstream in(AppPaths::file(COLOURS_FILE), std::ios::binary);
+        if (in.is_open()) {
+            const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            colours_ = Colours::read(text);
+        }
+    }
+    paintWith(Colours::active(colours_));
+}
+
+void MinerGUI::saveColours() const {
+    if (headless_) return;
+    const std::string file = AppPaths::file(COLOURS_FILE);
+    // Bedrock's own and nothing of the player's to keep: no file at all, as
+    // on a new install
+    if (colours_.set == Colours::Set::Bedrock && !colours_.ownKept) {
+        std::error_code gone;
+        std::filesystem::remove(std::filesystem::path(file), gone);
+        return;
+    }
+    std::ofstream out(file, std::ios::binary | std::ios::trunc);
+    if (out.is_open()) out << Colours::write(colours_);
+}
+
+void MinerGUI::applyColours() {
+    paintWith(Colours::active(colours_));
+    // What Windows paints itself with them: the edit boxes, and the note's
+    // page and its words
+    if (editBrush_) DeleteObject(editBrush_);
+    editBrush_ = CreateSolidBrush(CR_EDIT_BG);
+    if (notesEdit_) {
+        SendMessageW(notesEdit_, EM_SETBKGNDCOLOR, 0, (LPARAM)CR_NOTE_BG);
+        styleNoteLinks();
+    }
+    for (FrostCache* cache : {&frostMain_, &frostCraft_, &frostGrind_, &frostRef_}) cache->clear();
+    // ...and every window drawn again, buttons and all
+    for (HWND w : {hwnd_, planner_, crafting_, grind_, refinery_, notes_, news_, shot_, notesSuggest_, settings_}) {
+        if (w) RedrawWindow(w, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+    }
+}
+
+// One colour changed by hand. It goes into the player's own set, which
+// starts as the set in use; back to Bedrock's own in every colour, it is
+// Bedrock's set again and nothing is kept.
+void MinerGUI::setColour(int role, Colours::Rgb colour) {
+    if (role < 0 || role >= Colours::ROLE_COUNT) return;
+    const Colours::Scheme now = Colours::active(colours_);
+    const Colours::Scheme next = Colours::withColour(now, (Colours::Role)role, colour);
+    if (next == now) return;
+    colours_.own = next;
+    colours_.ownKept = true;
+    colours_.set = Colours::Set::Own;
+    if (next == Colours::preset(Colours::Set::Bedrock)) {
+        colours_.set = Colours::Set::Bedrock;
+        colours_.ownKept = false;
+    }
+    applyColours();
+}
+
+void MinerGUI::chooseColourSet(int set) {
+    if (set < 0 || set >= (int)Colours::Set::COUNT) return;
+    if (set == (int)Colours::Set::Own && !colours_.ownKept) return;
+    endSettingsTyping(false);
+    colours_.set = (Colours::Set)set;
+    settingsHsl_ = Colours::toHsl(Colours::active(colours_)[settingsRole_]);
+    applyColours();
+    saveColours();
+}
+
+void MinerGUI::settingsRoleChosen(int role) {
+    if (role < 0 || role >= Colours::ROLE_COUNT) return;
+    endSettingsTyping(false);
+    settingsRole_ = role;
+    settingsHsl_ = Colours::toHsl(Colours::active(colours_)[role]);
+    if (settings_) InvalidateRect(settings_, nullptr, FALSE);
+}
+
+// A slider moved to a point on its track
+void MinerGUI::slideSettings(int slider, float x, const Gdiplus::RectF& track) {
+    const double t = std::clamp((double)(x - track.X) / (std::max)(1.0, (double)track.Width), 0.0, 1.0);
+    if (slider <= SLIDE_LIGHTNESS) {
+        Colours::Hsl hsl = settingsHsl_;
+        double lo, hi;
+        lightnessRange(settingsRole_, lo, hi);
+        if (slider == SLIDE_HUE) hsl.h = t * 360.0;
+        else if (slider == SLIDE_SATURATION) hsl.s = t;
+        else hsl.l = lo + t * (hi - lo);
+        settingsHsl_ = hsl;
+        const Colours::Rgb wanted = Colours::fromHsl(hsl);
+        setColour(settingsRole_, wanted);
+        // Kept readable, the colour is not quite the one asked for: the
+        // sliders then show what it is, the hue as it was moved
+        const Colours::Rgb now = Colours::active(colours_)[settingsRole_];
+        if (now != wanted) {
+            const Colours::Hsl kept = Colours::toHsl(now);
+            settingsHsl_.s = kept.s;
+            settingsHsl_.l = kept.l;
+        }
+    } else if (slider == SLIDE_OPACITY) {
+        setOverlayOpacity((int)std::lround(OVERLAY_OPACITY_MIN + t * (100 - OVERLAY_OPACITY_MIN)), false);
+    } else if (slider == SLIDE_TEXT) {
+        // in steps of 5 %, so a figure in it is one somebody would pick
+        const double v = OVERLAY_TEXT_MIN + t * (OVERLAY_TEXT_MAX - OVERLAY_TEXT_MIN);
+        setOverlayText((float)(std::round(v * 20.0) / 20.0), false);
+    } else if (slider == SLIDE_SIZE) {
+        const double v = OVERLAY_ZOOM_MIN + t * (OVERLAY_ZOOM_MAX - OVERLAY_ZOOM_MIN);
+        setOverlayZoom((float)(std::round(v * 20.0) / 20.0), false);
+    }
+    if (settings_) InvalidateRect(settings_, nullptr, FALSE);
+}
+
+// The wheel over a slider: a small step a notch
+void MinerGUI::stepSettingsSlider(int slider, int notches) {
+    if (notches == 0) return;
+    if (slider <= SLIDE_LIGHTNESS) {
+        Colours::Hsl hsl = settingsHsl_;
+        double lo, hi;
+        lightnessRange(settingsRole_, lo, hi);
+        if (slider == SLIDE_HUE) hsl.h = std::fmod(hsl.h + 2.0 * notches + 360.0, 360.0);
+        else if (slider == SLIDE_SATURATION) hsl.s = std::clamp(hsl.s + 0.01 * notches, 0.0, 1.0);
+        else hsl.l = std::clamp(hsl.l + 0.01 * notches, lo, hi);
+        settingsHsl_ = hsl;
+        setColour(settingsRole_, Colours::fromHsl(hsl));
+        saveColours();
+    } else if (slider == SLIDE_OPACITY) {
+        setOverlayOpacity(overlayOpacity_ + notches);
+    } else if (slider == SLIDE_TEXT) {
+        setOverlayText(overlayText_ + 0.05f * notches);
+    } else if (slider == SLIDE_SIZE) {
+        setOverlayZoom(overlayZoom_ + 0.05f * notches);
+    }
+    if (settings_) InvalidateRect(settings_, nullptr, FALSE);
+}
+
+// The hex field let go of: with Enter what was typed is the colour, when it
+// is one; anything else leaves the colour as it was
+void MinerGUI::endSettingsTyping(bool apply) {
+    if (!settingsTyping_) return;
+    settingsTyping_ = false;
+    Colours::Rgb typed = 0;
+    if (apply && Colours::parseHex(settingsHex_, typed)) {
+        setColour(settingsRole_, typed);
+        settingsHsl_ = Colours::toHsl(Colours::active(colours_)[settingsRole_]);
+        saveColours();
+    }
+    settingsHex_.clear();
+    if (settings_) InvalidateRect(settings_, nullptr, FALSE);
+}
+
+bool MinerGUI::createSettings() {
+    if (settings_) return true;
+    RECT desired = {0, 0, scale(SETTINGS_WIDTH), scale(SETTINGS_HEIGHT)};
+    const DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
+    AdjustWindowRectExForDpi(&desired, style, FALSE, 0, dpi_);
+    settings_ = CreateWindowExW(0, L"BedrockSettings", L"Bedrock \u00B7 Settings", style, CW_USEDEFAULT, CW_USEDEFAULT,
+                                desired.right - desired.left, desired.bottom - desired.top, hwnd_, nullptr, hInstance_,
+                                nullptr);
+    if (!settings_) {
+        std::cerr << "[GUI] settings window failed: " << GetLastError() << std::endl;
+        return false;
+    }
+    BOOL darkMode = TRUE;
+    DwmSetWindowAttribute(settings_, 20 /*DWMWA_USE_IMMERSIVE_DARK_MODE*/, &darkMode, sizeof(darkMode));
+    return true;
+}
+
+// Beside the main window where the screen has room - right, else left - so
+// the window being recoloured stays in view
+void MinerGUI::placeSettings() {
+    if (headless_) {
+        SetWindowPos(settings_, HWND_BOTTOM, -32000, -30000, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+        return;
+    }
+    RECT main{}, mine{};
+    GetWindowRect(hwnd_, &main);
+    GetWindowRect(settings_, &mine);
+    const int w = mine.right - mine.left, h = mine.bottom - mine.top;
+    MONITORINFO mi = {sizeof(mi)};
+    if (!GetMonitorInfoW(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST), &mi)) return;
+    int x = main.right + scale(8);
+    if (x + w > mi.rcWork.right) x = main.left - w - scale(8);
+    if (x < mi.rcWork.left) x = (int)mi.rcWork.right - w;
+    x = (std::max)((int)mi.rcWork.left, x);
+    int y = main.top;
+    if (y + h > mi.rcWork.bottom) y = (int)mi.rcWork.bottom - h;
+    y = (std::max)((int)mi.rcWork.top, y);
+    SetWindowPos(settings_, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+}
+
+void MinerGUI::toggleSettings() {
+    if (!settings_ && !createSettings()) return;
+    settingsVisible_ = !settingsVisible_;
+    if (settingsVisible_) {
+        settingsRoleChosen(settingsRole_);
+        placeSettings();
+        ShowWindow(settings_, headless_ ? SW_SHOWNOACTIVATE : SW_SHOW);
+        if (!headless_) {
+            SetForegroundWindow(settings_);
+            SetTimer(settings_, TIMER_SETTINGS_PULSE, 600, nullptr);
+        }
+        InvalidateRect(settings_, nullptr, TRUE);
+    } else {
+        endSettingsTyping(false);
+        if (settingsDrag_ >= 0) {
+            settingsDrag_ = -1;
+            ReleaseCapture();
+        }
+        KillTimer(settings_, TIMER_SETTINGS_PULSE);
+        ShowWindow(settings_, SW_HIDE);
+    }
+    if (btnSettings_) InvalidateRect(btnSettings_, nullptr, FALSE);   // the gear, amber while they are open
+}
+
+void MinerGUI::openSettingsForShot() {
+    if (!settingsVisible_) toggleSettings();
+    settingsPulse_ = true;   // the blink held on, so a picture shows it
+}
+
+void MinerGUI::settingsForShot(int set, int role, int vision) {
+    if (set >= 0 && set < (int)Colours::Set::COUNT) {
+        colours_.set = (Colours::Set)set;
+        applyColours();
+    }
+    settingsRoleChosen(role);
+    settingsVision_ = std::clamp(vision, 0, (int)Colours::Vision::COUNT - 1);
+    if (settings_) InvalidateRect(settings_, nullptr, FALSE);
+}
+
+void MinerGUI::settingsColourForShot(int role, uint32_t rgb) {
+    setColour(role, (Colours::Rgb)rgb);
+    settingsRoleChosen(role);
+}
+
+void MinerGUI::hideSettingsForShot() {
+    if (settingsVisible_) toggleSettings();
+    colours_ = Colours::defaults();
+    settingsVision_ = 0;
+    applyColours();
+}
+
+void MinerGUI::paintSettingsTo(HDC hdc) {
+    if (settings_) paintSettings(hdc);
+}
+
+// The overlay as it shows a rock, with made-up figures that bring every
+// colour of it out: an ore looked for on its beat, a quality in each
+// rarity's colour, the verdict. Drawn as drawCompactRock draws, at the
+// overlay's text size; returns how tall that makes it.
+float MinerGUI::drawOverlaySample(Gdiplus::Graphics& g, float width) {
+    Gdiplus::Font massFont(&numeralFamily(), textF(26), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font lineFont(&textFamily(), textF(11), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font infoFont(&textFamily(), textF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font labelFont(&textFamily(), textF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font unitFont(&textFamily(), textF(7.5f), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font buttonFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::SolidBrush accentBrush(COL_ACCENT), textBrush(COL_TEXT), dimBrush(COL_TEXT_DIM), faintBrush(COL_TEXT_FAINT);
+    Gdiplus::StringFormat oneLine;
+    oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+    Gdiplus::StringFormat centred;
+    centred.SetAlignment(Gdiplus::StringAlignmentCenter);
+    centred.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    const auto widthOf = [&](const std::wstring& text, const Gdiplus::Font& font) {
+        Gdiplus::RectF w;
+        g.MeasureString(text.c_str(), -1, &font, Gdiplus::PointF(0, 0), &w);
+        return w.Width;
+    };
+    const float M = scaleF(10);
+    const float rowW = width - 2 * M;
+
+    // LIVE and FULL in the corner, as the overlay's own buttons draw
+    // themselves (paintOwnerButton), and the live dot
+    const Gdiplus::RectF full(width - scaleF(8) - scaleF(46), scaleF(8), scaleF(46), scaleF(24));
+    const Gdiplus::RectF live(full.X - scaleF(4) - scaleF(58), scaleF(8), scaleF(58), scaleF(24));
+    drawButton(g, full, L"Full", buttonFont, ButtonKind::Secondary, false, scaleF(R_CONTROL));
+    fillRoundRect(g, live, scaleF(R_CONTROL), tint(COL_GREEN, 34));
+    strokeRoundRect(g, live, scaleF(R_CONTROL), tint(COL_GREEN, 170));
+    {
+        Gdiplus::SolidBrush ink(COL_GREEN);
+        g.DrawString(L"Live on", -1, &buttonFont, live, &centred, &ink);
+        Gdiplus::SolidBrush dot(settingsPulse_ ? COL_WANTED : tint(COL_WANTED, 110));
+        g.FillEllipse(&dot, scaleF(5), scaleF(5), scaleF(5), scaleF(5));
+    }
+    const float buttonsLeft = live.X - scaleF(10);
+
+    // the mass, big, and the ore after it
+    const std::wstring mass = L"22,593";
+    g.DrawString(mass.c_str(), -1, &massFont, Gdiplus::PointF(M + scaleF(4), scaleF(4)), &accentBrush);
+    float x = M + scaleF(4) + widthOf(mass, massFont);
+    g.DrawString(L"kg", -1, &infoFont, Gdiplus::RectF(x, scaleF(4) + textF(11), (std::max)(0.0f, buttonsLeft - x), textF(16)),
+                 &oneLine, &faintBrush);
+    x += widthOf(L"kg", infoFont);
+    g.DrawString(L" \u00B7  QUANTAINIUM (RAW)", -1, &infoFont,
+                 Gdiplus::RectF(x, scaleF(4) + textF(11), (std::max)(0.0f, buttonsLeft - x), textF(16)), &oneLine, &dimBrush);
+
+    float y = scaleF(4) + textF(36);
+    const float step = textF(17);
+    // the figures: a faint name, a bright value
+    {
+        float fx = M;
+        const auto put = [&](const std::wstring& text, const Gdiplus::Font& font, Gdiplus::Brush& brush) {
+            if (fx >= M + rowW) return;
+            g.DrawString(text.c_str(), -1, &font, Gdiplus::RectF(fx, y, M + rowW - fx, step + scaleF(2)), &oneLine, &brush);
+            fx += widthOf(text, font) + scaleF(1);
+        };
+        put(L"RES", labelFont, faintBrush);
+        put(L"18 %", infoFont, textBrush);
+        fx += scaleF(10);
+        put(L"INST", labelFont, faintBrush);
+        put(L"2.40", infoFont, textBrush);
+        fx += scaleF(10);
+        put(L"41.20", infoFont, textBrush);
+        put(L"SCU", labelFont, faintBrush);
+        y += step;
+    }
+    // the ores, one to a row: the name, then each part - its quality in its
+    // rarity's colour, and what it comes to, bold and white
+    struct Part { int quality; const wchar_t* scu; };
+    struct Row { const wchar_t* ore; bool wanted; std::vector<Part> parts; };
+    const Row rows[3] = {
+        {L"QUANTAINIUM", true, {{912, L"1.20"}}},
+        {L"LARANITE", false, {{845, L"0.88"}, {731, L"2.10"}}},
+        {L"COPPER", false, {{652, L"3.32"}, {537, L"19.29"}}},
+    };
+    const float numberAsc = fontAscent(labelFont), unitAsc = fontAscent(unitFont);
+    float nameW = 0;
+    for (const Row& r : rows) nameW = (std::max)(nameW, widthOf(r.ore, labelFont));
+    nameW += scaleF(8);
+    for (const Row& r : rows) {
+        g.DrawString(r.ore, -1, &labelFont, Gdiplus::RectF(M, y, nameW, step + scaleF(2)), &oneLine,
+                     r.wanted ? &accentBrush : &faintBrush);
+        float px = M + nameW;
+        for (const Part& p : r.parts) {
+            const std::wstring quality = std::to_wstring(p.quality);
+            const float qualityW = widthOf(quality, infoFont), numberW = widthOf(p.scu, labelFont);
+            const float figureW = numberW + widthOf(L"SCU", unitFont) - scaleF(2);
+            const float wide = qualityW + scaleF(4) + figureW;
+            if (px + wide > M + rowW) break;
+            if (r.wanted) {
+                // the beat behind a part looked for, as drawWantedBeat has it
+                const Gdiplus::RectF behind(px - scaleF(2), y, wide + scaleF(4), textF(14));
+                if (settingsPulse_) fillRoundRect(g, behind, scaleF(3), tint(COL_WANTED, 58));
+                strokeRoundRect(g, behind, scaleF(3), settingsPulse_ ? COL_WANTED : tint(COL_WANTED, 170),
+                                settingsPulse_ ? scaleF(1.4f) : 1.0f);
+            }
+            Gdiplus::SolidBrush tone(getRarityColor(qualityRarity(p.quality)));
+            g.DrawString(quality.c_str(), -1, &infoFont, Gdiplus::RectF(px, y, qualityW + scaleF(2), step + scaleF(2)),
+                         &oneLine, &tone);
+            const float nx = px + qualityW + scaleF(4);
+            g.DrawString(p.scu, -1, &labelFont, Gdiplus::RectF(nx, y, numberW + scaleF(2), step + scaleF(2)), &oneLine,
+                         &textBrush);
+            g.DrawString(L"SCU", -1, &unitFont,
+                         Gdiplus::RectF(nx + numberW - scaleF(2), y + numberAsc - unitAsc, widthOf(L"SCU", unitFont) + scaleF(2),
+                                        step + scaleF(2)),
+                         &oneLine, &dimBrush);
+            px += wide + scaleF(12);
+        }
+        y += step;
+    }
+    // the verdict
+    Gdiplus::SolidBrush goodBrush(COL_GREEN);
+    const auto line = [&](const wchar_t* text, const Gdiplus::Font& font, Gdiplus::Brush& brush) {
+        g.DrawString(text, -1, &font, Gdiplus::RectF(M, y, rowW, step + scaleF(2)), &oneLine, &brush);
+        y += step;
+    };
+    line(L"YES, ON YOUR OWN  \u00B7  RIGHT Helix II", lineFont, goodBrush);
+    line(L"57\u201365 % laser power holds it steady, more makes it climb", infoFont, textBrush);
+    line(L"without Surge: near 92 %  \u00B7  also LEFT at 98 %", infoFont, faintBrush);
+    // ...and the ship on the last line, the switch for the rows beside it
+    y += scaleF(8);
+    const Gdiplus::RectF rowsButton(width - M - scaleF(46), y - scaleF(4), scaleF(46), scaleF(22));
+    drawButton(g, rowsButton, L"Rows", buttonFont, ButtonKind::Secondary, false, scaleF(R_CONTROL));
+    {
+        const float right = rowsButton.X - scaleF(4);
+        float sx = M;
+        g.DrawString(L"SHIP", -1, &labelFont, Gdiplus::RectF(sx, y, right - sx, textF(14)), &oneLine, &faintBrush);
+        sx += widthOf(L"SHIP", labelFont) + scaleF(2);
+        g.DrawString(L"Argo MOLE", -1, &infoFont, Gdiplus::RectF(sx, y, (std::max)(0.0f, right - sx), textF(14)), &oneLine,
+                     &dimBrush);
+        sx += widthOf(L"Argo MOLE", infoFont);
+        g.DrawString(L"\u00B7  Helix I, Hofstede-S2, Helix II", -1, &infoFont,
+                     Gdiplus::RectF(sx, y, (std::max)(0.0f, right - sx), textF(14)), &oneLine, &faintBrush);
+    }
+    y += (std::max)(textF(14), scaleF(18)) + scaleF(6);
+    // its edge, a hairline of light as the overlay has
+    Gdiplus::Pen rim(COL_GLASS_RIM, 1.0f);
+    g.DrawRectangle(&rim, 0.5f, 0.5f, width - 1.0f, y - 1.0f);
+    return y;
+}
+
+// The main window's pieces that carry the colours: three matches for a
+// signature - the best, one looked for, an ordinary one - the rarities, a
+// part's quality in each band, and the three kinds of verdict. As
+// drawResults draws them.
+void MinerGUI::drawMainSample(Gdiplus::Graphics& g, float x0, float y0, float width) {
+    Gdiplus::Font headerFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font nameFont(&markFamily(), scaleF(14), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font infoFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font pctFont(&numeralFamily(), scaleF(15), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font badgeFont(&textFamily(), scaleF(8), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font wordFont(&textFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font qualityFont(&numeralFamily(), scaleF(13), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font verdictFont(&textFamily(), scaleF(11), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::SolidBrush textBrush(COL_TEXT), dimBrush(COL_TEXT_DIM), faintBrush(COL_TEXT_FAINT);
+    Gdiplus::StringFormat rightAlign;
+    rightAlign.SetAlignment(Gdiplus::StringAlignmentFar);
+    Gdiplus::StringFormat centred;
+    centred.SetAlignment(Gdiplus::StringAlignmentCenter);
+    centred.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    const auto widthOf = [&](const std::wstring& text, const Gdiplus::Font& font) {
+        Gdiplus::RectF w;
+        g.MeasureString(text.c_str(), -1, &font, Gdiplus::PointF(0, 0), &w);
+        return w.Width;
+    };
+    float y = y0;
+    g.DrawString(L"PROBABLE MATCHES", -1, &headerFont, Gdiplus::PointF(x0, y + scaleF(2)), &faintBrush);
+    y += scaleF(26);
+
+    // A signature of 7,110: three of the rare ores come near it
+    const float rowH = scaleF(44), radius = scaleF(R_CONTROL);
+    struct Match { const char* ore; const wchar_t* label; const wchar_t* info; float pct; };
+    const Match matches[3] = {
+        {"Taranite", L"Taranite  \u00D72", L"7,110  \u00B7  exact", 46.0f},
+        {"Beryl", L"Beryl  \u00D72", L"7,080  \u00B7  \u039430", 31.0f},
+        {"Borase", L"Borase  \u00D72", L"7,140  \u00B7  \u039430", 23.0f},
+    };
+    const Gdiplus::Color rarity = getRarityColor(Rarity::Rare);
+    for (int i = 0; i < 3; i++) {
+        const Match& m = matches[i];
+        const bool best = i == 0, wanted = i == 1;
+        const Gdiplus::RectF row(x0, y, width, rowH);
+        if (best) {
+            // the answer's glow: rings of its green, each fainter
+            for (int ring = 3; ring >= 1; ring--) {
+                const float grow = scaleF(1.5f) * (float)ring;
+                fillRoundRect(g, Gdiplus::RectF(row.X - grow, row.Y - grow, row.Width + 2 * grow, row.Height + 2 * grow),
+                              radius + grow, tint(COL_GREEN, 10));
+            }
+        }
+        fillRoundRect(g, row, radius, COL_CARD);
+        const Gdiplus::Color chip = getMineralColor(m.ore);
+        {
+            // the probability, a wash from the left
+            const Gdiplus::RectF wash(x0, y, (std::max)(width * m.pct / 100.0f, scaleF(12)), rowH);
+            Gdiplus::LinearGradientBrush grad(Gdiplus::RectF(wash.X - 1, wash.Y, wash.Width + 3, wash.Height),
+                                              best ? tint(COL_GREEN, 78) : tint(chip, 52),
+                                              best ? tint(COL_GREEN, 14) : tint(chip, 8),
+                                              Gdiplus::LinearGradientModeHorizontal);
+            Gdiplus::GraphicsPath path;
+            addRoundRect(path, wash, radius);
+            g.FillPath(&grad, &path);
+        }
+        if (wanted && settingsPulse_) fillRoundRect(g, row, radius, tint(COL_WANTED, 58));
+        if (wanted) {
+            strokeRoundRect(g, row, radius, settingsPulse_ ? COL_WANTED : tint(COL_WANTED, 170),
+                            settingsPulse_ ? scaleF(1.6f) : 1.0f);
+        } else if (best) {
+            strokeRoundRect(g, row, radius, tint(COL_GREEN, 200));
+        }
+        Gdiplus::SolidBrush chipBrush((wanted && settingsPulse_) ? COL_WANTED : chip);
+        g.FillEllipse(&chipBrush, x0 + scaleF(12), y + rowH / 2 - scaleF(5), scaleF(10), scaleF(10));
+        g.DrawString(m.label, -1, &nameFont, Gdiplus::PointF(x0 + scaleF(30), y + scaleF(5)), &textBrush);
+        if (wanted) {
+            const float markX = x0 + scaleF(30) + widthOf(m.label, nameFont) + scaleF(6);
+            const Gdiplus::RectF mark(markX, y + scaleF(8), widthOf(L"LOOKING FOR", badgeFont) + scaleF(10), scaleF(13));
+            fillRoundRect(g, mark, mark.Height / 2, COL_WANTED);
+            Gdiplus::SolidBrush ink(inkOn(COL_WANTED));
+            g.DrawString(L"LOOKING FOR", -1, &badgeFont, mark, &centred, &ink);
+        }
+        // the second line: the value, how near, and the rarity in its colour
+        g.DrawString(m.info, -1, &infoFont, Gdiplus::PointF(x0 + scaleF(30), y + scaleF(24)), &dimBrush);
+        {
+            Gdiplus::SolidBrush rarityBrush(rarity);
+            const std::wstring words = L"  \u00B7  " + toW(rarityName(Rarity::Rare));
+            g.DrawString(words.c_str(), -1, &infoFont,
+                         Gdiplus::PointF(x0 + scaleF(30) + widthOf(m.info, infoFont) - scaleF(4), y + scaleF(24)),
+                         &rarityBrush);
+        }
+        wchar_t pct[16];
+        std::swprintf(pct, 16, L"%.1f %%", m.pct);
+        Gdiplus::SolidBrush pctBrush(best ? COL_GREEN : COL_TEXT);
+        g.DrawString(pct, -1, &pctFont, Gdiplus::RectF(x0, y + scaleF(11), width - scaleF(14), scaleF(20)), &rightAlign,
+                     &pctBrush);
+        if (best) {
+            // the rarity riding on the best match's top edge
+            std::wstring word = toW(rarityName(Rarity::Rare));
+            std::transform(word.begin(), word.end(), word.begin(), ::towupper);
+            const float bw = widthOf(word, badgeFont) + scaleF(14);
+            const Gdiplus::RectF badge(x0 + width - scaleF(14) - bw, y - scaleF(7), bw, scaleF(14));
+            fillRoundRect(g, badge, scaleF(7), COL_BG);
+            fillRoundRect(g, badge, scaleF(7), tint(rarity, 34));
+            strokeRoundRect(g, badge, scaleF(7), tint(rarity, 190));
+            Gdiplus::SolidBrush badgeBrush(rarity);
+            g.DrawString(word.c_str(), -1, &badgeFont, badge, &centred, &badgeBrush);
+        }
+        y += rowH + scaleF(6);
+    }
+
+    // the rarities, and a part's quality in each band - the 1000 blinking,
+    // as it does in the rock's view
+    y += scaleF(4);
+    {
+        float x = x0;
+        g.DrawString(L"RARITY", -1, &headerFont, Gdiplus::PointF(x, y + scaleF(2)), &faintBrush);
+        x += scaleF(70);
+        const Rarity order[5] = {Rarity::Legendary, Rarity::Epic, Rarity::Rare, Rarity::Uncommon, Rarity::Common};
+        for (Rarity r : order) {
+            const std::wstring word = toW(rarityName(r));
+            Gdiplus::SolidBrush brush(getRarityColor(r));
+            g.DrawString(word.c_str(), -1, &wordFont, Gdiplus::PointF(x, y), &brush);
+            x += widthOf(word, wordFont) + scaleF(12);
+        }
+        y += scaleF(22);
+        x = x0;
+        g.DrawString(L"QUALITY", -1, &headerFont, Gdiplus::PointF(x, y + scaleF(3)), &faintBrush);
+        x += scaleF(70);
+        for (int q : {1000, 912, 845, 731, 652, 537}) {
+            Gdiplus::Color c = getRarityColor(qualityRarity(q));
+            if (q >= QUALITY_BAND_EDGES[7] && !settingsPulse_) c = tint(c, 90);
+            Gdiplus::SolidBrush brush(c);
+            const std::wstring figure = std::to_wstring(q);
+            g.DrawString(figure.c_str(), -1, &qualityFont, Gdiplus::PointF(x, y), &brush);
+            x += widthOf(figure, qualityFont) + scaleF(14);
+        }
+        y += scaleF(26);
+    }
+
+    // the verdicts, one of each kind
+    g.DrawString(L"CAN YOU BREAK IT?", -1, &headerFont, Gdiplus::PointF(x0, y), &faintBrush);
+    y += scaleF(17);
+    const struct { const wchar_t* words; Gdiplus::Color colour; } verdicts[3] = {
+        {L"YES, ON YOUR OWN", COL_GREEN},
+        {L"NEEDS 2 HEADS TOGETHER", COL_YELLOW},
+        {L"LASER UNABLE TO BREAK DEPOSIT", COL_RED},
+    };
+    for (const auto& v : verdicts) {
+        Gdiplus::SolidBrush brush(v.colour);
+        g.DrawString(v.words, -1, &verdictFont, Gdiplus::PointF(x0, y), &brush);
+        y += scaleF(17);
+    }
+}
+
+// The preview: a piece of game with the overlay over it at its opacity,
+// text size and size, and the main window's pieces under that - all of it
+// seen as someone with the colour blindness picked above it sees it
+void MinerGUI::drawSettingsPreview(Gdiplus::Graphics& g, const Gdiplus::RectF& box) {
+    const int w = (int)std::lround(box.Width), h = (int)std::lround(box.Height);
+    if (w <= 0 || h <= 0) return;
+    // What it is made from: the colours, how it is seen, the overlay's
+    // three, the beat, and its size. The same, and the one made last stands.
+    std::string key;
+    {
+        const Colours::Scheme scheme = Colours::active(colours_);
+        for (int r = 0; r < Colours::ROLE_COUNT; r++) key += Colours::hex(scheme[r]);
+        char tail[96];
+        std::snprintf(tail, sizeof(tail), "|%d|%d|%.3f|%.3f|%d|%dx%d|%d", settingsVision_, overlayOpacity_,
+                      overlayText_, overlayZoom_, settingsPulse_ ? 1 : 0, w, h, scale(1000));
+        key += tail;
+    }
+    if (settingsPreview_ && key == settingsPreviewKey_) {
+        const Gdiplus::InterpolationMode was = g.GetInterpolationMode();
+        g.SetInterpolationMode(Gdiplus::InterpolationModeNearestNeighbor);
+        g.DrawImage(settingsPreview_.get(), Gdiplus::RectF(box.X, box.Y, (float)w, (float)h));
+        g.SetInterpolationMode(was);
+        return;
+    }
+    settingsPreview_ = std::make_unique<Gdiplus::Bitmap>(w, h, PixelFormat32bppPARGB);
+    settingsPreviewKey_ = key;
+    Gdiplus::Bitmap& picture = *settingsPreview_;
+    {
+        Gdiplus::Graphics p(&picture);
+        prepareGraphics(p);
+        Gdiplus::SolidBrush bg(COL_BG);
+        p.FillRectangle(&bg, 0.0f, 0.0f, (float)w, (float)h);
+
+        // the game: a sky going down into a sunlit ground, light enough that
+        // what shows through the overlay is seen
+        const float sceneH = scaleF(250);
+        const Gdiplus::RectF scene(0.0f, 0.0f, (float)w, sceneH);
+        const float horizon = sceneH * 0.46f;
+        {
+            Gdiplus::LinearGradientBrush sky(Gdiplus::RectF(0.0f, -1.0f, (float)w, horizon + 3.0f), Gdiplus::Color(10, 16, 30),
+                                             Gdiplus::Color(70, 88, 120), Gdiplus::LinearGradientModeVertical);
+            p.FillRectangle(&sky, 0.0f, 0.0f, (float)w, horizon + 1.0f);
+            Gdiplus::LinearGradientBrush ground(Gdiplus::RectF(0.0f, horizon - 1.0f, (float)w, sceneH - horizon + 2.0f),
+                                                Gdiplus::Color(214, 160, 104), Gdiplus::Color(86, 58, 40),
+                                                Gdiplus::LinearGradientModeVertical);
+            p.FillRectangle(&ground, 0.0f, horizon, (float)w, sceneH - horizon);
+            // a sun low over the horizon, and the glare round it
+            for (int k = 6; k >= 1; k--) {
+                Gdiplus::SolidBrush glare(Gdiplus::Color((BYTE)(18 + 10 * (6 - k)), 255, 236, 200));
+                const float r = scaleF(10.0f + 9.0f * k);
+                p.FillEllipse(&glare, (float)w * 0.82f - r, horizon - scaleF(8) - r, 2 * r, 2 * r);
+            }
+        }
+
+        // The overlay at its true size - grown or shrunk as its grip does,
+        // its text as big as it is set - drawn into a picture of its own and
+        // laid over the game at its opacity, as Windows lays it. Too big for
+        // the piece of game, it runs off its edge, as it would off a screen.
+        {
+            const float zoom = overlayZoom_;
+            const float ow = scaleF(OVERLAY_WIDTH), shownW = ow * zoom;
+            const float pad = scaleF(14);
+            const float ox = (shownW + 2 * pad <= (float)w) ? std::round(((float)w - shownW) / 2) : pad;
+            const int bw = (int)std::ceil((std::min)(shownW, (float)w - ox));
+            const int bh = (int)std::ceil(sceneH - pad);
+            Gdiplus::Bitmap overlay(bw, bh, PixelFormat32bppPARGB);
+            float used = 0;
+            {
+                Gdiplus::Graphics o(&overlay);
+                prepareGraphics(o);
+                Gdiplus::SolidBrush obg(COL_BG);
+                o.FillRectangle(&obg, 0.0f, 0.0f, (float)bw, (float)bh);
+                o.ScaleTransform(zoom, zoom);
+                used = drawOverlaySample(o, ow) * zoom;
+            }
+            const int usedH = std::clamp((int)std::ceil(used), 1, bh);
+            Gdiplus::Rect all(0, 0, bw, usedH);
+            Gdiplus::BitmapData data;
+            if (overlay.LockBits(&all, Gdiplus::ImageLockModeRead | Gdiplus::ImageLockModeWrite, PixelFormat32bppPARGB,
+                                 &data) == Gdiplus::Ok) {
+                // premultiplied: all four channels go down together
+                const int keep = overlayAlpha();
+                for (int yy = 0; yy < usedH; yy++) {
+                    uint8_t* px = static_cast<uint8_t*>(data.Scan0) + (ptrdiff_t)yy * data.Stride;
+                    for (int xx = 0; xx < bw * 4; xx++) px[xx] = (uint8_t)((px[xx] * keep + 127) / 255);
+                }
+                overlay.UnlockBits(&data);
+            }
+            const Gdiplus::InterpolationMode was = p.GetInterpolationMode();
+            p.SetInterpolationMode(Gdiplus::InterpolationModeNearestNeighbor);
+            p.DrawImage(&overlay, Gdiplus::RectF(ox, pad, (float)bw, (float)usedH), 0.0f, 0.0f, (float)bw, (float)usedH,
+                        Gdiplus::UnitPixel);
+            p.SetInterpolationMode(was);
+        }
+        cornersOff(p, scene, scaleF(R_CARD), COL_BG);
+
+        // ...and under it, the main window's pieces
+        drawMainSample(p, scaleF(8), sceneH + scaleF(14), (float)w - scaleF(16));
+    }
+    // ...seen as someone with the colour blindness picked sees it
+    if (settingsVision_ > 0 && settingsVision_ < (int)Colours::Vision::COUNT) {
+        Gdiplus::Rect all(0, 0, w, h);
+        Gdiplus::BitmapData data;
+        if (picture.LockBits(&all, Gdiplus::ImageLockModeRead | Gdiplus::ImageLockModeWrite, PixelFormat32bppPARGB,
+                             &data) == Gdiplus::Ok) {
+            for (int yy = 0; yy < h; yy++) {
+                Colours::seenWith(static_cast<uint8_t*>(data.Scan0) + (ptrdiff_t)yy * data.Stride, (size_t)w,
+                                  (Colours::Vision)settingsVision_);
+            }
+            picture.UnlockBits(&data);
+        }
+    }
+    const Gdiplus::InterpolationMode was = g.GetInterpolationMode();
+    g.SetInterpolationMode(Gdiplus::InterpolationModeNearestNeighbor);
+    g.DrawImage(&picture, Gdiplus::RectF(box.X, box.Y, (float)w, (float)h));
+    g.SetInterpolationMode(was);
+}
+
+void MinerGUI::paintSettings(HDC hdc) {
+    RECT rc;
+    GetClientRect(settings_, &rc);
+    const int cw = rc.right, ch = rc.bottom;
+    if (cw <= 0 || ch <= 0) return;
+
+    HDC memDC = CreateCompatibleDC(hdc);
+    HBITMAP memBitmap = CreateCompatibleBitmap(hdc, cw, ch);
+    HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, memBitmap);
+    {
+        Gdiplus::Graphics g(memDC);
+        prepareGraphics(g);
+        Gdiplus::SolidBrush bgBrush(COL_BG);
+        g.FillRectangle(&bgBrush, 0.0f, 0.0f, (float)cw, (float)ch);
+        settingsHits_.clear();
+
+        Gdiplus::Font markFont(&markFamily(), scaleF(21), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font subFont(&textFamily(), scaleF(9), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font smallFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+        Gdiplus::Font chipFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font visionFont(&markFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font rowFont(&textFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font hexFont(&numeralFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font nameFont(&markFamily(), scaleF(14), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font noteFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font labelFont(&textFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font valueFont(&numeralFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::SolidBrush textBrush(COL_TEXT), dimBrush(COL_TEXT_DIM), faintBrush(COL_TEXT_FAINT),
+            accentBrush(COL_ACCENT);
+        Gdiplus::StringFormat rightAlign;
+        rightAlign.SetAlignment(Gdiplus::StringAlignmentFar);
+        Gdiplus::StringFormat centred;
+        centred.SetAlignment(Gdiplus::StringAlignmentCenter);
+        centred.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+        const auto widthOf = [&](const std::wstring& text, const Gdiplus::Font& font) {
+            Gdiplus::RectF w;
+            g.MeasureString(text.c_str(), -1, &font, Gdiplus::PointF(0, 0), &w);
+            return w.Width;
+        };
+        const Colours::Scheme scheme = Colours::active(colours_);
+        const float M = (float)scale(MARGIN);
+
+        // the heading, as the Ore Finder has one
+        g.FillRectangle(&accentBrush, M, (float)scale(18), scaleF(8), scaleF(8));
+        g.DrawString(L"Settings", -1, &markFont, Gdiplus::PointF(M + scaleF(14), (float)scale(8)), &textBrush);
+        g.DrawString(L"the colours of every window and the overlay, and how the overlay sits over the game  \u00B7  "
+                     L"everything applies at once",
+                     -1, &subFont, Gdiplus::PointF(M + scaleF(15), (float)scale(36)), &dimBrush);
+
+        const float leftX = M, leftW = scaleF(440);
+        const float rightX = leftX + leftW + scaleF(20), rightW = (float)cw - M - rightX;
+        const auto card = [&](const Gdiplus::RectF& r) {
+            fillRoundRect(g, r, scaleF(R_CARD), COL_CARD);
+            cardLight(g, r, scaleF(R_CARD), scaleF(44));
+            strokeRoundRect(g, r, scaleF(R_CARD), COL_BORDER);
+        };
+        const float ix = leftX + scaleF(16), iw = leftW - scaleF(32);
+
+        // A slider: its name, the track - a strip of what it would make, in
+        // slices - the knob, and the figure. `paint` gives the colour along
+        // the track; without it the track is plain and filled to the knob.
+        const auto slider = [&](int which, const wchar_t* label, float sy, double at, const std::wstring& value,
+                                const std::function<Gdiplus::Color(double)>& paint, const Gdiplus::Color& knob) {
+            const float labelW = scaleF(80), valueW = scaleF(52);
+            g.DrawString(label, -1, &labelFont, Gdiplus::PointF(ix, sy + scaleF(3)), &dimBrush);
+            const Gdiplus::RectF track(ix + labelW, sy + scaleF(7), iw - labelW - valueW, scaleF(8));
+            const float r = track.Height / 2;
+            const float knobX = track.X + (float)std::clamp(at, 0.0, 1.0) * track.Width;
+            // a pill drawn slice by slice, each as tall as the pill is there
+            for (float sx = 0; sx < track.Width; sx += 1.0f) {
+                const float edge = (std::min)(sx + 0.5f, track.Width - sx - 0.5f);
+                const float half = edge >= r ? r : std::sqrt((std::max)(0.0f, r * r - (r - edge) * (r - edge)));
+                Gdiplus::Color c;
+                if (paint) c = paint((sx + 0.5) / track.Width);
+                else c = (track.X + sx <= knobX) ? tint(COL_ACCENT, 210) : COL_CARD_HI;
+                Gdiplus::SolidBrush slice(c);
+                g.FillRectangle(&slice, track.X + sx, track.Y + r - half, 1.0f, 2 * half);
+            }
+            strokeRoundRect(g, track, r, tint(COL_TEXT, 26));
+            const Gdiplus::RectF grab(track.X - scaleF(8), sy, track.Width + scaleF(16), scaleF(24));
+            const bool hot = settingsDrag_ == which || isHot(hoverSettings_, grab);
+            const float kr = scaleF(hot ? 8.0f : 7.0f);
+            Gdiplus::SolidBrush shade(COL_BG);
+            g.FillEllipse(&shade, knobX - kr - scaleF(1.5f), track.Y + r - kr - scaleF(1.5f), 2 * kr + scaleF(3),
+                          2 * kr + scaleF(3));
+            Gdiplus::SolidBrush fill(knob);
+            g.FillEllipse(&fill, knobX - kr, track.Y + r - kr, 2 * kr, 2 * kr);
+            Gdiplus::Pen ring(COL_TEXT, scaleF(1.6f));
+            g.DrawEllipse(&ring, knobX - kr, track.Y + r - kr, 2 * kr, 2 * kr);
+            g.DrawString(value.c_str(), -1, &valueFont, Gdiplus::RectF(ix, sy + scaleF(2), iw, scaleF(18)), &rightAlign,
+                         &textBrush);
+            // what takes the click: the track and a little round it, so the
+            // knob at either end is easy to catch
+            settingsHits_.push_back({grab, 4, which});
+        };
+
+        // ---- the colours ----
+        const float top = scaleF(60);
+        card(Gdiplus::RectF(leftX, top, leftW, scaleF(468)));
+        float y = top + scaleF(12);
+        g.DrawString(L"COLOURS", -1, &smallFont, Gdiplus::PointF(ix, y), &faintBrush);
+        g.DrawString(L"for colour blindness, or to your taste", -1, &subFont, Gdiplus::RectF(ix, y + scaleF(1), iw, scaleF(14)),
+                     &rightAlign, &faintBrush);
+        y += scaleF(22);
+        // the sets, a button each; Own once there is something of one's own
+        {
+            float x = ix;
+            const int inUse = (int)colours_.set;
+            for (int s = 0; s < (int)Colours::Set::COUNT; s++) {
+                if (s == (int)Colours::Set::Own && !colours_.ownKept) continue;
+                const Gdiplus::RectF chip(x, y, widthOf(SET_NAMES[s], chipFont) + scaleF(18), scaleF(26));
+                drawButton(g, chip, SET_NAMES[s], chipFont, s == inUse ? ButtonKind::Selected : ButtonKind::Secondary,
+                           isHot(hoverSettings_, chip), scaleF(R_CONTROL));
+                settingsHits_.push_back({chip, 0, s});
+                x += chip.Width + scaleF(6);
+            }
+            y += scaleF(34);
+            g.DrawString(SET_USES[inUse], -1, &noteFont, Gdiplus::RectF(ix, y, iw, scaleF(30)), nullptr, &dimBrush);
+            y += scaleF(36);
+        }
+        // every colour: its swatch, its name written in it, and its figure -
+        // the rarities beside what things mean, the window's two under them
+        {
+            const float colW = iw / 2.0f;
+            const auto colourRow = [&](int role, float rx, float ry, float rw) {
+                const Gdiplus::RectF row(rx - scaleF(6), ry, rw - scaleF(6), scaleF(24));
+                if (role == settingsRole_) selectionFrame(g, row, scaleF(R_CONTROL));
+                else if (isHot(hoverSettings_, row)) fillRoundRect(g, row, scaleF(R_CONTROL), COL_HOVER);
+                const Gdiplus::Color c = colourOf(scheme[role]);
+                const Gdiplus::RectF swatch(rx, ry + scaleF(5), scaleF(14), scaleF(14));
+                fillRoundRect(g, swatch, scaleF(3), c);
+                strokeRoundRect(g, swatch, scaleF(3), tint(COL_TEXT, 46));
+                // (the background's name cannot be written in the background)
+                Gdiplus::SolidBrush nameBrush(role == Colours::Background ? COL_TEXT : c);
+                g.DrawString(COLOUR_NAMES[role], -1, &rowFont, Gdiplus::PointF(rx + scaleF(22), ry + scaleF(3)), &nameBrush);
+                g.DrawString(toW(Colours::hex(scheme[role])).c_str(), -1, &hexFont,
+                             Gdiplus::RectF(rx, ry + scaleF(5), rw - scaleF(14), scaleF(16)), &rightAlign, &faintBrush);
+                settingsHits_.push_back({row, 1, role});
+            };
+            g.DrawString(L"RARITY", -1, &smallFont, Gdiplus::PointF(ix, y), &faintBrush);
+            g.DrawString(L"MEANING", -1, &smallFont, Gdiplus::PointF(ix + colW, y), &faintBrush);
+            y += scaleF(18);
+            for (int i = 0; i < 5; i++) {
+                colourRow(Colours::Legendary + i, ix, y + i * scaleF(26), colW);
+                colourRow(Colours::Highlight + i, ix + colW, y + i * scaleF(26), colW);
+            }
+            y += 5 * scaleF(26) + scaleF(6);
+            g.DrawString(L"WINDOW", -1, &smallFont, Gdiplus::PointF(ix, y), &faintBrush);
+            y += scaleF(18);
+            colourRow(Colours::Background, ix, y, colW);
+            colourRow(Colours::Text, ix + colW, y, colW);
+            y += scaleF(32);
+        }
+        hairline(g, ix, y, ix + iw);
+        y += scaleF(12);
+        // the one on the sliders: a big swatch, its name, its figure to type
+        // over, and the way back to Bedrock's own
+        {
+            const int role = settingsRole_;
+            const Gdiplus::Color c = colourOf(scheme[role]);
+            const Gdiplus::RectF swatch(ix, y, scaleF(28), scaleF(28));
+            fillRoundRect(g, swatch, scaleF(R_CONTROL), c);
+            strokeRoundRect(g, swatch, scaleF(R_CONTROL), tint(COL_TEXT, 46));
+            Gdiplus::SolidBrush nameBrush(role == Colours::Background ? COL_TEXT : c);
+            g.DrawString(COLOUR_NAMES[role], -1, &nameFont, Gdiplus::PointF(ix + scaleF(38), y + scaleF(4)), &nameBrush);
+
+            const Gdiplus::RectF field(ix + iw - scaleF(84), y + scaleF(2), scaleF(84), scaleF(24));
+            fillRoundRect(g, field, scaleF(R_CONTROL), settingsTyping_ ? COL_CARD_HI : COL_CARD);
+            if (settingsTyping_) selectionFrame(g, field, scaleF(R_CONTROL));
+            else strokeRoundRect(g, field, scaleF(R_CONTROL), isHot(hoverSettings_, field) ? tint(COL_TEXT, 60) : COL_BORDER);
+            const std::wstring shown = settingsTyping_ ? L"#" + toW(settingsHex_) + L"\u2009|"
+                                                       : toW(Colours::hex(scheme[role]));
+            g.DrawString(shown.c_str(), -1, &valueFont, field, &centred, settingsTyping_ ? &accentBrush : &textBrush);
+            settingsHits_.push_back({field, 2, role});
+
+            const Colours::Rgb own = Colours::preset(Colours::Set::Bedrock)[role];
+            if (scheme[role] != own) {
+                const std::wstring words = L"Bedrock's colour";
+                const float bw = widthOf(words, chipFont) + scaleF(18);
+                const Gdiplus::RectF back(field.X - scaleF(8) - bw, field.Y, bw, field.Height);
+                drawButton(g, back, words.c_str(), chipFont, ButtonKind::Ghost, isHot(hoverSettings_, back),
+                           scaleF(R_CONTROL));
+                // ...with Bedrock's own colour beside its words, so it says
+                // what it goes back to
+                Gdiplus::SolidBrush ownDot(colourOf(own));
+                g.FillEllipse(&ownDot, back.X - scaleF(10), back.Y + back.Height / 2 - scaleF(4), scaleF(8), scaleF(8));
+                settingsHits_.push_back({back, 3, role});
+            }
+            y += scaleF(34);
+            g.DrawString(COLOUR_USES[role], -1, &noteFont, Gdiplus::RectF(ix, y, iw, scaleF(16)), nullptr, &dimBrush);
+            y += scaleF(24);
+
+            const Colours::Hsl hsl = settingsHsl_;
+            double lo, hi;
+            lightnessRange(role, lo, hi);
+            // the hue's strip in full colour whatever the colour is now - a
+            // grey's would be grey from end to end
+            const double showS = (std::max)(hsl.s, 0.5), showL = std::clamp(hsl.l, 0.3, 0.75);
+            wchar_t figure[32];
+            std::swprintf(figure, 32, L"%d\u00B0", (int)std::lround(hsl.h) % 360);
+            slider(SLIDE_HUE, L"Hue", y, hsl.h / 360.0, figure,
+                   [&](double t) { return colourOf(Colours::fromHsl({t * 360.0, showS, showL})); }, c);
+            y += scaleF(28);
+            std::swprintf(figure, 32, L"%d %%", (int)std::lround(hsl.s * 100));
+            slider(SLIDE_SATURATION, L"Saturation", y, hsl.s, figure,
+                   [&](double t) { return colourOf(Colours::fromHsl({hsl.h, t, std::clamp(hsl.l, 0.2, 0.8)})); }, c);
+            y += scaleF(28);
+            std::swprintf(figure, 32, L"%d %%", (int)std::lround(hsl.l * 100));
+            slider(SLIDE_LIGHTNESS, L"Lightness", y, (hsl.l - lo) / (std::max)(1e-6, hi - lo), figure,
+                   [&](double t) { return colourOf(Colours::fromHsl({hsl.h, hsl.s, lo + t * (hi - lo)})); }, c);
+        }
+
+        // ---- the overlay ----
+        {
+            const float otop = top + scaleF(468) + scaleF(12);
+            card(Gdiplus::RectF(leftX, otop, leftW, scaleF(128)));
+            float oy = otop + scaleF(12);
+            g.DrawString(L"OVERLAY", -1, &smallFont, Gdiplus::PointF(ix, oy), &faintBrush);
+            g.DrawString(L"on the overlay itself: drag its corner, or Ctrl + and Ctrl -", -1, &subFont,
+                         Gdiplus::RectF(ix, oy + scaleF(1), iw, scaleF(14)), &rightAlign, &faintBrush);
+            oy += scaleF(24);
+            wchar_t figure[32];
+            std::swprintf(figure, 32, L"%d %%", overlayOpacity_);
+            slider(SLIDE_OPACITY, L"Opacity", oy,
+                   (overlayOpacity_ - OVERLAY_OPACITY_MIN) / (double)(100 - OVERLAY_OPACITY_MIN), figure, nullptr, COL_TEXT);
+            oy += scaleF(28);
+            std::swprintf(figure, 32, L"%d %%", (int)std::lround(overlayText_ * 100));
+            slider(SLIDE_TEXT, L"Text size", oy, (overlayText_ - OVERLAY_TEXT_MIN) / (OVERLAY_TEXT_MAX - OVERLAY_TEXT_MIN),
+                   figure, nullptr, COL_TEXT);
+            oy += scaleF(28);
+            std::swprintf(figure, 32, L"%d %%", (int)std::lround(overlayZoom_ * 100));
+            slider(SLIDE_SIZE, L"Size", oy, (overlayZoom_ - OVERLAY_ZOOM_MIN) / (OVERLAY_ZOOM_MAX - OVERLAY_ZOOM_MIN), figure,
+                   nullptr, COL_TEXT);
+        }
+        g.DrawString(L"Esc closes", -1, &subFont, Gdiplus::PointF(ix, (float)ch - scaleF(22)), &faintBrush);
+
+        // ---- the preview, and how it is seen ----
+        {
+            g.DrawString(L"PREVIEW", -1, &smallFont, Gdiplus::PointF(rightX, top + scaleF(4)), &faintBrush);
+            float x = rightX + rightW;
+            for (int v = (int)Colours::Vision::COUNT - 1; v >= 0; v--) {
+                const float vw = widthOf(VISION_NAMES[v], visionFont) + scaleF(14);
+                x -= vw;
+                const Gdiplus::RectF chip(x, top, vw, scaleF(22));
+                drawButton(g, chip, VISION_NAMES[v], visionFont, v == settingsVision_ ? ButtonKind::Selected : ButtonKind::Ghost,
+                           isHot(hoverSettings_, chip), scaleF(R_CONTROL));
+                settingsHits_.push_back({chip, 5, v});
+                x -= scaleF(4);
+            }
+            g.DrawString(L"seen with", -1, &subFont, Gdiplus::RectF(rightX, top + scaleF(5), x - rightX - scaleF(4), scaleF(14)),
+                         &rightAlign, &faintBrush);
+            const float py = top + scaleF(32);
+            drawSettingsPreview(g, Gdiplus::RectF(std::round(rightX), std::round(py), std::round(rightW),
+                                                  std::round((float)ch - scaleF(34) - py)));
+
+            // ...and under it, what of the colours does not come across - two
+            // that have to be told apart looking almost alike, or one that
+            // means something reading as plain text - seen with what is
+            // picked above
+            Colours::Role a = Colours::Legendary, b = Colours::Legendary, plain = Colours::Legendary;
+            const Colours::Vision vision = (Colours::Vision)settingsVision_;
+            const double alike = Colours::worstDifference(scheme, vision, &a, &b);
+            const double flat = Colours::plainestDifference(scheme, vision, &plain);
+            if ((std::min)(alike, flat) < LOOK_ALIKE) {
+                std::wstring words;
+                if (settingsVision_ > 0) words = L"With " + std::wstring(VISION_WORDS[settingsVision_]) + L", ";
+                if (alike <= flat) {
+                    words += std::wstring(COLOUR_NAMES[a]) + L" and " + COLOUR_NAMES[b] + L" look almost alike.";
+                } else {
+                    words += std::wstring(COLOUR_NAMES[plain]) + L" looks almost like plain text.";
+                }
+                if (settingsVision_ > 0 && (int)colours_.set != settingsVision_) {
+                    words += L" The " + std::wstring(SET_NAMES[settingsVision_]) + L" set is made for this.";
+                }
+                Gdiplus::SolidBrush cautionBrush(COL_YELLOW);
+                g.DrawString(words.c_str(), -1, &noteFont,
+                             Gdiplus::RectF(rightX, (float)ch - scaleF(30), rightW, scaleF(28)), nullptr, &cautionBrush);
+            }
+        }
+    }
+    BitBlt(hdc, 0, 0, cw, ch, memDC, 0, 0, SRCCOPY);
+    SelectObject(memDC, oldBitmap);
+    DeleteObject(memBitmap);
+    DeleteDC(memDC);
+}
+
+LRESULT CALLBACK MinerGUI::SettingsProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    if (g_guiInstance) return g_guiInstance->handleSettingsMessage(hwnd, uMsg, wParam, lParam);
+    return DefWindowProcW(hwnd, uMsg, wParam, lParam);
+}
+
+LRESULT MinerGUI::handleSettingsMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    // A slider let go of, or taken away mid-drag (Alt+Tab): what it is set
+    // to is written, once
+    const auto letGo = [&]() {
+        const int was = settingsDrag_;
+        settingsDrag_ = -1;
+        if (was <= SLIDE_LIGHTNESS) saveColours();
+        else if (!headless_) saveWindowPlace();
+        InvalidateRect(hwnd, nullptr, FALSE);
+    };
+    switch (uMsg) {
+        case WM_PAINT: {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(hwnd, &ps);
+            paintSettings(hdc);
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+        case WM_ERASEBKGND:
+            return 1;
+        case WM_MOUSEMOVE:
+            if (settingsDrag_ >= 0) {
+                slideSettings(settingsDrag_, (float)(short)LOWORD(lParam), settingsDragTrack_);
+                return 0;
+            }
+            trackHover(hwnd, hoverSettings_, lParam);
+            return 0;
+        case WM_MOUSELEAVE:
+            clearHover(hwnd, hoverSettings_);
+            return 0;
+        case WM_LBUTTONDOWN: {
+            const float px = (float)(short)LOWORD(lParam), py = (float)(short)HIWORD(lParam);
+            for (const SettingsHit& hit : settingsHits_) {
+                if (!hit.rect.Contains(px, py)) continue;
+                // a click anywhere but in the hex field lets go of what was typed
+                if (hit.kind != 2) endSettingsTyping(false);
+                switch (hit.kind) {
+                    case 0:
+                        chooseColourSet(hit.value);
+                        break;
+                    case 1:
+                        settingsRoleChosen(hit.value);
+                        break;
+                    case 2:
+                        if (!settingsTyping_) {
+                            settingsTyping_ = true;
+                            settingsHex_.clear();
+                        }
+                        SetFocus(hwnd);
+                        break;
+                    case 3:
+                        setColour(settingsRole_, Colours::preset(Colours::Set::Bedrock)[settingsRole_]);
+                        settingsHsl_ = Colours::toHsl(Colours::active(colours_)[settingsRole_]);
+                        saveColours();
+                        break;
+                    case 4: {
+                        // the track itself, without the room round it for the knob
+                        const float inset = scaleF(8);
+                        settingsDrag_ = hit.value;
+                        settingsDragTrack_ = Gdiplus::RectF(hit.rect.X + inset, hit.rect.Y, hit.rect.Width - 2 * inset,
+                                                            hit.rect.Height);
+                        SetCapture(hwnd);
+                        slideSettings(hit.value, px, settingsDragTrack_);
+                        break;
+                    }
+                    case 5:
+                        settingsVision_ = hit.value;
+                        break;
+                }
+                InvalidateRect(hwnd, nullptr, FALSE);
+                return 0;
+            }
+            endSettingsTyping(false);
+            return 0;
+        }
+        case WM_LBUTTONUP:
+            if (settingsDrag_ >= 0) {
+                ReleaseCapture();   // (WM_CAPTURECHANGED comes before this returns)
+                if (settingsDrag_ >= 0) letGo();
+            }
+            return 0;
+        case WM_CAPTURECHANGED:
+            if (settingsDrag_ >= 0) letGo();
+            return 0;
+        case WM_MOUSEWHEEL: {
+            POINT at = {(LONG)(short)LOWORD(lParam), (LONG)(short)HIWORD(lParam)};
+            ScreenToClient(hwnd, &at);
+            const int notches = GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
+            for (const SettingsHit& hit : settingsHits_) {
+                if (hit.kind == 4 && hit.rect.Contains((float)at.x, (float)at.y)) {
+                    stepSettingsSlider(hit.value, notches);
+                    return 0;
+                }
+            }
+            return 0;
+        }
+        case WM_CHAR: {
+            wchar_t c = (wchar_t)wParam;
+            if (c == 0x16) {
+                // Ctrl+V: a colour's figure off the clipboard, for the colour
+                // on the sliders - typing in the field or not
+                Colours::Rgb pasted = 0;
+                if (Colours::parseHex(clipboardText(hwnd), pasted)) {
+                    settingsTyping_ = false;
+                    settingsHex_.clear();
+                    setColour(settingsRole_, pasted);
+                    settingsHsl_ = Colours::toHsl(Colours::active(colours_)[settingsRole_]);
+                    saveColours();
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                }
+                return 0;
+            }
+            if (!settingsTyping_) break;
+            if (c == VK_BACK) {
+                if (!settingsHex_.empty()) settingsHex_.pop_back();
+            } else {
+                if (c >= L'a' && c <= L'f') c = (wchar_t)(c - L'a' + L'A');
+                const bool digit = (c >= L'0' && c <= L'9') || (c >= L'A' && c <= L'F');
+                if (!digit || settingsHex_.size() >= 6) return 0;
+                settingsHex_ += (char)c;
+            }
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
+        }
+        case WM_KEYDOWN:
+            if (settingsTyping_) {
+                if (wParam == VK_RETURN) endSettingsTyping(true);
+                else if (wParam == VK_ESCAPE) endSettingsTyping(false);
+                return 0;
+            }
+            if (wParam == VK_ESCAPE) {
+                toggleSettings();
+                return 0;
+            }
+            break;
+        case WM_TIMER:
+            if (wParam == TIMER_SETTINGS_PULSE) {
+                settingsPulse_ = !settingsPulse_;
+                InvalidateRect(hwnd, nullptr, FALSE);
+                return 0;
+            }
+            break;
+        case WM_CLOSE:
+            if (settingsVisible_) toggleSettings();
             return 0;
     }
     return DefWindowProcW(hwnd, uMsg, wParam, lParam);

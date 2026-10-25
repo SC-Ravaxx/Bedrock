@@ -10,6 +10,7 @@
 #include "Application.h"
 #include "AppPaths.h"
 #include "BlueprintLibrary.h"
+#include "ColourScheme.h"
 #include "CraftingData.h"
 #include "DataBackup.h"
 #include "DevTools.h"
@@ -1794,6 +1795,174 @@ int runSelfTest() {
                            "the names Windows keeps for itself are stepped around");
         allPassed &= check(NoteBook::sanitise(" Aaron Halo . ") == "Aaron Halo",
                            "a name does not start or end on a space or a dot");
+    }
+
+    // --- The colours (the settings' gear): the sets made for colour
+    //     blindness keep apart what has to be told apart, as someone with
+    //     that kind sees it; the file; and nothing makes a window unreadable ---
+    {
+        namespace C = SCMiner::Colours;
+        using C::Vision;
+        const C::Scheme& bedrock = C::preset(C::Set::Bedrock);
+        char line[200];
+        // The simulation itself: white and black stay as they are, and
+        // Bedrock's own Epic and Rare - violet and blue - run together for
+        // deuteranopia, as the literature has them do. A check that never
+        // fails would pass every set.
+        bool still = true;
+        for (Vision v : {Vision::Protanopia, Vision::Deuteranopia, Vision::Tritanopia}) {
+            still &= C::seenWith(C::rgb(255, 255, 255), v) == C::rgb(255, 255, 255) &&
+                     C::seenWith(C::rgb(0, 0, 0), v) == C::rgb(0, 0, 0);
+        }
+        allPassed &= check(still, "colour blindness, simulated: white and black stay white and black");
+        {
+            C::Role a = C::Legendary, b = C::Legendary;
+            const double d = C::worstDifference(bedrock, Vision::Deuteranopia, &a, &b);
+            std::snprintf(line, sizeof(line),
+                          "Bedrock's own colours: Epic and Rare look alike with deuteranopia (%.1f apart, under 5)", d);
+            allPassed &= check(d < 5.0 && a == C::Epic && b == C::Rare, line);
+            const double normal = C::worstDifference(bedrock, Vision::Normal);
+            std::snprintf(line, sizeof(line), "...and are told apart with normal sight (%.1f, 15 or more)", normal);
+            allPassed &= check(normal >= 15.0, line);
+            allPassed &= check(C::dimInk(bedrock) == C::rgb(160, 166, 176) && C::faintInk(bedrock) == C::rgb(108, 115, 127),
+                               "the quieter inks, worked out from Bedrock's background and words, are Bedrock's own");
+        }
+        // ...a picture goes through it as single colours do, to the unit
+        {
+            const C::Rgb samples[4] = {C::rgb(238, 178, 70), C::rgb(171, 139, 214), C::rgb(96, 202, 132), C::rgb(15, 16, 19)};
+            uint8_t pixels[16];
+            int worst = 0;
+            for (Vision v : {Vision::Protanopia, Vision::Deuteranopia, Vision::Tritanopia}) {
+                for (int i = 0; i < 4; i++) {
+                    pixels[i * 4 + 0] = (uint8_t)C::blueOf(samples[i]);
+                    pixels[i * 4 + 1] = (uint8_t)C::greenOf(samples[i]);
+                    pixels[i * 4 + 2] = (uint8_t)C::redOf(samples[i]);
+                    pixels[i * 4 + 3] = 255;
+                }
+                C::seenWith(pixels, 4, v);
+                for (int i = 0; i < 4; i++) {
+                    const C::Rgb one = C::seenWith(samples[i], v);
+                    worst = (std::max)({worst, std::abs(pixels[i * 4 + 2] - C::redOf(one)),
+                                        std::abs(pixels[i * 4 + 1] - C::greenOf(one)),
+                                        std::abs(pixels[i * 4 + 0] - C::blueOf(one))});
+                    worst = (std::max)(worst, std::abs(pixels[i * 4 + 3] - 255));
+                }
+            }
+            allPassed &= check(worst <= 1, "the preview's picture is seen as each of its colours is (" +
+                                               std::to_string(worst) + " off at most)");
+        }
+        // Each set: every pair that has to be told apart well apart, and no
+        // colour that means something reading as plain text - seen with its
+        // own kind of colour blindness and with normal sight; and every
+        // coloured word readable on a card (WCAG's 4.5), as that eye sees it
+        const struct { C::Set set; Vision vision; const char* name; } sets[3] = {
+            {C::Set::Protanopia, Vision::Protanopia, "protanopia"},
+            {C::Set::Deuteranopia, Vision::Deuteranopia, "deuteranopia"},
+            {C::Set::Tritanopia, Vision::Tritanopia, "tritanopia"},
+        };
+        const C::Rgb card = C::rgb(24, 26, 30);
+        for (const auto& s : sets) {
+            const C::Scheme& scheme = C::preset(s.set);
+            C::Role a = C::Legendary, b = C::Legendary, plain = C::Legendary;
+            const double own = C::worstDifference(scheme, s.vision, &a, &b);
+            const double normal = C::worstDifference(scheme, Vision::Normal);
+            std::snprintf(line, sizeof(line),
+                          "the %s set: every pair apart with %s (%.1f, %s/%s closest) and with normal sight (%.1f)",
+                          s.name, s.name, own, C::roleKey(a), C::roleKey(b), normal);
+            allPassed &= check(own >= 14.0 && normal >= 14.0, line);
+            const double flat = C::plainestDifference(scheme, s.vision, &plain);
+            const double flatNormal = C::plainestDifference(scheme, Vision::Normal);
+            std::snprintf(line, sizeof(line),
+                          "the %s set: nothing that means something reads as plain text with %s (%.1f, %s nearest) "
+                          "or with normal sight (%.1f)",
+                          s.name, s.name, flat, C::roleKey(plain), flatNormal);
+            allPassed &= check(flat >= 14.0 && flatNormal >= 14.0, line);
+            double least = 99;
+            for (int r = C::Legendary; r <= C::LookedFor; r++) {
+                least = (std::min)({least, C::contrast(scheme[r], card),
+                                    C::contrast(C::seenWith(scheme[r], s.vision), C::seenWith(card, s.vision))});
+            }
+            std::snprintf(line, sizeof(line),
+                          "the %s set: every coloured word readable on a card, with %s too (contrast %.2f)", s.name,
+                          s.name, least);
+            allPassed &= check(least >= 4.5, line);
+        }
+        // ...and a red-green set holds for the other red-green kind too: who
+        // has which is not always known
+        {
+            const double pd = C::worstDifference(C::preset(C::Set::Protanopia), Vision::Deuteranopia);
+            const double dp = C::worstDifference(C::preset(C::Set::Deuteranopia), Vision::Protanopia);
+            std::snprintf(line, sizeof(line),
+                          "the red-green sets hold for each other's kind (%.1f and %.1f, 12 or more)", pd, dp);
+            allPassed &= check(pd >= 12.0 && dp >= 12.0, line);
+        }
+
+        // Nothing a player picks makes a window unreadable: a white
+        // background is darkened, words as dark as the window lightened
+        {
+            const C::Scheme light = C::withColour(bedrock, C::Background, C::rgb(255, 255, 255));
+            const C::Scheme dark = C::withColour(bedrock, C::Text, C::rgb(30, 30, 30));
+            const C::Scheme both = C::withColour(C::withColour(bedrock, C::Text, C::rgb(60, 60, 60)), C::Background,
+                                                 C::rgb(200, 40, 40));
+            std::snprintf(line, sizeof(line),
+                          "a white background is kept dark (luminance %.3f) and the words on it readable (%.1f : 1)",
+                          C::luminance(light[C::Background]), C::contrast(light[C::Text], light[C::Background]));
+            allPassed &= check(C::luminance(light[C::Background]) <= C::BACKGROUND_MOST + 1e-9 &&
+                                   C::contrast(light[C::Text], light[C::Background]) >= C::TEXT_CONTRAST_LEAST,
+                               line);
+            std::snprintf(line, sizeof(line), "words as dark as the window are lightened until they read (%.1f : 1)",
+                          C::contrast(dark[C::Text], dark[C::Background]));
+            allPassed &= check(C::contrast(dark[C::Text], dark[C::Background]) >= C::TEXT_CONTRAST_LEAST &&
+                                   dark[C::Background] == bedrock[C::Background],
+                               line);
+            allPassed &= check(C::contrast(both[C::Text], both[C::Background]) >= C::TEXT_CONTRAST_LEAST &&
+                                   C::redOf(both[C::Background]) > C::greenOf(both[C::Background]),
+                               "a red background stays red, only darker, and the words still read");
+            allPassed &= check(C::withColour(bedrock, C::Epic, bedrock[C::Epic]) == bedrock &&
+                                   C::keepBackgroundDark(bedrock[C::Background]) == bedrock[C::Background] &&
+                                   C::keepTextReadable(bedrock[C::Text], bedrock[C::Background]) == bedrock[C::Text],
+                               "Bedrock's own colours pass as they are");
+        }
+        // The sliders: every colour of every set comes back from hue,
+        // saturation and lightness as it went in
+        {
+            int off = 0;
+            for (int s = 0; s < (int)C::Set::COUNT; s++) {
+                const C::Scheme& scheme = C::preset((C::Set)s);
+                for (int r = 0; r < C::ROLE_COUNT; r++) {
+                    if (C::fromHsl(C::toHsl(scheme[r])) != scheme[r]) off++;
+                }
+            }
+            allPassed &= check(off == 0, "every colour of every set comes back off the sliders as it went on (" +
+                                             std::to_string(off) + " off)");
+        }
+        // colours.txt: there and back; a colour of the player's own kept
+        // while another set is in use; and whatever is written into it by
+        // hand, something usable comes out
+        {
+            C::Settings mine = C::defaults();
+            mine.own = C::withColour(bedrock, C::Epic, C::rgb(210, 90, 180));
+            mine.ownKept = true;
+            mine.set = C::Set::Deuteranopia;
+            const C::Settings back = C::read(C::write(mine));
+            allPassed &= check(back.set == C::Set::Deuteranopia && back.ownKept && back.own == mine.own &&
+                                   C::active(back) == C::preset(C::Set::Deuteranopia),
+                               "colours.txt: the set in use and the player's own colours, there and back");
+            const C::Settings odd = C::read("set=own\nown.epic=#d25ab4\nown.rare=blue\nnonsense\nown.background=#FFFFFF\n"
+                                            "set=sepia\n");
+            allPassed &= check(odd.set == C::Set::Own && odd.own[C::Epic] == C::rgb(210, 90, 180) &&
+                                   odd.own[C::Rare] == bedrock[C::Rare] &&
+                                   C::luminance(odd.own[C::Background]) <= C::BACKGROUND_MOST + 1e-9,
+                               "colours.txt by hand: what reads is taken, a colour that does not is Bedrock's, "
+                               "a white background is kept dark");
+            allPassed &= check(C::read("set=own\n").set == C::Set::Bedrock && C::read("").set == C::Set::Bedrock,
+                               "colours.txt saying own with no colours of its own, or empty: Bedrock's");
+            C::Rgb parsed = 0;
+            allPassed &= check(C::parseHex("#eeb246", parsed) && parsed == C::rgb(238, 178, 70) &&
+                                   C::parseHex(" EEB246 ", parsed) && !C::parseHex("#EEB24", parsed) &&
+                                   !C::parseHex("#GGGGGG", parsed) && C::hex(C::rgb(238, 178, 70)) == "#EEB246",
+                               "a colour's figure: #EEB246 or eeb246, six hex digits and nothing else");
+        }
     }
 
     // --- The second reader: its model travels inside the exe, loads, and

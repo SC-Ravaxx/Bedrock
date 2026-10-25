@@ -341,6 +341,7 @@ int runScreenshots(const std::string& dir) {
         else if (direct && target == gui.grindHandle()) gui.paintGrindTo(mem);
         else if (direct && target == gui.shotHandle()) gui.paintShotTo(mem);
         else if (direct && target == gui.newsHandle()) gui.paintNewsTo(mem);
+        else if (direct && target == gui.settingsHandle()) gui.paintSettingsTo(mem);
         else if (direct) gui.paintPlannerTo(mem);
         else {
 #ifdef _WIN32
@@ -435,6 +436,34 @@ int runScreenshots(const std::string& dir) {
         gui.setContractsNow({});
         pump();
         break;
+    }
+    // The settings, behind the gear: Bedrock's own colours; how someone with
+    // each kind of colour blindness sees them, and the set made for them;
+    // the main window painted with one of the sets; and a colour of one's own
+    {
+        using namespace SCMiner;
+        gui.openSettingsForShot();
+        pump();
+        shoot(gui.settingsHandle(), "settings.png", true);
+        shoot(gui.windowHandle(), "main_settings_open.png");
+        gui.settingsForShot(-1, Colours::Rare, (int)Colours::Vision::Deuteranopia);
+        pump();
+        shoot(gui.settingsHandle(), "settings_bedrock_deuteranopia.png", true);
+        const char* const kinds[3] = {"protanopia", "deuteranopia", "tritanopia"};
+        for (int k = 1; k <= 3; k++) {
+            gui.settingsForShot(k, Colours::Good, k);
+            pump();
+            shoot(gui.settingsHandle(), std::string("settings_") + kinds[k - 1] + ".png", true);
+        }
+        gui.settingsForShot((int)Colours::Set::Deuteranopia, Colours::LookedFor, 0);
+        pump();
+        shoot(gui.windowHandle(), "main_deuteranopia.png");
+        gui.settingsForShot((int)Colours::Set::Bedrock, Colours::Legendary, 0);
+        gui.settingsColourForShot(Colours::Epic, 0xD25AB4);
+        pump();
+        shoot(gui.settingsHandle(), "settings_own.png", true);
+        gui.hideSettingsForShot();
+        pump();
     }
     gui.toggleOverlayMode();
     pump();

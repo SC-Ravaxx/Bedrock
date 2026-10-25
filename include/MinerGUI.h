@@ -6,6 +6,7 @@
 #define WDA_EXCLUDEFROMCAPTURE 0x00000011   // Windows 10 2004: shown, but in no capture of the screen
 #endif
 #include <array>
+#include <cmath>
 #include <string>
 #include <vector>
 #include <map>
@@ -15,6 +16,7 @@
 #include <iosfwd>
 #include <chrono>
 #include <gdiplus.h>
+#include "ColourScheme.h"
 #include "MiningData.h"
 #include "MiningAdvice.h"
 #include "RockContents.h"
@@ -489,6 +491,21 @@ public:
     void showThanksForShot();
     HWND newsHandle() const { return news_; }
     void paintNewsTo(HDC hdc);
+    // The settings, a window of their own behind the gear in the header:
+    // the colours every window and the overlay are painted in - Bedrock's
+    // own, a set made for each kind of colour blindness, or the player's
+    // own, picked on three sliders - and how the overlay looks over the
+    // game, each with a preview beside it. Kept in colours.txt and
+    // window.txt.
+    void toggleSettings();
+    HWND settingsHandle() const { return settings_; }
+    void paintSettingsTo(HDC hdc);
+    void openSettingsForShot();
+    // --screenshot only: a set (Colours::Set; -1 leaves it), the colour on
+    // the sliders and the preview seen as (Colours::Vision)
+    void settingsForShot(int set, int role, int vision);
+    void settingsColourForShot(int role, uint32_t rgb);   // ...a colour changed by hand
+    void hideSettingsForShot();   // ...shut, and Bedrock's own colours back
     // A blueprint ticked or unticked by hand (index, now owned)
     using OwnedToggleCallback = std::function<void(int, bool)>;
     void setOwnedToggleCallback(OwnedToggleCallback callback) { ownedToggleCallback_ = callback; }
@@ -1002,8 +1019,17 @@ private:
     // kept in window.txt
     float overlayText_ = 1.0f;
     static constexpr float OVERLAY_TEXT_MIN = 0.8f, OVERLAY_TEXT_MAX = 2.0f;
-    void setOverlayText(float text);
+    // `keep` false: not written to window.txt yet - a slider being dragged
+    // writes once, when it is let go
+    void setOverlayText(float text, bool keep = true);
     void stepOverlayText(int direction);
+    void setOverlayZoom(float zoom, bool keep = true);
+    // ...and how much of the game shows through it: 40 to 100 %, 92 (235 of
+    // 255) as it always was; kept in window.txt
+    int overlayOpacity_ = 92;
+    static constexpr int OVERLAY_OPACITY_MIN = 40;
+    void setOverlayOpacity(int percent, bool keep = true);
+    BYTE overlayAlpha() const { return (BYTE)std::lround(overlayOpacity_ * 255 / 100.0); }
     float textF(float value) const { return scaleF(value * overlayText_); }   // a size of the overlay's text
     static constexpr int OVERLAY_GRIP = 14;   // unscaled: the corner the grip answers in
     int overlayZoomed(int pixels) const;      // pixels at the overlay's own size, as it stands
@@ -1086,6 +1112,7 @@ private:
     HWND btnKeys_ = nullptr;
     HWND btnRefinery_ = nullptr;
     HWND btnAbout_ = nullptr;
+    HWND btnSettings_ = nullptr;   // the gear, left of the ?
     // The keys, on a card over the window.
     bool keysOpen_ = false;
     // The card that asks whether to back the player's data up or put a
@@ -1645,6 +1672,53 @@ private:
     LRESULT handleNewsMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
     static constexpr int NEWS_WIDTH = 1080;   // wide enough for the 2.5 page's picture
     static constexpr int NEWS_HEIGHT = 720;
+
+    // The settings window (toggleSettings)
+    HWND settings_ = nullptr;
+    bool settingsVisible_ = false;
+    POINT hoverSettings_ = {-1, -1};
+    struct SettingsHit { Gdiplus::RectF rect; int kind; int value; };
+    // kind 0 a set, 1 a colour, 2 the hex field, 3 back to Bedrock's colour,
+    // 4 a slider (SettingsSlider), 5 the preview seen as
+    std::vector<SettingsHit> settingsHits_;
+    enum SettingsSlider { SLIDE_HUE, SLIDE_SATURATION, SLIDE_LIGHTNESS, SLIDE_OPACITY, SLIDE_TEXT, SLIDE_SIZE };
+    int settingsRole_ = Colours::Legendary;   // the colour on the sliders
+    // ...as the sliders have it: a grey has no hue of its own, and the one
+    // it had is kept for when it is given colour again
+    Colours::Hsl settingsHsl_;
+    int settingsDrag_ = -1;                   // the slider being dragged
+    Gdiplus::RectF settingsDragTrack_;
+    bool settingsTyping_ = false;             // the hex field has the keys
+    std::string settingsHex_;                 // ...and what has been typed into it
+    int settingsVision_ = 0;                  // the preview, as seen with (Colours::Vision)
+    bool settingsPulse_ = false;              // the preview's own beat
+    // What colours.txt says, and the colours in use from it
+    Colours::Settings colours_ = Colours::defaults();
+    static constexpr const char* COLOURS_FILE = "colours.txt";
+    void loadColours();
+    void saveColours() const;
+    void applyColours();                      // painted with, and every window drawn again
+    void setColour(int role, Colours::Rgb colour);
+    void chooseColourSet(int set);
+    void settingsRoleChosen(int role);        // ...and the sliders set to it
+    void slideSettings(int slider, float x, const Gdiplus::RectF& track);
+    void stepSettingsSlider(int slider, int notches);
+    void endSettingsTyping(bool apply);
+    bool createSettings();
+    void placeSettings();
+    void paintSettings(HDC hdc);
+    void drawSettingsPreview(Gdiplus::Graphics& g, const Gdiplus::RectF& box);
+    // The preview as last made, and what it was made from: the pointer
+    // moving over the window repaints it, and that need not make it again
+    // (released in ~MinerGUI, before GDI+ goes)
+    std::unique_ptr<Gdiplus::Bitmap> settingsPreview_;
+    std::string settingsPreviewKey_;
+    float drawOverlaySample(Gdiplus::Graphics& g, float width);   // its height
+    void drawMainSample(Gdiplus::Graphics& g, float x, float y, float width);
+    static LRESULT CALLBACK SettingsProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+    LRESULT handleSettingsMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+    static constexpr int SETTINGS_WIDTH = 920;
+    static constexpr int SETTINGS_HEIGHT = 700;
     int shotIndex_ = -1;                          // into media_
     std::shared_ptr<Gdiplus::Bitmap> shotImage_;  // the one being looked at, full size
     bool createShot();

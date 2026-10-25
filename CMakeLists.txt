@@ -208,6 +208,7 @@ set(CORE_SOURCES
     src/UexPrices.cpp
     src/UexReports.cpp
     src/UexMarket.cpp
+    src/ColourScheme.cpp
 )
 
 # Source files
@@ -256,6 +257,7 @@ set(HEADERS
     include/UexPrices.h
     include/UexReports.h
     include/UexMarket.h
+    include/ColourScheme.h
 )
 
 if(WIN32)
