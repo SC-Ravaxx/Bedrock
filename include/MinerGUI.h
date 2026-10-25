@@ -17,6 +17,7 @@
 #include <chrono>
 #include <gdiplus.h>
 #include "ColourScheme.h"
+#include "PhoneServer.h"
 #include "MiningData.h"
 #include "MiningAdvice.h"
 #include "RockContents.h"
@@ -506,6 +507,15 @@ public:
     void settingsForShot(int set, int role, int vision);
     void settingsColourForShot(int role, uint32_t rgb);   // ...a colour changed by hand
     void hideSettingsForShot();   // ...shut, and Bedrock's own colours back
+    // --screenshot and --selftest: the phone switched on, listening on this
+    // machine alone and saying it is at `lanAddress` (so a picture of the
+    // settings has an address in it that is the same every time)
+    bool phoneForShot(const std::string& lanAddress);
+    void phoneOffForShot();
+    // ...what a phone would be sent of a view, as wide as `devicePixels`
+    PhoneServer::Picture phonePictureForShot(PhoneServer::View view, int devicePixels);
+    int phonePort() const { return phone_ ? phone_->port() : 0; }
+    const std::string& phoneToken() const { return phoneToken_; }
     // A blueprint ticked or unticked by hand (index, now owned)
     using OwnedToggleCallback = std::function<void(int, bool)>;
     void setOwnedToggleCallback(OwnedToggleCallback callback) { ownedToggleCallback_ = callback; }
@@ -950,6 +960,9 @@ private:
 
     // Painting
     void onPaint(HDC hdc);
+    // The full window as onPaint draws it, into any Graphics: onPaint's, or
+    // a picture of it for a phone
+    void paintWindowBody(Gdiplus::Graphics& g, int cw, int ch);
     void drawHeader(Gdiplus::Graphics& g, int clientW);
     void drawSignatureCard(Gdiplus::Graphics& g, int clientW);
     int  drawResults(Gdiplus::Graphics& g, int clientW, int yPos);
@@ -1091,7 +1104,10 @@ private:
     void drawFooter(Gdiplus::Graphics& g, int clientW, int clientH);
     void drawCompact(Gdiplus::Graphics& g, int clientW, int clientH);
     void drawOwnerButton(const DRAWITEMSTRUCT* dis);
-    void paintOwnerButton(Gdiplus::Graphics& g, const DRAWITEMSTRUCT* dis);   // ...into a picture of it
+    // ...into a picture of it; a phone's picture gives its words, where they
+    // are not the button's own now, and draws it at its own size (zoom 1)
+    void paintOwnerButton(Gdiplus::Graphics& g, const DRAWITEMSTRUCT* dis, const wchar_t* words = nullptr,
+                          float zoom = -1.0f);
 
     // Helpers
     Gdiplus::Color getMineralColor(const std::string& mineral);
@@ -1100,6 +1116,15 @@ private:
     Gdiplus::Color qualityColor(int quality);
     void createControls();
     void layoutControls();
+    // Where the window's buttons go at a client width and height: the full
+    // window's, or the overlay's at its own size grown or shrunk by `zoom`.
+    // layoutControls puts the buttons there; the phone's pictures draw them
+    // there.
+    struct ButtonPlace {
+        HWND button;
+        RECT rect;
+    };
+    std::vector<ButtonPlace> buttonPlaces(bool overlay, int cw, int ch, float zoom) const;
 
     // Control handles
     // The system comes from Game.log, so there are no system buttons; the
@@ -1680,7 +1705,8 @@ private:
     POINT hoverSettings_ = {-1, -1};
     struct SettingsHit { Gdiplus::RectF rect; int kind; int value; };
     // kind 0 a set, 1 a colour, 2 the hex field, 3 back to Bedrock's colour,
-    // 4 a slider (SettingsSlider), 5 the preview seen as
+    // 4 a slider (SettingsSlider), 5 the preview seen as, 6 the phone off or
+    // on, 7 its address copied, 8 a new address for it
     std::vector<SettingsHit> settingsHits_;
     enum SettingsSlider { SLIDE_HUE, SLIDE_SATURATION, SLIDE_LIGHTNESS, SLIDE_OPACITY, SLIDE_TEXT, SLIDE_SIZE };
     int settingsRole_ = Colours::Legendary;   // the colour on the sliders
@@ -1718,8 +1744,51 @@ private:
     void drawMainSample(Gdiplus::Graphics& g, float x, float y, float width);
     static LRESULT CALLBACK SettingsProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
     LRESULT handleSettingsMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-    static constexpr int SETTINGS_WIDTH = 920;
+    // (the phone's column on the right: PHONE_COLUMN wide)
+    static constexpr int SETTINGS_WIDTH = 1220;
     static constexpr int SETTINGS_HEIGHT = 700;
+    static constexpr int PHONE_COLUMN = 280;
+
+    // ---- the phone or tablet: Bedrock in its browser (PhoneServer) ----
+    // Switched on in the settings, and kept in phone.txt with the token -
+    // the part of the address only a device shown the code knows - and the
+    // port it had, so an address saved on the phone keeps working.
+    std::unique_ptr<PhoneServer> phone_;
+    bool phoneOn_ = false;
+    std::string phoneToken_;
+    int phonePort_ = PhoneServer::FIRST_PORT;
+    std::string phoneLan_;          // this PC's address in the home network
+    std::string phoneLanForShot_;   // ...as a picture of the settings says it
+    std::string phoneError_;        // why it is on and not listening
+    std::vector<bool> phoneQr_;     // the code for the address, size * size
+    int phoneQrSize_ = 0;
+    std::string phoneQrOf_;         // ...and the address it is the code for
+    int phoneWatching_ = 0;         // devices that asked in the last seconds
+    bool phoneCopied_ = false;      // the address went to the clipboard
+    // The window was drawn since the phone's pictures were: something in it
+    // may have changed. Not when phoneTick drew it itself.
+    bool phoneDirty_ = true;
+    bool phoneRepainting_ = false;
+    std::chrono::steady_clock::time_point phoneDrawn_{};
+    // ...and per view, overlay and window: whether a device was looking at
+    // it, and how wide it was drawn for it
+    bool phoneWanted_[2] = {false, false};
+    int phonePixels_[2] = {0, 0};
+    // The full window's size when it was last on screen, unscaled: the
+    // phone's picture of it has its shape whether it is up or the overlay is
+    SIZE phoneWindowSize_ = {0, 0};
+    static constexpr const char* PHONE_FILE = "phone.txt";
+    void loadPhone();
+    void savePhone() const;
+    void setPhoneOn(bool on);
+    void newPhoneToken();
+    bool startPhone(bool loopbackOnly = false);
+    std::string phoneAddress() const;   // http://...:port/token/, "" without one
+    void phoneTick();
+    PhoneServer::Picture phonePicture(PhoneServer::View view, int devicePixels);
+    void drawPhoneButtons(Gdiplus::Graphics& g, bool overlay, int cw, int ch);
+    // the most a picture of the window is drawn at: 2.5 million pixels
+    static constexpr float PHONE_MOST_PIXELS = 2.5e6f;
     int shotIndex_ = -1;                          // into media_
     std::shared_ptr<Gdiplus::Bitmap> shotImage_;  // the one being looked at, full size
     bool createShot();

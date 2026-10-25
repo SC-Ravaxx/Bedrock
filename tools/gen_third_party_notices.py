@@ -132,7 +132,13 @@ EMBEDDED = [
     "    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,",
     "    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE",
     "    SOFTWARE.",
+    "",
+    "BUILT INTO Bedrock.exe: THE QR CODE GENERATOR",
+    "",
 ]
+# ...its licence as it lies beside its source, so the two cannot differ
+EMBEDDED += ["    " + line if line else "" for line in io.open(
+    os.path.join(ROOT, "third_party", "qrcodegen", "LICENSE.txt"), encoding="utf-8").read().strip().splitlines()]
 
 MICROSOFT = ["concrt140.dll", "msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll"]
 

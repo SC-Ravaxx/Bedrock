@@ -75,6 +75,7 @@ with open(OUT, 'w', encoding='utf-8') as out:
     out.write('\n    %-40s %s\n' % ('resources/fonts (SIL OFL 1.1)', 'Selawik, D-DIN'))
     out.write('    %-40s %s\n' % ('resources/textline.onnx (Apache 2.0)', 'PaddleOCR PP-OCRv4 text recognition'))
     out.write('    %-40s %s\n' % ('include/RefiningData.h (MIT)', 'Regolith refining tables'))
+    out.write('    %-40s %s\n' % ('third_party/qrcodegen (MIT)', 'QR Code generator, Project Nayuki'))
     if os.path.isdir(os.environ.get('OPENCV_STATIC_PREFIX', '/opt/opencv-static')):
         out.write('    %-40s %s\n' % ('OpenCV (static, inside bedrock)',
                                        'core, imgproc, imgcodecs, dnn + libpng, libjpeg-turbo, zlib, protobuf'))
@@ -124,4 +125,7 @@ with open(OUT, 'w', encoding='utf-8') as out:
                       ('Refining tables (Regolith)', 'LICENSE-Regolith.txt')):
         out.write('=' * 74 + '\n' + name + '\n' + '=' * 74 + '\n\n')
         out.write(open(os.path.join(ROOT, 'resources', lic), encoding='utf-8', errors='replace').read().rstrip() + '\n\n')
+    out.write('=' * 74 + '\nQR Code generator (Project Nayuki)\n' + '=' * 74 + '\n\n')
+    out.write(open(os.path.join(ROOT, 'third_party', 'qrcodegen', 'LICENSE.txt'), encoding='utf-8',
+                   errors='replace').read().rstrip() + '\n\n')
 print('%s: %d packages, %d libraries' % (OUT, len(packages), len(libs)))

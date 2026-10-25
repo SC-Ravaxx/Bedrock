@@ -70,6 +70,16 @@ Getting started
    each kind of colour blindness sees them. Everything applies at once.
    Your own colours are kept in colours.txt, and picking a set keeps them
    to come back to.
+9. PHONE OR TABLET, in the settings, shows the overlay or the whole window
+   in the browser of a phone or tablet on the same network - nothing to
+   install. Switch it on and scan the code with the phone's camera. At the
+   top of the page you pick Overlay or Window, and the button beside them
+   makes it full screen. It is only to look at: nothing on the phone changes
+   Bedrock. The first time, Windows asks whether Bedrock may use the
+   network; allow it for private networks. "New address" makes a new code,
+   and a device with the old one sees nothing any more. The phone's screen
+   still goes dark on its own timer - its display settings keep it on
+   longer.
 
 Refinery (key R)
 ----------------
@@ -391,8 +401,8 @@ Your settings (region_config.txt), your blueprint library
 (owned_blueprints.txt, with the log lines it came from), your own notes under
 notes\, your refinery work orders (refinery_orders.txt), a handful of small
 files that remember your choices (the place set by hand, the ores you look
-for, the loadout, the shopping list, the window, the colours) and, in the
-folder debug\:
+for, the loadout, the shopping list, the window, the colours, the phone's
+address) and, in the folder debug\:
   - scan_log.csv   a text log with one line per scan, rotates at 10 MB
   - session.txt    what the app found at this start (monitors, game window,
                    search area, capture path, game log) - one file, it gets
@@ -419,7 +429,7 @@ written to the registry.
 
 What Bedrock sends
 ------------------
-Three network requests of its own, and a fourth only if you switch it on:
+Three network requests of its own, and two more only if you switch them on:
 
 - The update check: one small text file from the-forsaken.org, once at start
   and once an hour. It carries the version, whether it is the Windows or the
@@ -461,6 +471,12 @@ Three network requests of its own, and a fourth only if you switch it on:
   conversations and notifications on the UEX marketplace (every two minutes
   while the tab is open), so clicking a listing you've already messaged
   about opens that conversation.
+- The phone or tablet (off unless you switch it on in the settings): Bedrock
+  then listens on your network, at port 47820, and hands the overlay and the
+  window as pictures to a browser that has its address. The address holds a
+  code of twelve characters that only a device shown the QR code knows.
+  Nothing of it goes out to the internet, and the page can't change anything
+  in Bedrock.
 
 Your install's number: the first time it starts, Bedrock makes a random
 number for this install and keeps it in install_id.txt in its data folder

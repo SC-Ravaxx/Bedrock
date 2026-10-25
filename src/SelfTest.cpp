@@ -26,6 +26,7 @@
 #include "NoteBook.h"
 #include "OCREngine.h"
 #include "PanelShapes.h"
+#include "PhoneServer.h"
 #include "RefineryData.h"
 #include "RefiningData.h"
 #include "ScanPanel.h"
@@ -5078,6 +5079,137 @@ int runSelfTest() {
                                " aUEC, seen 195) and its clock (" +
                                std::to_string((int)std::lround(wait / 60.0f)) +
                                " min, seen 46)");
+        }
+    }
+
+    // --- The phone or tablet: Bedrock's page and pictures over the home
+    //     network (PhoneServer) - what it reads of a request, where it sends
+    //     it, the code to scan, and the server itself, on this machine alone ---
+    {
+        using SCMiner::PhoneServer;
+        PhoneServer::Request r;
+        allPassed &= check(PhoneServer::parseRequest("GET /0123456789ab/state?view=window&w=900 HTTP/1.1\r\nHost: x\r\n\r\n",
+                                                     r) &&
+                               r.method == "GET" && r.path == "/0123456789ab/state" && r.query == "view=window&w=900",
+                           "phone: a request's method, path and query are read off its first line");
+        allPassed &= check(!PhoneServer::parseRequest("GET\r\n\r\n", r) &&
+                               !PhoneServer::parseRequest("GET http://x/ HTTP/1.1\r\n\r\n", r) &&
+                               !PhoneServer::parseRequest("hello there\r\n\r\n", r),
+                           "phone: what is not a request, or asks for another server, is not taken for one");
+        allPassed &= check(PhoneServer::queryValue("view=window&w=900", "w") == "900" &&
+                               PhoneServer::queryValue("view=window&w=900", "view") == "window" &&
+                               PhoneServer::queryValue("view=window&w=900", "n").empty() &&
+                               PhoneServer::queryValue("", "w").empty(),
+                           "phone: a value out of the query, and none where there is none");
+        const std::string token = "0123456789ab";
+        const auto routeOf = [&](const std::string& path) {
+            PhoneServer::Request q;
+            q.method = "GET";
+            q.path = path;
+            return PhoneServer::route(q, token);
+        };
+        allPassed &= check(routeOf("/0123456789ab/") == PhoneServer::Route::Page &&
+                               routeOf("/0123456789ab") == PhoneServer::Route::AddSlash &&
+                               routeOf("/0123456789ab/state") == PhoneServer::Route::State &&
+                               routeOf("/0123456789ab/frame") == PhoneServer::Route::Frame,
+                           "phone: the page, its state and its pictures are behind the token");
+        allPassed &= check(routeOf("/") == PhoneServer::Route::NotFound &&
+                               routeOf("/0123456789ac/") == PhoneServer::Route::NotFound &&
+                               routeOf("/0123456789a/") == PhoneServer::Route::NotFound &&
+                               routeOf("/0123456789ab/../state") == PhoneServer::Route::NotFound &&
+                               routeOf("/favicon.ico") == PhoneServer::Route::NotFound,
+                           "phone: without the token, or with a wrong one, nothing is there");
+        allPassed &= check(PhoneServer::jsonString("a\"b\\c\nd\x01") == "\"a\\\"b\\\\c\\nd\\u0001\"",
+                           "phone: a string escaped for JSON");
+        const std::string t1 = PhoneServer::newToken(), t2 = PhoneServer::newToken();
+        allPassed &= check(t1.size() == 12 && PhoneServer::tokenOk(t1) && t1 != t2 && !PhoneServer::tokenOk("0123") &&
+                               !PhoneServer::tokenOk("0123456789AB") && !PhoneServer::tokenOk("01234567/9ab"),
+                           "phone: a token is twelve hex digits, new every time (" + t1 + ")");
+        // the code to scan: a size QR codes come in, and the three finder
+        // patterns where a camera looks for them
+        int n = 0;
+        const std::vector<bool> qr = PhoneServer::qrCode("http://192.168.178.20:47820/0123456789ab/", n);
+        bool finders = n >= 21 && (n - 17) % 4 == 0 && qr.size() == (size_t)n * (size_t)n;
+        for (const auto& corner : {std::pair<int, int>{0, 0}, std::pair<int, int>{n - 7, 0}, std::pair<int, int>{0, n - 7}}) {
+            for (int y = 0; finders && y < 7; y++) {
+                for (int x = 0; finders && x < 7; x++) {
+                    const bool ring = x == 0 || y == 0 || x == 6 || y == 6;
+                    const bool core = x >= 2 && x <= 4 && y >= 2 && y <= 4;
+                    if (qr[(size_t)(corner.second + y) * (size_t)n + (size_t)(corner.first + x)] != (ring || core)) {
+                        finders = false;
+                    }
+                }
+            }
+        }
+        allPassed &= check(finders, "phone: the code for an address is a QR code (" + std::to_string(n) + " modules a side)");
+        // a picture as a PNG, and back as it was
+        PhoneServer::Picture picture;
+        picture.width = 3;
+        picture.height = 2;
+        picture.bgra = {0, 0, 255, 255, 0, 255, 0, 255, 255, 0, 0, 255, 16, 16, 15, 255, 241, 239, 238, 255, 92, 186, 224, 255};
+        const std::vector<uint8_t> png = PhoneServer::png(picture);
+        const cv::Mat back = png.empty() ? cv::Mat() : cv::imdecode(png, cv::IMREAD_COLOR);
+        bool same = !back.empty() && back.cols == 3 && back.rows == 2;
+        for (int i = 0; same && i < 6; i++) {
+            const cv::Vec3b px = back.at<cv::Vec3b>(i / 3, i % 3);
+            same = px[0] == picture.bgra[(size_t)i * 4] && px[1] == picture.bgra[(size_t)i * 4 + 1] &&
+                   px[2] == picture.bgra[(size_t)i * 4 + 2];
+        }
+        allPassed &= check(png.size() > 8 && png[0] == 0x89 && png[1] == 'P' && same,
+                           "phone: a picture goes as a PNG, every pixel as it was");
+
+        // the server, listening on this machine alone - which asks Windows
+        // for nothing
+        PhoneServer server;
+        const bool up = server.start(token, 0, true);
+        const int port = server.port();
+        allPassed &= check(up && port > 0, "phone: the server listens (port " + std::to_string(port) + ")");
+        if (up) {
+            const std::string page = PhoneServer::fetchLocal(port, "/" + token + "/");
+            allPassed &= check(page.rfind("HTTP/1.1 200 OK", 0) == 0 && page.find("<!doctype html>") != std::string::npos &&
+                                   page.find("Content-Security-Policy:") != std::string::npos,
+                               "phone: the page comes, behind the token");
+            const std::string wrong = PhoneServer::fetchLocal(port, "/0123456789ac/");
+            allPassed &= check(wrong.rfind("HTTP/1.1 404", 0) == 0 && wrong.find("<!doctype") == std::string::npos,
+                               "phone: a wrong token gets nothing");
+            const std::string slash = PhoneServer::fetchLocal(port, "/" + token);
+            allPassed &= check(slash.rfind("HTTP/1.1 301", 0) == 0 &&
+                                   slash.find("Location: /" + token + "/\r\n") != std::string::npos,
+                               "phone: the address without its last slash leads to the page");
+            allPassed &= check(!server.wanted(PhoneServer::View::Overlay), "phone: nothing is wanted before a page asks");
+            const std::string before = PhoneServer::fetchLocal(port, "/" + token + "/state?view=overlay&w=1170");
+            int pixels = 0;
+            const bool wanted = server.wanted(PhoneServer::View::Overlay, &pixels);
+            allPassed &= check(before.find("{\"frame\":0}") != std::string::npos && wanted && pixels == 1170 &&
+                                   !server.wanted(PhoneServer::View::Window) && server.watching() == 1,
+                               "phone: a page asking for the overlay is looking at it, at its width (" +
+                                   std::to_string(pixels) + ")");
+            server.setStatus("\"bg\":\"#0F1013\"");
+            const bool fresh = server.publish(PhoneServer::View::Overlay, picture);
+            const bool again = server.publish(PhoneServer::View::Overlay, picture);
+            const std::string state = PhoneServer::fetchLocal(port, "/" + token + "/state?view=overlay&w=1170");
+            allPassed &= check(fresh && !again && server.frame(PhoneServer::View::Overlay) == 1 &&
+                                   state.find("{\"frame\":1,\"width\":3,\"height\":2,\"bg\":\"#0F1013\"}") !=
+                                       std::string::npos,
+                               "phone: a new picture is a new frame, the same one again is not");
+            const std::string frame = PhoneServer::fetchLocal(port, "/" + token + "/frame?view=overlay&n=1");
+            const size_t body = frame.find("\r\n\r\n");
+            allPassed &= check(frame.rfind("HTTP/1.1 200 OK", 0) == 0 &&
+                                   frame.find("Content-Type: image/png") != std::string::npos &&
+                                   body != std::string::npos &&
+                                   frame.compare(body + 4, std::string::npos, std::string(png.begin(), png.end())) == 0,
+                               "phone: the frame is the picture's PNG");
+            allPassed &= check(PhoneServer::fetchLocal(port, "/" + token + "/frame?view=window").rfind("HTTP/1.1 404", 0) == 0,
+                               "phone: a view not drawn yet has no frame");
+            // ...and stopped, and started again at once on the port it had:
+            // a phone keeps its address when the phone is switched off and on
+            server.stop();
+            allPassed &= check(!server.running() && PhoneServer::fetchLocal(port, "/" + token + "/").empty(),
+                               "phone: stopped, nothing answers");
+            const bool reopened = server.start(token, port, true);
+            allPassed &= check(reopened && server.port() == port,
+                               "phone: started again at once, on the same port (" + std::to_string(server.port()) + ")");
+            server.stop();
         }
     }
 

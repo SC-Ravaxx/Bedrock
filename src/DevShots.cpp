@@ -24,6 +24,7 @@
 #include <opencv2/opencv.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -397,6 +398,30 @@ int runScreenshots(const std::string& dir) {
         }
         save(bgr, name, ok);
     };
+    // What a phone or tablet is sent of a view (MinerGUI::phonePicture), as
+    // wide as it stands on its screen
+    auto shootPhone = [&](SCMiner::PhoneServer::View view, int devicePixels, const std::string& name) {
+        const auto from = std::chrono::steady_clock::now();
+        const SCMiner::PhoneServer::Picture picture = gui.phonePictureForShot(view, devicePixels);
+        const auto drawn = std::chrono::steady_clock::now();
+        if (picture.width <= 0 || picture.height <= 0) {
+            std::cout << name << ": nothing drawn" << std::endl;
+            return;
+        }
+        const std::vector<uint8_t> png = SCMiner::PhoneServer::png(picture);
+        const auto packed = std::chrono::steady_clock::now();
+        const cv::Mat bgra(picture.height, picture.width, CV_8UC4, const_cast<uint8_t*>(picture.bgra.data()));
+        cv::Mat bgr;
+        cv::cvtColor(bgra, bgr, cv::COLOR_BGRA2BGR);
+        save(bgr, name, true);
+        // ...and what it costs: the drawing, on the window's thread, and the
+        // PNG the device is sent
+        const auto ms = [](auto a, auto b) {
+            return (long long)std::chrono::duration_cast<std::chrono::milliseconds>(b - a).count();
+        };
+        std::cout << "    drawn in " << ms(from, drawn) << " ms, PNG " << png.size() / 1024 << " KB in " << ms(drawn, packed)
+                  << " ms" << std::endl;
+    };
 
     pump();
     {
@@ -469,6 +494,30 @@ int runScreenshots(const std::string& dir) {
         pump();
         shoot(gui.settingsHandle(), "settings_overlay_65.png", true);
         gui.setOverlayOpacityForShot(92);
+        // ...and the phone switched on: its code and its address, with a
+        // device watching. It listens on this machine alone here, and says
+        // it is at a home network's address, the same in every picture.
+        // Then what the device is sent of the window, at a phone's width.
+        if (gui.phoneForShot("192.168.178.20")) {
+            PhoneServer::fetchLocal(gui.phonePort(), "/" + gui.phoneToken() + "/state?view=window&w=1170");
+            pump();
+            shoot(gui.settingsHandle(), "settings_phone.png", true);
+            shootPhone(PhoneServer::View::Window, 1170, "phone_window.png");
+            shootPhone(PhoneServer::View::Window, 1640, "phone_window_tablet.png");
+            // BEDROCK_SHOT_PHONE_HOLD=30 keeps it up that many seconds more,
+            // drawing for a device as it does, for a browser on this machine
+            // to be pointed at the address it prints
+            if (const char* hold = DEV_ENV("BEDROCK_SHOT_PHONE_HOLD")) {
+                const int seconds = std::atoi(hold);
+                std::cout << "phone: http://127.0.0.1:" << gui.phonePort() << "/" << gui.phoneToken() << "/ for "
+                          << seconds << " s" << std::endl;
+                const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
+                while (std::chrono::steady_clock::now() < until) pump();
+            }
+            gui.phoneOffForShot();
+        } else {
+            std::cout << "settings_phone.png: the phone did not start" << std::endl;
+        }
         gui.hideSettingsForShot();
         pump();
     }
@@ -609,6 +658,10 @@ int runScreenshots(const std::string& dir) {
             gui.toggleOverlayMode();
             pump();
             shoot(gui.windowHandle(), "overlay_rock_contents.png");
+            // ...the same on a phone, the overlay and the window both, while
+            // the overlay is what is on screen
+            shootPhone(SCMiner::PhoneServer::View::Overlay, 1170, "phone_overlay_rock.png");
+            shootPhone(SCMiner::PhoneServer::View::Window, 1170, "phone_window_rock.png");
             gui.toggleOverlayMode();
             pump();
             // An iron rock while an ore pod is on the shopping list, whose

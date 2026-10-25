@@ -43,6 +43,9 @@ executable and start it. The app tells you when a newer version is out.
   or your own - with a preview that also shows how each kind of colour
   blindness sees them. The overlay's opacity, text size and size are set
   there too.
+- **Phone or tablet:** the overlay or the whole window in the browser of a
+  phone or tablet on your network, with nothing to install. Switch it on in
+  the settings and scan the code. Only to look at.
 
 ## How it reads the game
 

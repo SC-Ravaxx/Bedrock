@@ -209,6 +209,8 @@ set(CORE_SOURCES
     src/UexReports.cpp
     src/UexMarket.cpp
     src/ColourScheme.cpp
+    src/PhoneServer.cpp
+    third_party/qrcodegen/qrcodegen.cpp
 )
 
 # Source files
@@ -258,6 +260,7 @@ set(HEADERS
     include/UexReports.h
     include/UexMarket.h
     include/ColourScheme.h
+    include/PhoneServer.h
 )
 
 if(WIN32)

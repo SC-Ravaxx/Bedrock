@@ -76,6 +76,7 @@ constexpr int ORE_ROWS_BUTTON_W = 40;   // the overlay's Rows/Line switch
 #define TIMER_PLAN_PULSE   11   // the Ore Finder's best-paid ore, blinking
 #define TIMER_REFINERY_DONE 12  // the Refinery button's count of finished work orders, kept up to time
 #define TIMER_SETTINGS_PULSE 13 // the settings' preview, blinking as the overlay does
+#define TIMER_PHONE        14   // the phone's pictures, drawn again where the window changed
 #ifndef WM_APP
 #define WM_APP 0x8000   // (the Linux shim has none)
 #endif
@@ -1161,6 +1162,10 @@ bool MinerGUI::initialize(HINSTANCE hInstance) {
     loadCart();   // what was on the shopping list when the app was last shut
     loadLookingFor();   // ...and which ores were being watched for
     loadLoadout();      // ...and what the ship was carrying
+    // ...and the phone, back on if it was on - not for a picture of the
+    // window, which would ask Windows for the network
+    loadPhone();
+    if (phoneOn_ && !headless_) startPhone();
 
     isOpen_ = true;
     return true;
@@ -1222,24 +1227,21 @@ void MinerGUI::createControls() {
 void MinerGUI::layoutControls() {
     RECT rc;
     GetClientRect(hwnd_, &rc);
-    const int cw = rc.right;
-    const int M = scale(MARGIN);
-    const int gap = scale(8);
+    const auto move = [&](const ButtonPlace& place) {
+        MoveWindow(place.button, place.rect.left, place.rect.top, place.rect.right - place.rect.left,
+                   place.rect.bottom - place.rect.top, TRUE);
+    };
 
     // Controls that only exist in the full window
     HWND fullOnly[] = {btnPlan_, btnCraft_, btnNotes_, btnKeys_, btnRefinery_, btnAbout_, btnSettings_};
 
     if (overlayMode_) {
         for (HWND h : fullOnly) ShowWindow(h, SW_HIDE);
-
-        // Compact: LIVE toggle + FULL button in the top-right corner, grown
-        // or shrunk with the overlay
-        auto z = [&](int pixels) { return overlayZoomed(pixels); };
-        const int btnH = z(scale(20));
-        const int btnY = z(scale(8));
-        MoveWindow(btnOverlay_, cw - z(scale(8)) - z(scale(46)), btnY, z(scale(46)), btnH, TRUE);
-        MoveWindow(btnLiveMode_, cw - z(scale(8)) - z(scale(46)) - z(scale(4)) - z(scale(58)), btnY,
-                   z(scale(58)), btnH, TRUE);
+        // (Rows is placed by placeOreRowsButton, which also says whether it
+        // is up at all)
+        for (const ButtonPlace& place : buttonPlaces(true, rc.right, rc.bottom, overlayZoom_)) {
+            if (place.button != btnOreRows_) move(place);
+        }
         placeOreRowsButton();
         return;
     }
@@ -1261,19 +1263,42 @@ void MinerGUI::layoutControls() {
             if (b) ShowWindow(b, SW_HIDE);
         }
     }
+    for (const ButtonPlace& place : buttonPlaces(false, rc.right, rc.bottom, 1.0f)) move(place);
+}
+
+std::vector<MinerGUI::ButtonPlace> MinerGUI::buttonPlaces(bool overlay, int cw, int ch, float zoom) const {
+    std::vector<ButtonPlace> places;
+    const auto put = [&](HWND button, int x, int y, int w, int h) {
+        if (button) places.push_back({button, {x, y, x + w, y + h}});
+    };
+    if (overlay) {
+        // Compact: LIVE toggle + FULL button in the top-right corner, grown
+        // or shrunk with the overlay
+        const auto z = [&](int pixels) { return (int)std::lround(pixels * zoom); };
+        const int btnH = z(scale(20));
+        const int btnY = z(scale(8));
+        put(btnOverlay_, cw - z(scale(8)) - z(scale(46)), btnY, z(scale(46)), btnH);
+        put(btnLiveMode_, cw - z(scale(8)) - z(scale(46)) - z(scale(4)) - z(scale(58)), btnY, z(scale(58)), btnH);
+        // ...and Rows left of the grip in the corner, as tall as LIVE and
+        // Full: at 18 its words did not fit grown or shrunk, and were left out
+        put(btnOreRows_, cw - z(scale(14 + ORE_ROWS_BUTTON_W)), ch - z(scale(5 + 20)), z(scale(ORE_ROWS_BUTTON_W)),
+            z(scale(20)));
+        return places;
+    }
+    const int M = scale(MARGIN);
+    const int gap = scale(8);
 
     // The header row, right to left: ?, the gear, OVERLAY, KEYS, LIVE. LIVE
     // sits with them because it is a switch, not a place to look something
     // up, and the ? is last because it is the one nobody needs twice - the
     // gear, the settings, next to it for the same reason.
     const int qW = scale(24);
-    MoveWindow(btnAbout_, cw - M - qW, scale(14), qW, scale(24), TRUE);
-    MoveWindow(btnSettings_, cw - M - qW - scale(4) - qW, scale(14), qW, scale(24), TRUE);
+    put(btnAbout_, cw - M - qW, scale(14), qW, scale(24));
+    put(btnSettings_, cw - M - qW - scale(4) - qW, scale(14), qW, scale(24));
     const int headRight = cw - M - 2 * qW - scale(8);
-    MoveWindow(btnOverlay_, headRight - scale(78), scale(14), scale(78), scale(24), TRUE);
-    MoveWindow(btnKeys_, headRight - scale(78) - scale(52), scale(14), scale(48), scale(24), TRUE);
-    MoveWindow(btnLiveMode_, headRight - scale(78) - scale(52) - scale(66), scale(14),
-               scale(62), scale(24), TRUE);
+    put(btnOverlay_, headRight - scale(78), scale(14), scale(78), scale(24));
+    put(btnKeys_, headRight - scale(78) - scale(52), scale(14), scale(48), scale(24));
+    put(btnLiveMode_, headRight - scale(78) - scale(52) - scale(66), scale(14), scale(62), scale(24));
 
     // The ore pick is drawn rather than a child window - see drawLookingField.
 
@@ -1282,11 +1307,11 @@ void MinerGUI::layoutControls() {
     const int rowY = scale(LY_CONTROLS) + extraTop();
     const int rowH = scale(28);
     const int actW = (cw - 2 * M - 3 * gap) / 4;
-    MoveWindow(btnRefinery_, M, rowY, actW, rowH, TRUE);
-    MoveWindow(btnPlan_, M + actW + gap, rowY, actW, rowH, TRUE);
-    MoveWindow(btnCraft_, M + 2 * (actW + gap), rowY, actW, rowH, TRUE);
-    MoveWindow(btnNotes_, M + 3 * (actW + gap), rowY, cw - M - (M + 3 * (actW + gap)), rowH, TRUE);
-
+    put(btnRefinery_, M, rowY, actW, rowH);
+    put(btnPlan_, M + actW + gap, rowY, actW, rowH);
+    put(btnCraft_, M + 2 * (actW + gap), rowY, actW, rowH);
+    put(btnNotes_, M + 3 * (actW + gap), rowY, cw - M - (M + 3 * (actW + gap)), rowH);
+    return places;
 }
 
 void MinerGUI::toggleOverlayMode() {
@@ -1396,12 +1421,12 @@ void MinerGUI::placeOreRowsButton() {
     wchar_t was[8] = {};
     GetWindowTextW(btnOreRows_, was, 8);
     if (wcscmp(was, word) != 0) SetWindowTextW(btnOreRows_, word);
-    // ...left of the grip in the corner, at the overlay's size, as tall as
-    // LIVE and Full: at 18 its words did not fit grown or shrunk, and were
-    // left out
-    MoveWindow(btnOreRows_, rc.right - overlayZoomed(scale(14 + ORE_ROWS_BUTTON_W)),
-               rc.bottom - overlayZoomed(scale(5 + 20)), overlayZoomed(scale(ORE_ROWS_BUTTON_W)),
-               overlayZoomed(scale(20)), TRUE);
+    // ...left of the grip in the corner, at the overlay's size (buttonPlaces)
+    for (const ButtonPlace& place : buttonPlaces(true, rc.right, rc.bottom, overlayZoom_)) {
+        if (place.button != btnOreRows_) continue;
+        MoveWindow(btnOreRows_, place.rect.left, place.rect.top, place.rect.right - place.rect.left,
+                   place.rect.bottom - place.rect.top, TRUE);
+    }
     if (!IsWindowVisible(btnOreRows_)) ShowWindow(btnOreRows_, SW_SHOWNOACTIVATE);
     RedrawWindow(btnOreRows_, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
 }
@@ -3112,6 +3137,10 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 keepRefineryBadge();
                 return 0;
             }
+            if (wParam == TIMER_PHONE) {
+                phoneTick();
+                return 0;
+            }
             if (wParam == 1) {
                 pulseOn_ = !pulseOn_;
                 // ...and for a match the shopping list wants, which blinks
@@ -3181,6 +3210,13 @@ void MinerGUI::onPaint(HDC hdc) {
     GetClientRect(hwnd_, &clientRect);
     const int cw = clientRect.right;
     const int ch = clientRect.bottom;
+    // What a phone was sent may be out of date now (phoneTick) - and the
+    // full window's size, unscaled, is the one its picture of it has
+    if (!phoneRepainting_) phoneDirty_ = true;
+    if (!overlayMode_ && cw > 0 && ch > 0) {
+        const int unit = (int)dpi_ * uiScale_;
+        phoneWindowSize_ = {MulDiv(cw, 9600, unit), MulDiv(ch, 9600, unit)};
+    }
 
     // Double buffering
     HDC memDC = CreateCompatibleDC(hdc);
@@ -3207,91 +3243,7 @@ void MinerGUI::onPaint(HDC hdc) {
             drawOverlayGrip(g, lw, lh);
             g.Restore(plain);
         } else {
-            // The window itself, and what drops down over it. Under a sheet
-            // (keys, about, backup, what's new, loadout) or a dropped list
-            // it is drawn into a picture first and shows through the glass
-            // blurred; otherwise straight onto the window.
-            auto paintBase = [&](Gdiplus::Graphics& b) {
-                drawHeader(b, cw);
-                lookHits_.clear();
-                drawLookingField(b, cw);
-                if (rockInView_) {
-                    // The scan panel is up: that is the question being asked, so
-                    // it is the one the window answers. It goes back on its own
-                    // when the panel does.
-                    drawRockCard(b, cw);
-                    int y = drawRockOutput(b, cw, scale(LY_RESULTS) + extraTop() + (int)rockStripHeight());
-                    drawRockAdvice(b, cw, y);
-                } else {
-                    drawSignatureCard(b, cw);
-                    int y = drawResults(b, cw, scale(LY_RESULTS) + extraTop());
-                    y = drawDetailCard(b, cw, y);
-                    drawLocationCard(b, cw, y, ch);
-                }
-                drawFooter(b, cw, ch);
-            };
-            // The three lists that drop out of their fields: the ores, the
-            // ship, the place
-            auto paintLists = [&](Gdiplus::Graphics& b) {
-                if (lookingOpen_) drawLookingPanel(b, cw, ch);
-                if (shipPickerOpen_) drawShipPicker(b, cw);
-                if (placePickerOpen_) drawPlacePicker(b, cw, ch);
-            };
-            // Under a sheet the whole window is frosted, lists and all. A list
-            // on its own frosts only what lies under it: the window is drawn
-            // into a picture, put down as it is, and its blurred copy is what
-            // the list's glass shows (frost_, for the length of the lists).
-            // Nothing under glass lights up under the pointer - a click there
-            // goes to the glass, not to what it covers - and so a pointer
-            // moving over a sheet leaves the page under it as it was, and its
-            // blur comes out of the cache (frostMain_).
-            const bool sheet = keysOpen_ || aboutOpen_ || backupOpen_ || whatsNewOpen_ || loadoutOpen_ || uexWelcome_.step;
-            const bool lists = lookingOpen_ || shipPickerOpen_ || placePickerOpen_;
-            if (sheet || lists) {
-                Gdiplus::Bitmap base(cw, ch, PixelFormat32bppPARGB);
-                const POINT hover = hoverMain_;
-                {
-                    Gdiplus::Graphics b(&base);
-                    prepareGraphics(b);
-                    b.FillRectangle(&bgBrush, 0, 0, cw, ch);
-                    hoverMain_ = {-1, -1};
-                    paintBase(b);
-                    if (sheet) paintLists(b);
-                    hoverMain_ = hover;
-                }
-                FrostCache::Slot& frost = frostOf(frostMain_, base, cw, ch);
-                if (sheet) {
-                    frostBackdrop(g, *frost.blur, cw, ch);
-                    // The loadout leaves the header's own buttons - Live,
-                    // Keys, Overlay - where they are and in use, and they are
-                    // windows of their own that no blur reaches; the header
-                    // stays sharp with them rather than smeared beside them
-                    if (loadoutOpen_ && !(keysOpen_ || aboutOpen_ || backupOpen_ || whatsNewOpen_)) {
-                        // ...the header only: above the card's top edge, and
-                        // not the place and ship row the header also draws
-                        const Gdiplus::RectF strip(0.0f, 0.0f, (float)cw, scaleF(52));
-                        g.FillRectangle(&bgBrush, strip);
-                        g.SetClip(strip);
-                        drawHeader(g, cw);
-                        g.ResetClip();
-                    }
-                } else {
-                    drawOneToOne(g, base, cw, ch);
-                    frost_ = frostBrush(frost);
-                    paintLists(g);
-                    frost_ = nullptr;
-                }
-            } else {
-                frostMain_.clear();   // no glass up: its blur is not kept
-                paintBase(g);
-            }
-            // last, because it lies over the window
-            if (keysOpen_) drawKeysCard(g, cw, ch);
-            if (aboutOpen_) drawAboutCard(g, cw, ch);
-            if (backupOpen_) drawBackupCard(g, cw, ch);
-            if (whatsNewOpen_) drawWhatsNewCard(g, cw, ch);
-            if (loadoutOpen_) drawLoadoutCard(g, cw, ch);
-            if (uexWelcome_.step) drawUexCard(g, cw, ch, uexWelcome_, hoverMain_);
+            paintWindowBody(g, cw, ch);
         }
     }
 
@@ -3300,6 +3252,95 @@ void MinerGUI::onPaint(HDC hdc) {
     SelectObject(memDC, oldBitmap);
     DeleteObject(memBitmap);
     DeleteDC(memDC);
+}
+
+void MinerGUI::paintWindowBody(Gdiplus::Graphics& g, int cw, int ch) {
+    Gdiplus::SolidBrush bgBrush(COL_BG);
+    // The window itself, and what drops down over it. Under a sheet
+    // (keys, about, backup, what's new, loadout) or a dropped list
+    // it is drawn into a picture first and shows through the glass
+    // blurred; otherwise straight onto the window.
+    auto paintBase = [&](Gdiplus::Graphics& b) {
+        drawHeader(b, cw);
+        lookHits_.clear();
+        drawLookingField(b, cw);
+        if (rockInView_) {
+            // The scan panel is up: that is the question being asked, so
+            // it is the one the window answers. It goes back on its own
+            // when the panel does.
+            drawRockCard(b, cw);
+            int y = drawRockOutput(b, cw, scale(LY_RESULTS) + extraTop() + (int)rockStripHeight());
+            drawRockAdvice(b, cw, y);
+        } else {
+            drawSignatureCard(b, cw);
+            int y = drawResults(b, cw, scale(LY_RESULTS) + extraTop());
+            y = drawDetailCard(b, cw, y);
+            drawLocationCard(b, cw, y, ch);
+        }
+        drawFooter(b, cw, ch);
+    };
+    // The three lists that drop out of their fields: the ores, the
+    // ship, the place
+    auto paintLists = [&](Gdiplus::Graphics& b) {
+        if (lookingOpen_) drawLookingPanel(b, cw, ch);
+        if (shipPickerOpen_) drawShipPicker(b, cw);
+        if (placePickerOpen_) drawPlacePicker(b, cw, ch);
+    };
+    // Under a sheet the whole window is frosted, lists and all. A list
+    // on its own frosts only what lies under it: the window is drawn
+    // into a picture, put down as it is, and its blurred copy is what
+    // the list's glass shows (frost_, for the length of the lists).
+    // Nothing under glass lights up under the pointer - a click there
+    // goes to the glass, not to what it covers - and so a pointer
+    // moving over a sheet leaves the page under it as it was, and its
+    // blur comes out of the cache (frostMain_).
+    const bool sheet = keysOpen_ || aboutOpen_ || backupOpen_ || whatsNewOpen_ || loadoutOpen_ || uexWelcome_.step;
+    const bool lists = lookingOpen_ || shipPickerOpen_ || placePickerOpen_;
+    if (sheet || lists) {
+        Gdiplus::Bitmap base(cw, ch, PixelFormat32bppPARGB);
+        const POINT hover = hoverMain_;
+        {
+            Gdiplus::Graphics b(&base);
+            prepareGraphics(b);
+            b.FillRectangle(&bgBrush, 0, 0, cw, ch);
+            hoverMain_ = {-1, -1};
+            paintBase(b);
+            if (sheet) paintLists(b);
+            hoverMain_ = hover;
+        }
+        FrostCache::Slot& frost = frostOf(frostMain_, base, cw, ch);
+        if (sheet) {
+            frostBackdrop(g, *frost.blur, cw, ch);
+            // The loadout leaves the header's own buttons - Live,
+            // Keys, Overlay - where they are and in use, and they are
+            // windows of their own that no blur reaches; the header
+            // stays sharp with them rather than smeared beside them
+            if (loadoutOpen_ && !(keysOpen_ || aboutOpen_ || backupOpen_ || whatsNewOpen_)) {
+                // ...the header only: above the card's top edge, and
+                // not the place and ship row the header also draws
+                const Gdiplus::RectF strip(0.0f, 0.0f, (float)cw, scaleF(52));
+                g.FillRectangle(&bgBrush, strip);
+                g.SetClip(strip);
+                drawHeader(g, cw);
+                g.ResetClip();
+            }
+        } else {
+            drawOneToOne(g, base, cw, ch);
+            frost_ = frostBrush(frost);
+            paintLists(g);
+            frost_ = nullptr;
+        }
+    } else {
+        frostMain_.clear();   // no glass up: its blur is not kept
+        paintBase(g);
+    }
+    // last, because it lies over the window
+    if (keysOpen_) drawKeysCard(g, cw, ch);
+    if (aboutOpen_) drawAboutCard(g, cw, ch);
+    if (backupOpen_) drawBackupCard(g, cw, ch);
+    if (whatsNewOpen_) drawWhatsNewCard(g, cw, ch);
+    if (loadoutOpen_) drawLoadoutCard(g, cw, ch);
+    if (uexWelcome_.step) drawUexCard(g, cw, ch, uexWelcome_, hoverMain_);
 }
 
 // ---- the scan view's own pieces --------------------------------------------
@@ -15159,9 +15200,10 @@ void MinerGUI::drawOwnerButton(const DRAWITEMSTRUCT* dis) {
     DeleteDC(mem);
 }
 
-void MinerGUI::paintOwnerButton(Gdiplus::Graphics& g, const DRAWITEMSTRUCT* dis) {
+void MinerGUI::paintOwnerButton(Gdiplus::Graphics& g, const DRAWITEMSTRUCT* dis, const wchar_t* words,
+                                 float zoomAs) {
     // the overlay's buttons grow and shrink with it (overlayZoom_)
-    const float zoom = overlayMode_ ? overlayZoom_ : 1.0f;
+    const float zoom = zoomAs > 0.0f ? zoomAs : (overlayMode_ ? overlayZoom_ : 1.0f);
     if (zoom != 1.0f) g.ScaleTransform(zoom, zoom);
 
     const int id = (int)dis->CtlID;
@@ -15175,7 +15217,8 @@ void MinerGUI::paintOwnerButton(Gdiplus::Graphics& g, const DRAWITEMSTRUCT* dis)
     // The same button every card draws (drawButton): a rounded surface and
     // a hairline, words in the semibold face. LIVE says it is on in green.
     wchar_t label[32] = {};
-    GetWindowTextW(dis->hwndItem, label, 31);
+    if (words) wcscpy_s(label, words);
+    else GetWindowTextW(dis->hwndItem, label, 31);
     // the overlay's switch says the way it is, whatever its text was last set to
     if (id == ID_BTN_ORE_ROWS) wcscpy_s(label, overlayOreRows_ ? L"Rows" : L"Line");
     // ...and the gear's name is for a screen reader: the gear says it here
@@ -20861,6 +20904,310 @@ void cornersOff(Gdiplus::Graphics& g, const Gdiplus::RectF& r, float radius, con
 
 }  // namespace
 
+// ---------------------------------------------------------------------------
+// The phone or tablet: Bedrock in the browser of a device on the home network
+// (PhoneServer). The overlay and the window are drawn for it by their own
+// code, at the size they stand at on the device, whenever they have changed
+// and a device is looking at them.
+// ---------------------------------------------------------------------------
+
+void MinerGUI::loadPhone() {
+    std::ifstream in(AppPaths::file(PHONE_FILE));
+    std::string line;
+    while (in.is_open() && std::getline(in, line)) {
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+        const size_t eq = line.find('=');
+        if (line.empty() || line[0] == '#' || eq == std::string::npos) continue;
+        const std::string key = line.substr(0, eq), value = line.substr(eq + 1);
+        if (key == "on") {
+            phoneOn_ = value == "1";
+        } else if (key == "token" && PhoneServer::tokenOk(value)) {
+            phoneToken_ = value;
+        } else if (key == "port") {
+            const int port = std::atoi(value.c_str());
+            if (port >= 1024 && port <= 65535) phonePort_ = port;
+        }
+    }
+}
+
+void MinerGUI::savePhone() const {
+    std::ofstream out(AppPaths::file(PHONE_FILE), std::ios::trunc);
+    if (!out.is_open()) return;
+    out << "# Bedrock: the phone or tablet (Settings). The token is the part of the" << std::endl;
+    out << "# address only a device shown the code knows, and the port the one it" << std::endl;
+    out << "# had - both kept, so an address saved on the phone keeps working." << std::endl;
+    out << "on=" << (phoneOn_ ? 1 : 0) << std::endl;
+    if (!phoneToken_.empty()) out << "token=" << phoneToken_ << std::endl;
+    out << "port=" << phonePort_ << std::endl;
+}
+
+bool MinerGUI::startPhone(bool loopbackOnly) {
+    bool changed = false;
+    if (!PhoneServer::tokenOk(phoneToken_)) {
+        phoneToken_ = PhoneServer::newToken();
+        changed = true;
+    }
+    if (!phone_) phone_ = std::make_unique<PhoneServer>();
+    phoneError_.clear();
+    phoneWatching_ = 0;
+    const bool ok = phone_->start(phoneToken_, phonePort_, loopbackOnly);
+    if (ok) {
+        // a port further on, where the usual one was taken, is the one kept
+        if (!loopbackOnly && phone_->port() != phonePort_) {
+            phonePort_ = phone_->port();
+            changed = true;
+        }
+        phoneLan_ = PhoneServer::lanAddress();
+        phoneDirty_ = true;
+        if (hwnd_) SetTimer(hwnd_, TIMER_PHONE, 250, nullptr);
+    } else {
+        phoneError_ = phone_->error();
+        if (hwnd_) KillTimer(hwnd_, TIMER_PHONE);
+    }
+    if (changed && !loopbackOnly) savePhone();
+    if (settings_) InvalidateRect(settings_, nullptr, FALSE);
+    return ok;
+}
+
+void MinerGUI::setPhoneOn(bool on) {
+    phoneOn_ = on;
+    if (on) {
+        // ...and on again where it had failed: perhaps the port is free now
+        if (!phone_ || !phone_->running()) startPhone();
+    } else {
+        if (phone_) phone_->stop();
+        if (hwnd_) KillTimer(hwnd_, TIMER_PHONE);
+        phoneError_.clear();
+        phoneWatching_ = 0;
+    }
+    phoneCopied_ = false;
+    savePhone();
+    if (settings_) InvalidateRect(settings_, nullptr, FALSE);
+}
+
+// A new token, so every device that has the old address sees nothing more
+void MinerGUI::newPhoneToken() {
+    phoneToken_ = PhoneServer::newToken();
+    phoneCopied_ = false;
+    if (phoneOn_) startPhone();
+    savePhone();
+    if (settings_) InvalidateRect(settings_, nullptr, FALSE);
+}
+
+std::string MinerGUI::phoneAddress() const {
+    if (!phone_ || !phone_->running()) return {};
+    const bool shot = !phoneLanForShot_.empty();
+    const std::string& lan = shot ? phoneLanForShot_ : phoneLan_;
+    if (lan.empty()) return {};
+    return "http://" + lan + ":" + std::to_string(shot ? phonePort_ : phone_->port()) + "/" + phoneToken_ + "/";
+}
+
+static std::string hexColour(const Gdiplus::Color& c) {
+    char text[8];
+    std::snprintf(text, sizeof(text), "#%02X%02X%02X", (unsigned)c.GetR(), (unsigned)c.GetG(), (unsigned)c.GetB());
+    return text;
+}
+
+// Every quarter of a second while the phone is on: the views a device is
+// looking at drawn again, where the window has changed since they were
+void MinerGUI::phoneTick() {
+    if (!phone_ || !phone_->running()) return;
+    const int watching = phone_->watching();
+    if (watching != phoneWatching_) {
+        phoneWatching_ = watching;
+        if (settings_ && settingsVisible_) InvalidateRect(settings_, nullptr, FALSE);
+    }
+    // the page round the picture wears the window's colours
+    phone_->setStatus("\"bg\":\"" + hexColour(COL_BG) + "\",\"card\":\"" + hexColour(COL_CARD) + "\",\"text\":\"" +
+                      hexColour(COL_TEXT) + "\",\"dim\":\"" + hexColour(COL_TEXT_DIM) + "\",\"accent\":\"" +
+                      hexColour(COL_ACCENT) + "\"");
+    // On screen, the window is drawn whenever anything in it changes, and
+    // that is when its pictures are drawn again - and every few seconds
+    // anyway. Minimised it is not drawn at all, and says nothing of what
+    // changed: its pictures are drawn twice a second.
+    const auto now = std::chrono::steady_clock::now();
+    const bool shown = IsWindowVisible(hwnd_) && !IsIconic(hwnd_);
+    const bool due = shown ? (phoneDirty_ || now - phoneDrawn_ > std::chrono::seconds(3))
+                           : now - phoneDrawn_ >= std::chrono::milliseconds(480);
+    bool any = false, asShown = false;
+    const PhoneServer::View views[2] = {PhoneServer::View::Overlay, PhoneServer::View::Window};
+    for (int v = 0; v < 2; v++) {
+        int pixels = 0;
+        const bool wanted = phone_->wanted(views[v], &pixels);
+        // ...and a view just asked for, or asked for at another width - a
+        // phone turned on its side - at once
+        const bool fresh = wanted && (!phoneWanted_[v] || pixels != phonePixels_[v]);
+        phoneWanted_[v] = wanted;
+        if (!wanted || !(due || fresh)) continue;
+        phonePixels_[v] = pixels;
+        phone_->publish(views[v], phonePicture(views[v], pixels));
+        any = true;
+        if ((views[v] == PhoneServer::View::Overlay) == overlayMode_) asShown = true;
+    }
+    if (!any) return;
+    if (due) {
+        phoneDirty_ = false;
+        phoneDrawn_ = now;
+    }
+    // A picture of what is on screen leaves the places the pointer finds
+    // things at - lines, buttons, fields - where they were in the picture,
+    // at the device's size. The window drawn again puts its own back, at
+    // once, before a click can go looking for them.
+    if (asShown && shown) {
+        phoneRepainting_ = true;
+        InvalidateRect(hwnd_, nullptr, FALSE);
+        UpdateWindow(hwnd_);
+        phoneRepainting_ = false;
+    }
+}
+
+// The overlay or the window as they are drawn on screen, drawn again into a
+// picture as wide as it stands on the device - so its letters are sharp
+// there - by the same code, with the DPI made bigger for the while
+PhoneServer::Picture MinerGUI::phonePicture(PhoneServer::View view, int devicePixels) {
+    PhoneServer::Picture out;
+    const bool overlay = view == PhoneServer::View::Overlay;
+    // its size unscaled: the overlay's own width, the window's size as it
+    // was last on screen
+    const int baseW = overlay ? OVERLAY_WIDTH : (phoneWindowSize_.cx > 0 ? (int)phoneWindowSize_.cx : WINDOW_WIDTH);
+    const int baseH = overlay ? overlayHeight() : (phoneWindowSize_.cy > 0 ? (int)phoneWindowSize_.cy : WINDOW_HEIGHT);
+    // ...made as big as the device shows it: not smaller than on the PC,
+    // and not past a few million pixels, which take long to draw and send
+    const float most = (std::max)(1.0f, (std::min)(4.0f, std::sqrt(PHONE_MOST_PIXELS / ((float)baseW * (float)baseH))));
+    const float k = std::clamp(devicePixels > 0 ? devicePixels / (float)baseW : 2.0f, 1.0f, most);
+
+    const UINT keptDpi = dpi_;
+    const int keptScale = uiScale_;
+    const POINT keptHover = hoverMain_;
+    const Gdiplus::RectF keptUpdateHit = updateHit_;
+    const float keptWantW = fitWantW_, keptWantH = fitWantH_;
+    dpi_ = (UINT)std::lround(96.0f * k);
+    uiScale_ = 100;
+    hoverMain_ = {-1, -1};   // nothing lit up under a pointer that is not there
+    int w = 0, h = 0;
+    if (overlay) {
+        // as tall as what it shows, measured as the overlay measures itself
+        w = scale(OVERLAY_WIDTH);
+        fitWantW_ = fitWantH_ = 0.0f;
+        {
+            Gdiplus::Bitmap scratch(1, 1, PixelFormat32bppPARGB);
+            Gdiplus::Graphics m(&scratch);
+            prepareGraphics(m);
+            measuring_ = true;
+            drawCompact(m, overlayMaxWidth(), overlayMaxHeight());
+            measuring_ = false;
+        }
+        h = (std::max)(scale(overlayHeight()), (std::min)(overlayMaxHeight(), (int)std::ceil(fitWantH_)));
+    } else {
+        w = scale(baseW);
+        h = scale(baseH);
+    }
+    {
+        // (premultiplied, as GDI+ draws fastest into it - and the same as
+        // straight where everything is opaque, as here)
+        Gdiplus::Bitmap picture(w, h, PixelFormat32bppPARGB);
+        {
+            Gdiplus::Graphics g(&picture);
+            prepareGraphics(g);
+            // grey edges to the letters rather than ClearType's coloured
+            // ones: the device's screen has pixels of its own, and turns
+            g.SetTextRenderingHint(Gdiplus::TextRenderingHintAntiAlias);
+            Gdiplus::SolidBrush bg(COL_BG);
+            g.FillRectangle(&bg, 0, 0, w, h);
+            if (overlay) drawCompact(g, w, h);
+            else paintWindowBody(g, w, h);
+            drawPhoneButtons(g, overlay, w, h);
+        }
+        Gdiplus::BitmapData data{};
+        Gdiplus::Rect all(0, 0, w, h);
+        if (picture.LockBits(&all, Gdiplus::ImageLockModeRead, PixelFormat32bppPARGB, &data) == Gdiplus::Ok) {
+            out.width = w;
+            out.height = h;
+            out.bgra.resize((size_t)w * (size_t)h * 4);
+            for (int y = 0; y < h; y++) {
+                memcpy(out.bgra.data() + (size_t)y * (size_t)w * 4,
+                       static_cast<const uint8_t*>(data.Scan0) + (ptrdiff_t)y * data.Stride, (size_t)w * 4);
+            }
+            picture.UnlockBits(&data);
+        }
+    }
+    dpi_ = keptDpi;
+    uiScale_ = keptScale;
+    hoverMain_ = keptHover;
+    updateHit_ = keptUpdateHit;
+    fitWantW_ = keptWantW;
+    fitWantH_ = keptWantH;
+    return out;
+}
+
+// The window's buttons are windows of their own, which a picture of the
+// window does not have in it: drawn into it where they stand, as they draw
+// themselves, and those only that are up
+void MinerGUI::drawPhoneButtons(Gdiplus::Graphics& g, bool overlay, int cw, int ch) {
+    const bool underPanel = lookingOpen_ || loadoutOpen_ || shipPickerOpen_ || placePickerOpen_;
+    for (const ButtonPlace& place : buttonPlaces(overlay, cw, ch, 1.0f)) {
+        const HWND b = place.button;
+        const wchar_t* words = nullptr;
+        if (overlay) {
+            if (b == btnOreRows_ && !(rockInView_ && !rockContents_.parts.empty())) continue;
+            if (b == btnOverlay_) words = L"Full";
+        } else {
+            if (uexWelcome_.step) continue;
+            if (underPanel && (b == btnRefinery_ || b == btnPlan_ || b == btnCraft_ || b == btnNotes_)) continue;
+            if (b == btnOverlay_) words = L"Overlay";
+        }
+        DRAWITEMSTRUCT item{};
+        item.CtlType = ODT_BUTTON;
+        item.CtlID = (UINT)GetDlgCtrlID(b);
+        item.hwndItem = b;
+        item.rcItem = {0, 0, place.rect.right - place.rect.left, place.rect.bottom - place.rect.top};
+        const Gdiplus::GraphicsState plain = g.Save();
+        g.TranslateTransform((float)place.rect.left, (float)place.rect.top);
+        paintOwnerButton(g, &item, words, 1.0f);
+        g.Restore(plain);
+    }
+}
+
+bool MinerGUI::phoneForShot(const std::string& lanAddress) {
+    phoneOn_ = true;
+    phoneToken_ = "0123456789ab";
+    phoneLanForShot_ = lanAddress;
+    return startPhone(true);
+}
+
+void MinerGUI::phoneOffForShot() {
+    phoneOn_ = false;
+    if (phone_) phone_->stop();
+    if (hwnd_) KillTimer(hwnd_, TIMER_PHONE);
+    phoneLanForShot_.clear();
+    phoneWatching_ = 0;
+    if (settings_) InvalidateRect(settings_, nullptr, FALSE);
+}
+
+PhoneServer::Picture MinerGUI::phonePictureForShot(PhoneServer::View view, int devicePixels) {
+    return phonePicture(view, devicePixels);
+}
+
+// A line of text onto the clipboard; true where it went there
+static bool putOnClipboard(HWND owner, const std::wstring& text) {
+    if (!OpenClipboard(owner)) return false;
+    EmptyClipboard();
+    bool done = false;
+    const size_t bytes = (text.size() + 1) * sizeof(wchar_t);
+    if (HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, bytes)) {
+        if (void* p = GlobalLock(mem)) {
+            memcpy(p, text.c_str(), bytes);
+            GlobalUnlock(mem);
+            done = SetClipboardData(CF_UNICODETEXT, mem) != nullptr;
+            if (!done) GlobalFree(mem);
+        } else {
+            GlobalFree(mem);
+        }
+    }
+    CloseClipboard();
+    return done;
+}
+
 void MinerGUI::loadColours() {
     colours_ = Colours::defaults();
     // The screenshot run paints Bedrock's own, whatever lies in its folder
@@ -21058,6 +21405,9 @@ void MinerGUI::toggleSettings() {
     settingsVisible_ = !settingsVisible_;
     if (settingsVisible_) {
         settingsRoleChosen(settingsRole_);
+        // the PC's address afresh: a laptop may be on another network now
+        if (phone_ && phone_->running()) phoneLan_ = PhoneServer::lanAddress();
+        phoneCopied_ = false;
         placeSettings();
         ShowWindow(settings_, headless_ ? SW_SHOWNOACTIVATE : SW_SHOW);
         if (!headless_) {
@@ -21569,12 +21919,14 @@ void MinerGUI::paintSettings(HDC hdc) {
         // the heading, as the Ore Finder has one
         g.FillRectangle(&accentBrush, M, (float)scale(18), scaleF(8), scaleF(8));
         g.DrawString(L"Settings", -1, &markFont, Gdiplus::PointF(M + scaleF(14), (float)scale(8)), &textBrush);
-        g.DrawString(L"the colours of every window and the overlay, and how the overlay sits over the game  \u00B7  "
-                     L"everything applies at once",
+        g.DrawString(L"the colours of every window and the overlay, how the overlay sits over the game, and Bedrock "
+                     L"on a phone  \u00B7  everything applies at once",
                      -1, &subFont, Gdiplus::PointF(M + scaleF(15), (float)scale(36)), &dimBrush);
 
         const float leftX = M, leftW = scaleF(440);
-        const float rightX = leftX + leftW + scaleF(20), rightW = (float)cw - M - rightX;
+        // ...and the phone's column at the right edge, PHONE_COLUMN wide
+        const float phoneX = (float)cw - M - scaleF(PHONE_COLUMN);
+        const float rightX = leftX + leftW + scaleF(20), rightW = phoneX - scaleF(20) - rightX;
         const auto card = [&](const Gdiplus::RectF& r) {
             fillRoundRect(g, r, scaleF(R_CARD), COL_CARD);
             cardLight(g, r, scaleF(R_CARD), scaleF(44));
@@ -21760,6 +22112,113 @@ void MinerGUI::paintSettings(HDC hdc) {
         }
         g.DrawString(L"Esc closes", -1, &subFont, Gdiplus::PointF(ix, (float)ch - scaleF(22)), &faintBrush);
 
+        // ---- the phone or tablet ----
+        {
+            const float pw = scaleF(PHONE_COLUMN);
+            const float pbottom = top + scaleF(468) + scaleF(12) + scaleF(128);
+            card(Gdiplus::RectF(phoneX, top, pw, pbottom - top));
+            const float qx = phoneX + scaleF(16), qw = pw - scaleF(32);
+            float py = top + scaleF(12);
+            g.DrawString(L"PHONE OR TABLET", -1, &smallFont, Gdiplus::PointF(qx, py), &faintBrush);
+            py += scaleF(22);
+            // off and on, picked as the colour sets are
+            {
+                float x = qx;
+                for (int v = 0; v < 2; v++) {
+                    const wchar_t* word = v ? L"On" : L"Off";
+                    const Gdiplus::RectF chip(x, py, widthOf(word, chipFont) + scaleF(24), scaleF(26));
+                    drawButton(g, chip, word, chipFont, (v == 1) == phoneOn_ ? ButtonKind::Selected : ButtonKind::Secondary,
+                               isHot(hoverSettings_, chip), scaleF(R_CONTROL));
+                    settingsHits_.push_back({chip, 6, v});
+                    x += chip.Width + scaleF(6);
+                }
+            }
+            py += scaleF(36);
+            g.DrawString(L"The overlay or the whole window, in the browser of a phone or tablet on your network. "
+                         L"Nothing to install, and only to look at.",
+                         -1, &noteFont, Gdiplus::RectF(qx, py, qw, scaleF(44)), nullptr, &dimBrush);
+            py += scaleF(52);
+
+            const std::string address = phoneAddress();
+            if (phoneOn_ && !address.empty()) {
+                // The code for the address: whole pixels to a module, so its
+                // edges come out sharp, dark on light with a margin of light
+                // round it, which a camera needs to find it
+                if (address != phoneQrOf_) {
+                    phoneQr_ = PhoneServer::qrCode(address, phoneQrSize_);
+                    phoneQrOf_ = address;
+                }
+                const int quiet = 3;
+                const int modules = phoneQrSize_ + 2 * quiet;
+                const int m = (std::max)(1, (int)std::floor(qw / (float)modules));
+                const float side = (float)(m * modules);
+                const float x0 = std::round(phoneX + (pw - side) / 2), y0 = std::round(py);
+                fillRoundRect(g, Gdiplus::RectF(x0, y0, side, side), scaleF(R_CONTROL), COL_TEXT);
+                Gdiplus::SolidBrush dark(COL_BG);
+                g.SetSmoothingMode(Gdiplus::SmoothingModeNone);
+                for (int y = 0; y < phoneQrSize_; y++) {
+                    for (int x = 0; x < phoneQrSize_; x++) {
+                        if (!phoneQr_[(size_t)y * (size_t)phoneQrSize_ + (size_t)x]) continue;
+                        g.FillRectangle(&dark, x0 + (float)((quiet + x) * m), y0 + (float)((quiet + y) * m), (float)m,
+                                        (float)m);
+                    }
+                }
+                g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+                py += side + scaleF(10);
+                g.DrawString(L"Scan it with the phone's camera. The phone has to be on the same network as this PC.", -1,
+                             &noteFont, Gdiplus::RectF(qx, py, qw, scaleF(30)), nullptr, &dimBrush);
+                py += scaleF(34);
+                g.DrawString(toW(address).c_str(), -1, &hexFont, Gdiplus::RectF(qx, py, qw, scaleF(32)), nullptr,
+                             &textBrush);
+                py += scaleF(36);
+                // the address to send on, and a new one that shuts out
+                // every device that has the old
+                {
+                    const wchar_t* copyWords = phoneCopied_ ? L"Copied" : L"Copy address";
+                    const Gdiplus::RectF copy(qx, py, widthOf(copyWords, chipFont) + scaleF(18), scaleF(24));
+                    drawButton(g, copy, copyWords, chipFont, ButtonKind::Secondary, isHot(hoverSettings_, copy),
+                               scaleF(R_CONTROL));
+                    settingsHits_.push_back({copy, 7, 0});
+                    const wchar_t* newWords = L"New address";
+                    const Gdiplus::RectF fresh(copy.X + copy.Width + scaleF(6), py,
+                                               widthOf(newWords, chipFont) + scaleF(18), scaleF(24));
+                    drawButton(g, fresh, newWords, chipFont, ButtonKind::Ghost, isHot(hoverSettings_, fresh),
+                               scaleF(R_CONTROL));
+                    settingsHits_.push_back({fresh, 8, 0});
+                }
+                py += scaleF(34);
+                const int watching = phone_ ? phone_->watching() : 0;
+                std::wstring who = watching == 0   ? L"Nobody is watching yet."
+                                   : watching == 1 ? L"1 device is watching."
+                                                   : std::to_wstring(watching) + L" devices are watching.";
+                Gdiplus::SolidBrush whoBrush(watching > 0 ? COL_GREEN : COL_TEXT_FAINT);
+                g.DrawString(who.c_str(), -1, &labelFont, Gdiplus::PointF(qx, py), &whoBrush);
+            } else if (phoneOn_) {
+                // on, and no address to give: why not
+                const std::wstring why = !phoneError_.empty()
+                    ? L"It could not start: " + toW(phoneError_) + L"."
+                    : L"This PC has no network address that a phone could reach.";
+                Gdiplus::SolidBrush whyBrush(!phoneError_.empty() ? COL_RED : COL_YELLOW);
+                g.DrawString(why.c_str(), -1, &noteFont, Gdiplus::RectF(qx, py, qw, scaleF(60)), nullptr, &whyBrush);
+            } else {
+                // off: where the code will be
+                const Gdiplus::RectF where(qx, py, qw, qw);
+                strokeRoundRect(g, where, scaleF(R_CONTROL), COL_BORDER);
+                g.DrawString(L"Switched on, the code to scan\nwith the phone shows here.", -1, &noteFont, where, &centred,
+                             &faintBrush);
+            }
+#ifdef _WIN32
+            const std::wstring firewall =
+                L"If Windows asks whether Bedrock may use the network, allow it for private networks.";
+#else
+            const std::wstring firewall = L"A firewall on this PC has to let port " +
+                                          std::to_wstring(phone_ && phone_->running() ? phone_->port() : phonePort_) +
+                                          L" in.";
+#endif
+            g.DrawString(firewall.c_str(), -1, &subFont, Gdiplus::RectF(qx, pbottom - scaleF(40), qw, scaleF(30)), nullptr,
+                         &faintBrush);
+        }
+
         // ---- the preview, and how it is seen ----
         {
             g.DrawString(L"PREVIEW", -1, &smallFont, Gdiplus::PointF(rightX, top + scaleF(4)), &faintBrush);
@@ -21882,6 +22341,17 @@ LRESULT MinerGUI::handleSettingsMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
                     }
                     case 5:
                         settingsVision_ = hit.value;
+                        break;
+                    case 6:
+                        setPhoneOn(hit.value == 1);
+                        break;
+                    case 7: {
+                        const std::string address = phoneAddress();
+                        if (!address.empty()) phoneCopied_ = putOnClipboard(hwnd, toW(address));
+                        break;
+                    }
+                    case 8:
+                        newPhoneToken();
                         break;
                 }
                 InvalidateRect(hwnd, nullptr, FALSE);
