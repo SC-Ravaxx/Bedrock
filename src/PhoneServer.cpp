@@ -327,7 +327,7 @@ void PhoneServer::answer(intptr_t client, const std::string& peer, const std::st
             return;
         case Route::Page:
             send(reply("200 OK", "text/html; charset=utf-8", page(),
-                       "Content-Security-Policy: default-src 'none'; img-src blob:; style-src 'unsafe-inline'; "
+                       "Content-Security-Policy: default-src 'none'; img-src blob:; media-src data:; style-src 'unsafe-inline'; "
                        "script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; "
                        "frame-ancestors 'none'\r\n"
                        "X-Frame-Options: DENY\r\n"));
@@ -688,6 +688,7 @@ body.control #shot{cursor:pointer}
 .ring.long{border-style:dashed}
 #toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%);max-width:90%;padding:9px 15px;border-radius:9px;background:var(--card);box-shadow:0 0 0 1px rgba(255,255,255,.1);text-align:center;opacity:0;transition:opacity .25s;pointer-events:none}
 #toast.on{opacity:1}
+#toast.hint{pointer-events:auto;color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
 </style>
 </head>
 <body>
@@ -707,7 +708,7 @@ const asked=location.hash.slice(1);
 let view=asked==='window'||asked==='overlay'?asked:localStorage.getItem('bedrock-view')==='window'?'window':'overlay';
 let shown=0,busy=false,loading=false,misses=0,gone=false,url=null,colours='',control=false,heard=-1,toastTimer=0;
 function say(t){note.textContent=t;note.hidden=!t;img.style.opacity=t&&!img.hidden?'.3':'1'}
-function toast(t){toastBox.textContent=t;toastBox.classList.add('on');clearTimeout(toastTimer);
+function toast(t){toastBox.textContent=t;toastBox.classList.remove('hint');toastBox.classList.add('on');clearTimeout(toastTimer);
  toastTimer=setTimeout(()=>toastBox.classList.remove('on'),2600)}
 function choose(v){view=v;localStorage.setItem('bedrock-view',v);history.replaceState(null,'','#'+v);shown=0;
  for(const b of document.querySelectorAll('.views button'))b.classList.toggle('on',b.dataset.view===v);poll()}
@@ -736,7 +737,8 @@ async function load(v,n){loading=true;
  try{const r=await fetch('frame?view='+v+'&n='+n,{cache:'no-store'});if(!r.ok||v!==view)return;
   const u=URL.createObjectURL(await r.blob());
   await new Promise((ok,no)=>{img.onload=ok;img.onerror=no;img.src=u});
-  if(url)URL.revokeObjectURL(url);url=u;img.hidden=false;shown=n;say('')}
+  if(url)URL.revokeObjectURL(url);url=u;img.hidden=false;shown=n;say('');
+  started.then(hint)}
  catch(e){}finally{loading=false}}
 // A tap on the picture is a click there in Bedrock, a long press a right
 // click: sent as the place in the picture's own pixels, and the picture
@@ -760,6 +762,40 @@ img.addEventListener('pointerdown',e=>{if(!control||img.hidden||!e.isPrimary)ret
 img.addEventListener('pointermove',e=>{if(press&&Math.hypot(e.clientX-press.x,e.clientY-press.y)>12){clearTimeout(press.timer);press=null}});
 function lift(e){if(!press)return;const p=press;press=null;clearTimeout(p.timer);if(!p.long&&e.type==='pointerup')tap(p.x,p.y,false)}
 img.addEventListener('pointerup',lift);img.addEventListener('pointercancel',lift);
+// The screen kept on while the page is up. A browser keeps it on for a
+// page that asks (the Wake Lock API), on https only - and this page is
+// http - and for a video playing. Chrome and its kin do so for one that
+// takes up most of the screen, whether it is seen or not: this one is
+// see-through and muted, and plays from the start. Safari does so only
+// for one with sound, which an iPhone or iPad plays no sooner than a
+// touch: this one is silent, and played by the first. Not looped, as
+// Safari lets the screen sleep under a looping video: sent back to its
+// start instead.
+const apple=/iP(hone|ad|od)/.test(navigator.userAgent)||/Macintosh/.test(navigator.userAgent)&&navigator.maxTouchPoints>1;
+let lock=null,woke=false,touched=false,hinted=false;
+const clip=document.createElement('video');
+clip.muted=!apple;clip.playsInline=true;clip.setAttribute('playsinline','');clip.setAttribute('webkit-playsinline','');
+clip.preload='auto';clip.setAttribute('aria-hidden','true');
+clip.style.cssText='position:fixed;left:0;top:0;width:100%;height:100%;opacity:0;pointer-events:none';
+clip.src='data:video/mp4;base64,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';
+document.body.appendChild(clip);
+clip.addEventListener('timeupdate',()=>{if(clip.currentTime>1)clip.currentTime=Math.random()*.5});
+// (its silence not stopping music on the iPhone, where Safari lets it say so)
+if(apple&&navigator.audioSession)try{navigator.audioSession.type='ambient'}catch(e){}
+async function keepOn(){
+ if('wakeLock' in navigator){try{if(!lock||lock.released)lock=await navigator.wakeLock.request('screen');woke=true;return}catch(e){}}
+ if(apple&&!touched)return;
+ try{if(clip.paused)await clip.play();woke=true}catch(e){woke=false}}
+const started=keepOn();
+// the first touch, wherever it lands - on the hint best, as there it
+// clicks nothing in Bedrock
+function touch(){if(touched&&woke)return;touched=true;
+ keepOn().then(()=>{if(woke&&toastBox.classList.contains('hint'))toastBox.classList.remove('on','hint')})}
+for(const t of['pointerup','touchend','click','keydown'])addEventListener(t,touch,{capture:true,passive:true});
+// ...and kept on again on coming back to the page, where the browser had let go
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)keepOn().then(()=>{if(!woke)hinted=false})});
+function hint(){if(hinted||woke||!navigator.maxTouchPoints)return;hinted=true;
+ clearTimeout(toastTimer);toastBox.textContent='Tap here to keep the screen on.';toastBox.classList.add('on','hint')}
 const full=$('full'),ask=root.requestFullscreen||root.webkitRequestFullscreen;
 if(!ask)full.hidden=true;
 full.onclick=()=>{if(document.fullscreenElement||document.webkitFullscreenElement)(document.exitFullscreen||document.webkitExitFullscreen).call(document);else ask.call(root)};

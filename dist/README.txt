@@ -80,9 +80,9 @@ Getting started
    the Refinery, the settings), a file or the browser works on the PC only,
    and so does typing. The first time, Windows asks whether Bedrock may use
    the network; allow it for private networks. "New address" makes a new
-   code, and a device with the old one sees nothing any more. The phone's
-   screen still goes dark on its own timer - its display settings keep it
-   on longer.
+   code, and a device with the old one sees nothing any more. The page
+   keeps the screen on while it is open; an iPhone or iPad wants one tap
+   for that first, on the line that asks for it.
 
 Refinery (key R)
 ----------------
