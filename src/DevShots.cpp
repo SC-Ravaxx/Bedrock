@@ -462,6 +462,13 @@ int runScreenshots(const std::string& dir) {
         gui.settingsColourForShot(Colours::Epic, 0xD25AB4);
         pump();
         shoot(gui.settingsHandle(), "settings_own.png", true);
+        // ...and the overlay let see more of the game, in the preview at its
+        // real size; put back after
+        gui.settingsForShot((int)Colours::Set::Bedrock, Colours::Legendary, 0);
+        gui.setOverlayOpacityForShot(65);
+        pump();
+        shoot(gui.settingsHandle(), "settings_overlay_65.png", true);
+        gui.setOverlayOpacityForShot(92);
         gui.hideSettingsForShot();
         pump();
     }

@@ -6,7 +6,7 @@ made of, whether your laser can break it, where an ore is found and where it
 sells best, your refinery work orders, and your blueprints.
 
 It is free, needs no account and no installer, and runs on Windows and on
-Linux (AppImage, also SteamOS). Current version: 2.6.6, for Star Citizen 4.10.2.
+Linux (AppImage, also SteamOS). Current version: 2.7.0, for Star Citizen 4.10.2.
 
 **Download:** the [Releases](https://github.com/SC-Ravaxx/Bedrock/releases) page - on Windows,
 unzip it anywhere and start `Bedrock.exe`; on Linux, make the AppImage
@@ -16,6 +16,8 @@ executable and start it. The app tells you when a newer version is out.
 |---|---|
 | ![Signature scan](docs/screenshots/signature_scan.png) | ![Rock view](docs/screenshots/rock_view.png) |
 | ![Ore Finder](docs/screenshots/ore_finder.png) | ![Refinery work orders](docs/screenshots/refinery_orders.png) |
+
+![Settings: the colours, with a preview of how each kind of colour blindness sees them](docs/screenshots/settings.png)
 
 ## What it does
 
@@ -36,6 +38,11 @@ executable and start it. The app tells you when a newer version is out.
   game's own contract list.
 - **Refinery jobs to UEX (optional):** connect your UEX account and Bedrock
   adds the refinery jobs you start to it. Off unless you agree.
+- **Colours:** the gear beside the ? sets the colours of every window and the
+  overlay - Bedrock's own, a set for protanopia, deuteranopia or tritanopia,
+  or your own - with a preview that also shows how each kind of colour
+  blindness sees them. The overlay's opacity, text size and size are set
+  there too.
 
 ## How it reads the game
 
@@ -153,7 +160,7 @@ without it.
 
 ### Windows
 
-Use the versions `BUILDINFO.txt` names - for 2.6.6: Visual Studio 2022
+Use the versions `BUILDINFO.txt` names - for 2.7.0: Visual Studio 2022
 Build Tools with MSVC 19.44.35222 (toolset v143), Windows SDK 10.0.26100.0,
 CMake 3.31, and vcpkg; `vcpkg.json` pins every library to one vcpkg
 baseline, which vcpkg installs on its own when cmake runs.

@@ -47,6 +47,8 @@ Getting started
    The pick is kept in looking_for.txt and survives a restart.
 6. OVERLAY puts the compact view over the game - it opens where you last
    put it, and dragging its bottom-right corner makes it bigger or smaller.
+   In the overlay, Ctrl+plus and Ctrl+minus make only its text bigger or
+   smaller, and Ctrl+0 sets it back.
    On Windows, clicks go through the overlay to the game; to use its
    buttons, move it or resize it, Alt-Tab to Bedrock first. ORE FINDER (F)
    opens the ore search, BLUEPRINTS (B) the crafting recipes, REFINERY (R)
@@ -58,6 +60,16 @@ Getting started
    Pick a ship once while you're sitting in it, after that Bedrock recognizes
    it by itself. (The game's log names each ship by an id. When that id
    changes, pick the ship once more.)
+8. The gear beside the ? in the header opens the settings: the colours of
+   every window and the overlay - Bedrock's own, a set for protanopia,
+   deuteranopia or tritanopia, or your own - and the overlay's opacity,
+   text size and size. Click a colour to put it on the sliders for hue,
+   saturation and lightness, or type a hex code into its field; Ctrl+V
+   pastes one. The preview shows the overlay over a scene from the game
+   and the matches of the main window, and "seen with" shows them the way
+   each kind of colour blindness sees them. Everything applies at once.
+   Your own colours are kept in colours.txt, and picking a set keeps them
+   to come back to.
 
 Refinery (key R)
 ----------------
@@ -379,7 +391,8 @@ Your settings (region_config.txt), your blueprint library
 (owned_blueprints.txt, with the log lines it came from), your own notes under
 notes\, your refinery work orders (refinery_orders.txt), a handful of small
 files that remember your choices (the place set by hand, the ores you look
-for, the loadout, the shopping list, the window) and, in the folder debug\:
+for, the loadout, the shopping list, the window, the colours) and, in the
+folder debug\:
   - scan_log.csv   a text log with one line per scan, rotates at 10 MB
   - session.txt    what the app found at this start (monitors, game window,
                    search area, capture path, game log) - one file, it gets

@@ -703,6 +703,7 @@ public:
     void openUexCardForShot(int step);  // ...and its UEX card: 0 shut, 1 the account, 3 send refinery jobs?
     void setOverlayZoomForShot(float zoom);   // ...and the overlay grown or shrunk by its grip
     void setOverlayTextForShot(float text);   // ...or only its text bigger or smaller
+    void setOverlayOpacityForShot(int percent);   // ...or how much of the game shows through it
     void openUexWelcomeForShot(int step);   // ...and the first start's offer over the main window, the same steps
     // ...and its UEX tab on an ore - or on a ground family, at one of its
     // gems; nullptr leaves it

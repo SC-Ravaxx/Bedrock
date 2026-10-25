@@ -2447,6 +2447,8 @@ void MinerGUI::stepOverlayText(int direction) {
 
 void MinerGUI::setOverlayTextForShot(float text) { setOverlayText(text); }
 
+void MinerGUI::setOverlayOpacityForShot(int percent) { setOverlayOpacity(percent, false); }
+
 void MinerGUI::setOverlayZoomForShot(float zoom) {
     overlayZoom_ = std::clamp(zoom, OVERLAY_ZOOM_MIN, OVERLAY_ZOOM_MAX);
     if (!hwnd_ || !overlayMode_) return;
@@ -13683,6 +13685,42 @@ void MinerGUI::drawWhatsNewCard(Gdiplus::Graphics& g, int cw, int ch) {
     // however softly put, turns that into a collection. The jar sits behind the
     // ? button and along the foot of the main window. Plain words, like a patch
     // note.
+    version(L"2.7.0", L"25 October");
+    group(L"NEW");
+    item(L"Colours");
+    note(L"The new gear beside the ? opens the settings. There you can pick the");
+    note(L"colours of every window and the overlay: Bedrock\u2019s own, a set for");
+    note(L"protanopia, deuteranopia or tritanopia, or your own. The three sets");
+    note(L"are made so that their colours stay easy to tell apart with that kind");
+    note(L"of colour blindness. Each colour has sliders for hue, saturation and");
+    note(L"lightness, and takes a hex code. The preview shows the main window and");
+    note(L"the overlay, and how they look with each kind of colour blindness.");
+    gap(6);
+    item(L"Overlay opacity");
+    note(L"The overlay\u2019s opacity can now be set, from 40 to 100 %. Its text size");
+    note(L"and its size are in the settings too.");
+    gap(6);
+    item(L"Component names");
+    note(L"A second box in the Blueprints window, \u201CShow class and grade in");
+    note(L"component names\u201D, puts each ship component\u2019s class, size and grade");
+    note(L"before its name in the game (Mil/1/D Tundra), and each missile\u2019s and");
+    note(L"torpedo\u2019s tracking signal and size before its own ([CS1] Spark");
+    note(L"Missile), the way StarStrings names them.");
+    gap(10);
+    group(L"CHANGED");
+    item(L"Overlay text size");
+    note(L"In the overlay, Ctrl+plus and Ctrl+minus now change only the text size,");
+    note(L"not the whole overlay. Ctrl+0 sets it back.");
+    gap(6);
+    item(L"Golem");
+    note(L"The Golem\u2019s head can be swapped now: pick it on the ship card, like");
+    note(L"the Prospector\u2019s. Bedrock uses the head the Golem\u2019s HUD shows.");
+    gap(6);
+    item(L"MOLE");
+    note(L"The MOLE\u2019s turrets only take size 2 heads, so only those are listed");
+    note(L"and suggested. A size 1 head saved on a MOLE is taken off; pick");
+    note(L"another one for that turret.");
+    gap(10);
     version(L"2.6.7", L"21 October");
     note(L"Thanks to andydsm for the screenshots from the MOLE turrets!");
     gap(10);
