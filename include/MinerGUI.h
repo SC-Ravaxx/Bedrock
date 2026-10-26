@@ -1210,6 +1210,11 @@ private:
     std::string plannerSystem_ = "ALL";           // ALL / STANTON / PYRO / NYX
     // Set from a [[place]] link: the finder then lists what is mined HERE
     std::string plannerPlace_;
+    // The first row of that list in view, when it is longer than its card
+    // (the wheel walks it), and which list it was: another ore, place or
+    // system starts at the top again
+    int plannerScroll_ = 0;
+    std::string plannerScrollList_;
     void showPlaceFinderFor(const std::string& place);
     void showSystemFinderFor(const std::string& system);
     // kind 0 ore, 1 system, 2 family, 3 tick box, 4 a link, 5 Report to UEX,

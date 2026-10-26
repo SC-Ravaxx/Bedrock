@@ -15388,6 +15388,7 @@ void MinerGUI::togglePlanner() {
     if (!planner_ && !createPlanner()) return;
     plannerVisible_ = !plannerVisible_;
     if (plannerVisible_) {
+        plannerScroll_ = 0;
         placePlanner();
         ShowWindow(planner_, headless_ ? SW_SHOWNOACTIVATE : SW_SHOW);
         InvalidateRect(planner_, nullptr, TRUE);
@@ -15414,6 +15415,16 @@ LRESULT MinerGUI::handlePlannerMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
             return 0;
         case WM_ERASEBKGND:
             return 1;
+        case WM_MOUSEWHEEL: {
+            // The wheel walks the list of places (or of ores, for a place)
+            // when it is longer than its card; the painting keeps it in
+            // range. Not under the UEX card, nor on the market tab.
+            if (uexCard_.step || plannerUex_) return 0;
+            const int notches = GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
+            plannerScroll_ = (std::max)(0, plannerScroll_ - notches);
+            InvalidateRect(hwnd, nullptr, TRUE);
+            return 0;
+        }
         case WM_LBUTTONDOWN: {
             const float px = (float)(short)LOWORD(lParam);
             const float py = (float)(short)HIWORD(lParam);
@@ -16591,16 +16602,36 @@ void MinerGUI::paintPlanner(HDC hdc) {
             const float roomDown = (float)ch - scaleF(64) - ry - (rockCardH > 0 ? rockCardH + scaleF(10) : 0.0f) -
                                    (sellCardH > 0 ? sellCardH + scaleF(10) : 0.0f) -
                                    (dealCardH > 0 ? dealCardH + scaleF(10) : 0.0f);
+            // More rows than the card has room for and the wheel walks them;
+            // a list of another ore, place or system starts at its top
+            const std::string listKey = (byPlace ? "at " + plannerPlace_ : "ore " + plannerMineral_) + " in " +
+                                        plannerSystem_;
+            if (listKey != plannerScrollList_) {
+                plannerScrollList_ = listKey;
+                plannerScroll_ = 0;
+            }
+            auto rowHeight = [&](int i) { return prowH + (words[i].twoLines ? lineH : 0.0f); };
+            // the furthest it goes: its last rows filling the room (and, with
+            // not even the last row fitting, nowhere)
+            int lastFirst = (int)words.size();
+            for (float h = 0; lastFirst > 0 && h + rowHeight(lastFirst - 1) <= roomDown;) h += rowHeight(--lastFirst);
+            plannerScroll_ = std::clamp(plannerScroll_, 0, lastFirst < (int)words.size() ? lastFirst : 0);
+            const int first = plannerScroll_;
             int shown = 0;
             float rowsH = 0;
-            for (const PlaceWords& w : words) {
-                const float h = prowH + (w.twoLines ? lineH : 0.0f);
+            for (int i = first; i < (int)words.size(); i++) {
+                const float h = rowHeight(i);
                 if (rowsH + h > roomDown) break;
                 rowsH += h;
                 shown++;
             }
-            const bool more = (int)rows.size() > shown;
-            const float cardBottom = ry + rowsH + (rows.empty() ? scaleF(22) : 0.0f) +
+            // ...in a card as tall as at the top of the list, so the cards
+            // under it stay where they are while it scrolls
+            float topH = 0;
+            for (int i = 0; i < (int)words.size() && topH + rowHeight(i) <= roomDown; i++) topH += rowHeight(i);
+            const bool more = first > 0 || first + shown < (int)rows.size();
+            const float listH = more ? (std::max)(rowsH, topH) : rowsH;
+            const float cardBottom = ry + listH + (rows.empty() ? scaleF(22) : 0.0f) +
                                      (more ? scaleF(14) : 0.0f) + scaleF(8);
             const Gdiplus::RectF card(cardX, listTop - scaleF(6), (float)cw - M - cardX, cardBottom - (listTop - scaleF(6)));
             fillRoundRect(g, card, scaleF(R_CARD), COL_CARD);
@@ -16630,7 +16661,8 @@ void MinerGUI::paintPlanner(HDC hdc) {
             Gdiplus::StringFormat trimmed;   // a line longer than the card itself, still
             trimmed.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
             trimmed.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
-            for (int i = 0; i < shown; i++) {
+            const float rowsTop = ry;
+            for (int i = first; i < first + shown; i++) {
                 const OreLocation& row = rows[i];
                 const PlaceWords& w = words[i];
                 const float rowH = prowH + (w.twoLines ? lineH : 0.0f);
@@ -16659,9 +16691,16 @@ void MinerGUI::paintPlanner(HDC hdc) {
                 // pointer lifts instead.
                 ry += rowH;
             }
-            if (more) {
-                std::wstring moreText = L"+" + std::to_wstring((int)rows.size() - shown) + L" more";
-                Gdiplus::RectF r(rx, ry, rw, scaleF(12));
+            if (more && shown > 0) {
+                // The way the Blueprints list says it
+                std::wstring moreText = L"showing " + std::to_wstring(first + 1) + L"\u2013" +
+                                        std::to_wstring(first + shown) + L"  \u00B7  wheel to scroll";
+                Gdiplus::RectF r(rx, rowsTop + listH, rw, scaleF(12));
+                g.DrawString(moreText.c_str(), -1, &subFont, r, &rightAlign, &faintBrush);
+            } else if (more) {
+                // no room for a single row under the cards below it
+                std::wstring moreText = L"+" + std::to_wstring((int)rows.size() - first) + L" more";
+                Gdiplus::RectF r(rx, rowsTop, rw, scaleF(12));
                 g.DrawString(moreText.c_str(), -1, &subFont, r, &rightAlign, &faintBrush);
             }
 
