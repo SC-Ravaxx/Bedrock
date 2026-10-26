@@ -1335,6 +1335,10 @@ private:
     // The work orders' view, under the tabs where the calculator otherwise is
     std::vector<RefineryOrder> refineryOrders_;
     bool refineryOrdersView_ = false;
+    // The first station and the first work order in view, for when there
+    // are more than the window has room for; the wheel walks them
+    int refineryScroll_ = 0;
+    int refineryOrdersScroll_ = 0;
     std::function<void(const RefineryOrder&)> onRefineryOrderDone_;
     void paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float top);
     // The finished ones, shown as a badge on the main window's Refinery

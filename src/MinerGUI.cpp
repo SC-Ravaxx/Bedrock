@@ -19105,14 +19105,15 @@ void MinerGUI::paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float t
                      &faintBrush);
         y += scaleF(22);
         const float cardH = scaleF(70), gap = scaleF(8);
-        for (size_t i = 0; i < refineryOrders_.size(); i++) {
+        // As many cards as stand above the footer; with more orders than
+        // that, the wheel walks them and the line under the last card says so
+        const int total = (int)refineryOrders_.size();
+        const int fit = (std::max)(1, (int)((footY - scaleF(18) - y + gap) / (cardH + gap)));
+        refineryOrdersScroll_ = std::clamp(refineryOrdersScroll_, 0, (std::max)(0, total - fit));
+        const int first = refineryOrdersScroll_;
+        const int last = (std::min)(total, first + fit);
+        for (int i = first; i < last; i++) {
             const RefineryOrder& o = refineryOrders_[i];
-            if (y + cardH > footY - scaleF(18)) {
-                const std::wstring more = L"+" + std::to_wstring(refineryOrders_.size() - i) + L" more";
-                g.DrawString(more.c_str(), -1, &subFont, Gdiplus::RectF(M, y, (float)cw - 2 * M, scaleF(14)), &rightMid,
-                             &faintBrush);
-                break;
-            }
             const Gdiplus::RectF card(M, y, (float)cw - 2 * M, cardH);
             const bool done = o.due <= now;
             fillRoundRect(g, card, scaleF(R_CARD), COL_CARD);
@@ -19168,8 +19169,14 @@ void MinerGUI::paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float t
             const Gdiplus::RectF collected(card.X + card.Width - in - scaleF(82), card.Y + scaleF(46), scaleF(82), scaleF(20));
             drawButton(g, collected, L"Collected", buttonFont, ButtonKind::Ghost, isHot(hoverRef_, collected),
                        scaleF(R_CONTROL));
-            refHits_.push_back({collected, 9, (int)i});
+            refHits_.push_back({collected, 9, i});
             y += cardH + gap;
+        }
+        if (total > fit) {
+            const std::wstring more = L"showing " + std::to_wstring(first + 1) + L"\u2013" + std::to_wstring(last) +
+                                      L"  \u00B7  wheel to scroll";
+            g.DrawString(more.c_str(), -1, &subFont, Gdiplus::RectF(M, y, (float)cw - 2 * M, scaleF(14)), &rightMid,
+                         &faintBrush);
         }
     }
     g.DrawString(L"read off the REFINEMENT CENTER while you stand at it  ·  collected there, an order comes off by "
@@ -19185,6 +19192,8 @@ void MinerGUI::toggleRefinery() {
     if (!refinery_ && !createRefinery()) return;
     refineryVisible_ = !refineryVisible_;
     if (refineryVisible_) {
+        refineryScroll_ = 0;
+        refineryOrdersScroll_ = 0;
         placeRefinery();
         ShowWindow(refinery_, headless_ ? SW_SHOWNOACTIVATE : SW_SHOW);
         InvalidateRect(refinery_, nullptr, TRUE);
@@ -19250,6 +19259,17 @@ LRESULT MinerGUI::handleRefineryMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
             return 0;
         case WM_ERASEBKGND:
             return 1;
+        case WM_MOUSEWHEEL: {
+            // The wheel walks the list in view, the stations or the work
+            // orders, where there are more than the window has room for (the
+            // painting keeps it in range). Not under the dropped method list.
+            if (refineryMethodOpen_) return 0;
+            const int notches = GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
+            int& first = refineryOrdersView_ ? refineryOrdersScroll_ : refineryScroll_;
+            first = (std::max)(0, first - notches);
+            InvalidateRect(hwnd, nullptr, TRUE);
+            return 0;
+        }
         case WM_LBUTTONDOWN: {
             const float px = (float)(short)LOWORD(lParam);
             const float py = (float)(short)HIWORD(lParam);
@@ -19270,6 +19290,9 @@ LRESULT MinerGUI::handleRefineryMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
                 // so a click never both commits and does something else with
                 // a figure that is only half entered
                 if (hit.kind != 6 || hit.value != refineryTyping_) refineryTypeCommit();
+                // What is ticked, or which system, ranks the stations anew:
+                // the list starts again at its best
+                if (hit.kind == 0 || hit.kind == 1 || hit.kind == 2) refineryScroll_ = 0;
                 if (hit.kind == 6) {
                     refineryTypeStart(hit.value);
                 } else if (hit.kind == 0) {
@@ -19290,6 +19313,7 @@ LRESULT MinerGUI::handleRefineryMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
                 } else if (hit.kind == 8) {
                     refineryOrdersView_ = true;
                     refineryMethodOpen_ = false;
+                    refineryOrdersScroll_ = 0;
                     // the minutes count down while the view is up
                     SetTimer(hwnd, REFINERY_TICK, 20000, nullptr);
                 } else if (hit.kind == 9) {
@@ -19370,6 +19394,7 @@ LRESULT MinerGUI::handleRefineryMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
                     // hold picked out by hand is not worth losing to a stray key
                     if (!refineryPicked_.empty()) {
                         refineryPicked_.clear();
+                        refineryScroll_ = 0;
                         InvalidateRect(hwnd, nullptr, TRUE);
                         return 0;
                     }
@@ -19792,8 +19817,12 @@ void MinerGUI::paintRefinery(HDC hdc) {
         float ry = listTop + scaleF(22);
         const float srowH = scaleF(30);
         const int fit = (std::max)(0, (int)(((float)ch - scaleF(58) - ry) / srowH));
-        const int shown = (std::min)(fit, (int)rows.size());
-        const bool more = (int)rows.size() > shown;
+        // More stations than there is room for (all systems: 20 against 18)
+        // and the wheel walks them; the line under the last row says so
+        refineryScroll_ = std::clamp(refineryScroll_, 0, (std::max)(0, (int)rows.size() - fit));
+        const int first = refineryScroll_;
+        const int shown = (std::min)(fit, (int)rows.size() - first);
+        const bool more = (int)rows.size() > fit;
         {
             const float cardTop = listTop - scaleF(12);
             const float cardBottom = ry + (float)shown * srowH + (more ? scaleF(14) : 0.0f) + scaleF(8);
@@ -19811,7 +19840,7 @@ void MinerGUI::paintRefinery(HDC hdc) {
         Gdiplus::RectF scopeRect(rx, listTop + scaleF(1), rw, scaleF(14));
         g.DrawString(scope.c_str(), -1, &subFont, scopeRect, &rightAlign, &faintBrush);
 
-        for (int i = 0; i < shown; i++) {
+        for (int i = first; i < first + shown; i++) {
             const Row& row = rows[i];
             const Refinery& st = REFINERIES[row.station];
             Gdiplus::RectF band(rx - scaleF(8), ry, rw + scaleF(16), srowH);
@@ -19898,7 +19927,9 @@ void MinerGUI::paintRefinery(HDC hdc) {
             ry += srowH;
         }
         if (more) {
-            std::wstring moreText = L"+" + std::to_wstring((int)rows.size() - shown) + L" more";
+            // The way the Blueprints list says it
+            std::wstring moreText = L"showing " + std::to_wstring(first + 1) + L"\u2013" +
+                                    std::to_wstring(first + shown) + L"  \u00B7  wheel to scroll";
             Gdiplus::RectF r(rx, ry, rw, scaleF(12));
             g.DrawString(moreText.c_str(), -1, &subFont, r, &rightAlign, &faintBrush);
         }
