@@ -57,6 +57,10 @@ struct Row {
     int stock = -1;                 // SCU
     int price = -1;                 // aUEC per SCU
     bool perUnit = false;           // a cargo box was picked: the picture shows one box's price
+    // ...one unit of the 1 SCU box: the price on the picture is a SCU's all
+    // the same, and perUnit is not set - unless the log lists no 1 SCU box
+    // for it, and "Total: 1 SCU" was misread (match)
+    bool oneScuBox = false;
     // How sure each value is: Sure as read, or once the player has set or
     // confirmed it; Check to be compared with the picture; Missing to be
     // filled in

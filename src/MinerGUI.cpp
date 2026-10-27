@@ -16621,8 +16621,9 @@ void MinerGUI::drawDatarunnerCard(Gdiplus::Graphics& g, int cw, int ch) {
         chip(2, row.stock >= 0 ? formatNumber(row.stock) : std::wstring(L"Type"),
              row.stock >= 0 ? row.stockSure : Certainty::Missing, 6, 9);
         if (row.perUnit) {
-            // a cargo box picked: the price is one box's, and cannot be had here
-            chip(3, L"PER BOX", Certainty::Missing, 0, 0);
+            // a cargo box picked: the price is one box's, as the game says
+            // "/Units", and cannot be had here
+            chip(3, L"PER UNIT", Certainty::Missing, 0, 0);
         } else {
             chip(3, row.price >= 0 ? formatNumber(row.price) : std::wstring(L"Type"),
                  row.price >= 0 ? row.priceSure : Certainty::Missing, 7, 10);

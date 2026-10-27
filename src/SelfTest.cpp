@@ -1446,6 +1446,15 @@ int runSelfTest() {
             SCMiner::parseCommodityPrice("96705/SCU", unitD) == -1;
         allPassed &= check(figures, "a commodity card's stock and price: thousands set off by commas, no nought in front, "
                                     "the currency sign no figure, a price per SCU or per cargo box");
+        const bool totals = SCMiner::parseCargoTotal("Total: 1 SCU") == 1 && SCMiner::parseCargoTotal("Total: 8 SCU") == 8 &&
+                            SCMiner::parseCargoTotal("Total:16SCU") == 16 && SCMiner::parseCargoTotal("TOTAL 1,024 SCU") == 1024 &&
+                            SCMiner::parseCargoTotal("Total: l SCU") == 1 && SCMiner::parseCargoTotal("Tatal: 1 SCU") == 1 &&
+                            SCMiner::parseCargoTotal("Total:L SCU") == 1 && SCMiner::parseCargoTotal("Total: B SCU") == 8 &&
+                            SCMiner::parseCargoTotal("Total: LOW SCU") == -1 &&
+                            SCMiner::parseCargoTotal("Est. Loading Time 00:02:00") == -1 &&
+                            SCMiner::parseCargoTotal("1 UNITS") == -1 && SCMiner::parseCargoTotal("Total:") == -1 &&
+                            SCMiner::parseCargoTotal("Total: 1") == -1 && SCMiner::parseCargoTotal("") == -1;
+        allPassed &= check(totals, "the foot of a card opened for buying: \"Total: 8 SCU\", the box picked times the units");
         const bool named = SCMiner::commodityNamed("SHIP AMMUNITION SIZE 1", "Ship Ammunition - Size 1") &&
                            !SCMiner::commodityNamed("SHIP AMMUNITION SIZE 2", "Ship Ammunition - Size 1") &&
                            SCMiner::commodityNamed("Ship Ammunition- Sizel", "Ship Ammunition - Size 1") &&
@@ -1485,6 +1494,20 @@ int runSelfTest() {
                           SCMiner::CommodityCard().priceSure() == Certainty::Missing;
         allPassed &= check(sure, "how sure a card's values are: sure where two readings agree or the words are the "
                                  "game's, to check where read once, missing where a cargo box is picked");
+        // ...but one unit of the 1 SCU box is a SCU: its price stands, where
+        // "Total: 1 SCU" was made out at both sizes - not once, not 8 SCU
+        SCMiner::CommodityCard oneBox = box;
+        oneBox.totalScu = 1;
+        oneBox.totalReads = 2;
+        SCMiner::CommodityCard oneBoxOnce = oneBox;
+        oneBoxOnce.totalReads = 1;
+        SCMiner::CommodityCard eightBox = oneBox;
+        eightBox.totalScu = 8;
+        const bool oneScu = oneBox.oneScuBox() && oneBox.priceSure() == Certainty::Sure && !oneBoxOnce.oneScuBox() &&
+                            oneBoxOnce.priceSure() == Certainty::Missing && !eightBox.oneScuBox() &&
+                            eightBox.priceSure() == Certainty::Missing && !box.oneScuBox() && !card.oneScuBox();
+        allPassed &= check(oneScu, "a card opened on the 1 SCU box, one unit of it: its price per unit is the price per "
+                                   "SCU, where \"Total: 1 SCU\" was read twice");
     }
 
     // --- UEX Datarunner: the report as UEX's documentation writes it - one
@@ -1676,6 +1699,23 @@ int runSelfTest() {
             lorville.terminal == 0 && lorville.terminals.size() == 2 &&
             D::matchCommodity("GXLD", uex.commodityNames(), {30}, named, how) == 30 && how == Certainty::Check &&
             D::matchCommodity("", uex.commodityNames(), {}, named, how) == 0 && how == Certainty::Missing;
+        // the 1 SCU box read as picked where the log lists none for the
+        // commodity (Titanium: 8 to 32): "Total: 1 SCU" misread, the price
+        // one box's after all - where it lists one, the price stands
+        D::Shot picked;
+        picked.side = 1;
+        picked.rows = {rowOf("TITANIUM"), rowOf("SHIP AMMUNITION - SIZE 4")};
+        for (D::Row& row : picked.rows) {
+            row.oneScuBox = true;
+            row.price = 7681;
+            row.priceSure = Certainty::Sure;
+        }
+        D::match(picked, uex, first);
+        const bool oneScuListed = picked.rows[0].perUnit && !picked.rows[0].oneScuBox &&
+                                  picked.rows[0].priceSure == Certainty::Missing && !picked.rows[1].perUnit &&
+                                  picked.rows[1].oneScuBox && picked.rows[1].priceSure == Certainty::Sure;
+        allPassed &= check(oneScuListed, "the 1 SCU box read as picked stands only where the game's log lists one for the "
+                                         "commodity");
         allPassed &= check(matched, "a Datarunner picture's rows matched to UEX: a name letter for letter sure, one with "
                                     "a slip to check, the log's list first, the nearest names to pick from; box sizes "
                                     "where UEX takes them all; both of Lorville's terminals to pick from");
@@ -1702,6 +1742,7 @@ int runSelfTest() {
         checked.rows[1].priceSure = Certainty::Sure;
         D::Shot boxPrice = checked;
         boxPrice.rows[1].perUnit = true;
+        boxPrice.rows[1].name = "Ship Ammunition - Size 4";
         D::Shot noTerminal = checked;
         noTerminal.terminal = 0;
         D::Shot old = checked;
@@ -1742,7 +1783,8 @@ int runSelfTest() {
         const bool sendable =
             D::whyNotSend(checked, {}, now).empty() &&
             D::whyNotSend(ready, {}, now) == "1 value to check - Compare with the picture, then click Confirm" &&
-            D::whyNotSend(boxPrice, {}, now).rfind("Cargo box selected in the game", 0) == 0 &&
+            D::whyNotSend(boxPrice, {}, now) == "Ship Ammunition - Size 4 shows a price per unit - Remove its row, or take "
+                                                "the picture again with nothing selected" &&
             D::whyNotSend(noTerminal, {}, now).rfind("Terminal not known", 0) == 0 &&
             D::whyNotSend(old, {}, now).rfind("Picture older than 30 days", 0) == 0 &&
             D::whyNotSend(allGone, {}, now).rfind("Nothing to send", 0) == 0 &&

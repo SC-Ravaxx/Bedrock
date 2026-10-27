@@ -823,15 +823,20 @@ int runDatarunner(const std::vector<std::string>& files) {
         if (!screen.cards.empty()) withCards++;
         for (const SCMiner::CommodityCard& c : screen.cards) {
             cards++;
-            const bool all = !c.name.empty() && c.level > 0 && c.stock >= 0 && c.price >= 0 && !c.perUnit;
+            const bool all = !c.name.empty() && c.level > 0 && c.stock >= 0 && c.price >= 0 && (!c.perUnit || c.oneScuBox());
             if (all) whole++;
             const bool green = c.levelSure() == SCMiner::Certainty::Sure && c.stockSure() == SCMiner::Certainty::Sure &&
                                c.priceSure() == SCMiner::Certainty::Sure;
             if (green) sure++;
             std::cout << "    '" << c.name << "' level " << c.level << " " << mark(c.levelSure()) << ", stock " << c.stock
-                      << " SCU " << mark(c.stockSure()) << ", " << c.price << (c.perUnit ? " a box " : " a SCU ")
+                      << " SCU " << mark(c.stockSure()) << ", " << c.price << (c.perUnit ? " a unit " : " a SCU ")
                       << mark(c.priceSure()) << "  at " << c.card.x << "," << c.card.y << " " << c.card.width << "x"
-                      << c.card.height << "  level slips " << c.levelSlips << "/" << c.levelMargin << std::endl;
+                      << c.card.height << "  level slips " << c.levelSlips << "/" << c.levelMargin;
+            if (c.perUnit) {
+                std::cout << "  total " << c.totalScu << " SCU (read " << c.totalReads << "x)"
+                          << (c.oneScuBox() ? " - one 1 SCU box, the price a SCU's" : "");
+            }
+            std::cout << std::endl;
         }
     }
     std::cout << pictures << " pictures, " << withCards << " with cards: " << cards << " cards, " << whole

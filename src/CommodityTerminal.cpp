@@ -419,6 +419,26 @@ int parseShopQuantity(const std::string& text) {
     return wholeFigure(text.substr(0, unit));
 }
 
+int parseCargoTotal(const std::string& text) {
+    // the word, then the amount in SCU: "Total: 8 SCU"
+    size_t at = 0;
+    while (at < text.size() && !std::isalpha(static_cast<unsigned char>(text[at]))) at++;
+    const size_t word = at;
+    while (at < text.size() && std::isalpha(static_cast<unsigned char>(text[at]))) at++;
+    if (at == word || distance(folded(text.substr(word, at - word), false), "TOTAL") > 1) return -1;
+    while (at < text.size() && (text[at] == ':' || text[at] == ';' || text[at] == '.' || text[at] == ' ')) at++;
+    // the 1 with its foot, written that small, comes as an L: one standing
+    // alone or among figures ("Total:L SCU" at 1080 for 1 SCU at 1440)
+    std::string rest = text.substr(at);
+    auto figureSide = [&](size_t i) {
+        return i >= rest.size() || rest[i] == ' ' || rest[i] == ',' || std::isdigit(static_cast<unsigned char>(rest[i]));
+    };
+    for (size_t i = 0; i < rest.size(); i++) {
+        if (rest[i] == 'L' && figureSide(i + 1) && (i == 0 || figureSide(i - 1))) rest[i] = '1';
+    }
+    return parseShopQuantity(rest);
+}
+
 int parseCommodityPrice(const std::string& text, bool& perUnit) {
     const size_t slash = text.rfind('/');
     if (slash == std::string::npos) return -1;
@@ -481,8 +501,9 @@ Certainty CommodityCard::stockSure() const {
 }
 
 Certainty CommodityCard::priceSure() const {
-    // a picked card's price is one box's, not a SCU's: no price for UEX
-    if (price < 0 || perUnit) return Certainty::Missing;
+    // a picked card's price is one box's, not a SCU's: no price for UEX -
+    // but for one unit of the 1 SCU box, which is a SCU
+    if (price < 0 || (perUnit && !oneScuBox())) return Certainty::Missing;
     return priceReads >= 2 ? Certainty::Sure : Certainty::Check;
 }
 
@@ -702,6 +723,38 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader) 
             }
         }
         card.card = band;
+        // A card opened for buying shows one box's price - and at the foot
+        // of what opened, left, "Total: 1 SCU": the box picked times the
+        // units. Read at both sizes, as the stock is: one unit of the 1 SCU
+        // box is a SCU, its price the price per SCU (oneScuBox).
+        if (card.perUnit) {
+            for (size_t j = 0; j < boxes.size(); j++) {
+                const cv::Rect& t = boxes[j];
+                if (used[j] || t.y <= bottom(band) || t.y > bottom(band) + 24 * h) continue;
+                if (t.x < band.x - 8 * h || right(t) > a.x) continue;
+                // the word alone first: "8 SCU" can come apart from it
+                if (folded(text(j), false).rfind("TOT", 0) != 0) continue;
+                const cv::Rect totalLine = wholeRow(pieces, t);
+                const std::string read = totalLine == t ? text(j) : readLine(bgr, totalLine, reader).text;
+                const int total = parseCargoTotal(read);
+                if (total < 0) continue;
+                used[j] = true;
+                card.totalScu = total;
+                card.totalReads = 1;
+                cv::Mat other;
+                cv::Rect inOther;
+                againAt(bgr, totalLine, other, inOther);
+                const std::string readAgain = inOther.area() > 0 ? readLine(other, inOther, reader).text : std::string();
+                const int again = parseCargoTotal(readAgain);
+                screen.lines++;
+                if (trace) {
+                    std::printf("      total '%s' %d SCU, again at the other size '%s' %d\n", read.c_str(), total,
+                                readAgain.c_str(), again);
+                }
+                if (again == total) card.totalReads = 2;
+                break;
+            }
+        }
         // no stock, yet the game's word says there is some: one of the two
         // misread, and the stock not made out
         if (card.stock == 0 && card.level > 1) {

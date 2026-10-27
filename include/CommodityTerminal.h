@@ -16,7 +16,8 @@
 //
 // The bar left of the name fills with the level; the lines on the right
 // stand flush right. A picked card says "/UNITS" for the price of one cargo
-// box and opens below with the box sizes, the amount and BUY.
+// box and opens below with the box sizes, the amount and BUY - at its foot,
+// left, "Total: 8 SCU": the box picked times the units.
 
 #include <opencv2/core.hpp>
 
@@ -38,6 +39,14 @@ struct CommodityCard {
     int stock = -1;          // SCU, SHOP QUANTITY
     int price = -1;          // aUEC, as the card shows it
     bool perUnit = false;    // "/UNITS": a cargo box is picked, the price is one box's
+    // ...and at the foot of the card so opened, "Total: 1 SCU": the SCU the
+    // amount picked comes to, the box times the units - -1 not made out; and
+    // made out at both sizes (2) or at one (1), as the stock is
+    int totalScu = -1;
+    int totalReads = 0;
+    // One unit of the 1 SCU box picked: its price is the price of a SCU all
+    // the same - "Total: 1 SCU", made out at both sizes
+    bool oneScuBox() const { return perUnit && totalScu == 1 && totalReads >= 2; }
     // How the price and the stock were made out: 2 the picture as it is and
     // a second reading at another size said the same (a picture over 1080
     // at 1080, a smaller one at three quarters), 1 one of them alone, or
@@ -76,6 +85,7 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader);
 // words; `margin`: how much further the next nearest level's are
 int commodityLevelIn(const std::string& text, int* slips = nullptr, int* margin = nullptr);
 int parseShopQuantity(const std::string& text);                    // "24,000 SCU" -> 24000; -1
+int parseCargoTotal(const std::string& text);                      // "Total: 8 SCU" -> 8; -1
 int parseCommodityPrice(const std::string& text, bool& perUnit);   // "¤1,879/Units" -> 1879, true; -1
 bool commodityNamed(const std::string& read, const std::string& name);   // a card's name is this commodity's
 // The level as the game words it, in capitals: 7 "MAX INVENTORY"; "" for

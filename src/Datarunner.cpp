@@ -108,7 +108,8 @@ Shot readPicture(const cv::Mat& bgr, TextLineReader& reader) {
         row.level = card.level >= 1 && card.level <= 7 ? card.level : -1;
         row.stock = card.stock;
         row.price = card.price;
-        row.perUnit = card.perUnit;
+        row.perUnit = card.perUnit && !card.oneScuBox();
+        row.oneScuBox = card.oneScuBox();
         row.levelSure = card.levelSure();
         row.stockSure = card.stockSure();
         row.priceSure = card.priceSure();
@@ -252,7 +253,15 @@ void match(Shot& shot, const UexDirectory& directory, const TradeBook::TerminalF
         row.boxes.clear();
         if (row.commodity == 0) continue;
         for (const auto& [id, sizes] : boxes) {
-            if (id == row.commodity && boxesUexTakes(sizes)) row.boxes = sizes;
+            if (id != row.commodity) continue;
+            if (boxesUexTakes(sizes)) row.boxes = sizes;
+            // the 1 SCU box read as picked, where the log lists none for it:
+            // "Total: 1 SCU" misread, the price one box's after all
+            if (row.oneScuBox && ("," + sizes + ",").find(",1,") == std::string::npos) {
+                row.oneScuBox = false;
+                row.perUnit = true;
+                row.priceSure = Certainty::Missing;
+            }
         }
     }
 }
@@ -322,9 +331,14 @@ std::string whyNotSend(const Shot& shot, const std::vector<Sent>& sent, long lon
     const std::vector<const Row*> rows = rowsToSend(shot, sent, now);
     if (rows.empty()) return "Nothing to send - Every row is removed or already sent";
     // a picked cargo box: the price on the picture is one box's, which UEX
-    // does not take - the row goes, or the picture is taken again
+    // does not take - the row goes, or the picture is taken again (one unit
+    // of the 1 SCU box is a SCU, and no perUnit: oneScuBox)
     for (const Row* row : rows) {
-        if (row->perUnit) return "Cargo box selected in the game - Remove its row, or deselect it and take the picture again";
+        if (row->perUnit) {
+            const std::string& name = !row->name.empty() ? row->name : row->read;
+            return (name.empty() ? std::string("A row") : name) +
+                   " shows a price per unit - Remove its row, or take the picture again with nothing selected";
+        }
     }
     int missing = 0, check = 0;
     long long wait = 0;
