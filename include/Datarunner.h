@@ -75,6 +75,14 @@ struct Shot {
     enum class State { Check, Sending, Sent, Partly, Refused, Failed };
     int id = 0;
     std::filesystem::path file;     // the game's own picture: read, never changed
+    // Star Citizen can save its screenshots black (seen with HDR on). Then
+    // the rows are read off the picture Bedrock took of the game the moment
+    // the game's came, and `own` is set; `shown` is where that picture was
+    // written for the player to open (debug\uex_pictures), "" where it was
+    // not. `black`: the picture read was black - Bedrock had none of its own
+    bool own = false;
+    bool black = false;
+    std::filesystem::path shown;
     long long taken = 0;            // when it was written, Unix seconds
     int width = 0, height = 0;
     std::string channel;            // "LIVE", "PTU"; "" not known
@@ -100,10 +108,15 @@ std::vector<unsigned char> pictureForUex(cv::Mat frame);
 
 // A picture read: its rows as the reader made them out, each with its piece
 // of the picture, the list it shows, and the picture as UEX gets it. No rows
-// where it shows no commodity terminal - or cannot be read.
-Shot readPicture(const std::filesystem::path& file, TextLineReader& reader);
+// where it shows no commodity terminal - or cannot be read. Where the game's
+// picture is black (blackPicture), `own` - Bedrock's picture of the game,
+// taken when the game's came - is read instead, if there is one.
+Shot readPicture(const std::filesystem::path& file, TextLineReader& reader, const cv::Mat& own = cv::Mat());
 // ...the same, of a picture in hand (the self-test, the screenshots)
 Shot readPicture(const cv::Mat& bgr, TextLineReader& reader);
+// A picture with nothing on it, as Star Citizen saved its screenshots with
+// HDR on: nought throughout. A dark scene still has its lights and its HUD.
+bool blackPicture(const cv::Mat& bgr);
 
 // The commodity among UEX's a name read off a terminal is: Sure where it is
 // one of their names letter for letter, Check where it is one with a slip or

@@ -127,13 +127,31 @@ Shot readPicture(const cv::Mat& bgr, TextLineReader& reader) {
     return shot;
 }
 
-Shot readPicture(const std::filesystem::path& file, TextLineReader& reader) {
+Shot readPicture(const std::filesystem::path& file, TextLineReader& reader, const cv::Mat& own) {
     const cv::Mat bgr = cv::imread(file.string(), cv::IMREAD_COLOR);
-    Shot shot = readPicture(bgr, reader);
+    // the game's picture black, or not to be read: Bedrock's own of the
+    // moment instead, where it took one
+    const bool black = blackPicture(bgr);
+    const bool useOwn = !own.empty() && (bgr.empty() || black);
+    Shot shot = readPicture(useOwn ? own : bgr, reader);
+    shot.own = useOwn;
+    shot.black = black && !useOwn;
     shot.file = file;
     shot.taken = writtenAt(file);
     shot.channel = channelOf(file.parent_path());
     return shot;
+}
+
+bool blackPicture(const cv::Mat& bgr) {
+    if (bgr.empty()) return false;
+    cv::Mat gray;
+    if (bgr.channels() == 1) gray = bgr;
+    else cv::cvtColor(bgr, gray, bgr.channels() == 4 ? cv::COLOR_BGRA2GRAY : cv::COLOR_BGR2GRAY);
+    double low = 0, high = 0;
+    cv::minMaxLoc(gray, &low, &high);
+    // the game's black picture is nought throughout; a little room for a
+    // JPEG's ringing
+    return high <= 8;
 }
 
 int matchCommodity(const std::string& read, const std::vector<std::pair<std::string, int>>& names,

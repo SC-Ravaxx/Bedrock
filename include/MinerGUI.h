@@ -170,6 +170,7 @@ public:
         std::shared_ptr<const std::vector<std::pair<std::string, int>>> commodities;
         std::shared_ptr<const std::vector<std::pair<int, std::string>>> terminals;
         bool signUp = false;                       // UEX takes no reports from this account yet
+        std::string note;                          // a picture just read that showed no terminal; "" none
     };
     void setDatarunner(const DatarunnerState& state);
     // What the player did on the card, of the picture with that id: 1 Send,

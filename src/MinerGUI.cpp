@@ -14529,6 +14529,11 @@ void MinerGUI::drawFooter(Gdiplus::Graphics& g, int cw, int ch) {
             leftBrush = &faintBrush;
             leftClickable = false;
         }
+    } else if (!datarunner_.note.empty() && !backupOpen_) {
+        // a picture just read that showed no terminal: for a minute, so the
+        // key press is not met with nothing at all
+        leftText = toW(datarunner_.note);
+        leftClickable = false;
     } else if (backupOpen_) {
         leftBrush = &textBrush;
     }
@@ -16311,10 +16316,13 @@ void MinerGUI::pressDatarunner(const DrHit& hit, HWND owner) {
         case 15:  // UEX's page for becoming a datarunner
             ShellExecuteW(owner, L"open", L"https://uexcorp.space/data/signup", nullptr, nullptr, SW_SHOWNORMAL);
             break;
-        case 16:  // the picture, whole, in the player's own viewer
-            if (drIndex_ >= 0 && drIndex_ < count && !datarunner_.shots[drIndex_]->file.empty()) {
-                ShellExecuteW(owner, L"open", datarunner_.shots[drIndex_]->file.wstring().c_str(), nullptr, nullptr,
-                              SW_SHOWNORMAL);
+        case 16:  // the picture, whole, in the player's own viewer: the game's, or Bedrock's own where the game's was black
+            if (drIndex_ >= 0 && drIndex_ < count) {
+                const Datarunner::Shot& open = *datarunner_.shots[drIndex_];
+                const std::filesystem::path& picture = open.shown.empty() ? open.file : open.shown;
+                if (!picture.empty()) {
+                    ShellExecuteW(owner, L"open", picture.wstring().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                }
             }
             break;
         default:
@@ -16391,7 +16399,7 @@ void MinerGUI::drawDatarunnerCard(Gdiplus::Graphics& g, int cw, int ch) {
         const float linkW = measure(link, headFont);
         g.DrawString(which.c_str(), -1, &headFont, Gdiplus::RectF(left, y, width - linkW - scaleF(12), scaleF(16)),
                      &oneLine, &dimBrush);
-        if (!shot.file.empty()) {
+        if (!shot.file.empty() && (!shot.own || !shot.shown.empty())) {
             const Gdiplus::RectF at(left + width - linkW - scaleF(2), y, linkW + scaleF(2), scaleF(16));
             Gdiplus::SolidBrush linkBrush(isHot(hover, at) ? COL_ACCENT_HI : COL_ACCENT);
             g.DrawString(link.c_str(), -1, &headFont, at, &rightLine, &linkBrush);

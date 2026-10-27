@@ -1090,6 +1090,8 @@ void Application::runWithGUI(HINSTANCE hInstance) {
 
         // The blueprint library follows the game's log
         pollLibrary();
+        // ...the Datarunner the game's ScreenShots folder, more often
+        if (watchScreenshots()) pushDatarunner();
         // ...and a refinery's terminal, at a station that has one
         lookForRefinery();
         handRefineryOrdersToUex();
@@ -5294,14 +5296,22 @@ void Application::uexAccountAction(int action, const std::string& text) {
     pushUexAccount();
 }
 
-// UEX Datarunner: the game's ScreenShots folder, looked at every two seconds
-// while it is on. A picture written since it was turned on, and since
-// Bedrock started, is read off the UI thread once the game has finished
-// writing it - its size the same for half a second -, and one of a commodity
-// terminal waits for the player on the main window. A picture of anything
-// else is left alone. UEX's lists and game versions are asked for while it
-// is on, and a picture is matched to them as soon as they are in.
-void Application::serviceDatarunner() {
+// UEX Datarunner: the game's ScreenShots folder, looked at every half second
+// while it is on (watchScreenshots, from the main loop). A picture written
+// since it was turned on, and since Bedrock started, is read off the UI
+// thread once the game has finished writing it - its size the same for half
+// a second -, and one of a commodity terminal waits for the player on the
+// main window. A picture of anything else is left alone, and the foot of the
+// main window says so for a minute. Where the game saves its pictures black
+// (seen with HDR on), the picture Bedrock took of the game the moment the
+// game's came is read instead. UEX's lists and game versions are asked for
+// while it is on (serviceDatarunner), and a picture is matched to them as
+// soon as they are in.
+//
+// The folder, from the main loop: every half second, so that Bedrock's own
+// picture of the game is taken as close to the player's Print Screen as it
+// can be. True where what the window shows changed.
+bool Application::watchScreenshots() {
     const auto now = std::chrono::steady_clock::now();
     bool changed = false;
     // a picture read
@@ -5310,10 +5320,142 @@ void Application::serviceDatarunner() {
         if (shot && !shot->rows.empty() && datarunnerSince_ > 0) {
             shot->id = datarunnerNextId_++;
             std::cout << "\nUEX Datarunner: " << shot->file.filename().string() << " - " << shot->rows.size()
-                      << " rows read" << std::endl;
+                      << " rows read" << (shot->own ? " off Bedrock's own picture (the game's is black)" : "")
+                      << std::endl;
             datarunnerShots_.push_back(std::move(shot));
+            datarunnerNote_.clear();
+            changed = true;
+        } else if (shot && datarunnerSince_ > 0) {
+            // ...and one without a terminal on it says so for a minute,
+            // rather than nothing happening at all
+            std::time_t taken = (std::time_t)shot->taken;
+            std::tm local = {};
+#ifdef _WIN32
+            localtime_s(&local, &taken);
+#else
+            localtime_r(&taken, &local);
+#endif
+            char clock[8] = "";
+            std::strftime(clock, sizeof clock, "%H:%M", &local);
+            datarunnerNote_ = std::string("Screenshot ") + clock + "  \xC2\xB7  " +
+                              (shot->black ? "The picture is black, nothing to read" : "No commodity terminal found");
+            datarunnerNoteAt_ = now;
+            std::cout << "\nUEX Datarunner: " << shot->file.filename().string() << " - no commodity terminal"
+                      << (shot->own ? " (the game's picture is black, Bedrock's own read)"
+                                    : shot->black ? " (the picture is black, and Bedrock took none of its own)" : "")
+                      << std::endl;
             changed = true;
         }
+    }
+    if (datarunnerSince_ <= 0 || uexKey_.empty()) return changed;   // off: serviceDatarunner lets it all go
+    // the folder, every half second
+    if (now - datarunnerLooked_ >= std::chrono::milliseconds(500)) {
+        datarunnerLooked_ = now;
+        const std::filesystem::path folder = Datarunner::screenshotsBeside(library_.gameLog());
+        if (folder != datarunnerFolder_) {
+            datarunnerFolder_ = folder;
+            datarunnerKnown_.clear();
+            datarunnerGrowing_.clear();
+            datarunnerToRead_.clear();
+            datarunnerFrom_ = (std::max)(datarunnerSince_, (long long)std::time(nullptr));
+        }
+        std::error_code ec;
+        if (!folder.empty() && std::filesystem::is_directory(folder, ec)) {
+            for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
+                if (!entry.is_regular_file(ec)) continue;
+                std::string ext = entry.path().extension().string();
+                for (char& c : ext) c = (char)std::tolower((unsigned char)c);
+                if (ext != ".jpg" && ext != ".jpeg" && ext != ".png") continue;
+                const std::string name = entry.path().filename().string();
+                if (datarunnerKnown_.count(name)) continue;
+                // one from before: never read
+                const auto written = entry.last_write_time(ec);
+                if (ec) continue;
+#ifdef _WIN32
+                const auto system = std::chrono::clock_cast<std::chrono::system_clock>(written);
+#else
+                const auto system = std::chrono::file_clock::to_sys(written);
+#endif
+                const long long at =
+                    (long long)std::chrono::duration_cast<std::chrono::seconds>(system.time_since_epoch()).count();
+                if (at < datarunnerFrom_) {
+                    datarunnerKnown_.insert(name);
+                    continue;
+                }
+                // a new one: read once its size has stood for half a second.
+                // Star Citizen can save it black (seen with HDR on), so
+                // Bedrock takes its own picture of the game the moment it
+                // first sees it - read instead where the game's is black
+                const std::uintmax_t size = entry.file_size(ec);
+                if (ec || size == 0) continue;
+                auto growing = datarunnerGrowing_.find(name);
+                if (growing == datarunnerGrowing_.end()) {
+                    DatarunnerGrowing fresh;
+                    fresh.size = size;
+                    fresh.since = now;
+                    if (!inScan_ && ScreenCapture::gameWindow()) fresh.own = grabGamePicture();
+                    datarunnerGrowing_[name] = std::move(fresh);
+                    continue;
+                }
+                if (growing->second.size != size) {
+                    growing->second.size = size;
+                    growing->second.since = now;
+                    continue;
+                }
+                if (now - growing->second.since < std::chrono::milliseconds(500)) continue;
+                cv::Mat own = std::move(growing->second.own);
+                datarunnerGrowing_.erase(growing);
+                datarunnerKnown_.insert(name);
+                if ((int)datarunnerShots_.size() + (int)datarunnerToRead_.size() >= DATARUNNER_KEPT) {
+                    std::cout << "\nUEX Datarunner: " << name << " not read - " << DATARUNNER_KEPT
+                              << " pictures are waiting" << std::endl;
+                    continue;
+                }
+                datarunnerToRead_.push_back({entry.path(), std::move(own)});
+            }
+        }
+    }
+    // the next picture, read off the UI thread with a reader of its own
+    if (!datarunnerReadJob_.valid() && !datarunnerToRead_.empty()) {
+        if (!datarunnerLines_) {
+            datarunnerLines_ = std::make_unique<TextLineReader>();
+            if (!datarunnerLines_->loadEmbedded()) std::cout << "\nUEX Datarunner: the line reader did not load" << std::endl;
+        }
+        const std::filesystem::path file = datarunnerToRead_.front().first;
+        const cv::Mat own = datarunnerToRead_.front().second;
+        datarunnerToRead_.pop_front();
+        TextLineReader* reader = datarunnerLines_.get();
+        // where Bedrock's own picture is the one read, it is written for the
+        // player to open, as UEX would get it - kept 30 days like the ones sent
+        const std::filesystem::path pictures = AppPaths::data() / "debug" / "uex_pictures";
+        datarunnerReadJob_ = std::async(std::launch::async, [file, own, reader, pictures]() {
+            auto shot = std::make_shared<Datarunner::Shot>(Datarunner::readPicture(file, *reader, own));
+            if (shot->own && !shot->rows.empty() && !shot->jpeg.empty()) {
+                std::error_code ec;
+                std::filesystem::create_directories(pictures, ec);
+                for (const auto& entry : std::filesystem::directory_iterator(pictures, ec)) {
+                    if (entry.is_regular_file(ec) && secondsSinceWritten(entry.path()) > Datarunner::OLDEST_SECONDS) {
+                        std::filesystem::remove(entry.path(), ec);
+                    }
+                }
+                const std::filesystem::path shown = pictures / (file.stem().string() + "_bedrock.jpg");
+                std::ofstream out(shown, std::ios::binary | std::ios::trunc);
+                out.write(reinterpret_cast<const char*>(shot->jpeg.data()), (std::streamsize)shot->jpeg.size());
+                if (out.good()) shot->shown = shown;
+            }
+            return shot;
+        });
+    }
+    return changed;
+}
+
+void Application::serviceDatarunner() {
+    const auto now = std::chrono::steady_clock::now();
+    bool changed = false;
+    // (the game's screenshots and the reading of them: watchScreenshots)
+    if (!datarunnerNote_.empty() && now - datarunnerNoteAt_ > std::chrono::seconds(60)) {
+        datarunnerNote_.clear();
+        changed = true;
     }
     // UEX's game versions: which a picture is of
     if (uexVersionsJob_.valid() && uexVersionsJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
@@ -5376,73 +5518,6 @@ void Application::serviceDatarunner() {
             changed = true;
         }
     }
-    // the folder
-    if (now - datarunnerLooked_ >= std::chrono::seconds(2)) {
-        datarunnerLooked_ = now;
-        const std::filesystem::path folder = Datarunner::screenshotsBeside(library_.gameLog());
-        if (folder != datarunnerFolder_) {
-            datarunnerFolder_ = folder;
-            datarunnerKnown_.clear();
-            datarunnerGrowing_.clear();
-            datarunnerToRead_.clear();
-            datarunnerFrom_ = (std::max)(datarunnerSince_, (long long)std::time(nullptr));
-        }
-        std::error_code ec;
-        if (!folder.empty() && std::filesystem::is_directory(folder, ec)) {
-            for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
-                if (!entry.is_regular_file(ec)) continue;
-                std::string ext = entry.path().extension().string();
-                for (char& c : ext) c = (char)std::tolower((unsigned char)c);
-                if (ext != ".jpg" && ext != ".jpeg" && ext != ".png") continue;
-                const std::string name = entry.path().filename().string();
-                if (datarunnerKnown_.count(name)) continue;
-                // one from before: never read
-                const auto written = entry.last_write_time(ec);
-                if (ec) continue;
-#ifdef _WIN32
-                const auto system = std::chrono::clock_cast<std::chrono::system_clock>(written);
-#else
-                const auto system = std::chrono::file_clock::to_sys(written);
-#endif
-                const long long at =
-                    (long long)std::chrono::duration_cast<std::chrono::seconds>(system.time_since_epoch()).count();
-                if (at < datarunnerFrom_) {
-                    datarunnerKnown_.insert(name);
-                    continue;
-                }
-                // a new one: read once its size has stood for half a second
-                const std::uintmax_t size = entry.file_size(ec);
-                if (ec || size == 0) continue;
-                auto growing = datarunnerGrowing_.find(name);
-                if (growing == datarunnerGrowing_.end() || growing->second.size != size) {
-                    datarunnerGrowing_[name] = {size, now};
-                    continue;
-                }
-                if (now - growing->second.since < std::chrono::milliseconds(500)) continue;
-                datarunnerGrowing_.erase(growing);
-                datarunnerKnown_.insert(name);
-                if ((int)datarunnerShots_.size() + (int)datarunnerToRead_.size() >= DATARUNNER_KEPT) {
-                    std::cout << "\nUEX Datarunner: " << name << " not read - " << DATARUNNER_KEPT
-                              << " pictures are waiting" << std::endl;
-                    continue;
-                }
-                datarunnerToRead_.push_back(entry.path());
-            }
-        }
-    }
-    // the next picture, read off the UI thread with a reader of its own
-    if (!datarunnerReadJob_.valid() && !datarunnerToRead_.empty()) {
-        if (!datarunnerLines_) {
-            datarunnerLines_ = std::make_unique<TextLineReader>();
-            if (!datarunnerLines_->loadEmbedded()) std::cout << "\nUEX Datarunner: the line reader did not load" << std::endl;
-        }
-        const std::filesystem::path file = datarunnerToRead_.front();
-        datarunnerToRead_.pop_front();
-        TextLineReader* reader = datarunnerLines_.get();
-        datarunnerReadJob_ = std::async(std::launch::async, [file, reader]() {
-            return std::make_shared<Datarunner::Shot>(Datarunner::readPicture(file, *reader));
-        });
-    }
     // what stands in the way of Send changes with the clock: five minutes
     // run out, a picture grows older than UEX takes
     if (!datarunnerShots_.empty() && now - datarunnerPushed_ > std::chrono::seconds(10)) changed = true;
@@ -5472,6 +5547,7 @@ void Application::pushDatarunner() {
         state.terminals = std::make_shared<const std::vector<std::pair<int, std::string>>>(uexDirectory_->commodityTerminals());
     }
     state.signUp = uexAccountTrouble_ == "datarunner";
+    state.note = datarunnerNote_;
     gui_->setDatarunner(state);
 }
 

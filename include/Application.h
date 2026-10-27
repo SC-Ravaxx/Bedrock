@@ -493,9 +493,14 @@ private:
     struct DatarunnerGrowing {
         std::uintmax_t size = 0;
         std::chrono::steady_clock::time_point since{};
+        cv::Mat own;   // Bedrock's picture of the game, taken when this one came (for one the game saved black)
     };
     std::map<std::string, DatarunnerGrowing> datarunnerGrowing_;   // new ones, until the game has written them
-    std::deque<std::filesystem::path> datarunnerToRead_;
+    std::deque<std::pair<std::filesystem::path, cv::Mat>> datarunnerToRead_;   // with Bedrock's own of the moment
+    // A picture read that showed no terminal, for the foot of the main window
+    // for a minute: "" none
+    std::string datarunnerNote_;
+    std::chrono::steady_clock::time_point datarunnerNoteAt_{};
     std::chrono::steady_clock::time_point datarunnerLooked_{}, datarunnerPushed_{};
     std::unique_ptr<TextLineReader> datarunnerLines_;       // its own reader, used by one job at a time
     std::future<std::shared_ptr<Datarunner::Shot>> datarunnerReadJob_;   // (after the reader: it goes first)
@@ -509,6 +514,7 @@ private:
     bool uexVersionsEver_ = false;
     static constexpr int DATARUNNER_KEPT = 20;              // pictures waiting at most
     void serviceDatarunner();
+    bool watchScreenshots();
     void pushDatarunner();
     void datarunnerAction(int action, int shot, int row, int value);
     void datarunnerAnswered(const UexSent& sent);

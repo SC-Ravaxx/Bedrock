@@ -1812,6 +1812,36 @@ int runSelfTest() {
                           sellBody.find("\"price_sell\":7681") != std::string::npos;
         allPassed &= check(goes, "a Datarunner report carries the rows as checked, box sizes on the BUY list only, the "
                                  "picture's date, and the very picture - at most 1080 tall, under UEX's 10 MB");
+        // Star Citizen can save its screenshots black (seen with HDR on): then
+        // the picture Bedrock took the moment the game's came is read instead
+        // - only then, and only where it took one. A dark scene is no black one.
+        {
+            namespace fs = std::filesystem;
+            std::error_code ec;
+            const fs::path folder = fs::temp_directory_path(ec) / "bedrock-datarunner-black";
+            fs::remove_all(folder, ec);
+            fs::create_directories(folder, ec);
+            const cv::Mat black(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+            cv::Mat dark(720, 1280, CV_8UC3, cv::Scalar(6, 6, 6));
+            cv::putText(dark, "SHOP INVENTORY", cv::Point(200, 300), cv::FONT_HERSHEY_SIMPLEX, 1.0,
+                        cv::Scalar(40, 60, 200), 2);
+            const fs::path blackFile = folder / "ScreenShot-black.jpg";
+            const fs::path darkFile = folder / "ScreenShot-dark.jpg";
+            const bool written = cv::imwrite(blackFile.string(), black) && cv::imwrite(darkFile.string(), dark);
+            SCMiner::TextLineReader lines;
+            lines.loadEmbedded();
+            const D::Shot fromBlack = D::readPicture(blackFile, lines, dark);
+            const D::Shot noneTaken = D::readPicture(blackFile, lines);
+            const D::Shot fromDark = D::readPicture(darkFile, lines, dark);
+            const bool blackSeen = D::blackPicture(cv::imread(blackFile.string(), cv::IMREAD_COLOR));
+            fs::remove_all(folder, ec);
+            allPassed &= check(written && blackSeen && D::blackPicture(black) && !D::blackPicture(dark) &&
+                                   !D::blackPicture(cv::Mat()) && fromBlack.own && fromBlack.file == blackFile &&
+                                   !fromBlack.black && fromBlack.width == 1280 && !noneTaken.own &&
+                                   noneTaken.black && noneTaken.width == 5120 && !fromDark.own && !fromDark.black,
+                               "a screenshot the game saved black (seen with HDR on): Bedrock's own picture of the "
+                               "moment is read instead, a dark one is read as it is");
+        }
     }
 
     // --- The UEX marketplace: its figures come as numbers or as

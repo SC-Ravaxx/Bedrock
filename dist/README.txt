@@ -489,7 +489,11 @@ Three network requests of its own, and three more only if you switch them on:
   Bedrock also downloads UEX's list of game versions (every six hours).
   Pictures that don't show a commodity terminal are left alone, and your
   pictures are never changed or moved. A copy of each picture sent is kept
-  for 30 days in the debug\uex_sent folder of Bedrock's data folder.
+  for 30 days in the debug\uex_sent folder of Bedrock's data folder. If the
+  game saves a screenshot black (seen with HDR on), Bedrock reads the
+  picture of the game it takes itself the moment the screenshot appears.
+  If that one shows a commodity terminal, it is kept for 30 days in the
+  debug\uex_pictures folder and goes to UEX in place of the black one.
 - The phone or tablet (off unless you switch it on in the settings): Bedrock
   then listens on your network, at port 47820, and hands the overlay and the
   window as pictures to a browser that has its address. The address holds a

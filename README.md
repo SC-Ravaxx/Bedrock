@@ -41,8 +41,9 @@ executable and start it. The app tells you when a newer version is out.
 - **UEX Datarunner (optional):** at a commodity terminal, take a picture with
   the game's Print Screen key. Bedrock reads the terminal's list off it and
   shows every row beside its part of the picture; you check the values, and
-  only your click on Send reports them to UEX, with that picture. Off unless
-  you switch it on.
+  only your click on Send reports them to UEX, with that picture. If the game
+  saves it black (seen with HDR on), Bedrock reads and sends its own picture
+  of that moment instead. Off unless you switch it on.
 - **Colours:** the gear beside the ? sets the colours of every window and the
   overlay - Bedrock's own, a set for protanopia, deuteranopia or tritanopia,
   or your own - with a preview that also shows how each kind of colour
