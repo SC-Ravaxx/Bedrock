@@ -1156,6 +1156,24 @@ int runScreenshots(const std::string& dir) {
             // the overlay is what is on screen
             shootPhone(SCMiner::PhoneServer::View::Overlay, 1170, "phone_overlay_rock.png");
             shootPhone(SCMiner::PhoneServer::View::Window, 1170, "phone_window_rock.png");
+            // ...and for the web page, on a phone and on a tablet standing
+            // upright (1640 is one at twice its size), at no distance: Bedrock
+            // does not read the distance in the game yet, so the page's
+            // pictures show none
+            {
+                SCMiner::RockStats site = rock;
+                site.distance = 0;
+                gui.updateRock(site);
+                gui.setRockContents(holds);
+                pump();
+                shootPhone(SCMiner::PhoneServer::View::Overlay, 1170, "site_phone_overlay.png");
+                shootPhone(SCMiner::PhoneServer::View::Window, 1170, "site_phone_window.png");
+                shootPhone(SCMiner::PhoneServer::View::Overlay, 1640, "site_tablet_overlay.png");
+                shootPhone(SCMiner::PhoneServer::View::Window, 1640, "site_tablet_window.png");
+                gui.updateRock(rock);
+                gui.setRockContents(holds);
+                pump();
+            }
             // ...and LIVE pressed on the phone's overlay, and pressed again
             {
                 int lx = 0, ly = 0;
@@ -1355,6 +1373,17 @@ int runScreenshots(const std::string& dir) {
         gui.updateRock(rock);
         pump();
         shoot(gui.windowHandle(), "rock_hard.png");
+        // ...and for the web page at no distance: Bedrock does not read the
+        // distance in the game yet, so the page's pictures show none
+        {
+            SCMiner::RockStats site = rock;
+            site.distance = 0;
+            gui.updateRock(site);
+            pump();
+            shoot(gui.windowHandle(), "site_rock_hard.png");
+            gui.updateRock(rock);
+            pump();
+        }
 
         // the same hard rock, but with a crafted laser: the figure moves and
         // the window says where it came from
@@ -1419,6 +1448,15 @@ int runScreenshots(const std::string& dir) {
         // window's own buttons back where the notice had pushed them
         scanned(28000, 96);
         pump();
+        // ...and for the web page: the whole MOLE on that rock, no gadget on
+        // it and no distance (see site_rock_hard.png)
+        {
+            SCMiner::RockStats site = rock;
+            site.distance = 0;
+            gui.updateRock(site);
+            pump();
+            shoot(gui.windowHandle(), "site_rock_wont_hold.png");
+        }
 
         // The rock in the compact overlay, which is the window that is up
         // from the seat: the MOLE on the tin rock, close in; then a
