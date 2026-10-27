@@ -132,8 +132,8 @@ Gdiplus::Color COL_FROST_TINT(70, 6, 7, 9);      // over the blurred window
 
 // Corner radii, in unscaled pixels: a card or a sheet, a control on it
 // (button, field, row), and the small things (chips, tick boxes' kin)
-constexpr float R_CARD = 10.0f;
-constexpr float R_CONTROL = 6.0f;
+constexpr float R_CARD = 12.0f;
+constexpr float R_CONTROL = 8.0f;
 
 COLORREF CR_BG = RGB(15, 16, 19);
 COLORREF CR_EDIT_BG = RGB(34, 37, 43);
@@ -322,6 +322,22 @@ void strokeRoundRect(Gdiplus::Graphics& g, const Gdiplus::RectF& r, float radius
     g.DrawPath(&pen, &path);
 }
 
+// Cards stand off the window by their tone alone. In the overlay, over the
+// game, they keep the hairline round them (onPaint sets it).
+bool g_cardHairline = false;
+
+void cardEdge(Gdiplus::Graphics& g, const Gdiplus::RectF& r, float radius) {
+    if (g_cardHairline) strokeRoundRect(g, r, radius, COL_BORDER);
+}
+
+struct CardHairline {
+    bool was;
+    explicit CardHairline(bool on) : was(g_cardHairline) { g_cardHairline = on; }
+    ~CardHairline() { g_cardHairline = was; }
+    CardHairline(const CardHairline&) = delete;
+    CardHairline& operator=(const CardHairline&) = delete;
+};
+
 // A soft shadow under something that lies over the window - a sheet, an
 // open list: a few widening rings of black, each fainter than the last,
 // so the thing floats rather than being cut out of the page
@@ -374,7 +390,7 @@ void drawButton(Gdiplus::Graphics& g, const Gdiplus::RectF& r, const wchar_t* la
             break;
         case ButtonKind::Secondary:
             fill = hot ? COL_HOVER : COL_CARD_HI;
-            line = hot ? tint(COL_TEXT, 40) : COL_BORDER;
+            framed = g_cardHairline;   // framed in the overlay only
             ink = hot ? COL_TEXT : tint(COL_TEXT, 215);
             break;
         case ButtonKind::Ghost:
@@ -3334,6 +3350,7 @@ void MinerGUI::onPaint(HDC hdc) {
     GetClientRect(hwnd_, &clientRect);
     const int cw = clientRect.right;
     const int ch = clientRect.bottom;
+    const CardHairline edges(overlayMode_);
     // What a phone was sent may be out of date now (phoneTick) - and the
     // full window's size, unscaled, is the one its picture of it has
     if (!phoneRepainting_) phoneDirty_ = true;
@@ -3482,7 +3499,7 @@ static void mainscanCard(Gdiplus::Graphics& g, const Gdiplus::RectF& r, float s)
     const float radius = R_CARD * s;
     fillRoundRect(g, r, radius, COL_CARD);
     cardLight(g, r, radius, 44.0f * s);
-    strokeRoundRect(g, r, radius, COL_BORDER);
+    cardEdge(g, r, radius);
 }
 
 // A field that drops a list - the place, the ship, the ores - in one look for
@@ -3496,11 +3513,10 @@ static void mainscanField(Gdiplus::Graphics& g, const Gdiplus::RectF& r, float s
         fillRoundRect(g, r, radius, COL_CARD_HI);
         strokeRoundRect(g, r, radius, tint(COL_ACCENT, 200));
     } else if (handSet) {
-        fillRoundRect(g, r, radius, hot ? COL_CARD_HI : COL_CARD);
+        fillRoundRect(g, r, radius, hot ? COL_HOVER : COL_CARD_HI);
         selectionFrame(g, r, radius);
     } else {
-        fillRoundRect(g, r, radius, hot ? COL_CARD_HI : COL_CARD);
-        strokeRoundRect(g, r, radius, hot ? tint(COL_TEXT, 40) : COL_BORDER);
+        fillRoundRect(g, r, radius, hot ? COL_HOVER : COL_CARD_HI);
     }
     chevron(g, r.X + r.Width - 16 * s, r.Y + r.Height / 2, 4.5f * s, 1.6f * s,
             (open || handSet) ? COL_ACCENT : (hot ? COL_TEXT : COL_TEXT_DIM), open);
@@ -5767,7 +5783,7 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
         g.FillPath(&wash, &path);
         strokeRoundRect(g, box, scaleF(R_CARD), tint(tone, 150));
     } else {
-        strokeRoundRect(g, box, scaleF(R_CARD), COL_BORDER);
+        cardEdge(g, box, scaleF(R_CARD));
     }
     Gdiplus::SolidBrush toneBrush(tone);
 
@@ -6021,7 +6037,7 @@ int MinerGUI::drawHeadSuggestion(Gdiplus::Graphics& g, float x, float w, float y
     const Gdiplus::RectF box(x, y, w, scaleF(44));
     fillRoundRect(g, box, scaleF(R_CARD), COL_CARD);
     cardLight(g, box, scaleF(R_CARD), scaleF(44));
-    strokeRoundRect(g, box, scaleF(R_CARD), COL_BORDER);
+    cardEdge(g, box, scaleF(R_CARD));
     const float inset = x + scaleF(14);
     g.DrawString(s.line.c_str(), -1, &rowFont, Gdiplus::RectF(inset, y + scaleF(7), w - scaleF(28), scaleF(18)),
                  &oneLine, s.good ? &greenBrush : &yellowBrush);
@@ -6182,7 +6198,8 @@ int MinerGUI::drawRockAdvice(Gdiplus::Graphics& g, int cw, int yPos) {
     cardLight(g, box, scaleF(R_CARD), scaleF(44));
     // A gadget on the rock gets the live thing's rim and no more: the pill,
     // the amber name and the Selected button below already say which one
-    strokeRoundRect(g, box, scaleF(R_CARD), fittedGadget_ ? tint(COL_ACCENT, 150) : COL_BORDER);
+    if (fittedGadget_) strokeRoundRect(g, box, scaleF(R_CARD), tint(COL_ACCENT, 150));
+    else cardEdge(g, box, scaleF(R_CARD));
     if (tagW > 0) {
         Gdiplus::RectF pill(inset, y + scaleF(11), tagW, scaleF(16));
         fillRoundRect(g, pill, scaleF(8), tint(words.tone, 40));
@@ -7219,7 +7236,7 @@ void MinerGUI::drawMediaRail(Gdiplus::Graphics& g, float x, float top, float bot
     const Gdiplus::RectF rail(x, top, mediaRailWidth(), bottom - top);
     fillRoundRect(g, rail, scaleF(R_CARD), COL_CARD);
     cardLight(g, rail, scaleF(R_CARD), scaleF(44));
-    strokeRoundRect(g, rail, scaleF(R_CARD), COL_BORDER);
+    cardEdge(g, rail, scaleF(R_CARD));
 
     // The fold, as a chevron pointing the way the rail will go: out to the
     // left while it is folded, back to the right while it is open
@@ -8246,7 +8263,7 @@ void MinerGUI::drawNotes(Gdiplus::Graphics& g, int cw, int ch) {
     // without a second frame showing round its edge
     const Gdiplus::Color page(GetRValue(CR_NOTE_BG), GetGValue(CR_NOTE_BG), GetBValue(CR_NOTE_BG));
     fillRoundRect(g, pane, scaleF(R_CARD), page);
-    strokeRoundRect(g, pane, scaleF(R_CARD), COL_BORDER);
+    cardEdge(g, pane, scaleF(R_CARD));
     if (railW > 0) drawMediaRail(g, pane.GetRight() + railGap, pane.Y, pane.GetBottom());
 
     if (noteFolder_ >= 0 && noteIndex_ >= 0 &&
@@ -11448,7 +11465,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
         const Gdiplus::RectF card(rx, ry, rw, scaleF(56));
         fillRoundRect(g, card, scaleF(R_CARD), COL_CARD);
         cardLight(g, card, scaleF(R_CARD), scaleF(44));
-        strokeRoundRect(g, card, scaleF(R_CARD), COL_BORDER);
+        cardEdge(g, card, scaleF(R_CARD));
         // Esc takes the search first and the filters after it, so the
         // sentence names whichever of the two it is going to clear
         const wchar_t* why = craftSearch_.empty() ? L"No results for these filters. Esc to clear."
@@ -11595,7 +11612,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
             // place the list will be, saying how it gets filled
             const Gdiplus::RectF card(rx, ry, rw, scaleF(56));
             fillRoundRect(g, card, radius, COL_CARD);
-            strokeRoundRect(g, card, radius, COL_BORDER);
+            cardEdge(g, card, radius);
             g.DrawString(L"List is empty. Add recipes with the + on the right of "
                          L"a recipe, or with Add to list inside an open recipe.",
                          -1, &rowFont, Gdiplus::RectF(ix, ry, iw, card.Height), &centre, &dimBrush);
@@ -11612,7 +11629,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
             const Gdiplus::RectF card(rx, ry, rw,
                                       scaleF(8) + listed * lineH + (more ? scaleF(20) : 0.0f));
             fillRoundRect(g, card, radius, COL_CARD);
-            strokeRoundRect(g, card, radius, COL_BORDER);
+            cardEdge(g, card, radius);
             float ly = ry + scaleF(4);
             for (int i = 0; i < (int)cart_.size() && i < room; i++) {
                 const CartLine& line = cart_[i];
@@ -11713,7 +11730,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
             const bool bill = rawSeen > 0.0 && !cut && rowsEnd + billH <= limit;
             const Gdiplus::RectF card(rx, cardTop, rw, (bill ? rowsEnd + billH : rowsEnd) + pad - cardTop);
             fillRoundRect(g, card, radius, COL_CARD);
-            strokeRoundRect(g, card, radius, COL_BORDER);
+            cardEdge(g, card, radius);
             ry = cardTop + pad;
 
             g.DrawString(L"MATERIALS TO MINE", -1, &smallFont, Gdiplus::PointF(ix, ry), &faintBrush);
@@ -12617,7 +12634,7 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
         Gdiplus::RectF card(M, y, (float)cw - 2 * M, slotH - scaleF(12));
         fillRoundRect(g, card, scaleF(R_CARD), COL_CARD);
         cardLight(g, card, scaleF(R_CARD), scaleF(44));
-        strokeRoundRect(g, card, scaleF(R_CARD), COL_BORDER);
+        cardEdge(g, card, scaleF(R_CARD));
         const float left = M + scaleF(14);
         const float right = (float)cw - M - scaleF(14);
 
@@ -16754,7 +16771,6 @@ void MinerGUI::drawDatarunnerCard(Gdiplus::Graphics& g, int cw, int ch) {
         drList_ = Gdiplus::RectF(lx, ly, listW, listH);
         dropShadow(g, drList_, scaleF(R_CONTROL), scaleF(10));
         fillRoundRect(g, drList_, scaleF(R_CONTROL), COL_CARD_HI);
-        strokeRoundRect(g, drList_, scaleF(R_CONTROL), COL_BORDER);
         float ey = ly + scaleF(4);
         if (typed) {
             const std::wstring shown = drFilter_.empty() ? std::wstring(L"Type to filter") : drFilter_;
@@ -16928,7 +16944,7 @@ void MinerGUI::paintMarketColumn(Gdiplus::Graphics& g, int cw, int ch, float car
         const Gdiplus::RectF box(cardX, y, cardW, h);
         fillRoundRect(g, box, scaleF(R_CARD), COL_CARD);
         cardLight(g, box, scaleF(R_CARD), scaleF(44));
-        strokeRoundRect(g, box, scaleF(R_CARD), COL_BORDER);
+        cardEdge(g, box, scaleF(R_CARD));
         float ry = y + scaleF(10);
         g.DrawString(label, -1, &smallFont, Gdiplus::PointF(rx, ry), &faintBrush);
         {
@@ -17538,7 +17554,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
             const Gdiplus::RectF card(cardX, listTop - scaleF(6), (float)cw - M - cardX, cardBottom - (listTop - scaleF(6)));
             fillRoundRect(g, card, scaleF(R_CARD), COL_CARD);
             cardLight(g, card, scaleF(R_CARD), scaleF(44));
-            strokeRoundRect(g, card, scaleF(R_CARD), COL_BORDER);
+            cardEdge(g, card, scaleF(R_CARD));
 
             // The heading names what is asked about in the bright ink, after
             // the quiet words that say which way round the list runs
@@ -17611,7 +17627,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
                 const Gdiplus::RectF rockCard(cardX, cardBottom + scaleF(10), (float)cw - M - cardX, rockCardH);
                 fillRoundRect(g, rockCard, scaleF(R_CARD), COL_CARD);
                 cardLight(g, rockCard, scaleF(R_CARD), scaleF(44));
-                strokeRoundRect(g, rockCard, scaleF(R_CARD), COL_BORDER);
+                cardEdge(g, rockCard, scaleF(R_CARD));
                 float py = rockCard.Y + scaleF(10);
                 const std::wstring label2 = L"ROCK COMPOSITION  \u00B7";
                 std::wstring ore = toW(plannerMineral_);
@@ -17646,7 +17662,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
                 const Gdiplus::RectF sellCardR(cardX, sellTop, (float)cw - M - cardX, sellCardH);
                 fillRoundRect(g, sellCardR, scaleF(R_CARD), COL_CARD);
                 cardLight(g, sellCardR, scaleF(R_CARD), scaleF(44));
-                strokeRoundRect(g, sellCardR, scaleF(R_CARD), COL_BORDER);
+                cardEdge(g, sellCardR, scaleF(R_CARD));
                 float sy = sellCardR.Y + scaleF(10);
                 const std::wstring label4 = L"WHERE TO SELL  \u00B7";
                 std::wstring ore = toW(plannerMineral_);
@@ -17722,7 +17738,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
                 const Gdiplus::RectF dealCard(cardX, dealTop, (float)cw - M - cardX, dealCardH);
                 fillRoundRect(g, dealCard, scaleF(R_CARD), COL_CARD);
                 cardLight(g, dealCard, scaleF(R_CARD), scaleF(44));
-                strokeRoundRect(g, dealCard, scaleF(R_CARD), COL_BORDER);
+                cardEdge(g, dealCard, scaleF(R_CARD));
                 float dy = dealCard.Y + scaleF(10);
                 const std::wstring label3 = L"YOUR TRADES  \u00B7";
                 std::wstring ore = toW(plannerMineral_);
@@ -18973,7 +18989,7 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
             const Gdiplus::RectF box(edge - boxW, fy, boxW, chipH);
             const float round = chipH / 2.0f;
             const bool hot = isHot(hoverGrind_, box);
-            fillRoundRect(g, box, round, grindTyping_ ? COL_CARD_HI : COL_CARD);
+            fillRoundRect(g, box, round, grindTyping_ ? COL_CARD_HI : (hot ? COL_HOVER : COL_CARD_HI));
             if (grindTyping_) {
                 // a soft ring of amber outside the line: the keys are in here
                 const float ring = scaleF(2);
@@ -18982,8 +18998,6 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
                                                box.Height + 2 * ring),
                                 round + ring, tint(COL_ACCENT, 46), ring);
                 strokeRoundRect(g, box, round, tint(COL_ACCENT, 210));
-            } else {
-                strokeRoundRect(g, box, round, hot ? tint(COL_TEXT, 40) : COL_BORDER);
             }
             // a lens at the left, so the box reads as a search before a word
             // is in it
@@ -20770,7 +20784,7 @@ void MinerGUI::paintRefinery(HDC hdc) {
             const Gdiplus::RectF card(cardX, cardTop, (float)cw - M - cardX, cardBottom - cardTop);
             fillRoundRect(g, card, scaleF(R_CARD), COL_CARD);
             cardLight(g, card, scaleF(R_CARD), scaleF(44));
-            strokeRoundRect(g, card, scaleF(R_CARD), COL_BORDER);
+            cardEdge(g, card, scaleF(R_CARD));
         }
 
         g.DrawString(refineryPicked_.empty() ? L"STATION YIELDS"
@@ -23118,7 +23132,7 @@ void MinerGUI::paintSettings(HDC hdc) {
         const auto card = [&](const Gdiplus::RectF& r) {
             fillRoundRect(g, r, scaleF(R_CARD), COL_CARD);
             cardLight(g, r, scaleF(R_CARD), scaleF(44));
-            strokeRoundRect(g, r, scaleF(R_CARD), COL_BORDER);
+            cardEdge(g, r, scaleF(R_CARD));
         };
         const float ix = leftX + scaleF(16), iw = leftW - scaleF(32);
 
@@ -23231,9 +23245,9 @@ void MinerGUI::paintSettings(HDC hdc) {
             g.DrawString(COLOUR_NAMES[role], -1, &nameFont, Gdiplus::PointF(ix + scaleF(38), y + scaleF(4)), &nameBrush);
 
             const Gdiplus::RectF field(ix + iw - scaleF(84), y + scaleF(2), scaleF(84), scaleF(24));
-            fillRoundRect(g, field, scaleF(R_CONTROL), settingsTyping_ ? COL_CARD_HI : COL_CARD);
+            fillRoundRect(g, field, scaleF(R_CONTROL),
+                          settingsTyping_ || !isHot(hoverSettings_, field) ? COL_CARD_HI : COL_HOVER);
             if (settingsTyping_) selectionFrame(g, field, scaleF(R_CONTROL));
-            else strokeRoundRect(g, field, scaleF(R_CONTROL), isHot(hoverSettings_, field) ? tint(COL_TEXT, 60) : COL_BORDER);
             const std::wstring shown = settingsTyping_ ? L"#" + toW(settingsHex_) + L"\u2009|"
                                                        : toW(Colours::hex(scheme[role]));
             g.DrawString(shown.c_str(), -1, &valueFont, field, &centred, settingsTyping_ ? &accentBrush : &textBrush);
@@ -24046,14 +24060,13 @@ float MinerGUI::paintPluginPieces(Gdiplus::Graphics& g, const std::vector<Plugin
                 const bool typing = pluginTyping_ == it.id && !pluginTypingNumber_;
                 if (draw) {
                     const float round = h / 2.0f;
-                    fillRoundRect(g, box, round, typing ? COL_CARD_HI : COL_CARD);
+                    fillRoundRect(g, box, round,
+                                  typing ? COL_CARD_HI : (isHot(hoverPlugins_, box) ? COL_HOVER : COL_CARD_HI));
                     if (typing) {
                         const float ring = scaleF(2);
                         strokeRoundRect(g, Gdiplus::RectF(box.X - ring, box.Y - ring, box.Width + 2 * ring, box.Height + 2 * ring),
                                         round + ring, tint(COL_ACCENT, 46), ring);
                         strokeRoundRect(g, box, round, tint(COL_ACCENT, 210));
-                    } else {
-                        strokeRoundRect(g, box, round, isHot(hoverPlugins_, box) ? tint(COL_TEXT, 40) : COL_BORDER);
                     }
                     {
                         Gdiplus::Pen lens(typing ? COL_ACCENT : COL_TEXT_FAINT, scaleF(1.4f));
@@ -24103,7 +24116,8 @@ float MinerGUI::paintPluginPieces(Gdiplus::Graphics& g, const std::vector<Plugin
                         dropShadow(g, band, scaleF(R_CARD), scaleF(10));
                         fillRoundRect(g, band, scaleF(R_CARD), COL_CARD);
                         cardLight(g, band, scaleF(R_CARD), scaleF(44));
-                        strokeRoundRect(g, band, scaleF(R_CARD), pluginShown_.empty() ? COL_BORDER : tint(COL_ACCENT, 150));
+                        if (pluginShown_.empty()) cardEdge(g, band, scaleF(R_CARD));
+                        else strokeRoundRect(g, band, scaleF(R_CARD), tint(COL_ACCENT, 150));
                     } else if (isHot(hoverPlugins_, head)) {
                         fillRoundRect(g, head, scaleF(R_CONTROL), COL_CARD);
                     }
