@@ -7767,10 +7767,10 @@ static void notesRoundCorners(Gdiplus::Graphics& g, const Gdiplus::RectF& r, flo
 // The rail: a heading that folds it away, the two ways in, and what the note
 // holds. Newest at the top, the way the note list itself is ordered.
 void MinerGUI::drawMediaRail(Gdiplus::Graphics& g, float x, float top, float bottom) {
-    Gdiplus::Font headFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font subFont(&textFamily(), scaleF(9), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font buttonFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font smallButtonFont(&markFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font headFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font subFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font buttonFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font smallButtonFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
     Gdiplus::SolidBrush accentBrush(COL_ACCENT);
@@ -7848,12 +7848,13 @@ void MinerGUI::drawMediaRail(Gdiplus::Graphics& g, float x, float top, float bot
     y += scaleF(30);
     if (!mediaNotice_.empty()) {
         g.DrawString(mediaNotice_.c_str(), -1, &subFont,
-                     Gdiplus::RectF(left, y, right - left, scaleF(14)), nullptr, &accentBrush);
+                     Gdiplus::RectF(left, y, right - left, scaleF(30)), nullptr, &accentBrush);
     } else {
+        // two lines where the rail is too narrow for one
         g.DrawString(L"Ctrl+V pastes from the Snipping Tool", -1, &subFont,
-                     Gdiplus::RectF(left, y, right - left, scaleF(14)), nullptr, &faintBrush);
+                     Gdiplus::RectF(left, y, right - left, scaleF(30)), nullptr, &faintBrush);
     }
-    y += scaleF(30);
+    y += scaleF(34);
 
     if (media_.empty()) {
         g.DrawString(L"No media yet. Media stays with the note "
@@ -7994,10 +7995,8 @@ void MinerGUI::paintShot(HDC hdc) {
         Gdiplus::SolidBrush bg(COL_BG);
         g.FillRectangle(&bg, 0, 0, cw, ch);
 
-        Gdiplus::Font subFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular,
-                              Gdiplus::UnitPixel);
-        Gdiplus::Font keyFont(&markFamily(), scaleF(10), Gdiplus::FontStyleRegular,
-                              Gdiplus::UnitPixel);
+        Gdiplus::Font subFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font keyFont(&markFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
         Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
         Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
         Gdiplus::StringFormat centred;
@@ -8579,13 +8578,13 @@ void MinerGUI::paintNotes(HDC hdc) {
 }
 
 void MinerGUI::drawNotes(Gdiplus::Graphics& g, int cw, int ch) {
-    Gdiplus::Font markFont(&markFamily(), scaleF(20), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font folderFont(&markFamily(), scaleF(13), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font nameFont(&textFamily(), scaleF(13), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font rowFont(&textFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font buttonFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font smallButtonFont(&markFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font subFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font markFont(&markFamily(), scaleF(Type::TITLE), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font folderFont(&markFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font nameFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font rowFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font buttonFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font smallButtonFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font subFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush textBrush(COL_TEXT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
@@ -8837,13 +8836,13 @@ void MinerGUI::drawNotes(Gdiplus::Graphics& g, int cw, int ch) {
             oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
             const float room = (std::max)(scaleF(80), x3 - scaleF(10) - editX);
             g.DrawString(toW(note.name).c_str(), -1, &markFont,
-                         Gdiplus::RectF(editX, (float)scale(56), room, scaleF(26)), &oneLine,
+                         Gdiplus::RectF(editX, (float)scale(53), room, scaleF(30)), &oneLine,
                          &textBrush);
         }
         std::wstring where = toW(folders[noteFolder_].name) + L"  ·  " + toW(note.modified);
         if (noteDirty_) where += L"  ·  unsaved";
         g.DrawString(where.c_str(), -1, &subFont,
-                     Gdiplus::PointF(editX + scaleF(2), (float)scale(82)),
+                     Gdiplus::PointF(editX + scaleF(2), (float)scale(83)),
                      noteDirty_ ? &accentBrush : &faintBrush);
 
         // Headless has no edit control on screen, so the text is drawn - that
@@ -8852,9 +8851,9 @@ void MinerGUI::drawNotes(Gdiplus::Graphics& g, int cw, int ch) {
             // The rich edit control is not on screen here, so the note is
             // drawn the way that control shows it: brackets hidden, the name
             // inside them underlined in its own colour.
-            Gdiplus::Font bodyFont(&numeralFamily(), scaleF(12), Gdiplus::FontStyleRegular,
+            Gdiplus::Font bodyFont(&numeralFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular,
                                    Gdiplus::UnitPixel);
-            Gdiplus::Font linkFont(&numeralFamily(), scaleF(12), Gdiplus::FontStyleUnderline,
+            Gdiplus::Font linkFont(&numeralFamily(), scaleF(Type::BODY), Gdiplus::FontStyleUnderline,
                                    Gdiplus::UnitPixel);
             const std::wstring text = toW(book_.body(noteFolder_, noteIndex_));
             const auto links = bracketLinksIn(text);
@@ -8897,11 +8896,11 @@ void MinerGUI::drawNotes(Gdiplus::Graphics& g, int cw, int ch) {
         // A folder with nothing open: name it, or throw the whole thing away
         const auto& folder = folders[noteFolder_];
         g.DrawString(toW(folder.name).c_str(), -1, &markFont,
-                     Gdiplus::PointF(editX, (float)scale(56)), &textBrush);
+                     Gdiplus::PointF(editX, (float)scale(53)), &textBrush);
         std::wstring what = std::to_wstring((int)folder.notes.size());
         what += (folder.notes.size() == 1) ? L" note in it" : L" notes in it";
         g.DrawString(what.c_str(), -1, &subFont,
-                     Gdiplus::PointF(editX + scaleF(2), (float)scale(82)), &faintBrush);
+                     Gdiplus::PointF(editX + scaleF(2), (float)scale(83)), &faintBrush);
         auto action = [&](const wchar_t* label, float rightEdge, int kind) {
             const bool armed = (kind == 8 && confirmDelete_ == 2);
             return buttonAt(label, rightEdge, (float)scale(62), scaleF(26), buttonFont,
@@ -9627,8 +9626,8 @@ LRESULT MinerGUI::handleSuggestMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
             g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
             g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
 
-            Gdiplus::Font nameFont(&textFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-            Gdiplus::Font kindFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+            Gdiplus::Font nameFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+            Gdiplus::Font kindFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
             Gdiplus::SolidBrush textBrush(COL_TEXT);
             Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
             Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
@@ -9663,8 +9662,9 @@ LRESULT MinerGUI::handleSuggestMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                              i == suggestChoice_ ? &dimBrush : &faintBrush);
             }
             {
-                Gdiplus::Font hintFont(&textFamily(), scaleF(9), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-                Gdiplus::RectF r(scaleF(8), (float)rc.bottom - scaleF(15), (float)rc.right - scaleF(16), scaleF(13));
+                Gdiplus::Font hintFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular,
+                                       Gdiplus::UnitPixel);
+                Gdiplus::RectF r(scaleF(8), (float)rc.bottom - scaleF(17), (float)rc.right - scaleF(16), scaleF(16));
                 // With more found than fit, say where in the list you are -
                 // otherwise the eight on screen look like all there is
                 std::wstring hint = L"Enter to link  ·  Keep typing to ignore";
@@ -9836,7 +9836,7 @@ void MinerGUI::updateSuggestions(bool forShot) {
     {
         HDC dc = GetDC(notesSuggest_);
         Gdiplus::Graphics g(dc);
-        Gdiplus::Font nameFont(&textFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font nameFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
         for (const auto& link : suggestions_) {
             Gdiplus::RectF w;
             g.MeasureString(toW(link.name).c_str(), -1, &nameFont, Gdiplus::PointF(0, 0), &w);
@@ -9845,7 +9845,7 @@ void MinerGUI::updateSuggestions(bool forShot) {
         ReleaseDC(notesSuggest_, dc);
     }
     const int shownRows = (std::min)((int)suggestions_.size(), SUGGEST_ROWS);
-    const int height = scale(8) + shownRows * scale(SUGGEST_ROW) + scale(16);
+    const int height = scale(8) + shownRows * scale(SUGGEST_ROW) + scale(18);
     SetWindowPos(notesSuggest_, HWND_TOPMOST, at.x, at.y + scale(18), width, height,
                  SWP_NOACTIVATE | SWP_SHOWWINDOW);
     InvalidateRect(notesSuggest_, nullptr, TRUE);
