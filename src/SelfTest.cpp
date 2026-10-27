@@ -1803,9 +1803,10 @@ int runSelfTest() {
         allPassed &= check(sendable, "Send waits for every value sure, a terminal, a list and a date UEX takes; a row "
                                      "another picture of the same moment carried is left out, and the same commodity "
                                      "waits UEX's five minutes - over a restart too");
-        // Bedrock's own looks at a terminal in use: two that agree on their
-        // complete rows make a picture, with the rows no picture of that
-        // shop's same list from the last half hour has - a row the player
+        // Bedrock's own looks at a terminal in use: the rows two looks in a
+        // row show alike, on the same list of the same shop, however the
+        // list moved around them, make a picture - those of them no picture
+        // of that shop's list from the last half hour has; a row the player
         // took out counts as had, an opened card's and a half-read one are
         // no rows for it
         {
@@ -1825,10 +1826,15 @@ int runSelfTest() {
             look.rows = {whole("Neon", 2, 23, 15449), whole("E'tam", 2, 5, 16295),
                          whole("LifeCure Medsticks", 7, 1600, 574)};
             const D::Shot again = look;
-            D::Shot moved = look;
+            D::Shot moved = look;            // a sale: E'tam's stock went down
             moved.rows[1].stock = 4;
+            D::Shot scrolled = look;         // a row further down the list
+            scrolled.rows = {whole("E'tam", 2, 5, 16295), whole("LifeCure Medsticks", 7, 1600, 574),
+                             whole("Gold", 4, 300, 29000)};
             D::Shot sold = look;
             sold.side = 2;
+            D::Shot otherShop = look;
+            otherShop.shop = "SCShop_Admin_lt_base_g";
             D::Row opened = whole("Carbon", 7, 24000, 1879);
             opened.perUnit = true;
             D::Row half = whole("Gold", 4, 300, -1);
@@ -1847,15 +1853,21 @@ int runSelfTest() {
             older->taken = now - 3600;
             older->rows = {whole("LifeCure Medsticks", 7, 1600, 574)};
             const D::Shot fresh = D::newRowsOf(look, {had, out, elsewhere, older}, now - 1800);
-            const bool looks = !D::lookKey(look).empty() && D::lookKey(look) == D::lookKey(again) &&
-                               D::lookKey(moved) != D::lookKey(look) && D::lookKey(sold) != D::lookKey(look) &&
-                               D::lookKey(rest).empty() && D::newRowsOf(look, {}, now - 1800).rows.size() == 3 &&
-                               fresh.rows.size() == 1 && fresh.rows[0].read == "LifeCure Medsticks" &&
-                               fresh.shop == look.shop && fresh.taken == now && fresh.side == 1 &&
-                               D::newRowsOf(rest, {}, now - 1800).rows.empty() &&
+            const D::Shot alongTheList = D::steadyRowsOf(scrolled, look);
+            const D::Shot afterSale = D::steadyRowsOf(moved, look);
+            D::Shot restAgain = rest;
+            const bool looks = D::steadyRowsOf(again, look).rows.size() == 3 && afterSale.rows.size() == 2 &&
+                               afterSale.rows[0].read == "Neon" && afterSale.rows[1].read == "LifeCure Medsticks" &&
+                               alongTheList.rows.size() == 2 && alongTheList.rows[0].read == "E'tam" &&
+                               D::steadyRowsOf(sold, look).rows.empty() && D::steadyRowsOf(otherShop, look).rows.empty() &&
+                               D::steadyRowsOf(restAgain, rest).rows.empty() &&
+                               D::newRowsOf(look, {}, now - 1800).rows.size() == 3 && fresh.rows.size() == 1 &&
+                               fresh.rows[0].read == "LifeCure Medsticks" && fresh.shop == look.shop &&
+                               fresh.taken == now && fresh.side == 1 && D::newRowsOf(rest, {}, now - 1800).rows.empty() &&
                                D::newRowsOf(sold, {had, out}, now - 1800).rows.size() == 3;
-            allPassed &= check(looks, "Bedrock's own looks at a terminal in use: two that agree make a picture, with the "
-                                      "complete rows no picture of that shop's list from the last half hour has");
+            allPassed &= check(looks, "Bedrock's own looks at a terminal in use: the rows two looks show alike make a "
+                                      "picture, however the list moved - those no picture of that shop's list from the "
+                                      "last half hour has");
         }
         // A report UEX stopped at its second row, a duplicate: the first row
         // went, the second is on UEX from the player's report of the last

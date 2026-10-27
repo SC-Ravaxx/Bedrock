@@ -14534,6 +14534,10 @@ void MinerGUI::drawFooter(Gdiplus::Graphics& g, int cw, int ch) {
         // key press is not met with nothing at all
         leftText = toW(datarunner_.note);
         leftClickable = false;
+    } else if (datarunner_.reading && !backupOpen_) {
+        // a terminal in use, being read without Print Screen
+        leftText = L"Reading the terminal  \u00B7  Hold the list still for a moment";
+        leftClickable = false;
     } else if (backupOpen_) {
         leftBrush = &textBrush;
     }

@@ -514,7 +514,7 @@ private:
     std::chrono::steady_clock::time_point terminalLooked_{}, terminalSeen_{};
     long long terminalStartedFor_ = 0;      // the log's terminal line the looking began with, ms
     bool terminalLooking_ = false;
-    std::string terminalLastKey_;           // what the last look showed (Datarunner::lookKey)
+    std::shared_ptr<Datarunner::Shot> terminalLastLook_;   // the last look that saw a terminal, null none
     // the rows the looks gave the player in the last half hour, whatever came
     // of them - sent, closed or thrown away, they are not offered again
     std::vector<std::shared_ptr<Datarunner::Shot>> terminalOffered_;

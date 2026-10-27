@@ -123,12 +123,13 @@ Shot readPicture(const std::filesystem::path& file, TextLineReader& reader, cons
 // ...the same, of a picture in hand (the self-test, the screenshots)
 Shot readPicture(const cv::Mat& bgr, TextLineReader& reader);
 // The Datarunner at a commodity terminal without Print Screen: Bedrock looks
-// at the game every few seconds while the log says a terminal is in use.
-// What a look shows - its list and its complete rows: a name, the level, the
-// stock and a price per SCU made out - to tell two looks that agree, the
-// screen standing still, from one taken while it moved; "" where no row is
-// complete.
-std::string lookKey(const Shot& look);
+// at the game every second or two while the log says a terminal is in use.
+// The complete rows of a look - a name, the level, the stock and a price per
+// SCU made out - that the look before it showed too, letter for letter and
+// figure for figure, on the same list of the same shop: rows that stood
+// still for two looks, however the list moved around them. The rest of
+// `look` as it is.
+Shot steadyRowsOf(const Shot& look, const Shot& before);
 // ...a look's complete rows that no picture of the same shop's same list has
 // from `since` on (Unix seconds), not one the player took out either: a
 // picture of its own for them. The rest of `look` as it is; no rows where

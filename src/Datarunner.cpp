@@ -150,14 +150,25 @@ Shot readPicture(const std::filesystem::path& file, TextLineReader& reader, cons
     return shot;
 }
 
-std::string lookKey(const Shot& look) {
-    std::string key;
+Shot steadyRowsOf(const Shot& look, const Shot& before) {
+    Shot steady = look;
+    steady.rows.clear();
+    if (look.side != before.side || look.shop != before.shop) return steady;
+    auto keyOf = [](const Row& row) {
+        return folded(row.read) + ":" + std::to_string(row.level) + ":" + std::to_string(row.stock) + ":" +
+               std::to_string(row.price);
+    };
     for (const Row& row : look.rows) {
         if (!complete(row)) continue;
-        key += folded(row.read) + ":" + std::to_string(row.level) + ":" + std::to_string(row.stock) + ":" +
-               std::to_string(row.price) + ";";
+        const std::string key = keyOf(row);
+        for (const Row& other : before.rows) {
+            if (complete(other) && keyOf(other) == key) {
+                steady.rows.push_back(row);
+                break;
+            }
+        }
     }
-    return key.empty() ? key : std::to_string(look.side) + "|" + key;
+    return steady;
 }
 
 Shot newRowsOf(const Shot& look, const std::vector<std::shared_ptr<Shot>>& shots, long long since) {
