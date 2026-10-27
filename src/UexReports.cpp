@@ -86,22 +86,22 @@ bool UexDirectory::read(const std::string& terminalsJson, const std::string& com
                         const std::string& methodsJson, std::string& why) {
     JsonValue terminals, commodities, methods;
     if (!parseJson(terminalsJson, terminals, why)) {
-        why = "the terminal list: " + why;
+        why = "Terminal list: " + why;
         return false;
     }
     if (!parseJson(commoditiesJson, commodities, why)) {
-        why = "the commodity list: " + why;
+        why = "Commodity list: " + why;
         return false;
     }
     if (!parseJson(methodsJson, methods, why)) {
-        why = "the refining methods: " + why;
+        why = "Refining methods: " + why;
         return false;
     }
     const JsonValue* terminalRows = rowsOf(terminals);
     const JsonValue* commodityRows = rowsOf(commodities);
     const JsonValue* methodRows = rowsOf(methods);
     if (!terminalRows || !commodityRows || !methodRows) {
-        why = "a list UEX sent without its rows";
+        why = "UEX list without rows";
         return false;
     }
     std::vector<Terminal> readTerminals;
@@ -132,7 +132,7 @@ bool UexDirectory::read(const std::string& terminalsJson, const std::string& com
         if (id > 0 && !name.empty()) readMethods.push_back({name, id});
     }
     if (readTerminals.empty() || readCommodities.empty()) {
-        why = "UEX's lists hold no terminals or no commodities";
+        why = "UEX lists contain no terminals or commodities";
         return false;
     }
     terminals_ = std::move(readTerminals);
@@ -176,8 +176,8 @@ int UexDirectory::refineryTerminal(const std::string& station, std::string& why)
         if (t.type == "refinery" && holds(t.names, at)) found.push_back(t.id);
     }
     if (found.size() == 1) return found.front();
-    why = found.empty() ? "UEX has no refinery at " + station
-                        : std::to_string(found.size()) + " refineries at " + station + ", can't tell which";
+    why = found.empty() ? "No UEX refinery at " + station
+                        : std::to_string(found.size()) + " refineries at " + station + " - Ambiguous";
     return 0;
 }
 
@@ -225,26 +225,26 @@ std::string verdict(int httpStatus, const std::string& body, std::string* userna
         }
         return "";
     }
-    if (status == "missing_secret_key" || status == "invalid_secret_key") return "UEX didn't accept the key";
-    if (status == "user_not_found") return "UEX has no account with that key";
+    if (status == "missing_secret_key" || status == "invalid_secret_key") return "UEX rejected the key";
+    if (status == "user_not_found") return "No UEX account with this key";
     // user_not_allowed: "applied restriction (temporary ban, user not a
     // datarunner, etc)"
-    if (status == "user_not_allowed") return "UEX doesn't take reports from this account";
+    if (status == "user_not_allowed") return "UEX does not accept reports from this account";
     if (status == "user_disabled") return "UEX has blocked reports from this account";
-    if (status == "user_not_verified") return "that UEX account is not verified with RSI yet";
-    if (status == "requests_limit_reached") return "too many requests to UEX, try again later";
-    if (status == "screenshot_required") return "UEX wants a screenshot with this report";
-    if (status == "duplicated_report") return "UEX already has this report";
-    if (status == "terminal_not_found") return "UEX doesn't know this terminal";
-    if (status == "invalid_date") return "UEX didn't accept the date of the trade";
-    if (status == "image_upload_error" || status == "image_storage_error") return "UEX couldn't store the screenshot";
+    if (status == "user_not_verified") return "UEX account not yet verified with RSI";
+    if (status == "requests_limit_reached") return "Too many requests to UEX - Try again later";
+    if (status == "screenshot_required") return "UEX requires a screenshot with this report";
+    if (status == "duplicated_report") return "Report already on UEX";
+    if (status == "terminal_not_found") return "Terminal unknown to UEX";
+    if (status == "invalid_date") return "UEX rejected the trade date";
+    if (status == "image_upload_error" || status == "image_storage_error") return "UEX could not store the screenshot";
     if (!status.empty()) {
         std::string words = status;
         std::replace(words.begin(), words.end(), '_', ' ');
-        return "UEX said: " + words;
+        return "UEX responded: " + words;
     }
-    if (httpStatus != 200) return "UEX answered with error " + std::to_string(httpStatus);
-    return "UEX's answer couldn't be read";
+    if (httpStatus != 200) return "UEX error " + std::to_string(httpStatus);
+    return "UEX response unreadable";
 }
 
 bool keyTrouble(int httpStatus, const std::string& body) {

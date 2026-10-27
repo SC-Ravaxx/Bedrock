@@ -138,13 +138,13 @@ bool read(const std::string& text, std::vector<Entry>& out, std::string& error) 
     if (text.rfind("\xEF\xBB\xBF", 0) == 0) at = 3;
     const std::string magic(MAGIC);
     if (text.compare(at, magic.size(), magic) != 0) {
-        error = "that is not a Bedrock backup - its first line should read " + magic;
+        error = "Not a Bedrock backup - First line should read " + magic;
         return false;
     }
     at += magic.size();
     if (at < text.size() && text[at] == '\r') at++;
     if (at >= text.size() || text[at] != '\n') {
-        error = "that is not a Bedrock backup - its first line should read " + magic;
+        error = "Not a Bedrock backup - First line should read " + magic;
         return false;
     }
     at++;
@@ -162,7 +162,7 @@ bool read(const std::string& text, std::vector<Entry>& out, std::string& error) 
             while (std::getline(in, piece, '\t')) field.push_back(piece);
         }
         if (field.size() != 3 || field[0] != "FILE") {
-            error = "a heading in that backup does not name a file";
+            error = "Invalid backup: a section heading names no file";
             return false;
         }
         long long count = -1;
@@ -174,12 +174,12 @@ bool read(const std::string& text, std::vector<Entry>& out, std::string& error) 
             count = -1;
         }
         if (count < 0) {
-            error = "\"" + field[1] + "\" does not say how long it is";
+            error = "Invalid backup: \"" + field[1] + "\" has no length";
             return false;
         }
         const size_t start = eol + 1;
         if (start + (size_t)count > text.size()) {
-            error = "the backup stops in the middle of \"" + field[1] + "\"";
+            error = "Backup incomplete: ends inside \"" + field[1] + "\"";
             return false;
         }
         Entry e;
@@ -191,7 +191,7 @@ bool read(const std::string& text, std::vector<Entry>& out, std::string& error) 
         if (at < text.size() && text[at] == '\n') at++;
     }
     if (out.empty()) {
-        error = "there is nothing in that backup";
+        error = "Backup is empty";
         return false;
     }
     return true;
@@ -205,7 +205,7 @@ bool restore(const std::filesystem::path& dataFolder, const std::vector<Entry>& 
     // than none, and the one thing a backup file can try on is its paths.
     for (const auto& e : entries) {
         if (!safePath(e.path)) {
-            error = "\"" + e.path + "\" is not a path a backup may write to";
+            error = "Invalid backup path: \"" + e.path + "\"";
             return false;
         }
     }
@@ -214,7 +214,7 @@ bool restore(const std::filesystem::path& dataFolder, const std::vector<Entry>& 
     const bool anything = std::any_of(entries.begin(), entries.end(),
                                       [](const Entry& e) { return carried(e.path); });
     if (!anything) {
-        error = "there is nothing in that backup to put back";
+        error = "Backup contains nothing to restore";
         return false;
     }
     std::error_code ec;
@@ -238,7 +238,7 @@ bool restore(const std::filesystem::path& dataFolder, const std::vector<Entry>& 
     }
     std::filesystem::create_directories(aside, ec);
     if (ec) {
-        error = "cannot make " + aside.string();
+        error = "Cannot create " + aside.string();
         return false;
     }
     for (const auto& top : std::filesystem::directory_iterator(dataFolder, ec)) {
@@ -271,7 +271,7 @@ bool restore(const std::filesystem::path& dataFolder, const std::vector<Entry>& 
         if (out) written++;
     }
     if (written == 0) {
-        error = "nothing could be written into " + dataFolder.string();
+        error = "Cannot write to " + dataFolder.string();
         return false;
     }
     return true;

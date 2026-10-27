@@ -4103,9 +4103,9 @@ void Application::applyGameState() {
             // starting from the system itself means. The system is all the
             // log says, and saying it beats the line vanishing; when the log
             // has actually said "open space", the line says so too.
-            line = gameState_.inSpace() ? pretty + " - open space" : pretty;
+            line = gameState_.inSpace() ? pretty + " - Open space" : pretty;
         }
-        if (byHand && !line.empty()) line += " (set by hand)";
+        if (byHand && !line.empty()) line += " (set manually)";
         const std::string ore = place.known() ? place.oreLocation : std::string();
         if (line != placeLine_ || ore != placeOre_) {
             placeLine_ = line;
@@ -4151,7 +4151,7 @@ void Application::applyGameState() {
         loadoutLogSeat_ = logSeat;
         loadoutLookAgain();
     }
-    const std::string announce = label.empty() ? "" : label + (gameState_.inSeat() ? "" : " (left the seat)");
+    const std::string announce = label.empty() ? "" : label + (gameState_.inSeat() ? "" : " (not seated)");
     if (announce != logShipLabel_) {
         logShipLabel_ = announce;
         std::cout << "\nShip from Game.log: " << (announce.empty() ? "unknown" : announce) << std::endl;
@@ -4577,7 +4577,7 @@ void Application::gameTextsChosen() {
     if (wanted) {
         gameTextsDue_ = true;
         gameTextsDueAt_ = std::chrono::steady_clock::now();
-        gameTextsNote_ = library_.gameLog().empty() ? "waiting for the game's folder" : "writing...";
+        gameTextsNote_ = library_.gameLog().empty() ? "Awaiting game folder" : "Writing...";
         serviceGameTexts();
     } else if (library_.gameLog().empty()) {
         gameTextsNote_.clear();
@@ -4686,7 +4686,7 @@ Application::UexOutcome Application::loadUex(const std::filesystem::path& folder
     // withdrawn must not cost every Bedrock its prices: asked again without
     auto ask = [&](const char* endpoint, std::string& body, std::string& why) {
         if (httpsGet(API + endpoint, headers, body, why)) return true;
-        if (headers.empty() || (why != "the server answered 401" && why != "the server answered 403")) return false;
+        if (headers.empty() || (why != "Server responded 401" && why != "Server responded 403")) return false;
         out.tokenRefused = true;
         headers.clear();
         why.clear();
@@ -4702,13 +4702,13 @@ Application::UexOutcome Application::loadUex(const std::filesystem::path& folder
         bool fetched = ask("terminals", body, why);
         if (fetched && (!parseJson(body, answer, why) || answer.textOr("status") != "ok")) {
             fetched = false;
-            if (why.empty()) why = "UEX said " + answer.textOr("status", "nothing");
+            if (why.empty()) why = "UEX responded: " + answer.textOr("status", "nothing");
         }
         if (fetched) {
             terminals = std::move(body);
             keepFile(terminalsFile, terminals);
         } else if (terminals.empty()) {
-            out.placesNote = "no terminal list: " + why;
+            out.placesNote = "No terminal list: " + why;
         }
     }
 
@@ -4787,14 +4787,14 @@ static std::string uexListCached(const std::filesystem::path& file, const char* 
     if (const std::string token = uexToken(); !token.empty()) headers.push_back("Authorization: Bearer " + token);
     std::string body;
     bool fetched = httpsGet(std::string(UEX_API) + endpoint, headers, body, why);
-    if (!fetched && !headers.empty() && (why == "the server answered 401" || why == "the server answered 403")) {
+    if (!fetched && !headers.empty() && (why == "Server responded 401" || why == "Server responded 403")) {
         why.clear();
         fetched = httpsGet(std::string(UEX_API) + endpoint, {}, body, why);
     }
     JsonValue answer;
     if (fetched && (!parseJson(body, answer, why) || answer.textOr("status") != "ok")) {
         fetched = false;
-        if (why.empty()) why = "UEX said " + answer.textOr("status", "nothing");
+        if (why.empty()) why = "UEX responded: " + answer.textOr("status", "nothing");
     }
     if (fetched) {
         keepFile(file, body);
@@ -4834,7 +4834,7 @@ static bool uexAsk(const std::string& path, std::string& body, std::string& why)
     std::vector<std::string> headers;
     if (const std::string token = uexToken(); !token.empty()) headers.push_back("Authorization: Bearer " + token);
     if (httpsGet(std::string(UEX_API) + path, headers, body, why)) return true;
-    if (headers.empty() || (why != "the server answered 401" && why != "the server answered 403")) return false;
+    if (headers.empty() || (why != "Server responded 401" && why != "Server responded 403")) return false;
     why.clear();
     return httpsGet(std::string(UEX_API) + path, {}, body, why);
 }
@@ -4853,7 +4853,7 @@ Application::UexMarketAnswer Application::loadUexMarket(const std::filesystem::p
             uexListCached(folder / "market_items.json", "marketplace_prices_averages_all", 24ll * 3600, why);
         auto read = std::make_shared<std::map<std::string, int>>();
         if (list.empty() || !UexMarket::readItems(list, *read, why)) {
-            out.note = "the marketplace's items: " + why;
+            out.note = "Marketplace items: " + why;
             return out;
         }
         out.items = read;
@@ -4862,7 +4862,7 @@ Application::UexMarketAnswer Application::loadUexMarket(const std::filesystem::p
     const int item = UexMarket::itemFor(*items, ore);
     if (!item) {
         out.listings = std::make_shared<std::vector<UexListing>>();
-        out.note = "the marketplace has no " + ore;
+        out.note = "No " + ore + " on the marketplace";
         return out;
     }
     const long long now = (long long)std::time(nullptr);
@@ -5093,10 +5093,10 @@ void Application::serviceUexReports() {
     }
     const std::string label = "Refinery job at " + job.station;
     if (!terminal || !method || !missing.empty() || items.empty() || job.cost < 0 || job.seconds <= 0) {
-        uexReportNote_ = label + ": not reported (" +
-                         (!terminal ? why : !method ? "UEX doesn't know the method " + job.method
-                                    : !missing.empty() ? "UEX doesn't list " + missing
-                                                       : "the job wasn't read completely") + ")";
+        uexReportNote_ = label + ": Not reported (" +
+                         (!terminal ? why : !method ? "Method unknown to UEX: " + job.method
+                                    : !missing.empty() ? "Not listed on UEX: " + missing
+                                                       : "Job not read completely") + ")";
         uexReportNoteAt_ = (long long)std::time(nullptr);
         keepRefineryNotes({uexReportNote_});
         rememberUexReported(item.key);
@@ -5106,7 +5106,7 @@ void Application::serviceUexReports() {
     const std::string body = UexReports::refineryJob(terminal, method, job.cost, (job.seconds + 59) / 60, items, production);
     const std::string token = uexToken();
     if (token.empty()) {
-        uexReportNote_ = "This build has no UEX app token, so nothing can be reported";
+        uexReportNote_ = "This build has no UEX app token - Reporting unavailable";
         uexReportNoteAt_ = (long long)std::time(nullptr);
         uexQueue_.clear();
         pushUexAccount();
@@ -5122,7 +5122,7 @@ void Application::serviceUexReports() {
         const std::vector<std::string> headers = {"Authorization: Bearer " + token, "secret-key: " + key,
                                                   "Content-Type: application/json"};
         if (!httpsPost(url, headers, body, answer)) {
-            sent.note = label + ": not sent (" + answer.why + ")";
+            sent.note = label + ": Not sent (" + answer.why + ")";
             return sent;
         }
         sent.answered = true;
@@ -5130,7 +5130,7 @@ void Application::serviceUexReports() {
         sent.keyTrouble = UexReports::keyTrouble(answer.status, answer.body);
         sent.accountTrouble = UexReports::accountTrouble(answer.status, answer.body);
         if (sent.keyTrouble) sent.key.clear();   // not done: it goes again once the key is right
-        sent.note = label + (said.empty() ? ": accepted by UEX" : ": " + said);
+        sent.note = label + (said.empty() ? ": Accepted by UEX" : ": " + said);
         return sent;
     });
 }
@@ -5161,9 +5161,9 @@ void Application::uexAccountAction(int action, const std::string& text) {
         key.erase(std::remove_if(key.begin(), key.end(), [](unsigned char c) { return std::isspace(c) != 0; }),
                   key.end());
         if (!UexReports::keyLooksRight(key)) {
-            uexReportNote_ = "That's not a UEX secret key. It should be 40 letters and digits.";
+            uexReportNote_ = "Not a UEX secret key. It must be 40 letters and digits.";
         } else if (!UexKey::save(key)) {
-            uexReportNote_ = "The key couldn't be saved on this PC.";
+            uexReportNote_ = "The key could not be saved on this PC.";
         } else {
             uexKey_ = key;
             uexKeyTrouble_ = false;
@@ -5244,11 +5244,11 @@ void Application::pushLibrary() {
     if (!gui_) return;
     std::string note;
     if (library_.gameLog().empty()) {
-        note = "no Game.log found - tick by hand, or put gamelog=<path> in region_config.txt";
+        note = "No Game.log found - Tick manually, or set gamelog=<path> in region_config.txt";
     } else if (library_.historyPending()) {
-        note = "reading the game's old logs, " + std::to_string(library_.historyRead()) + " so far";
+        note = "Reading old game logs, " + std::to_string(library_.historyRead()) + " so far";
     } else {
-        note = "from the game's log (" + library_.channel() + ")";
+        note = "From game log (" + library_.channel() + ")";
     }
     // Say that the evidence is being kept, and where. The game prunes its own
     // logbackups folder; once it has, this file is the only thing left that
@@ -5260,7 +5260,7 @@ void Application::pushLibrary() {
     // ...and what was concluded rather than read: a contract that paid
     // nothing had nothing left to give (see ContractScan)
     if (library_.assumedCount() > 0) {
-        note += "  -  " + std::to_string(library_.assumedCount()) + " from contracts that paid none";
+        note += "  -  " + std::to_string(library_.assumedCount()) + " from contracts without payout";
     }
     gui_->setOwnedBlueprints(library_.stamps(), note);
     libraryPushed_ = true;

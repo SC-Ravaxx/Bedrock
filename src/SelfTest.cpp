@@ -580,9 +580,9 @@ int runSelfTest() {
         }
         allPassed &= check(oddsWhole && SCMiner::lowestQualityBand(*small) == 1 && SCMiner::lowestQualityBand(*bulk) == 0 &&
                                SCMiner::MinerGUI::rockPartQuality(*small) ==
-                                   L"553–1000 · mostly 553 or 644" &&
-                               SCMiner::MinerGUI::rockPartQuality(*bulk) == L"quality 264, rarely 553" &&
-                               SCMiner::MinerGUI::rockPartQuality(*borase) == L"mostly 584 · 359–743",
+                                   L"553–1000 · Mostly 553 or 644" &&
+                               SCMiner::MinerGUI::rockPartQuality(*bulk) == L"Quality 264, rarely 553" &&
+                               SCMiner::MinerGUI::rockPartQuality(*borase) == L"Mostly 584 · 359–743",
                            "a rock's little part of its ore is 501 and up, its bulk nearly always the lowest band - "
                            "the Ore Finder says so of a Gold rock (got " +
                                [](std::wstring w) {
@@ -1343,7 +1343,7 @@ int runSelfTest() {
         std::string user;
         const bool answers =
             R::verdict(200, "{\"status\":\"ok\",\"data\":{\"username\":\"Runner\"}}", &user).empty() && user == "Runner" &&
-            R::verdict(200, "{\"status\":\"user_not_verified\"}").find("not verified") != std::string::npos &&
+            R::verdict(200, "{\"status\":\"user_not_verified\"}").find("verified with RSI") != std::string::npos &&
             R::keyTrouble(200, "{\"status\":\"invalid_secret_key\"}") &&
             !R::keyTrouble(200, "{\"status\":\"terminal_not_found\"}") && R::keyTrouble(403, "") &&
             // ...and the account behind a good key: restricted, barred,
@@ -1461,11 +1461,11 @@ int runSelfTest() {
                                    blue + "\xE2\x80\xA2 C" + blueEnd,
                            "a missing line is blue, an owned one plain, one with no row missing");
         allPassed &= check(GameTexts::render("x{O3:5,7}", "", owns({5})) == "x" + dot + blue + "2 missing" + blueEnd &&
-                               GameTexts::render("x{O2:5,7}", "", owns({5, 7})) == "x" + dot + "all owned" &&
-                               GameTexts::render("x{O2:5,7}", "", owns({})) == "x" + dot + blue + "none owned" + blueEnd,
+                               GameTexts::render("x{O2:5,7}", "", owns({5, 7})) == "x" + dot + "All owned" &&
+                               GameTexts::render("x{O2:5,7}", "", owns({})) == "x" + dot + blue + "None owned" + blueEnd,
                            "a list says in blue what is missing of it, or that all is owned");
         allPassed &= check(GameTexts::render("h{A3:5,7}", "", owns({5, 7})) == "h" &&
-                               GameTexts::render("h{A2:5,7}", "", owns({5, 7})) == "h" + dot + "all owned",
+                               GameTexts::render("h{A2:5,7}", "", owns({5, 7})) == "h" + dot + "All owned",
                            "a line without a row keeps 'all owned' away");
         allPassed &= check(GameTexts::render("{S}{T2:5,7|[BP]}{I5|a}{O1:5}{A1:5}", "", owns({5})).find("<font") ==
                                std::string::npos,
@@ -1495,7 +1495,7 @@ int runSelfTest() {
                                out.find("\r\nbedrock_game_texts=Written by Bedrock") != std::string::npos,
                            "the game's file comes back line for line, marks added, and Bedrock's line last (" +
                                std::to_string(marked) + " marked)");
-        allPassed &= check(GameTexts::isOurs(out) && GameTexts::isOurs("a=b\\n<EM4>BLUEPRINTS</EM4> \xC2\xB7 one of 3") &&
+        allPassed &= check(GameTexts::isOurs(out) && GameTexts::isOurs("a=b\\n<EM4>BLUEPRINTS</EM4> \xC2\xB7 One of 3") &&
                                !GameTexts::isOurs("a=b <EM4>Potential Blueprints</EM4>"),
                            "Bedrock's file is known as Bedrock's, a pack's is not");
 
@@ -1577,7 +1577,7 @@ int runSelfTest() {
                                    twice.find("Mil/1/C Mil/1/C") == std::string::npos &&
                                    twice.find("[CS1] [CS1]") == std::string::npos &&
                                    twice.find("=[CS1] Spark Missile\r\n") != std::string::npos &&
-                                   named.find("Untick the boxes in its Blueprints window") != std::string::npos,
+                                   named.find("Untick the options in its Blueprints window") != std::string::npos,
                                "without the names the game's text comes back as it is, and a name gets its prefix once");
         }
 
@@ -1706,8 +1706,8 @@ int runSelfTest() {
         }
         const GameTexts::Outcome leftAlone = GameTexts::write(channel, none);
         const GameTexts::Outcome keptPack = GameTexts::remove(channel);
-        allPassed &= check(!leftAlone.written && leftAlone.note.find("someone else's") != std::string::npos &&
-                               keptPack.note.find("someone else's") != std::string::npos && slurp(packPlace) == pack &&
+        allPassed &= check(!leftAlone.written && leftAlone.note.find("Another language file") != std::string::npos &&
+                               keptPack.note.find("Another language file") != std::string::npos && slurp(packPlace) == pack &&
                                GameTexts::spellings(channel, steps).size() == 1,
                            "a pack in another spelling is seen, and left as it is");
 #ifndef _WIN32
@@ -1731,7 +1731,7 @@ int runSelfTest() {
             f << written;
         }
         const GameTexts::Outcome taken = GameTexts::remove(channel);
-        allPassed &= check(GameTexts::spellings(channel, steps).empty() && taken.note.rfind("taken away", 0) == 0,
+        allPassed &= check(GameTexts::spellings(channel, steps).empty() && taken.note.rfind("Removed", 0) == 0,
                            "Bedrock's file is taken away in the spelling it has (" + taken.note + ")");
 
         {
@@ -2321,7 +2321,7 @@ int runSelfTest() {
         allPassed &= check(MinerGUI::brokenLink(L"plain text with no brackets at all").empty(),
                            "a note with no links passes");
         const std::wstring bad = MinerGUI::brokenLink(L"one\r\ntwo\r\nhaul [[Quantanium]] home");
-        allPassed &= check(!bad.empty() && bad.find(L"line 3") != std::wstring::npos,
+        allPassed &= check(!bad.empty() && bad.find(L"Line 3") != std::wstring::npos,
                            "a misspelt ore is caught, with the line it is on");
         allPassed &= check(!MinerGUI::brokenLink(L"see [[Daymar\r\nnext line").empty(),
                            "a [[ that never closes is caught");
@@ -4210,7 +4210,7 @@ int runSelfTest() {
                 const SCMiner::MiningGadget* sabir = SCMiner::gadgetById("shin_sabir");
                 const SCMiner::GadgetAdvice needed = SCMiner::advise(quant, stock, &bal);
                 allPassed &= check(sabir && needed.gadget == sabir && needed.reason == SCMiner::MiningGoal::Breakable &&
-                                       needed.because.find("needed") == 0,
+                                       needed.because.find("Required") == 0,
                                    "a stock Helix I cannot hold the quantainium, and a Sabir is " +
                                        (needed.because.empty() ? std::string("?") : needed.because));
                 bal.powerThrough = [&helixOne](float own) {
@@ -4218,7 +4218,7 @@ int runSelfTest() {
                     return o.atRange * SCMiner::resistanceLetsThrough(own, o.resistance);
                 };
                 const SCMiner::GadgetAdvice helps = SCMiner::advise(quant, helixOne, &bal);
-                allPassed &= check(helps.gadget == sabir && helps.because.find("would help") != std::string::npos,
+                allPassed &= check(helps.gadget == sabir && helps.because.find("Recommended") == 0,
                                    "...with Focus III and Rieger-C3 the Sabir is " +
                                        (helps.because.empty() ? std::string("?") : helps.because));
                 SCMiner::RockStats ice;

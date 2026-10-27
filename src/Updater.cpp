@@ -77,7 +77,7 @@ bool fetch(const std::string& url, std::string& body, std::string& why,
            const std::vector<std::string>& headers = {}, bool unpack = false) {
     body.clear();
     if (url.rfind("https://", 0) != 0) {
-        why = "only https is accepted, and this is not: " + url;
+        why = "Only https is accepted: " + url;
         return false;
     }
     const std::wstring wurl = wide(url);
@@ -89,7 +89,7 @@ bool fetch(const std::string& url, std::string& body, std::string& why,
     parts.lpszUrlPath = path;
     parts.dwUrlPathLength = (DWORD)(sizeof(path) / sizeof(path[0]));
     if (!WinHttpCrackUrl(wurl.c_str(), (DWORD)wurl.size(), 0, &parts)) {
-        why = "that is not a url the system can read";
+        why = "Invalid URL";
         return false;
     }
 
@@ -99,7 +99,7 @@ bool fetch(const std::string& url, std::string& body, std::string& why,
                                     WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
                                     WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (!session) {
-        why = "no network session";
+        why = "No network session";
         return false;
     }
     // Not forever: a hanging check must never hold the app up
@@ -125,7 +125,7 @@ bool fetch(const std::string& url, std::string& body, std::string& why,
         WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
                             WINHTTP_HEADER_NAME_BY_INDEX, &status, &size, WINHTTP_NO_HEADER_INDEX);
         if (status != 200) {
-            why = "the server answered " + std::to_string(status);
+            why = "Server responded " + std::to_string(status);
         } else {
             std::int64_t total = 0;
             DWORD len = 0;
@@ -141,7 +141,7 @@ bool fetch(const std::string& url, std::string& body, std::string& why,
             while (WinHttpReadData(request, chunk.data(), (DWORD)chunk.size(), &read) && read) {
                 body.append(chunk.data(), read);
                 if ((std::int64_t)body.size() > cap) {
-                    why = "the answer is far bigger than it should be";
+                    why = "Response too large";
                     ok = false;
                     break;
                 }
@@ -150,12 +150,12 @@ bool fetch(const std::string& url, std::string& body, std::string& why,
                 }
             }
             if (ok && body.empty()) {
-                why = "the server sent nothing";
+                why = "Empty server response";
                 ok = false;
             }
         }
     } else if (why.empty()) {
-        why = "could not reach it";
+        why = "Server unreachable";
     }
     if (request) WinHttpCloseHandle(request);
     if (connect) WinHttpCloseHandle(connect);
@@ -168,7 +168,7 @@ bool exchange(const std::string& url, const std::vector<std::string>& headers, c
               HttpAnswer& answer, std::int64_t cap) {
     answer = HttpAnswer{};
     if (url.rfind("https://", 0) != 0) {
-        answer.why = "only https is accepted, and this is not: " + url;
+        answer.why = "Only https is accepted: " + url;
         return false;
     }
     const std::wstring wurl = wide(url);
@@ -180,13 +180,13 @@ bool exchange(const std::string& url, const std::vector<std::string>& headers, c
     parts.lpszUrlPath = path;
     parts.dwUrlPathLength = (DWORD)(sizeof(path) / sizeof(path[0]));
     if (!WinHttpCrackUrl(wurl.c_str(), (DWORD)wurl.size(), 0, &parts)) {
-        answer.why = "that is not a url the system can read";
+        answer.why = "Invalid URL";
         return false;
     }
     HINTERNET session = WinHttpOpen(L"Bedrock/" BEDROCK_VERSION_W L" (Windows)", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
                                     WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (!session) {
-        answer.why = "no network session";
+        answer.why = "No network session";
         return false;
     }
     // a screenshot goes along with some: half a minute to send
@@ -217,12 +217,12 @@ bool exchange(const std::string& url, const std::vector<std::string>& headers, c
         while (WinHttpReadData(request, chunk.data(), (DWORD)chunk.size(), &read) && read) {
             answer.body.append(chunk.data(), read);
             if ((std::int64_t)answer.body.size() > cap) {
-                answer.why = "the answer is far bigger than it should be";
+                answer.why = "Response too large";
                 break;
             }
         }
     } else {
-        answer.why = "could not reach it";
+        answer.why = "Server unreachable";
     }
     if (request) WinHttpCloseHandle(request);
     if (connect) WinHttpCloseHandle(connect);
@@ -261,7 +261,7 @@ bool fetch(const std::string& url, std::string& body, std::string& why,
     (void)unpack;
     body.clear();
     if (url.rfind("https://", 0) != 0) {
-        why = "only https is accepted, and this is not: " + url;
+        why = "Only https is accepted: " + url;
         return false;
     }
     QNetworkAccessManager manager;
@@ -281,20 +281,20 @@ bool fetch(const std::string& url, std::string& body, std::string& why,
     QObject::connect(reply, &QNetworkReply::downloadProgress, [&](qint64 got, qint64 total) {
         if (percent && total > 0) percent->store((int)(got * 100 / total));
         if (got > cap) {
-            why = "the answer is far bigger than it should be";
+            why = "Response too large";
             reply->abort();
         }
     });
     QObject::connect(reply, &QNetworkReply::finished, [&] {
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (reply->error() != QNetworkReply::NoError) {
-            if (why.empty()) why = "could not reach it: " + reply->errorString().toStdString();
+            if (why.empty()) why = "Server unreachable: " + reply->errorString().toStdString();
         } else if (status != 200) {
-            why = "the server answered " + std::to_string(status);
+            why = "Server responded " + std::to_string(status);
         } else {
             const QByteArray bytes = reply->readAll();
             if (bytes.isEmpty()) {
-                why = "the server sent nothing";
+                why = "Empty server response";
             } else {
                 body.assign(bytes.constData(), (size_t)bytes.size());
                 ok = true;
@@ -312,7 +312,7 @@ bool exchange(const std::string& url, const std::vector<std::string>& headers, c
               HttpAnswer& answer, std::int64_t cap) {
     answer = HttpAnswer{};
     if (url.rfind("https://", 0) != 0) {
-        answer.why = "only https is accepted, and this is not: " + url;
+        answer.why = "Only https is accepted: " + url;
         return false;
     }
     QNetworkAccessManager manager;
@@ -337,7 +337,7 @@ bool exchange(const std::string& url, const std::vector<std::string>& headers, c
             const QByteArray bytes = reply->readAll();
             answer.body.assign(bytes.constData(), (size_t)(std::min)((std::int64_t)bytes.size(), cap));
         } else {
-            answer.why = "could not reach it: " + reply->errorString().toStdString();
+            answer.why = "Server unreachable: " + reply->errorString().toStdString();
         }
         loop.quit();
     });
@@ -491,7 +491,7 @@ void Updater::checkInBackground() {
         }
         Release found;
         if (!parseManifest(body, found)) {
-            error_ = "the version file does not read like one";
+            error_ = "Invalid version file";
             state_ = State::Failed;
             return;
         }
@@ -522,7 +522,7 @@ void Updater::downloadInBackground() {
         std::transform(want.begin(), want.end(), want.begin(), ::tolower);
         if (digest.empty() || digest != want) {
             // Not unpacked, not kept: what arrived is not what was promised
-            error_ = "the download does not match its checksum - nothing was unpacked";
+            error_ = "Checksum mismatch - Nothing was unpacked";
             state_ = State::Failed;
             return;
         }
@@ -536,7 +536,7 @@ void Updater::downloadInBackground() {
 #endif
         std::ofstream out(zip, std::ios::binary | std::ios::trunc);
         if (!out.is_open()) {
-            error_ = "cannot write to " + folder.string();
+            error_ = "Cannot write to " + folder.string();
             state_ = State::Failed;
             return;
         }
@@ -602,7 +602,7 @@ bool Updater::apply() {
     join();
     const char* self = std::getenv("APPIMAGE");
     if (!self || !*self) {
-        error_ = "not running as an AppImage - the new package is in " + zipPath_;
+        error_ = "Not running as an AppImage - New package saved to " + zipPath_;
         return false;
     }
     std::error_code ec;
@@ -610,7 +610,7 @@ bool Updater::apply() {
     const std::filesystem::path fresh = target.parent_path() / (target.filename().string() + ".new");
     std::filesystem::copy_file(zipPath_, fresh, std::filesystem::copy_options::overwrite_existing, ec);
     if (ec) {
-        error_ = "cannot write beside " + target.string() + ": " + ec.message();
+        error_ = "Cannot write next to " + target.string() + ": " + ec.message();
         return false;
     }
     std::filesystem::permissions(fresh, std::filesystem::perms::owner_exec | std::filesystem::perms::group_exec |
@@ -618,7 +618,7 @@ bool Updater::apply() {
                                  std::filesystem::perm_options::add, ec);
     std::filesystem::rename(fresh, target, ec);
     if (ec) {
-        error_ = "cannot replace " + target.string() + ": " + ec.message();
+        error_ = "Cannot replace " + target.string() + ": " + ec.message();
         std::filesystem::remove(fresh, ec);
         return false;
     }
@@ -626,7 +626,7 @@ bool Updater::apply() {
     // The new one, detached, so it outlives this process
     const std::string command = "nohup \"" + target.string() + "\" >/dev/null 2>&1 &";
     if (std::system(command.c_str()) != 0) {
-        error_ = "the new Bedrock did not start; it is in place at " + target.string();
+        error_ = "New version did not start - Installed at " + target.string();
         return false;
     }
     return true;

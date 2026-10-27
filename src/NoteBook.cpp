@@ -105,7 +105,7 @@ void NoteBook::load() {
     std::error_code ec;
     std::filesystem::create_directories(root(), ec);
     if (ec) {
-        error_ = "cannot make the notes folder: " + ec.message();
+        error_ = "Cannot create the notes folder: " + ec.message();
         return;
     }
 
@@ -169,7 +169,7 @@ int NoteBook::addFolder(const std::string& name) {
     std::error_code ec;
     const std::filesystem::path p = freePath(root(), sanitise(name), "");
     if (!std::filesystem::create_directories(p, ec) || ec) {
-        error_ = "cannot make that folder";
+        error_ = "Cannot create the folder";
         return -1;
     }
     Folder folder;
@@ -190,7 +190,7 @@ int NoteBook::addNote(int folder, const std::string& name) {
     {
         std::ofstream out(p, std::ios::binary);
         if (!out.is_open()) {
-            error_ = "cannot write that note";
+            error_ = "Cannot write the note";
             return -1;
         }
     }
@@ -211,7 +211,7 @@ bool NoteBook::renameFolder(int folder, const std::string& name) {
     const std::filesystem::path p = freePath(root(), clean, "");
     std::filesystem::rename(folders_[folder].path, p, ec);
     if (ec) {
-        error_ = "cannot rename that folder";
+        error_ = "Cannot rename the folder";
         return false;
     }
     folders_[folder].path = p;
@@ -228,7 +228,7 @@ bool NoteBook::renameNote(int folder, int note, const std::string& name) {
     const std::filesystem::path p = freePath(folders_[folder].path, clean, ".txt");
     std::filesystem::rename(folders_[folder].notes[note].path, p, ec);
     if (ec) {
-        error_ = "cannot rename that note";
+        error_ = "Cannot rename the note";
         return false;
     }
     // The pictures are named after the note, so they follow it
@@ -251,7 +251,7 @@ int NoteBook::moveNote(int folder, int note, int toFolder) {
         freePath(folders_[toFolder].path, folders_[folder].notes[note].name, ".txt");
     std::filesystem::rename(folders_[folder].notes[note].path, p, ec);
     if (ec) {
-        error_ = "cannot move that note";
+        error_ = "Cannot move the note";
         return -1;
     }
     const std::filesystem::path wasMedia = mediaDir(folder, note);
@@ -280,7 +280,7 @@ bool NoteBook::trashFolder(int folder) {
         freePath(bin, folders_[folder].name + " " + nowText().substr(0, 10), "");
     std::filesystem::rename(folders_[folder].path, p, ec);
     if (ec) {
-        error_ = "cannot move that folder to the trash";
+        error_ = "Cannot move the folder to trash";
         return false;
     }
     folders_.erase(folders_.begin() + folder);
@@ -298,7 +298,7 @@ bool NoteBook::trashNote(int folder, int note) {
     const std::filesystem::path wasMedia = mediaDir(folder, note);
     std::filesystem::rename(folders_[folder].notes[note].path, p, ec);
     if (ec) {
-        error_ = "cannot move that note to the trash";
+        error_ = "Cannot move the note to trash";
         return false;
     }
     // Its pictures go with it - a note restored without them would be a
@@ -378,7 +378,7 @@ bool NoteBook::restore(const Trashed& item) {
         const std::filesystem::path p = freePath(root(), item.name, "");
         std::filesystem::rename(item.path, p, ec);
         if (ec) {
-            error_ = "cannot bring that folder back";
+            error_ = "Cannot restore the folder";
             return false;
         }
     } else {
@@ -387,7 +387,7 @@ bool NoteBook::restore(const Trashed& item) {
         const std::filesystem::path p = freePath(root() / home, item.name, ".txt");
         std::filesystem::rename(item.path, p, ec);
         if (ec) {
-            error_ = "cannot bring that note back";
+            error_ = "Cannot restore the note";
             return false;
         }
         // the shelf for that folder may be empty now; an empty one is clutter
@@ -448,7 +448,7 @@ bool NoteBook::readBundle(const std::string& text, std::vector<BundleNote>& out,
     // what Notepad leaves at the front of a file it saved as UTF-8
     if (!lines.empty() && lines[0].rfind("\xEF\xBB\xBF", 0) == 0) lines[0] = lines[0].substr(3);
     if (lines.empty() || lines[0] != BUNDLE_MAGIC) {
-        error = "that is not a Bedrock notes file - its first line should read " +
+        error = "Not a Bedrock notes file - First line should read " +
                 std::string(BUNDLE_MAGIC);
         return false;
     }
@@ -462,7 +462,7 @@ bool NoteBook::readBundle(const std::string& text, std::vector<BundleNote>& out,
             while (std::getline(in, piece, '\t')) field.push_back(piece);
         }
         if (field.size() != 4 || field[0] != "NOTE") {
-            error = "line " + std::to_string(at + 1) + " of that file is not a note heading";
+            error = "Line " + std::to_string(at + 1) + " is not a note heading";
             return false;
         }
         int count = -1;
@@ -474,11 +474,11 @@ bool NoteBook::readBundle(const std::string& text, std::vector<BundleNote>& out,
             count = -1;
         }
         if (count < 0) {
-            error = "line " + std::to_string(at + 1) + " does not say how long the note is";
+            error = "Line " + std::to_string(at + 1) + " has no note length";
             return false;
         }
         if (at + 1 + (size_t)count > lines.size()) {
-            error = "the file stops in the middle of \"" + field[2] + "\"";
+            error = "File incomplete: ends inside \"" + field[2] + "\"";
             return false;
         }
         BundleNote note;
@@ -492,7 +492,7 @@ bool NoteBook::readBundle(const std::string& text, std::vector<BundleNote>& out,
         at += 1 + (size_t)count;
     }
     if (out.empty()) {
-        error = "there is no note in that file";
+        error = "No notes in the file";
         return false;
     }
     return true;
@@ -529,7 +529,7 @@ bool NoteBook::writeBody(int folder, int note, const std::string& text) {
     {
         std::ofstream out(n.path, std::ios::binary | std::ios::trunc);
         if (!out.is_open()) {
-            error_ = "cannot write that note";
+            error_ = "Cannot write the note";
             return false;
         }
         out.write(text.data(), (std::streamsize)text.size());
@@ -590,7 +590,7 @@ bool NoteBook::trashShot(const std::filesystem::path& shot) {
         freePath(bin, shot.stem().string(), shot.extension().string().c_str());
     std::filesystem::rename(shot, to, ec);
     if (ec) {
-        error_ = "cannot move that picture to the trash";
+        error_ = "Cannot move the picture to trash";
         return false;
     }
     return true;

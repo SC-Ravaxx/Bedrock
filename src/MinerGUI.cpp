@@ -3517,13 +3517,13 @@ void MinerGUI::drawHeader(Gdiplus::Graphics& g, int cw) {
         // hop to something its map cannot name - a marker, a party member,
         // one's own parked ship - leaves the old place standing, and the ore
         // filter with it.
-        g.DrawString(L"PLACE", -1, &labelFont, Gdiplus::PointF(M, top - scaleF(16)), &faintBrush);
+        g.DrawString(L"LOCATION", -1, &labelFont, Gdiplus::PointF(M, top - scaleF(16)), &faintBrush);
         placeField_ = Gdiplus::RectF(M, top, placeW, h);
         mainscanField(g, placeField_, px, isHot(hoverMain_, placeField_), placePickerOpen_,
                       !placeOverride_.empty());
         {
             const std::wstring placeText = placeOverride_.empty()
-                ? (placeLine_.empty() ? std::wstring(L"from the game log") : placeLine_)
+                ? (placeLine_.empty() ? std::wstring(L"From game log") : placeLine_)
                 : toW(placeOverride_);
             Gdiplus::SolidBrush handBrush(COL_ACCENT);
             g.DrawString(placeText.c_str(), -1, &rowFont,
@@ -3541,7 +3541,7 @@ void MinerGUI::drawHeader(Gdiplus::Graphics& g, int cw) {
 
         // the fit by the name it goes by, and the head on it without the
         // " Mining Laser" every laser's name ends in - the field is narrow
-        std::wstring shipLine = ship_ ? fitTitle() : std::wstring(L"pick your ship");
+        std::wstring shipLine = ship_ ? fitTitle() : std::wstring(L"Select ship");
         if (ship_ && loadout_.laser) {
             shipLine += L"  ·  " + laserShortName(*loadout_.laser);
             if (loadout_.craftedPower != 0.0f) {
@@ -3593,7 +3593,7 @@ void MinerGUI::drawHeader(Gdiplus::Graphics& g, int cw) {
         const float words = mark.X + disc + scaleF(10);
         g.DrawString(L"Star Citizen must run in Borderless Window mode", -1, &noteBold,
                      Gdiplus::PointF(words, top + scaleF(3)), &accentBrush);
-        g.DrawString(L"Options \u203A Graphics \u203A Window Mode. Fullscreen leaves the capture black.", -1,
+        g.DrawString(L"Set in Options \u203A Graphics \u203A Window Mode - Capture stays black in Fullscreen", -1,
                      &noteFont, Gdiplus::PointF(words, top + scaleF(19)), &dimBrush);
     }
 }
@@ -3609,7 +3609,7 @@ void MinerGUI::drawLookingField(Gdiplus::Graphics& g, int cw) {
 
     const float M = (float)scale(MARGIN);
     const float top = (float)scale(LY_SYSTEM) + extraTop();
-    g.DrawString(L"I'M LOOKING FOR", -1, &smallFont, Gdiplus::PointF(M, top - scaleF(16)), &faintBrush);
+    g.DrawString(L"TARGET ORES", -1, &smallFont, Gdiplus::PointF(M, top - scaleF(16)), &faintBrush);
 
     lookingField_ = Gdiplus::RectF(M, top, (float)cw - 2 * M, scaleF(28));
     mainscanField(g, lookingField_, scaleF(1.0f), isHot(hoverMain_, lookingField_), lookingOpen_, false);
@@ -3622,7 +3622,7 @@ void MinerGUI::drawLookingField(Gdiplus::Graphics& g, int cw) {
     // ...and what a gathering order taken in the game wants, which blinks
     // the same way for as long as the order runs
     if (const std::wstring order = orderWords(); !order.empty()) {
-        text += (text.empty() ? L"" : L"  \u00B7  ") + (L"order: " + order);
+        text += (text.empty() ? L"" : L"  \u00B7  ") + (L"Order: " + order);
     }
     Gdiplus::StringFormat oneLine;
     oneLine.SetLineAlignment(Gdiplus::StringAlignmentCenter);
@@ -3631,7 +3631,7 @@ void MinerGUI::drawLookingField(Gdiplus::Graphics& g, int cw) {
     Gdiplus::RectF textRect(lookingField_.X + scaleF(12), lookingField_.Y,
                             lookingField_.Width - scaleF(40), lookingField_.Height);
     if (text.empty()) {
-        g.DrawString(L"nothing yet - pick the ores that should blink", -1, &rowFont, textRect,
+        g.DrawString(L"No target ores - Select the ores to highlight", -1, &rowFont, textRect,
                      &oneLine, &faintBrush);
     } else {
         g.DrawString(text.c_str(), -1, &rowFont, textRect, &oneLine, &redBrush);
@@ -3700,7 +3700,7 @@ void MinerGUI::drawLookingPanel(Gdiplus::Graphics& g, int cw, int ch) {
     oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
     Gdiplus::RectF typed(search.X + scaleF(28), search.Y, search.Width - scaleF(36), search.Height);
     if (lookingSearch_.empty()) {
-        g.DrawString(L"type to narrow the list", -1, &rowFont, typed, &oneLine, &faintBrush);
+        g.DrawString(L"Type to filter", -1, &rowFont, typed, &oneLine, &faintBrush);
     } else {
         g.DrawString((lookingSearch_ + L"|").c_str(), -1, &rowFont, typed, &oneLine, &textBrush);
     }
@@ -3750,13 +3750,13 @@ void MinerGUI::drawLookingPanel(Gdiplus::Graphics& g, int cw, int ch) {
         y += (float)(((int)group.names.size() + 1) / 2) * rowH;
     }
     if (!anyShown) {
-        g.DrawString(L"no ore of that name", -1, &rowFont,
+        g.DrawString(L"No matching ore", -1, &rowFont,
                      Gdiplus::PointF(panel.X + pad, y + scaleF(4)), &faintBrush);
     }
 
     // ...and the way out, along the bottom
     const float footY = panel.Y + panel.Height - scaleF(26);
-    g.DrawString(L"click an ore to watch for it  \u00B7  Esc closes", -1, &subFont,
+    g.DrawString(L"Click an ore to add it  \u00B7  Esc to close", -1, &subFont,
                  Gdiplus::PointF(panel.X + pad, footY + scaleF(4)), &faintBrush);
     if (!lookingFor_.empty()) {
         // red, like the ticks it throws away - and a neutral face would be
@@ -3821,7 +3821,7 @@ void MinerGUI::drawSignatureCard(Gdiplus::Graphics& g, int cw) {
         g.DrawString(note.c_str(), -1, &pillFont, pill, &centered, &dimBrush);
     } else {
         g.DrawString(L"\u2014", -1, &valueFont, Gdiplus::PointF(left, top + scaleF(24)), &faintBrush);
-        g.DrawString(L"waiting for a scan", -1, &hintFont,
+        g.DrawString(L"AWAITING SCAN", -1, &hintFont,
                      Gdiplus::PointF(left + scaleF(44), top + scaleF(44)), &faintBrush);
     }
 }
@@ -4403,7 +4403,7 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
     // ...and beside it the way to be rid of this ship. Twice: the first
     // press only asks, and anything else pressed in between forgets it.
     Gdiplus::Font removeFont(&markFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    const wchar_t* removeText = removeArmed_ ? L"Remove? Click again" : L"Remove";
+    const wchar_t* removeText = removeArmed_ ? L"Click again to remove" : L"Remove";
     Gdiplus::RectF removeW;
     g.MeasureString(removeText, -1, &removeFont, Gdiplus::PointF(0, 0), &removeW);
     Gdiplus::RectF removeRect(close.X - scaleF(8) - removeW.Width - scaleF(14), y - scaleF(2),
@@ -4447,7 +4447,7 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
         const float after = left + (std::min)(titleW.Width, titleRoom) + scaleF(6);
         std::wstring beside;
         if (ship_ && title != toW(ship_->name)) beside = toW(ship_->name);
-        if (titleHot) beside += beside.empty() ? L"click to rename" : L"  ·  click to rename";
+        if (titleHot) beside += beside.empty() ? L"Click to rename" : L"  ·  Click to rename";
         if (!beside.empty() && after < titleField.GetRight() - scaleF(20)) {
             g.DrawString(beside.c_str(), -1, &rowFont,
                          Gdiplus::RectF(after, y + scaleF(5), titleField.GetRight() - scaleF(8) - after, scaleF(16)),
@@ -4492,12 +4492,12 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
     }
 
     // --- the head
-    g.DrawString(L"MINING HEAD", -1, &labelFont, Gdiplus::PointF(left, y), &faintBrush);
+    g.DrawString(L"LASER HEAD", -1, &labelFont, Gdiplus::PointF(left, y), &faintBrush);
     // A one-seat ship shows what it carries on its mining HUD, and what is
     // read there is this fit's from then on (setSeenLoadout) - said here, or
     // a head picked on this card would seem not to stick
     if (ship_ && ship_->heads == 1) {
-        g.DrawString(L"head and modules follow the ship's mining HUD while you fly it",
+        g.DrawString(L"Laser head and modules read from the mining HUD in flight",
                      -1, &noteFont, Gdiplus::RectF(left, y + scaleF(1), wide, scaleF(14)), &right, &faintBrush);
     }
     y += scaleF(17);
@@ -4551,9 +4551,9 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
                  Gdiplus::PointF(field.X + scaleF(12), y + scaleF(5)),
                  craftedEntry_.empty() && !craftedEditing_ ? &faintBrush : &textBrush);
     loadoutHits_.push_back({field, 3, 0});
-    g.DrawString(L"the second figure the item shows: \"Laser Power: +0.00 % → +28.84 %\"",
+    g.DrawString(L"Second value shown on the item: \"Laser Power: +0.00 % → +28.84 %\"",
                  -1, &noteFont, Gdiplus::PointF(left + scaleF(122), y + scaleF(1)), &dimBrush);
-    g.DrawString(L"leave it at 0 for a stock head", -1, &noteFont,
+    g.DrawString(L"Leave at 0 for a stock laser head", -1, &noteFont,
                  Gdiplus::PointF(left + scaleF(122), y + scaleF(14)), &faintBrush);
     y += scaleF(38);
 
@@ -4572,12 +4572,12 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
         // Three slots can take three of the same module - passive ones stack, and
         // so does Surge - so a click adds one rather than toggling the row. Taking
         // one back needs its own gesture.
-        g.DrawString(L"click to add  \u00B7  right-click to take one off", -1, &noteFont,
+        g.DrawString(L"Click to add  \u00B7  Right-click to remove", -1, &noteFont,
                      Gdiplus::RectF(left, y + scaleF(1), wide, scaleF(14)), &right, &faintBrush);
     }
     y += scaleF(17);
     if (slots == 0) {
-        g.DrawString(L"this head takes none", -1, &noteFont,
+        g.DrawString(L"No module slots on this laser head", -1, &noteFont,
                      Gdiplus::PointF(left, y), &faintBrush);
         y += scaleF(20);
     } else {
@@ -4677,9 +4677,9 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
             for (const MiningModule* m : countedModules(loadout_)) {
                 if (cutsOthersOff(*m)) counted = m;
             }
-            std::wstring line = names + L" cannot run at once: whichever fires cuts the other off, so only " +
+            std::wstring line = names + L" cannot run at the same time. Activating one cancels the other, so only " +
                                 (counted ? toW(moduleShortName(*counted)) : L"one") +
-                                L" counts here. Surge is the exception and stacks.";
+                                L" is counted. Surge is the exception and stacks.";
             Gdiplus::RectF room;
             g.MeasureString(line.c_str(), -1, &noteFont, Gdiplus::RectF(0, 0, wide, scaleF(200)), &room);
             g.DrawString(line.c_str(), -1, &noteFont, Gdiplus::RectF(left, y, wide, room.Height + scaleF(2)),
@@ -4795,7 +4795,7 @@ void MinerGUI::drawPlacePicker(Gdiplus::Graphics& g, int cw, int ch) {
         Gdiplus::StringFormat middle;
         middle.SetLineAlignment(Gdiplus::StringAlignmentCenter);
         middle.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
-        g.DrawString(L"Follow the game log", -1, &leadFont,
+        g.DrawString(L"Follow game log", -1, &leadFont,
                      Gdiplus::RectF(left + scaleF(12), y, scaleF(150), row.Height), &middle,
                      live ? &accentBrush : &textBrush);
         {
@@ -4804,7 +4804,7 @@ void MinerGUI::drawPlacePicker(Gdiplus::Graphics& g, int cw, int ch) {
             oneNote.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
             oneNote.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
             const float noteX = left + scaleF(160);
-            g.DrawString(L"the log is right until it cannot name where you went", -1, &noteFont,
+            g.DrawString(L"Accurate unless the log cannot identify the location", -1, &noteFont,
                          Gdiplus::RectF(noteX, y, left + wide - scaleF(12) - noteX, row.Height),
                          &oneNote, &faintBrush);
         }
@@ -4938,7 +4938,7 @@ void MinerGUI::drawShipPicker(Gdiplus::Graphics& g, int cw) {
         Gdiplus::Pen rule(tint(COL_TEXT, 18), 1.0f);
         g.DrawLine(&rule, panel.X + scaleF(12), y + scaleF(2), panel.GetRight() - scaleF(12), y + scaleF(2));
     }
-    g.DrawString(full ? L"12 SHIPS IS THE MOST" : (fits_.empty() ? L"PICK YOUR SHIP" : L"ADD A SHIP"), -1,
+    g.DrawString(full ? L"MAXIMUM 12 SHIPS" : (fits_.empty() ? L"SELECT SHIP" : L"ADD SHIP"), -1,
                  &labelFont, Gdiplus::PointF(panel.X + inset + scaleF(7), y + scaleF(10)), &faintBrush);
     float cx = panel.X + inset + scaleF(4);
     for (int k = 0; k < MINING_SHIP_COUNT; k++) {
@@ -5029,6 +5029,12 @@ std::wstring fitWords(const MiningLoadout& fit, bool withCraft) {
     return out;
 }
 
+// A name in the capitals of the line it stands in: "NOT AT ABERDEEN"
+std::wstring upperWords(std::wstring text) {
+    std::transform(text.begin(), text.end(), text.begin(), ::towupper);
+    return text;
+}
+
 // "61 %", or "57–65 %" when the rock's instability moves the point
 std::wstring powerWords(float hold, float sway) {
     wchar_t text[48];
@@ -5040,21 +5046,23 @@ std::wstring powerWords(float hold, float sway) {
     return text;
 }
 
-// "52 % laser power holds it steady, more makes it climb": what the hold
-// point is - the laser power at which what goes into the rock and what it
-// gives back balance, so the charge stands about still there and climbs
-// above it
+// "52 % laser power will hold charge steady": what the hold point is - the
+// laser power at which what goes into the rock and what it gives back
+// balance, so the charge stands about still there and rises above it. At
+// the edge of what the laser does, it says that full power is what raises
+// the charge.
 std::wstring holdWords(float hold, float sway, const std::wstring& fired, bool roomToClimb) {
-    std::wstring out = powerWords(hold, sway) + L" laser power";
-    if (!fired.empty()) out += L" with " + fired + L" fired";
-    return out + (roomToClimb ? L" holds it steady, more makes it climb" : L" holds it steady - little room to climb");
+    std::wstring out = powerWords(hold, sway) + L" laser power will hold charge steady";
+    if (!fired.empty()) out += L" using " + fired;
+    if (!roomToClimb) out += L" - Full laser power sufficient to raise charge";
+    return out;
 }
 
 // ...the same for heads that hold it only together, each at that power
 std::wstring eachHeadWords(float hold, float sway, const std::wstring& fired) {
-    std::wstring out = powerWords(hold, sway) + L" laser power on each head";
-    if (!fired.empty()) out += L" with " + fired + L" fired";
-    return out + L" holds it steady";
+    std::wstring out = powerWords(hold, sway) + L" power on each laser will hold charge steady";
+    if (!fired.empty()) out += L" using " + fired;
+    return out;
 }
 
 }  // namespace
@@ -5110,9 +5118,9 @@ void MinerGUI::sayFired(RockVerdict& v, const std::vector<const MiningLoadout*>&
     v.holdAlone = holdWithoutActives(fits);
     wchar_t text[96];
     if (v.holdAlone > 0) {
-        std::swprintf(text, 96, L"without %ls: near %.0f %%", v.fired.c_str(), v.holdAlone);
+        std::swprintf(text, 96, L"Without %ls approximately %.0f %%", v.fired.c_str(), v.holdAlone);
     } else {
-        std::swprintf(text, 96, L"without %ls: it will not hold", v.fired.c_str());
+        std::swprintf(text, 96, L"Without %ls charge cannot be held steady", v.fired.c_str());
     }
     note = std::wstring(text) + (note.empty() ? L"" : L"  ·  " + note);
 }
@@ -5122,22 +5130,22 @@ MinerGUI::RockVerdict MinerGUI::rockVerdict() const {
     wchar_t text[256];
     if (!loadout_.laser) {
         v.kind = RockVerdict::NoLoadout;
-        v.headline = L"NO LOADOUT SET";
-        v.instruction = L"pick your ship under SHIP, and its heads under EDIT SHIP";
-        v.note = L"without them nothing can be said about this rock";
+        v.headline = L"NO LOADOUT SELECTED";
+        v.instruction = L"Select your ship under SHIP, then its laser heads under EDIT SHIP";
+        v.note = L"Rock cannot be analyzed without them";
         return v;
     }
     if (rock_.mass <= 0) {
         v.kind = RockVerdict::Unread;
-        v.headline = L"READING THE PANEL";
-        v.instruction = L"waiting for the mass to settle";
+        v.headline = L"READING PANEL";
+        v.instruction = L"Awaiting stable mass reading";
         return v;
     }
     if (firingCount() == 0) {
         v.kind = RockVerdict::HeadsOff;
-        v.headline = L"EVERY HEAD IS SWITCHED OFF";
-        v.instruction = L"switch one on below";
-        v.note = L"the head rows are switches";
+        v.headline = L"ALL LASER HEADS OFF";
+        v.instruction = L"Switch on at least one head below";
+        v.note = L"Each head row is a switch";
         return v;
     }
 
@@ -5156,7 +5164,7 @@ MinerGUI::RockVerdict MinerGUI::rockVerdict() const {
         if (zeroRange == 0) zeroRange = loadout_.laser->zeroRange;
         v.kind = RockVerdict::OutOfRange;
         v.headline = L"OUT OF RANGE";
-        std::swprintf(text, 256, L"nothing reaches past %.0f m - the rock is at %.1f m", zeroRange, rock_.distance);
+        std::swprintf(text, 256, L"Maximum laser effective range %.0f meters - Rock currently at %.1f meters", zeroRange, rock_.distance);
         v.instruction = text;
         return v;
     }
@@ -5170,21 +5178,23 @@ MinerGUI::RockVerdict MinerGUI::rockVerdict() const {
         v.head = head;
         v.hold = share * 100.0f;
         v.floor = fit.laser->throttleMin * 100.0f;
-        v.headline = L"TOO STRONG UP CLOSE";
+        v.headline = L"MIN LASER POWER AT OPTIMAL RANGE - HIGH";
         v.who = head >= 0 && heads_.size() > 1 ? headPlace(head) + L" " + headLabel(head) : L"";
         const LaserOutput one = outputOf(fit, rock_.distance);
         DistanceAdvice back;
         if (one.falloff > 0.0f && share > 0.0f) back = distanceFor(*fit.laser, share * one.falloff);
-        if (back.backOff && !back.tooLittle) {
-            std::swprintf(text, 256, L"it holds at %.0f %%, under the laser's %.0f %% minimum - back off to about "
-                          L"%.0f m, where it holds near %.0f %%", v.hold, v.floor, back.metres, back.throttle);
-        } else {
-            std::swprintf(text, 256, L"it holds at %.0f %%, under the laser's %.0f %% minimum - "
-                          L"the charge climbs on its own", v.hold, v.floor);
-        }
+        std::swprintf(text, 256, L"Steadying the charge requires %.0f %%, below the laser's minimum of %.0f %%",
+                      v.hold, v.floor);
         v.instruction = text;
-        v.good = true;
         std::wstring note;
+        if (back.backOff && !back.tooLittle) {
+            std::swprintf(text, 256, L"Back away to near %.0f meters, then set laser power near %.0f %% to steady "
+                          L"the charge", back.metres, back.throttle);
+            note = text;
+        } else {
+            note = L"Charge will rise even at minimum power";
+        }
+        v.good = true;
         sayFired(v, {&fit}, note);
         v.note = note;
     };
@@ -5201,18 +5211,18 @@ MinerGUI::RockVerdict MinerGUI::rockVerdict() const {
             v.hold = share * 100.0f;
             v.floor = heads_[head].laser->throttleMin * 100.0f;
             v.good = share <= BREAK_COMFORTABLE;
-            v.headline = L"YES, ON YOUR OWN";
+            v.headline = L"CAPABLE SOLO";
             v.who = headPlace(head) + L" " + headLabel(head);
             std::wstring note;
             for (size_t k = 1; k < alone.size(); k++) {
                 const float other = shareForHead(alone[k]);
                 std::swprintf(text, 256, L"%s at %.0f %%", headPlace(alone[k]).c_str(),
                               (std::min)(100.0f, other * 100.0f));
-                note += (note.empty() ? L"also " : L", ") + std::wstring(text);
+                note += (note.empty() ? L"Also capable - " : L", ") + std::wstring(text);
             }
             if (heads > 1) {
                 const ThrottleAdvice all = throttleFor(rock_.mass, loadout_.laser, out.atRange);
-                std::swprintf(text, 256, L"all %d heads together: each near %s", heads,
+                std::swprintf(text, 256, L"All %d lasers together at approximately %s power each", heads,
                               powerWords(all.toHold, v.sway).c_str());
                 if (!note.empty()) note += L"  ·  ";
                 note += text;
@@ -5242,14 +5252,17 @@ MinerGUI::RockVerdict MinerGUI::rockVerdict() const {
             v.hold = needs / have * 100.0f;
             v.floor = floor;
             v.crew = (int)together.size();
-            std::swprintf(text, 256, L"NEEDS %d HEADS TOGETHER", (int)together.size());
+            // every head there is: no names to list, and nobody to leave out
+            const bool everyHead = v.crew == heads;
+            std::swprintf(text, 256, everyHead ? L"ALL %d LASERS REQUIRED" : L"%d LASERS REQUIRED", v.crew);
             v.headline = text;
-            v.who = which;
+            if (!everyHead) v.who = which;
             std::vector<const MiningLoadout*> fits;
             for (int i : together) fits.push_back(&heads_[i]);
-            std::wstring note = L"no head holds this rock on its own";
+            std::wstring note = everyHead ? L"Not breakable solo, all available lasers must be manned to break deposit"
+                                          : L"Not breakable solo";
             sayFired(v, fits, note);
-            v.instruction = eachHeadWords(v.hold, v.sway, v.fired) + L"  ·  one person per head";
+            v.instruction = eachHeadWords(v.hold, v.sway, v.fired) + L"  ·  One operator per laser required";
             v.note = note;
             return v;
         }
@@ -5258,15 +5271,15 @@ MinerGUI::RockVerdict MinerGUI::rockVerdict() const {
             v.hold = all.toHold;
             v.floor = loadout_.laser->throttleMin * 100.0f;
             v.crew = heads;
-            std::swprintf(text, 256, L"ALL %d HEADS - NOTHING TO SPARE", heads);
+            std::swprintf(text, 256, L"ALL %d LASERS REQUIRED", heads);
             v.headline = text;
             std::vector<const MiningLoadout*> fits;
             for (size_t i = 0; i < heads_.size(); i++) {
                 if (i < firing_.size() && firing_[i] && heads_[i].laser) fits.push_back(&heads_[i]);
             }
-            std::wstring note = L"no head holds this rock on its own, and together they only just do";
+            std::wstring note = L"Not breakable solo, all available lasers must be manned to break deposit";
             sayFired(v, fits, note);
-            v.instruction = eachHeadWords(v.hold, v.sway, v.fired) + L"  ·  one person per head";
+            v.instruction = eachHeadWords(v.hold, v.sway, v.fired) + L"  ·  One operator per laser required";
             v.note = note;
             return v;
         }
@@ -5282,13 +5295,13 @@ MinerGUI::RockVerdict MinerGUI::rockVerdict() const {
             v.hold = one.toHold;
             v.floor = loadout_.laser->throttleMin * 100.0f;
             v.good = one.toHold <= BREAK_COMFORTABLE * 100.0f;
-            v.headline = L"YES";
+            v.headline = L"CAPABLE";
             std::wstring note;
             if (v.good) {
-                std::swprintf(text, 256, L"%.0f %% left above that to drive the charge up", one.headroom);
+                std::swprintf(text, 256, L"%.0f %% power remains above that to raise the charge", one.headroom);
                 note = text;
             } else {
-                note = L"at the edge of what this laser does - it climbs slowly";
+                note = L"Laser's full power barely above deposit requirements - Charge will rise slowly";
             }
             sayFired(v, {&loadout_}, note);
             v.instruction = holdWords(v.good ? v.hold : (std::min)(100.0f - v.sway, v.hold), v.sway, v.fired, v.good);
@@ -5300,12 +5313,12 @@ MinerGUI::RockVerdict MinerGUI::rockVerdict() const {
     // Nothing on board holds it: what the rock takes against what the heads
     // give it
     v.kind = RockVerdict::WontHold;
-    v.headline = heads > 1 ? L"LASERS UNABLE TO BREAK DEPOSIT" : L"LASER UNABLE TO BREAK DEPOSIT";
-    std::swprintf(text, 256, L"Required power %s | %s can provide %s", formatNumber((int)needs).c_str(),
-                  heads > 1 ? L"Lasers" : L"Laser", formatNumber((int)out.atRange).c_str());
+    v.headline = heads > 1 ? L"LASERS CANNOT BREAK DEPOSIT" : L"LASER CANNOT BREAK DEPOSIT";
+    std::swprintf(text, 256, L"Required power: %s | Available power: %s", formatNumber((int)needs).c_str(),
+                  formatNumber((int)out.atRange).c_str());
     v.instruction = text;
     if (heads < (int)heads_.size()) {
-        std::swprintf(text, 256, L"%d of %d heads firing - the rest would add power", heads, (int)heads_.size());
+        std::swprintf(text, 256, L"%d of %d lasers active - Remaining lasers would add power", heads, (int)heads_.size());
         v.note = text;
     }
     return v;
@@ -5316,7 +5329,7 @@ MinerGUI::RockVerdict MinerGUI::rockVerdict() const {
 MinerGUI::HeadState MinerGUI::headState(int head) const {
     HeadState s;
     if (head < 0 || head >= (int)heads_.size() || !heads_[head].laser) {
-        s.words = L"empty";
+        s.words = L"Empty";
         return s;
     }
     const float share = shareForHead(head);
@@ -5324,12 +5337,12 @@ MinerGUI::HeadState MinerGUI::headState(int head) const {
     if (rock_.mass <= 0) {
         s.words = L"—";
     } else if (share < 0) {
-        s.words = L"out of range";
+        s.words = L"Out of range";
     } else if (share > BREAK_EDGE) {
-        std::swprintf(text, 64, L"needs %.0f %%", share * 100.0f);
+        std::swprintf(text, 64, L"Requires %.0f %%", share * 100.0f);
         s.words = text;
     } else if (share < heads_[head].laser->throttleMin) {
-        std::swprintf(text, 64, L"%.0f %% - under its %.0f %% minimum", share * 100.0f,
+        std::swprintf(text, 64, L"%.0f %% - Below %.0f %% minimum", share * 100.0f,
                       heads_[head].laser->throttleMin * 100.0f);
         s.words = text;
         s.standing = 1;
@@ -5338,7 +5351,7 @@ MinerGUI::HeadState MinerGUI::headState(int head) const {
         s.words = text;
         s.standing = 2;
     } else {
-        std::swprintf(text, 64, L"%.0f %% - slow", (std::min)(100.0f, share * 100.0f));
+        std::swprintf(text, 64, L"%.0f %% - Slow charge", (std::min)(100.0f, share * 100.0f));
         s.words = text;
         s.standing = 1;
     }
@@ -5347,9 +5360,9 @@ MinerGUI::HeadState MinerGUI::headState(int head) const {
     if (rock_.mass > 0 && share >= 0 && !firedWords({&heads_[head]}).empty()) {
         const float alone = holdWithoutActives({&heads_[head]});
         if (alone > 0) {
-            std::swprintf(text, 64, L"  ·  %.0f %% without", alone);
+            std::swprintf(text, 64, L"  ·  %.0f %% without module", alone);
         } else {
-            std::swprintf(text, 64, L"  ·  not without");
+            std::swprintf(text, 64, L"  ·  Module required");
         }
         s.words += text;
     }
@@ -5385,7 +5398,7 @@ void MinerGUI::drawRockCard(Gdiplus::Graphics& g, int cw) {
     // is up, so the label and the big number do not jump between the two
     const float left = M + scaleF(6);
 
-    g.DrawString(L"ROCK IN VIEW", -1, &labelFont, Gdiplus::PointF(left, top + scaleF(8)), &faintBrush);
+    g.DrawString(L"SCANNED DEPOSIT", -1, &labelFont, Gdiplus::PointF(left, top + scaleF(8)), &faintBrush);
 
     // The mass, big, the way the signature number is. The panel's figure is
     // in kilograms: what it is and its unit stand beside it, on the lines
@@ -5508,7 +5521,7 @@ void MinerGUI::drawRockCard(Gdiplus::Graphics& g, int cw) {
             if (least > 0 && part->quality < least) {
                 Gdiplus::RectF nameW;
                 g.MeasureString(name.c_str(), -1, &pillFont, Gdiplus::PointF(0, 0), &nameW);
-                std::swprintf(text, 48, L"min %d", least);
+                std::swprintf(text, 48, L"Min %d", least);
                 g.DrawString(text, -1, &smallFont,
                              Gdiplus::RectF(px + nameW.Width, sy + scaleF(1), partW - nameW.Width, scaleF(14)), &noWrap,
                              &yellowBrush);
@@ -5592,11 +5605,38 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
     const RockVerdict v = rockVerdict();
 
     // --- the answer -------------------------------------------------------
-    g.DrawString(L"CAN YOU BREAK IT?", -1, &labelFont, Gdiplus::PointF(M, y), &faintBrush);
+    g.DrawString(L"BREAK ANALYSIS", -1, &labelFont, Gdiplus::PointF(M, y), &faintBrush);
     y += scaleF(18);
 
-    const bool hasNote = !v.note.empty();
-    const float boxH = scaleF(12) + scaleF(24) + scaleF(18) + (hasNote ? scaleF(16) : 0.0f) + scaleF(8);
+    // The instruction and the note go on to a second line where they are
+    // longer than the card is wide, and the head the answer names on a line
+    // of its own where it does not fit beside the headline
+    const float textW = w - scaleF(28);
+    Gdiplus::StringFormat wrapped;
+    wrapped.SetTrimming(Gdiplus::StringTrimmingEllipsisWord);
+    const auto linesOf = [&](const std::wstring& text, const Gdiplus::Font& font) {
+        if (text.empty()) return 0;
+        Gdiplus::RectF one, all;
+        g.MeasureString(L"Ag", -1, &font, Gdiplus::PointF(0, 0), &one);
+        g.MeasureString(text.c_str(), -1, &font, Gdiplus::RectF(0, 0, textW, scaleF(400)), &wrapped, &all);
+        return std::clamp((int)std::lround(all.Height / (std::max)(1.0f, one.Height)), 1, 2);
+    };
+    float headW = 0, whoW = 0;
+    {
+        Gdiplus::RectF m;
+        g.MeasureString(v.headline.c_str(), -1, &headlineFont, Gdiplus::PointF(0, 0), &m);
+        headW = m.Width;
+        if (!v.who.empty()) {
+            g.MeasureString((L"\u00B7  " + v.who).c_str(), -1, &rowFont, Gdiplus::PointF(0, 0), &m);
+            whoW = m.Width;
+        }
+    }
+    const bool whoBelow = !v.who.empty() && headW + scaleF(4) + whoW > textW;
+    const int instructionLines = (std::max)(1, linesOf(v.instruction, rowFont));
+    const int noteLines = linesOf(v.note, smallFont);
+    const bool hasNote = noteLines > 0;
+    const float boxH = scaleF(12) + scaleF(24) + (whoBelow ? scaleF(18) : 0.0f) + scaleF(18) * instructionLines +
+                       scaleF(16) * noteLines + scaleF(8);
     Gdiplus::RectF box(M, y, w, boxH);
     fillRoundRect(g, box, scaleF(R_CARD), COL_CARD);
     cardLight(g, box, scaleF(R_CARD), scaleF(44));
@@ -5629,22 +5669,24 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
     const float inset = M + scaleF(14);
     float ty = y + scaleF(12);
     g.DrawString(v.headline.c_str(), -1, &headlineFont, Gdiplus::PointF(inset, ty), &toneBrush);
-    if (!v.who.empty()) {
-        Gdiplus::RectF measured;
-        g.MeasureString(v.headline.c_str(), -1, &headlineFont, Gdiplus::PointF(0, 0), &measured);
+    if (!v.who.empty() && !whoBelow) {
         g.DrawString((L"·  " + v.who).c_str(), -1, &rowFont,
-                     Gdiplus::RectF(inset + measured.Width + scaleF(4), ty + scaleF(3),
-                                    (std::max)(scaleF(40), w - measured.Width - scaleF(36)), scaleF(18)),
+                     Gdiplus::RectF(inset + headW + scaleF(4), ty + scaleF(3),
+                                    (std::max)(scaleF(40), w - headW - scaleF(36)), scaleF(18)),
                      &oneLine, &textBrush);
     }
     ty += scaleF(24);
-    g.DrawString(v.instruction.c_str(), -1, &rowFont, Gdiplus::RectF(inset, ty, w - scaleF(28), scaleF(18)), &oneLine,
-                 v.kind == RockVerdict::WontHold ? &yellowBrush : &textBrush);
-    ty += scaleF(18);
+    if (whoBelow) {
+        g.DrawString(v.who.c_str(), -1, &rowFont, Gdiplus::RectF(inset, ty, textW, scaleF(18)), &oneLine, &textBrush);
+        ty += scaleF(18);
+    }
+    g.DrawString(v.instruction.c_str(), -1, &rowFont, Gdiplus::RectF(inset, ty, textW, scaleF(18) * instructionLines),
+                 &wrapped, v.kind == RockVerdict::WontHold ? &yellowBrush : &textBrush);
+    ty += scaleF(18) * instructionLines;
     if (hasNote) {
-        g.DrawString(v.note.c_str(), -1, &smallFont, Gdiplus::RectF(inset, ty, w - scaleF(28), scaleF(16)), &oneLine,
+        g.DrawString(v.note.c_str(), -1, &smallFont, Gdiplus::RectF(inset, ty, textW, scaleF(16) * noteLines), &wrapped,
                      &faintBrush);
-        ty += scaleF(16);
+        ty += scaleF(16) * noteLines;
     }
     y += boxH + scaleF(14);
 
@@ -5661,9 +5703,9 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
     std::vector<const MiningLoadout*> rows;
     for (const MiningLoadout& h : heads_) rows.push_back(&h);
     if (rows.empty()) rows.push_back(&loadout_);
-    g.DrawString(several ? L"YOUR HEADS" : L"YOUR LASER", -1, &labelFont, Gdiplus::PointF(M, y), &faintBrush);
-    g.DrawString(several ? L"what each would need on its own  ·  click to switch a head off or on"
-                         : L"what it needs to hold this rock",
+    g.DrawString(several ? L"LASER HEADS" : L"LASER HEAD", -1, &labelFont, Gdiplus::PointF(M, y), &faintBrush);
+    g.DrawString(several ? L"Solo requirement per laser  ·  Click to switch a head on or off"
+                         : L"Power required to hold charge steady",
                  -1, &smallFont, Gdiplus::RectF(M, y - scaleF(1), w, scaleF(14)), &right, &faintBrush);
     y += scaleF(18);
 
@@ -5711,7 +5753,7 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
         } else if (v.kind == RockVerdict::WontHold) {
             const ThrottleAdvice one = throttleFor(rock_.mass, loadout_.laser, firingOutput().atRange);
             wchar_t needsText[48];
-            std::swprintf(needsText, 48, L"needs %.0f %%", one.toHold);
+            std::swprintf(needsText, 48, L"Requires %.0f %%", one.toHold);
             state.words = one.toHold > 0 ? needsText : L"—";
         } else {
             state.words = L"—";
@@ -5726,7 +5768,7 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
         }
         const float wordsX = M + w - scaleF(12) - stateW.Width;
         const float nameW = (std::max)(scaleF(40), wordsX - tagW - scaleF(10) - tx);
-        const std::wstring words = fit.laser ? fitWords(fit, true) : L"HEAD " + std::to_wstring(i + 1) + L" - empty";
+        const std::wstring words = fit.laser ? fitWords(fit, true) : L"HEAD " + std::to_wstring(i + 1) + L" - Empty";
         g.DrawString(words.c_str(), -1, &rowFont, Gdiplus::RectF(tx, y + scaleF(5), nameW, scaleF(18)), &oneLine,
                      lit ? &textBrush : &faintBrush);
         if (safe) {
@@ -5753,13 +5795,13 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
         const LaserOutput out = firingOutput();
         const float needs = rock_.mass * BREAK_DECAY_PER_MASS;
         wchar_t part[192];
-        std::swprintf(part, 192, L"%s through the rock  ·  %s given back", formatNumber((int)out.atRange).c_str(),
+        std::swprintf(part, 192, L"Effective power %s  ·  Required power %s", formatNumber((int)out.atRange).c_str(),
                       formatNumber((int)needs).c_str());
         std::wstring line = part;
         const float before = out.fracture * out.falloff;
         const float held = before > 0 ? 1.0f - out.atRange / before : 0.0f;
         if (held >= 0.01f) {
-            std::swprintf(part, 192, L"  ·  %.0f %% resistance holds back %.0f %%", rockResistanceForBreak(),
+            std::swprintf(part, 192, L"  ·  Resistance %.0f %% reduces power by %.0f %%", rockResistanceForBreak(),
                           held * 100.0f);
             line += part;
         }
@@ -5780,12 +5822,12 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
                 zeroRange = loadout_.laser->zeroRange;
             }
             if (out.falloff >= 0.999f) {
-                std::swprintf(part, 192, L"%.1f m away - full power out to %.0f m", rock_.distance, fullRange);
+                std::swprintf(part, 192, L"Deposit at %.1f m - Full power out to %.0f m", rock_.distance, fullRange);
             } else if (out.falloff <= 0.0f) {
-                std::swprintf(part, 192, L"%.1f m away - out of range, nothing reaches past %.0f m", rock_.distance,
+                std::swprintf(part, 192, L"Deposit at %.1f m - Out of range, maximum %.0f m", rock_.distance,
                               zeroRange);
             } else {
-                std::swprintf(part, 192, L"%.1f m away - %.0f %% of the %s the heads put out, full power only inside %.0f m",
+                std::swprintf(part, 192, L"Deposit at %.1f m - %.0f %% of %s laser output effective, full power inside %.0f m",
                               rock_.distance, out.falloff * 100.0f, formatNumber((int)out.fracture).c_str(), fullRange);
             }
             g.DrawString(part, -1, &smallFont, Gdiplus::RectF(M, y + scaleF(2), w, scaleF(16)), &oneLine,
@@ -5822,13 +5864,13 @@ MinerGUI::Suggestion MinerGUI::headSuggestion() const {
     }
     if (best) {
         s.line = laserShortName(*best->laser) + moduleWords(best->modules);
-        std::swprintf(text, 192, L"%.0f %% laser power holds it steady, more makes it climb%s", best->throttle,
-                      best->stock ? L"  ·  as it comes, no modules" : L"");
+        std::swprintf(text, 192, L"%.0f %% laser power will hold charge steady, more power will raise it%s", best->throttle,
+                      best->stock ? L"  ·  No modules required" : L"");
         s.note = text;
         s.good = true;
         return s;
     }
-    s.line = L"nothing that fits this ship holds it alone";
+    s.line = L"NO COMPATIBLE LASER CAN BREAK DEPOSIT SOLO";
     // ...but several of the strongest might, on a ship with the heads
     const LaserSuggestion* strongest = nullptr;
     for (const LaserSuggestion& p : picks) {
@@ -5839,14 +5881,14 @@ MinerGUI::Suggestion MinerGUI::headSuggestion() const {
     }
     const int arms = ship_ ? ship_->heads : 1;
     if (strongest && arms > 1 && needs / (strongest->power * arms) <= 1.0f) {
-        std::swprintf(text, 192, L"%d × %s together, each near %.0f %%", arms,
+        std::swprintf(text, 192, L"%d × %s required working together, at approximately %.0f %% each", arms,
                       (laserShortName(*strongest->laser) + moduleWords(strongest->modules)).c_str(),
                       needs / (strongest->power * arms) * 100.0f);
         s.note = text;
     } else if (arms > 1) {
-        s.note = L"not even all its heads with the strongest lasers together";
+        s.note = L"Combining the full power of all available lasers on the ship would not break deposit";
     } else {
-        s.note = L"it takes a ship with more heads";
+        s.note = L"Ship with more laser heads is required";
     }
     return s;
 }
@@ -5865,7 +5907,7 @@ int MinerGUI::drawHeadSuggestion(Gdiplus::Graphics& g, float x, float w, float y
     oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
     oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
 
-    g.DrawString(s.good ? L"RECOMMENDED LOADOUT" : L"WHAT WOULD BREAK IT", -1, &labelFont, Gdiplus::PointF(x, y),
+    g.DrawString(s.good ? L"RECOMMENDED LOADOUT" : L"ALTERNATIVE LOADOUT", -1, &labelFont, Gdiplus::PointF(x, y),
                  &faintBrush);
     y += scaleF(18);
     // On a card of its own, like the answer above it and the gadget below -
@@ -5894,31 +5936,32 @@ MinerGUI::GadgetWords MinerGUI::gadgetWords() const {
     if (!loadout_.laser) return out;
     if (fittedGadget_) {
         out.gadget = fittedGadget_;
-        out.tag = L"ON THE ROCK";
+        const bool placed = placed_.gadget == fittedGadget_ && placed_.onView;
+        out.advice = placed ? GadgetWords::Applied : GadgetWords::IfApplied;
+        out.tag = placed ? L"APPLIED" : L"IF APPLIED";
         out.tone = COL_ACCENT;
         const RockStats after = withGadget(rock_, fittedGadget_);
         std::wstring did;
         const auto add = [&](const std::wstring& part) { did += (did.empty() ? L"" : L"  ·  ") + part; };
         if (fittedGadget_->resistance != 0 && rock_.resistance > 0) {
-            std::swprintf(text, 192, L"resistance %.0f → %.0f %%", rock_.resistance, after.resistance);
+            std::swprintf(text, 192, L"Resistance %.0f → %.0f %%", rock_.resistance, after.resistance);
             add(text);
         }
         if (fittedGadget_->instability != 0 && rock_.instability > 0) {
-            std::swprintf(text, 192, L"instability %.1f → %.1f", rock_.instability, after.instability);
+            std::swprintf(text, 192, L"Instability %.1f → %.1f", rock_.instability, after.instability);
             add(text);
         }
         if (fittedGadget_->window != 0) {
-            std::swprintf(text, 192, L"charge window %+.0f %%", fittedGadget_->window);
+            std::swprintf(text, 192, L"Charge window %+.0f %%", fittedGadget_->window);
             add(text);
         }
         if (fittedGadget_->cluster != 0) {
-            std::swprintf(text, 192, L"ore kept %+.0f %%", fittedGadget_->cluster);
+            std::swprintf(text, 192, L"Useful ore clustering %+.0f %%", fittedGadget_->cluster);
             add(text);
         }
-        out.line = did.empty() ? L"changes nothing this rock is short of" : did;
-        out.note = placed_.gadget == fittedGadget_ && placed_.onView
-                       ? L"placed in the game - it comes off here when you pick it up again"
-                       : L"one per rock - click it below to take it off";
+        out.line = did.empty() ? L"No effect on what this rock requires" : did;
+        out.note = placed ? L"Placed in game - Cleared when picked up again"
+                          : L"One per deposit - Click it below to remove";
         return out;
     }
 
@@ -5929,52 +5972,55 @@ MinerGUI::GadgetWords MinerGUI::gadgetWords() const {
     const GadgetAdvice advice = advise(rock_, loadout_, firingCount() > 0 && rock_.mass > 0 ? &balance : nullptr);
     out.gadget = advice.gadget;
     if (!advice.gadget) {
-        out.tag = L"NONE HELPS";
+        // (the line says it, in capitals: no pill beside it)
         out.line = toW(advice.because);
         return out;
     }
     const RockStats after = withGadget(rock_, advice.gadget);
     if (advice.reason == MiningGoal::Breakable && advice.holdWith > 0) {
         const float own = rockOwnResistanceBare();
-        std::swprintf(text, 192, L"resistance %.0f → %.0f %%", own,
+        std::swprintf(text, 192, L"Resistance %.0f → %.0f %%", own,
                       (std::max)(0.0f, own * (1.0f + advice.gadget->resistance / 100.0f)));
         out.line = text;
         if (advice.needed) {
-            out.tag = L"NEEDED";
+            out.advice = GadgetWords::Required;
+            out.tag = L"REQUIRED";
             out.tone = COL_ACCENT;
-            std::swprintf(text, 192, L"without it no laser power holds it steady - with it, %.0f %% does",
+            std::swprintf(text, 192, L"Without it charge cannot be held steady - With it %.0f %% laser power will hold charge steady",
                           advice.holdWith);
         } else {
-            out.tag = L"WOULD HELP";
+            out.advice = GadgetWords::Recommended;
+            out.tag = L"RECOMMENDED";
             out.tone = COL_GREEN;
-            std::swprintf(text, 192, L"not needed - laser power %.0f → %.0f %%, with room to drive the charge up",
+            std::swprintf(text, 192, L"Not required - Laser power %.0f → %.0f %%, more reserve to raise charge",
                           advice.holdWithout, advice.holdWith);
         }
         out.note = text;
         return out;
     }
     // not about breaking: the one thing this rock is short of
+    out.advice = GadgetWords::Optional;
     out.tag = L"OPTIONAL";
     switch (advice.reason) {
         case MiningGoal::Safe:
-            std::swprintf(text, 192, L"instability %.1f → %.1f", rock_.instability, after.instability);
+            std::swprintf(text, 192, L"Instability %.1f → %.1f", rock_.instability, after.instability);
             out.line = text;
-            out.note = L"the rock is unstable - this takes the most of it out";
+            out.note = L"Deposit unstable - Largest instability reduction";
             break;
         case MiningGoal::Easier:
-            std::swprintf(text, 192, L"optimal charge window %+.0f %%", advice.gadget->window);
+            std::swprintf(text, 192, L"Optimal charge window %+.0f %%", advice.gadget->window);
             out.line = text;
-            out.note = L"the window is narrow on this head - this widens it the most";
+            out.note = L"Narrow charge window on this laser - Largest window increase";
             break;
         case MiningGoal::Faster:
-            std::swprintf(text, 192, L"the window fills %+.0f %% faster", advice.gadget->rate);
+            std::swprintf(text, 192, L"Optimal charge rate %.0f %% faster", std::fabs(advice.gadget->rate));
             out.line = text;
-            out.note = L"nothing wrong with the rock - this fills the window fastest";
+            out.note = L"No deposit issues - Fastest charge rate";
             break;
         default:
-            std::swprintf(text, 192, L"ore kept %+.0f %%", advice.gadget->cluster);
+            std::swprintf(text, 192, L"Useful ore clustering %+.0f %%", advice.gadget->cluster);
             out.line = text;
-            out.note = L"it breaks as it is - this keeps the most ore together when it shatters";
+            out.note = L"Breakable as is - Best ore clustering on fracture";
             break;
     }
     return out;
@@ -6004,7 +6050,7 @@ int MinerGUI::drawRockAdvice(Gdiplus::Graphics& g, int cw, int yPos) {
     right.SetAlignment(Gdiplus::StringAlignmentFar);
 
     g.DrawString(L"GADGET", -1, &labelFont, Gdiplus::PointF(M, y), &faintBrush);
-    g.DrawString(L"one per rock  ·  click to fit, click again to take it off", -1, &smallFont,
+    g.DrawString(L"One per deposit  ·  Click to apply, click again to remove", -1, &smallFont,
                  Gdiplus::RectF(M, y - scaleF(1), w, scaleF(14)), &right, &faintBrush);
     y += scaleF(18);
 
@@ -6105,8 +6151,8 @@ int MinerGUI::drawResults(Gdiplus::Graphics& g, int cw, int yPos) {
         Gdiplus::StringFormat rightAlign;
         rightAlign.SetAlignment(Gdiplus::StringAlignmentFar);
         Gdiplus::RectF warnRect(M, (float)yPos + scaleF(2), (float)cw - 2 * M, scaleF(14));
-        const std::wstring note = placeOre_.empty() ? std::wstring(L"nothing that can be here fits")
-                                                    : L"nothing listed at " + placeOre_ + L" fits";
+        const std::wstring note = placeOre_.empty() ? std::wstring(L"NO MATCH FOR THIS LOCATION")
+                                                    : L"NO MATCH LISTED AT " + upperWords(placeOre_);
         g.DrawString(note.c_str(), -1, &infoFont, warnRect, &rightAlign, &warnBrush);
     }
     // In-game values are always exact base x cluster - say when none fits
@@ -6115,7 +6161,7 @@ int MinerGUI::drawResults(Gdiplus::Graphics& g, int cw, int yPos) {
         Gdiplus::StringFormat rightAlign;
         rightAlign.SetAlignment(Gdiplus::StringAlignmentFar);
         Gdiplus::RectF warnRect(M, (float)yPos + scaleF(2), (float)cw - 2 * M, scaleF(14));
-        g.DrawString(L"no exact match \u2014 nearest values", -1, &infoFont, warnRect, &rightAlign, &warnBrush);
+        g.DrawString(L"NO EXACT MATCH - NEAREST VALUES SHOWN", -1, &infoFont, warnRect, &rightAlign, &warnBrush);
     }
 
     yPos += scale(26);
@@ -6124,12 +6170,12 @@ int MinerGUI::drawResults(Gdiplus::Graphics& g, int cw, int yPos) {
         if (currentSignature_ > MAX_VALID_SIGNATURE) {
             Gdiplus::SolidBrush warnBrush(COL_YELLOW);
             Gdiplus::RectF r(M, (float)yPos, (float)cw - 2 * M, scaleF(44));
-            const std::wstring above = L"Above every known signature (max " + formatNumber(MAX_VALID_SIGNATURE) +
-                                       L"). Most likely a misread \u2014 check the capture region, or scan again.";
+            const std::wstring above = L"Signature not matching known values - Probable misread  \u00B7  "
+                                       L"Check the scan region or scan again";
             g.DrawString(above.c_str(), -1, &infoFont, r, nullptr, &warnBrush);
             return yPos + scale(52);
         }
-        g.DrawString(L"Nothing yet \u2014 turn Live on and look at a rock.", -1,
+        g.DrawString(L"No scan yet - Switch Live on and aim at a deposit", -1,
                      &infoFont, Gdiplus::PointF(M, (float)yPos), &dimBrush);
         return yPos + scale(28);
     }
@@ -6233,7 +6279,7 @@ int MinerGUI::drawResults(Gdiplus::Graphics& g, int cw, int yPos) {
             const float markX = M + scaleF(30) + nameW.Width + scaleF(6);
             // Which of the three it is: a recipe wants it, an order taken in
             // the game does, or it was picked by hand in "I'm looking for"
-            const wchar_t* markText = onList ? L"ON YOUR LIST" : forOrder ? L"YOUR ORDER" : L"LOOKING FOR";
+            const wchar_t* markText = onList ? L"ON YOUR LIST" : forOrder ? L"YOUR ORDER" : L"TARGET";
             Gdiplus::RectF markW;
             g.MeasureString(markText, -1, &badgeFont, Gdiplus::PointF(0, 0), &markW);
             const float markWidth = markW.Width + scaleF(10);
@@ -6416,7 +6462,7 @@ int MinerGUI::drawDetailCard(Gdiplus::Graphics& g, int cw, int yPos) {
         if (top.category == SignalCategory::ROCMining)      pool = &ROC_MINERALS;
         else if (top.category == SignalCategory::FPSMining) pool = &FPS_MINERALS;
         if (pool) {
-            avail = L"Size only \u2014 could be: ";
+            avail = L"Size only - Possible: ";
             for (size_t i = 0; i < pool->size(); i++) {
                 if (i) avail += L", ";
                 avail += toW((*pool)[i]);
@@ -6425,7 +6471,7 @@ int MinerGUI::drawDetailCard(Gdiplus::Graphics& g, int cw, int yPos) {
             avail = L"Salvage panels, any system";
         }
     }
-    if (top.unusualCluster) avail = L"\u26A0 unusual field size  \u00B7  " + avail;
+    if (top.unusualCluster) avail = L"\u26A0 Unusual field size  \u00B7  " + avail;
     g.DrawString(avail.c_str(), -1, &infoFont, Gdiplus::PointF(left, (float)yPos + cardH - scaleF(22)), &dimBrush);
 
     return yPos + (int)cardH + scale(10);
@@ -6538,7 +6584,7 @@ int MinerGUI::drawLocationCard(Gdiplus::Graphics& g, int cw, int yPos, int ch) {
         // The hint sits at the right end of the same line, and a mix
         // ("HEPHAESTANITE + HARVESTABLE/SALVAGE x9") is a title long enough
         // to run into it. Then the hint goes; the title is the information.
-        const wchar_t* hintText = L"click a match \u00B7 share of rocks with it as main ore";
+        const wchar_t* hintText = L"Click a match  \u00B7  Share of deposits with it as main ore";
         Gdiplus::RectF titleW, hintW;
         g.MeasureString(title.c_str(), -1, &headerFont, Gdiplus::PointF(0, 0), &titleW);
         g.MeasureString(hintText, -1, &subFont, Gdiplus::PointF(0, 0), &hintW);
@@ -6552,7 +6598,7 @@ int MinerGUI::drawLocationCard(Gdiplus::Graphics& g, int cw, int yPos, int ch) {
 
     float y = (float)yPos + headH;
     if (rows.empty()) {
-        g.DrawString(L"No known place in the game data.", -1, &subFont,
+        g.DrawString(L"No known location in game data", -1, &subFont,
                      Gdiplus::PointF(left, y + scaleF(4)), &dimBrush);
         return yPos + (int)cardH + scale(10);
     }
@@ -6953,7 +6999,7 @@ void MinerGUI::mediaSays(const std::wstring& text, bool reread) {
 bool MinerGUI::pasteIntoOpenNote() {
     if (noteFolder_ < 0 || noteIndex_ < 0) return false;
     if (!OpenClipboard(notes_)) {
-        mediaSays(L"the clipboard would not open", false);
+        mediaSays(L"Clipboard unavailable", false);
         return false;
     }
     std::vector<std::filesystem::path> files;
@@ -6985,15 +7031,15 @@ bool MinerGUI::pasteIntoOpenNote() {
         saveNote();
         const std::filesystem::path file = nextMediaPath(".jpg");
         if (file.empty()) {
-            mediaSays(L"nowhere to put it", false);
+            mediaSays(L"No target note", false);
             return false;
         }
         const bool ok = writeJpeg(*picture, file);
-        mediaSays(ok ? L"pasted from the clipboard" : L"that picture could not be written", ok);
+        mediaSays(ok ? L"Pasted from clipboard" : L"Picture could not be saved", ok);
         return ok;
     }
     if (!files.empty()) return addFilesToOpenNote(files);
-    mediaSays(L"no picture on the clipboard", false);
+    mediaSays(L"No picture on clipboard", false);
     return false;
 }
 
@@ -7017,11 +7063,11 @@ bool MinerGUI::addFilesToOpenNote(const std::vector<std::filesystem::path>& file
         if (!ec) added++;
     }
     if (!added) {
-        mediaSays(refused ? L"only pictures can go in here" : L"that file could not be copied",
+        mediaSays(refused ? L"Pictures only" : L"File could not be copied",
                   false);
         return false;
     }
-    mediaSays(added == 1 ? std::wstring(L"picture added")
+    mediaSays(added == 1 ? std::wstring(L"Picture added")
                          : std::to_wstring(added) + L" pictures added",
               true);
     return true;
@@ -7143,8 +7189,8 @@ void MinerGUI::drawMediaRail(Gdiplus::Graphics& g, float x, float top, float bot
     y += scaleF(30);
 
     if (media_.empty()) {
-        g.DrawString(L"Nothing yet. What is kept here stays with the note: renamed, "
-                     L"moved and thrown away with it.",
+        g.DrawString(L"No media yet. Media stays with the note "
+                     L"when it is renamed, moved or deleted.",
                      -1, &subFont, Gdiplus::RectF(left, y, right - left, scaleF(60)), nullptr,
                      &faintBrush);
         return;
@@ -7158,7 +7204,7 @@ void MinerGUI::drawMediaRail(Gdiplus::Graphics& g, float x, float top, float bot
                                       : scaleF(40);
         if (y + high + scaleF(20) > rail.GetBottom() - scaleF(6)) {
             const std::wstring more = L"+" + std::to_wstring((int)(media_.size() - i)) +
-                                      L" more in the note's own folder";
+                                      L" more in the note's folder";
             g.DrawString(more.c_str(), -1, &subFont,
                          Gdiplus::RectF(left, y, wide, scaleF(28)), nullptr, &faintBrush);
             break;
@@ -7170,7 +7216,7 @@ void MinerGUI::drawMediaRail(Gdiplus::Graphics& g, float x, float top, float bot
             strokeRoundRect(g, frame, scaleF(R_CONTROL), COL_GLASS_RIM);
         } else {
             fillRoundRect(g, frame, scaleF(R_CONTROL), COL_CARD_HI);
-            g.DrawString(L"cannot be shown", -1, &subFont, frame, &centred, &faintBrush);
+            g.DrawString(L"Cannot be displayed", -1, &subFont, frame, &centred, &faintBrush);
         }
         noteHits_.push_back({frame, 23, (int)i});
         g.DrawString(item.when.c_str(), -1, &subFont,
@@ -7316,7 +7362,7 @@ void MinerGUI::paintShot(HDC hdc) {
             notesRoundCorners(g, at, scaleF(R_CONTROL), COL_BG);
             strokeRoundRect(g, at, scaleF(R_CONTROL), COL_GLASS_RIM);
         } else {
-            g.DrawString(L"That picture could not be read.", -1, &subFont,
+            g.DrawString(L"Picture could not be read", -1, &subFont,
                          Gdiplus::RectF(0, 0, (float)cw, (float)ch - foot), &centred, &faintBrush);
         }
 
@@ -7363,11 +7409,11 @@ void MinerGUI::paintShot(HDC hdc) {
             g.DrawString(cap, -1, &keyFont, box, &centred, &dimBrush);
             rx = box.X - scaleF(4);
         };
-        words(L"close", &faintBrush);
+        words(L"Close", &faintBrush);
         key(L"Esc");
         if (media_.size() > 1) {
             rx -= scaleF(12);
-            words(L"step", &faintBrush);
+            words(L"Browse", &faintBrush);
             key(L"→");
             key(L"←");
             rx -= scaleF(12);
@@ -7930,7 +7976,7 @@ void MinerGUI::drawNotes(Gdiplus::Graphics& g, int cw, int ch) {
         const int nf = (int)book_.folders().size(), nn = book_.noteCount();
         std::wstring sub = std::to_wstring(nf) + (nf == 1 ? L" folder  ·  " : L" folders  ·  ") +
                            std::to_wstring(nn) + (nn == 1 ? L" note" : L" notes") +
-                           L"  ·  kept as text files in notes\\";
+                           L"  ·  Stored as text files in notes\\";
         g.DrawString(sub.c_str(), -1, &subFont, Gdiplus::PointF(M + scaleF(15), (float)scale(36)), &dimBrush);
     }
 
@@ -7970,10 +8016,10 @@ void MinerGUI::drawNotes(Gdiplus::Graphics& g, int cw, int ch) {
             fillRoundRect(g, box, scaleF(R_CONTROL), COL_CARD_HI);
             strokeRoundRect(g, box, scaleF(R_CONTROL), tint(COL_ACCENT, 200));
             // the naming box sits here; say what it is for
-            const wchar_t* what = (nameMode_ == 1)   ? L"name for the new folder — Enter to make it, Esc to drop it"
-                                  : (nameMode_ == 2) ? L"name for the new note — Enter to make it, Esc to drop it"
-                                  : (nameMode_ == 3) ? L"new name for the folder — Enter to rename, Esc to drop it"
-                                                     : L"new name for the note — Enter to rename, Esc to drop it";
+            const wchar_t* what = (nameMode_ == 1)   ? L"New folder name - Enter to create, Esc to cancel"
+                                  : (nameMode_ == 2) ? L"New note name - Enter to create, Esc to cancel"
+                                  : (nameMode_ == 3) ? L"New folder name - Enter to rename, Esc to cancel"
+                                                     : L"New note name - Enter to rename, Esc to cancel";
             g.DrawString(what, -1, &subFont, Gdiplus::PointF(M, by + scaleF(34)), &faintBrush);
         }
     }
@@ -7983,7 +8029,7 @@ void MinerGUI::drawNotes(Gdiplus::Graphics& g, int cw, int ch) {
     const float treeBottom = (float)ch - scaleF(30);
     const auto& folders = book_.folders();
     if (folders.empty()) {
-        g.DrawString(L"No folders yet — New folder starts one.", -1, &rowFont,
+        g.DrawString(L"No folders yet - Create one with New folder", -1, &rowFont,
                      Gdiplus::PointF(M, y), &dimBrush);
     }
     for (int f = 0; f < (int)folders.size() && y < treeBottom; f++) {
@@ -8060,7 +8106,7 @@ void MinerGUI::drawNotes(Gdiplus::Graphics& g, int cw, int ch) {
         // how much is in it where a folder says how many notes it holds
         Gdiplus::RectF count(M, ty, leftW - scaleF(10), rowH);
         const std::wstring held =
-            trashList_.empty() ? std::wstring(L"empty") : std::to_wstring((int)trashList_.size());
+            trashList_.empty() ? std::wstring(L"Empty") : std::to_wstring((int)trashList_.size());
         g.DrawString(held.c_str(), -1, &subFont, count, &middleRight, &faintBrush);
         noteHits_.push_back({row, 10, 0});
         ty += rowH;
@@ -8112,7 +8158,7 @@ void MinerGUI::drawNotes(Gdiplus::Graphics& g, int cw, int ch) {
         };
         // against the window's right edge, over the media rail as well as
         // the page, so the name has the whole width left of them
-        const float x1 = action(confirmDelete_ == 1 ? L"Sure? Delete" : L"Delete",
+        const float x1 = action(confirmDelete_ == 1 ? L"Confirm delete" : L"Delete",
                                 pane.GetRight() + railGap + railW, 5);
         const float x2 = action(L"Rename", x1 - scaleF(8), 4);
         const float x3 = action(L"Export", x2 - scaleF(8), 14);
@@ -8194,13 +8240,13 @@ void MinerGUI::drawNotes(Gdiplus::Graphics& g, int cw, int ch) {
             return buttonAt(label, rightEdge, (float)scale(62), scaleF(26), buttonFont,
                             armed ? ButtonKind::Danger : ButtonKind::Secondary, kind, 0);
         };
-        const float x1 = action(confirmDelete_ == 2 ? L"Sure? Delete the folder and its notes" : L"Delete folder",
+        const float x1 = action(confirmDelete_ == 2 ? L"Confirm: delete folder and notes" : L"Delete folder",
                                 (float)cw - M, 8);
         action(L"Rename folder", x1 - scaleF(8), 7);
-        g.DrawString(L"Pick a note on the left, or make one with New note.", -1, &rowFont,
+        g.DrawString(L"Select a note on the left, or create one with New note", -1, &rowFont,
                      Gdiplus::PointF(pane.X + scaleF(12), pane.Y + scaleF(12)), &faintBrush);
     } else {
-        g.DrawString(L"Pick a folder on the left, or make one with New folder.", -1, &rowFont,
+        g.DrawString(L"Select a folder on the left, or create one with New folder", -1, &rowFont,
                      Gdiplus::PointF(editX, (float)scale(60)), &faintBrush);
     }
 
@@ -8212,7 +8258,7 @@ void MinerGUI::drawNotes(Gdiplus::Graphics& g, int cw, int ch) {
         const std::wstring name = toW(folders[dragFolder_].notes[dragNote_].name);
         std::wstring into;
         if (dropFolder_ >= 0 && dropFolder_ < (int)folders.size()) {
-            into = L"into " + toW(folders[dropFolder_].name);
+            into = L"Into " + toW(folders[dropFolder_].name);
         }
         Gdiplus::RectF nw, iw;
         g.MeasureString(name.c_str(), -1, &nameFont, Gdiplus::PointF(0, 0), &nw);
@@ -8247,11 +8293,11 @@ void MinerGUI::drawNotes(Gdiplus::Graphics& g, int cw, int ch) {
         g.DrawString(noteNotice_.c_str(), -1, &subFont, Gdiplus::PointF(M, fy),
                      noteNoticeBad_ ? &redBrush : &accentBrush);
     } else {
-        g.DrawString(L"Just start typing to begin a note  ·  drag one onto another folder to move it  "
-                     L"·  type an ore, a place or a recipe and press Enter to link it",
+        g.DrawString(L"Type to start a note  ·  Drag a note onto a folder to move it  "
+                     L"·  Type an ore, location or recipe and press Enter to link it",
                      -1, &subFont, Gdiplus::PointF(M, fy), &faintBrush);
         Gdiplus::RectF fr(M, fy, (float)cw - 2 * M, scaleF(16));
-        g.DrawString(L"one .txt file per note", -1, &subFont, fr, &rightAlign, &faintBrush);
+        g.DrawString(L"One .txt file per note", -1, &subFont, fr, &rightAlign, &faintBrush);
     }
 }
 
@@ -8510,13 +8556,13 @@ std::wstring MinerGUI::brokenLink(const std::wstring& text) {
         const size_t close = text.find(L"]]", open + 2);
         const size_t eol = text.find_first_of(L"\r\n", open);
         if (close == std::wstring::npos || (eol != std::wstring::npos && close > eol)) {
-            return L"line " + std::to_wstring(lineAt(open)) + L", a [[ that never closes";
+            return L"Line " + std::to_wstring(lineAt(open)) + L": unclosed [[";
         }
         const std::wstring name = text.substr(open + 2, close - open - 2);
         const auto& table = linkTable();
         if (table.find(normaliseName(name)) == table.end()) {
-            return L"line " + std::to_wstring(lineAt(open)) + L", [[" + name +
-                   L"]] is no ore, place or recipe this build knows";
+            return L"Line " + std::to_wstring(lineAt(open)) + L": [[" + name +
+                   L"]] is not a known ore, location or recipe";
         }
         i = close + 2;
     }
@@ -8530,7 +8576,7 @@ void MinerGUI::exportNotes(int folder, int note) {
     saveNote();   // what is being written this minute belongs in the file too
     const auto notes = book_.collect(folder, note);
     if (notes.empty()) {
-        noteNotice_ = L"there is nothing to export yet";
+        noteNotice_ = L"Nothing to export yet";
         noteNoticeBad_ = true;
         return;
     }
@@ -8549,13 +8595,13 @@ void MinerGUI::exportNotes(int folder, int note) {
     const std::filesystem::path file(path);
     std::ofstream out(file, std::ios::binary | std::ios::trunc);
     if (!out.is_open()) {
-        noteNotice_ = L"cannot write to " + file.filename().wstring();
+        noteNotice_ = L"Cannot write to " + file.filename().wstring();
         noteNoticeBad_ = true;
         return;
     }
     out.write(text.data(), (std::streamsize)text.size());
     out.close();
-    noteNotice_ = L"exported " + noteCountText(notes.size()) + L" to " + file.filename().wstring();
+    noteNotice_ = L"Exported " + noteCountText(notes.size()) + L" to " + file.filename().wstring();
     // The bundle is one readable text file, which is what makes it worth
     // sending; a picture cannot be in it. Said out loud rather than left to
     // be discovered at the other end, where the note arrives without them.
@@ -8570,7 +8616,7 @@ void MinerGUI::exportNotes(int folder, int note) {
             }
         }
         if (withPictures) {
-            noteNotice_ += L"  ·  pictures stay behind (" +
+            noteNotice_ += L"  ·  Pictures not included (" +
                            std::to_wstring(withPictures) +
                            (withPictures == 1 ? L" note has some)" : L" notes have some)");
         }
@@ -8581,8 +8627,8 @@ void MinerGUI::exportNotes(int folder, int note) {
     for (const auto& n : notes) {
         const std::wstring problem = brokenLink(toW(n.body));
         if (problem.empty()) continue;
-        noteNotice_ += L"  \u00B7  but \"" + toW(n.name) + L"\" has " + problem +
-                       L", and an import would refuse the lot";
+        noteNotice_ += L"  \u00B7  Warning: \"" + toW(n.name) + L"\" has " + problem +
+                       L", an import would reject the file";
         noteNoticeBad_ = true;
         break;
     }
@@ -8606,7 +8652,7 @@ bool MinerGUI::importNotesFrom(const std::filesystem::path& file) {
     const std::wstring shown = file.filename().wstring();
     std::ifstream in(file, std::ios::binary);
     if (!in.is_open()) {
-        noteNotice_ = L"cannot read " + shown;
+        noteNotice_ = L"Cannot read " + shown;
         return false;
     }
     const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -8615,7 +8661,7 @@ bool MinerGUI::importNotesFrom(const std::filesystem::path& file) {
     std::vector<NoteBook::BundleNote> notes;
     std::string error;
     if (!NoteBook::readBundle(text, notes, error)) {
-        noteNotice_ = toW(error) + L" - nothing was imported";
+        noteNotice_ = toW(error) + L" - Nothing was imported";
         return false;
     }
     // Every [[link]] has to name something this build knows. One that does
@@ -8625,7 +8671,7 @@ bool MinerGUI::importNotesFrom(const std::filesystem::path& file) {
     for (const auto& n : notes) {
         const std::wstring problem = brokenLink(toW(n.body));
         if (problem.empty()) continue;
-        noteNotice_ = L"\"" + toW(n.name) + L"\", " + problem + L" - nothing was imported";
+        noteNotice_ = L"\"" + toW(n.name) + L"\": " + problem + L" - Nothing was imported";
         return false;
     }
     const int landed = book_.importNotes(notes);
@@ -8634,16 +8680,16 @@ bool MinerGUI::importNotesFrom(const std::filesystem::path& file) {
     noteIndex_ = -1;
     openNote(-1, -1);
     if (landed == 0) {
-        noteNotice_ = L"nothing could be written - " + toW(book_.lastError());
+        noteNotice_ = L"Nothing could be written - " + toW(book_.lastError());
         return false;
     }
     noteNoticeBad_ = false;
-    noteNotice_ = L"imported " + noteCountText((size_t)landed) + L" from " + shown;
+    noteNotice_ = L"Imported " + noteCountText((size_t)landed) + L" from " + shown;
     if (landed < (int)notes.size()) {
         noteNotice_ += L"  \u00B7  " + std::to_wstring((int)notes.size() - landed) +
                        L" could not be written";
     }
-    noteNotice_ += L"  \u00B7  nothing was overwritten";
+    noteNotice_ += L"  \u00B7  Nothing was overwritten";
     return true;
 }
 
@@ -8688,14 +8734,14 @@ void MinerGUI::drawBackupCard(Gdiplus::Graphics& g, int cw, int ch) {
 
     float y = card.Y + scaleF(14);
     g.DrawString(L"Your data", -1, &markFont, Gdiplus::PointF(left, y), &textBrush);
-    g.DrawString(L"click anywhere to close", -1, &subFont,
+    g.DrawString(L"Click anywhere to close", -1, &subFont,
                  Gdiplus::RectF(left, y + scaleF(8), width, scaleF(16)), &rightAlign,
                  &faintBrush);
     y += scaleF(32);
 
     Gdiplus::RectF blurb(left, y, width, scaleF(34));
-    g.DrawString(L"Your notes, your ships, the shopping list, the ores you are looking for "
-                 L"and the blueprint library \u2014 all of it in one file, wherever you want it.",
+    g.DrawString(L"Notes, ships, shopping list, target ores and blueprint library, "
+                 L"saved to one file in a location of your choice.",
                  -1, &textFont, blurb, nullptr, &dimBrush);
     y += scaleF(48);
 
@@ -8712,11 +8758,11 @@ void MinerGUI::drawBackupCard(Gdiplus::Graphics& g, int cw, int ch) {
     };
     const float half = (width - scaleF(14)) / 2.0f;
     backupDoHit_ = choice(L"Back up",
-                          L"Write everything to a file you pick. Nothing here changes.",
+                          L"Saves all data to a file of your choice. Nothing here is changed.",
                           left, half, ButtonKind::Primary);
     restoreDoHit_ = choice(L"Restore",
-                           L"Read a backup back in. What is here now is put aside first, "
-                           L"never erased.",
+                           L"Loads a backup. Current data is "
+                           L"set aside first, never deleted.",
                            left + half + scaleF(14), half, ButtonKind::Secondary);
     y += scaleF(92);
 
@@ -8752,7 +8798,7 @@ void MinerGUI::drawBackupCard(Gdiplus::Graphics& g, int cw, int ch) {
 void MinerGUI::openBackupForShot() {
     showBackup(true);
     // a line in it, so the picture shows where a result lands
-    backupNotice_ = L"backed up 7 files to Bedrock data 2026-09-12.bedrock";
+    backupNotice_ = L"Backed up 7 files to Bedrock data 2026-09-12.bedrock";
     backupNoticeBad_ = false;
     InvalidateRect(hwnd_, nullptr, TRUE);
 }
@@ -8765,7 +8811,7 @@ void MinerGUI::backUpData() {
 
     const auto entries = SCMiner::DataBackup::collect(AppPaths::data());
     if (entries.empty()) {
-        backupNotice_ = L"there is nothing to back up yet";
+        backupNotice_ = L"No data to back up yet";
         backupNoticeBad_ = true;
         return;
     }
@@ -8791,13 +8837,13 @@ void MinerGUI::backUpData() {
     const std::string text = SCMiner::DataBackup::write(entries);
     std::ofstream out(file, std::ios::binary | std::ios::trunc);
     if (!out.is_open()) {
-        backupNotice_ = L"cannot write to " + file.filename().wstring();
+        backupNotice_ = L"Cannot write to " + file.filename().wstring();
         backupNoticeBad_ = true;
         return;
     }
     out.write(text.data(), (std::streamsize)text.size());
     out.close();
-    backupNotice_ = L"backed up " + std::to_wstring((int)entries.size()) +
+    backupNotice_ = L"Backed up " + std::to_wstring((int)entries.size()) +
                     (entries.size() == 1 ? L" file to " : L" files to ") +
                     file.filename().wstring();
 }
@@ -8820,7 +8866,7 @@ void MinerGUI::restoreData() {
     const std::filesystem::path file(path);
     std::ifstream in(file, std::ios::binary);
     if (!in.is_open()) {
-        backupNotice_ = L"cannot read " + file.filename().wstring();
+        backupNotice_ = L"Cannot read " + file.filename().wstring();
         return;
     }
     const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -8829,12 +8875,12 @@ void MinerGUI::restoreData() {
     std::vector<SCMiner::DataBackup::Entry> entries;
     std::string error;
     if (!SCMiner::DataBackup::read(text, entries, error)) {
-        backupNotice_ = toW(error) + L" - nothing was changed";
+        backupNotice_ = toW(error) + L" - Nothing was changed";
         return;
     }
     std::string asideName;
     if (!SCMiner::DataBackup::restore(AppPaths::data(), entries, asideName, error)) {
-        backupNotice_ = toW(error) + L" - nothing was changed";
+        backupNotice_ = toW(error) + L" - Nothing was changed";
         return;
     }
     // The backup has just overwritten what this window holds, so it is read
@@ -8876,11 +8922,11 @@ void MinerGUI::restoreData() {
                                                 return SCMiner::DataBackup::carried(e.path);
                                             });
     backupNoticeBad_ = false;
-    backupNotice_ = L"restored " + std::to_wstring(restored) +
+    backupNotice_ = L"Restored " + std::to_wstring(restored) +
                     (restored == 1 ? L" file" : L" files") +
-                    L"  \u00B7  what was here is in " + toW(std::string(SCMiner::DataBackup::ASIDE)) +
+                    L"  \u00B7  Previous data moved to " + toW(std::string(SCMiner::DataBackup::ASIDE)) +
                     L"\\" + toW(asideName) +
-                    L"  \u00B7  settings apply from the next start";
+                    L"  \u00B7  Settings apply after restart";
 }
 
 LRESULT CALLBACK MinerGUI::SuggestProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -8944,7 +8990,7 @@ LRESULT MinerGUI::handleSuggestMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                 const wchar_t* what = (link.kind == 0)   ? L"ore"
                                      : (link.kind == 1) ? L"recipe"
                                      : (link.kind == 3) ? L"system"
-                                                        : L"place";
+                                                        : L"location";
                 Gdiplus::RectF r(0, y + scaleF(5), (float)rc.right - scaleF(10), rowH);
                 g.DrawString(what, -1, &kindFont, r, &rightAlign,
                              i == suggestChoice_ ? &dimBrush : &faintBrush);
@@ -8954,10 +9000,10 @@ LRESULT MinerGUI::handleSuggestMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                 Gdiplus::RectF r(scaleF(8), (float)rc.bottom - scaleF(15), (float)rc.right - scaleF(16), scaleF(13));
                 // With more found than fit, say where in the list you are -
                 // otherwise the eight on screen look like all there is
-                std::wstring hint = L"Enter to link  ·  keep typing to ignore";
+                std::wstring hint = L"Enter to link  ·  Keep typing to ignore";
                 if (found > shown) {
                     hint = L"Enter to link  ·  " + std::to_wstring(suggestChoice_ + 1) +
-                           L" of " + std::to_wstring(found) + L"  ·  scroll for more";
+                           L" of " + std::to_wstring(found) + L"  ·  Scroll for more";
                 }
                 g.DrawString(hint.c_str(), -1, &hintFont, r, nullptr, &faintBrush);
             }
@@ -9482,8 +9528,8 @@ LRESULT MinerGUI::handleNotesMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                             mediaConfirm_ = -1;
                             KillTimer(hwnd, TIMER_CONFIRM);
                             const bool gone = book_.trashShot(media_[hit.value].path);
-                            mediaSays(gone ? L"moved to the trash"
-                                           : L"that one would not move", gone);
+                            mediaSays(gone ? L"Moved to trash"
+                                           : L"Could not be moved", gone);
                         }
                     }
                 } else if (hit.kind == 12) {
@@ -10635,8 +10681,8 @@ void MinerGUI::paintCartPickList(Gdiplus::Graphics& g, int cw, int ch) {
             Gdiplus::RectF rateRect(row.X + scaleF(150), row.Y, scaleF(150), row.Height);
             g.DrawString(toW(m.rating).c_str(), -1, &subFont, rateRect, &leftMid, &faintBrush);
             std::wstringstream fac;
-            fac << std::fixed << std::setprecision(2) << L"yield \u00D7" << m.yield << L"  time \u00D7" << m.time
-                << L"  cost \u00D7" << m.cost;
+            fac << std::fixed << std::setprecision(2) << L"Yield \u00D7" << m.yield << L"  Time \u00D7" << m.time
+                << L"  Cost \u00D7" << m.cost;
             Gdiplus::RectF facRect(row.X, row.Y, row.Width - scaleF(10), row.Height);
             g.DrawString(fac.str().c_str(), -1, &numFont, facRect, &rightMid, on ? &dimBrush : &faintBrush);
             craftHits_.push_back({slot, 34, i});
@@ -10733,8 +10779,8 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
     }
     {
         std::wstring sub = std::to_wstring(CRAFT_BLUEPRINT_COUNT) +
-                           L" recipes  \u00B7  click one for its slots and what quality does to it";
-        if (ownedCount() > 0) sub += L"  \u00B7  " + std::to_wstring(ownedCount()) + L" in your library";
+                           L" recipes  \u00B7  Click one for slots and quality effects";
+        if (ownedCount() > 0) sub += L"  \u00B7  " + std::to_wstring(ownedCount()) + L" in library";
         if (!ownedNote_.empty()) sub += L"  \u00B7  " + toW(ownedNote_);
         // Under the boxes, on the line of what the last write said, and cut
         // short of that rather than running under it: beside the heading two
@@ -10787,7 +10833,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
         const float tx = M + scaleF(34);
         float caretX = tx;
         if (!typed) {
-            g.DrawString(L"type to search \u2014 item, material, outfit or contract, e.g. helmet, aslarite, foxwell",
+            g.DrawString(L"Type to search - Item, material, outfit or contract, e.g. helmet, aslarite, foxwell",
                          -1, &searchFont, Gdiplus::PointF(tx + scaleF(8), sy + scaleF(6)), &faintBrush);
         } else {
             g.DrawString(craftSearch_.c_str(), -1, &searchFont, Gdiplus::PointF(tx, sy + scaleF(6)), &textBrush);
@@ -10795,7 +10841,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
             g.MeasureString(craftSearch_.c_str(), -1, &searchFont, Gdiplus::PointF(0, 0), &w);
             caretX = tx + scaleF(1) + w.Width;
             Gdiplus::RectF hint(M, sy + scaleF(8), (float)cw - 2 * M - scaleF(12), scaleF(16));
-            g.DrawString(L"Esc clears", -1, &subFont, hint, &rightAlign, &faintBrush);
+            g.DrawString(L"Esc to clear", -1, &subFont, hint, &rightAlign, &faintBrush);
         }
         if (caretOn_) {
             g.FillRectangle(&accentBrush, caretX, sy + scaleF(7), scaleF(1.5f), scaleF(16));
@@ -10966,9 +11012,9 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
         if (craftGrade_) { count += L"  \u00B7  grade "; count += (wchar_t)craftGrade_; }
         if (craftSize_ >= 0) count += L"  \u00B7  size " + std::to_wstring(craftSize_);
         if (craftClass_ >= 0) count += L"  \u00B7  " + toW(CRAFT_CLASSES[craftClass_]);
-        if (craftOwned_ == 1) count += L"  \u00B7  in your library";
-        if (craftOwned_ == 2) count += L"  \u00B7  not in your library";
-        if (craftContract_ == 1) count += L"  \u00B7  dropped by a contract";
+        if (craftOwned_ == 1) count += L"  \u00B7  In library";
+        if (craftOwned_ == 2) count += L"  \u00B7  Not in library";
+        if (craftContract_ == 1) count += L"  \u00B7  Contract reward";
         if (craftSystem_ >= 1 && craftSystem_ <= 3) {
             count += std::wstring(L"  \u00B7  in ") + CRAFT_SYSTEM_NAMES[craftSystem_];
         }
@@ -10976,7 +11022,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
             count += (i == 0 ? std::wstring(L"  \u00B7  from ") : std::wstring(L", "));
             count += toW(craftFactions_[i]);
         }
-        if (craftMaterial_ >= 0) count += L"  \u00B7  least first";
+        if (craftMaterial_ >= 0) count += L"  \u00B7  Lowest first";
         Gdiplus::RectF r(rx, listTop, rw, scaleF(14));
         g.DrawString(count.c_str(), -1, &subFont, r, &rightAlign, &faintBrush);
     }
@@ -11208,7 +11254,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
             // you do not own is worth a second look only when there is a way to
             // earn it.
             if (dropped && undropped) {
-                const std::wstring text = L"has contract";
+                const std::wstring text = L"Has contract";
                 chip(text, craftContract_ == 1, 18, craftContract_ == 1 ? 0 : 1, wide(text, scaleF(16)), false);
                 fx += scaleF(10);
             }
@@ -11257,7 +11303,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
                 // with nothing picked it narrows nothing, so it is plain ink.
                 chip(L"any", craftFactions_.empty(), 27, -1, scaleF(30), true);
                 {
-                    std::wstring text = L"pick faction";
+                    std::wstring text = L"Select faction";
                     if (!craftFactions_.empty()) {
                         text += L"  \u00B7  " + std::to_wstring((int)craftFactions_.size());
                     }
@@ -11300,8 +11346,8 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
         strokeRoundRect(g, card, scaleF(R_CARD), COL_BORDER);
         // Esc takes the search first and the filters after it, so the
         // sentence names whichever of the two it is going to clear
-        const wchar_t* why = craftSearch_.empty() ? L"Nothing matches these filters. Esc clears them."
-                                                  : L"Nothing matches. Esc clears the search.";
+        const wchar_t* why = craftSearch_.empty() ? L"No results for these filters. Esc to clear."
+                                                  : L"No results. Esc to clear the search.";
         g.DrawString(why, -1, &rowFont, card, &centre, &dimBrush);
     }
 
@@ -11387,7 +11433,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
         if (bp.knownFromStart) {
             Gdiplus::RectF note(rx, ry + scaleF(18), figW, scaleF(14));
             Gdiplus::SolidBrush green(COL_GREEN);
-            g.DrawString(L"from the start", -1, &subFont, note, &rightAlign, &green);
+            g.DrawString(L"Known from start", -1, &subFont, note, &rightAlign, &green);
         } else if (bp.missions) {
             Gdiplus::RectF note(rx, ry + scaleF(18), figW, scaleF(14));
             std::wstring m = std::to_wstring(bp.missions) + L" contract";
@@ -11445,8 +11491,8 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
             const Gdiplus::RectF card(rx, ry, rw, scaleF(56));
             fillRoundRect(g, card, radius, COL_CARD);
             strokeRoundRect(g, card, radius, COL_BORDER);
-            g.DrawString(L"Nothing on it yet. The + at the right of a recipe puts one here, "
-                         L"and so does Add to list inside an open one.",
+            g.DrawString(L"List is empty. Add recipes with the + on the right of "
+                         L"a recipe, or with Add to list inside an open recipe.",
                          -1, &rowFont, Gdiplus::RectF(ix, ry, iw, card.Height), &centre, &dimBrush);
             ry = card.GetBottom();
         }
@@ -11535,10 +11581,10 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
 
             // Wrapped inside the column, not one line running off the window's
             // edge; what the numbers rest on is in the README.
-            std::wstring legend = L"—  nothing known for that ore at this station";
+            std::wstring legend = L"—  No data for this ore at this station";
             if (!stationPriced) {
-                legend += L"      ~  about: this station publishes no cost or time "
-                          L"factors of its own, so the ore's stand in";
+                legend += L"      ~  Approximate: this station publishes no cost "
+                          L"or time factors, the ore's defaults are used";
             }
             Gdiplus::RectF legendSize;
             g.MeasureString(legend.c_str(), -1, &subFont, Gdiplus::RectF(0, 0, iw, scaleF(200)), &legendSize);
@@ -11565,12 +11611,12 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
             strokeRoundRect(g, card, radius, COL_BORDER);
             ry = cardTop + pad;
 
-            g.DrawString(L"WHAT TO MINE FOR ALL OF IT", -1, &smallFont, Gdiplus::PointF(ix, ry), &faintBrush);
+            g.DrawString(L"MATERIALS TO MINE", -1, &smallFont, Gdiplus::PointF(ix, ry), &faintBrush);
             {
                 std::wstring t;
                 if (seconds >= 3600) t = std::to_wstring(seconds / 3600) + L" h " +
-                                         std::to_wstring((seconds % 3600) / 60) + L" min at the bench";
-                else t = std::to_wstring((seconds + 59) / 60) + L" min at the bench";
+                                         std::to_wstring((seconds % 3600) / 60) + L" min crafting";
+                else t = std::to_wstring((seconds + 59) / 60) + L" min crafting";
                 Gdiplus::RectF r(ix, ry + scaleF(1), iw, scaleF(14));
                 g.DrawString(t.c_str(), -1, &subFont, r, &rightAlign, &faintBrush);
             }
@@ -11593,7 +11639,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
                 oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
                 oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
                 const Gdiplus::RectF lineBox(ix, ry - scaleF(2), iw, scaleF(22));
-                g.DrawString(L"refined at", -1, &subFont, lineBox, &oneLine, &faintBrush);
+                g.DrawString(L"Refined at", -1, &subFont, lineBox, &oneLine, &faintBrush);
                 Gdiplus::RectF w1;
                 g.MeasureString(L"refined at", -1, &subFont, Gdiplus::PointF(0, 0), &w1);
                 float px = ix + w1.Width + scaleF(6);
@@ -11657,7 +11703,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
                     // running into them, and at the last it gives up letters.
                     const bool already = (best == stIndex);
                     const std::wstring where = toW(REFINERIES[best].name);
-                    std::wstring text = L"Refine best at: " + where;
+                    std::wstring text = L"Best refinery: " + where;
                     if (already) text += L"  ✓";
                     Gdiplus::RectF w;
                     g.MeasureString(text.c_str(), -1, &fieldFont, Gdiplus::PointF(0, 0), &w);
@@ -11750,7 +11796,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
                     Gdiplus::RectF nw;
                     g.MeasureString(toW(CRAFT_MATERIALS[m].name).c_str(), -1, &rowFont,
                                     Gdiplus::PointF(0, 0), &nw);
-                    g.DrawString((L"quality " + std::to_wstring(minQ[m]) + L"+").c_str(), -1,
+                    g.DrawString((L"Quality " + std::to_wstring(minQ[m]) + L"+").c_str(), -1,
                                  &subFont,
                                  Gdiplus::PointF(ix + scaleF(20) + nw.Width, ry + scaleF(3)),
                                  &faintBrush);
@@ -11825,7 +11871,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
                 ry += mrow;
             }
             if (cut && !order.empty()) {
-                g.DrawString(L"(the window is too short for the rest - make it taller)", -1,
+                g.DrawString(L"(Window too short - Enlarge it to see the rest)", -1,
                              &subFont, Gdiplus::PointF(ix + scaleF(14), ry), &faintBrush);
                 ry += scaleF(16);
             }
@@ -11852,7 +11898,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
                     ry += scaleF(20);
                 }
                 {
-                    g.DrawString(L"then at the bench", -1, &subFont,
+                    g.DrawString(L"Then crafting", -1, &subFont,
                                  Gdiplus::PointF(ix, ry - scaleF(3)), &faintBrush);
                     column(xTime, wTime, ry - scaleF(4), clock((double)seconds), subFont, &textBrush);
                     ry += scaleF(18);
@@ -11870,22 +11916,22 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
     }
 
     if ((int)rows.size() > fit && !cartOpen_) {
-        std::wstring more = L"showing " + std::to_wstring(craftScroll_ + 1) + L"\u2013" +
+        std::wstring more = L"Showing " + std::to_wstring(craftScroll_ + 1) + L"\u2013" +
                             std::to_wstring((std::min)((int)rows.size(), craftScroll_ + fit)) +
-                            L"  \u00B7  wheel to scroll";
+                            L"  \u00B7  Scroll with mouse wheel";
         Gdiplus::RectF r(rx, (float)ch - scaleF(58), rw, scaleF(14));
         g.DrawString(more.c_str(), -1, &subFont, r, &rightAlign, &faintBrush);
     }
 
     const float fy = (float)ch - scaleF(24);
     hairline(g, M, fy - scaleF(10), (float)cw - M);
-    g.DrawString(cartOpen_ ? L"Click a recipe to open it  \u00B7  a material for where to mine it"
-                           L"  \u00B7  B / Esc close"
-                           : L"Click a blueprint for its slots  \u00B7  + adds it to the shopping "
-                             L"list  \u00B7  B / Esc close",
+    g.DrawString(cartOpen_ ? L"Click a recipe to open it  \u00B7  Click a material "
+                           L"for mining locations  \u00B7  B / Esc: Close"
+                           : L"Click a blueprint for its slots  \u00B7  + adds "
+                             L"it to the shopping list  \u00B7  B / Esc: Close",
                  -1, &subFont, Gdiplus::PointF(M, fy), &faintBrush);
     Gdiplus::RectF fr(M, fy, (float)cw - 2 * M, scaleF(16));
-    std::wstring src = L"game data  \u00B7  " + toW(CRAFT_DATA_VERSION);
+    std::wstring src = L"Game data  \u00B7  " + toW(CRAFT_DATA_VERSION);
     g.DrawString(src.c_str(), -1, &subFont, fr, &rightAlign, &faintBrush);
 }
 
@@ -12079,14 +12125,14 @@ void MinerGUI::paintContractCard(Gdiplus::Graphics& g, int cw, int ch, const Cra
     // What comes at you, where the files say so: the spawn tags name no ship,
     // so the count is all that can honestly be given.
     if (src.ships) {
-        row(L"ENEMY SHIPS", L"up to " + std::to_wstring(src.ships) +
+        row(L"ENEMY SHIPS", L"Up to " + std::to_wstring(src.ships) +
                                (src.ships == 1 ? L" at a time" : L" at a time"));
     }
     if (src.party) {
-        row(L"PARTY", src.party == 1 ? L"solo only"
-                                     : L"up to " + std::to_wstring(src.party) + L" players");
+        row(L"PARTY", src.party == 1 ? L"Solo only"
+                                     : L"Up to " + std::to_wstring(src.party) + L" players");
     }
-    row(L"PAYOUT", L"computed in game from difficulty and distance", false);
+    row(L"PAYOUT", L"Computed in game from difficulty and distance", false);
     if (src.reputation[0]) {
         // By scope, as the contract awards it: "100–200 Standing, 50
         // Affinity" - a range where the contracts behind the row differ
@@ -12095,9 +12141,9 @@ void MinerGUI::paintContractCard(Gdiplus::Graphics& g, int cw, int ch, const Cra
     if (src.chance && src.chance < 100) {
         row(L"BLUEPRINT CHANCE", std::to_wstring(src.chance) + L" % on completion");
     } else {
-        row(L"BLUEPRINT CHANCE", L"always, while you do not own it yet");
+        row(L"BLUEPRINT CHANCE", L"Always, while not owned");
     }
-    if (src.cooldown) row(L"AFTER FINISHING", L"blocked " + std::to_wstring(src.cooldown) + L" min");
+    if (src.cooldown) row(L"AFTER COMPLETION", L"Blocked " + std::to_wstring(src.cooldown) + L" min");
     // The wait a player actually sees after a run: the contract comes off
     // the board and is generated again this many minutes after it ends,
     // give or take the variation. The personal block above is "0" on most
@@ -12107,8 +12153,8 @@ void MinerGUI::paintContractCard(Gdiplus::Graphics& g, int cw, int ch, const Cra
         if (src.respawnVar) back += L"  (\u00B1" + std::to_wstring(src.respawnVar) + L")";
         row(L"OFFERED AGAIN", back);
     }
-    if (src.abandonCd > 0) row(L"AFTER ABANDONING", L"blocked " + std::to_wstring(src.abandonCd) + L" min");
-    if (src.onceOnly) row(L"REPEATABLE", L"no - once only", true);
+    if (src.abandonCd > 0) row(L"AFTER ABANDONING", L"Blocked " + std::to_wstring(src.abandonCd) + L" min");
+    if (src.onceOnly) row(L"REPEATABLE", L"No - Once only", true);
     y += scaleF(6);
 
     // ---- what else the same pool holds - and the contract's other pools ----
@@ -12125,7 +12171,7 @@ void MinerGUI::paintContractCard(Gdiplus::Graphics& g, int cw, int ch, const Cra
         // ...and the way to it in the planner: what of it is still missing,
         // which missions feed it, rank by rank
         {
-            const std::wstring link = L"show this set in the grind planner \u203A";
+            const std::wstring link = L"Show set in Grind Planner \u203A";
             Gdiplus::RectF w;
             g.MeasureString(link.c_str(), -1, &smallFont, Gdiplus::PointF(0, 0), &w);
             const Gdiplus::RectF at(right - w.Width, y - scaleF(1), w.Width, scaleF(16));
@@ -12176,7 +12222,7 @@ void MinerGUI::paintContractCard(Gdiplus::Graphics& g, int cw, int ch, const Cra
                 }
                 y += poolHead;
             };
-            poolLabel(1, L"\u00B7  the one this blueprint is in");
+            poolLabel(1, L"\u00B7  Contains this blueprint");
             chips(src.poolFirst, src.poolCount);
             for (int k = 0; k < src.otherCount; k++) {
                 const CraftPoolRun& run = CRAFT_OTHER_POOLS[src.otherFirst + k];
@@ -12201,7 +12247,7 @@ void MinerGUI::paintContractCard(Gdiplus::Graphics& g, int cw, int ch, const Cra
     // ---- how to get rid of it ----
     {
         Gdiplus::RectF r(left, card.GetBottom() - scaleF(22), right - left, scaleF(16));
-        g.DrawString(L"click anywhere or press Esc to close", -1, &smallFont, r, &rightAlign, &faintBrush);
+        g.DrawString(L"Click anywhere or press Esc to close", -1, &smallFont, r, &rightAlign, &faintBrush);
     }
     // A click anywhere closes it
     craftHits_.push_back({Gdiplus::RectF(0, 0, (float)cw, (float)ch), 14, 0});
@@ -12350,9 +12396,9 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
             // A contract that pays it out paid nothing: it had none left, so
             // this one is owned - concluded, not read, and said so
             const bool assumed = stamp.find(L"(assumed)") != std::wstring::npos;
-            const std::wstring when = (byHand ? L"ticked by hand "
-                                       : assumed ? L"assumed - its contract paid none on " : L"since ") +
-                                      stamp.substr(0, 10) + L"  \u00B7  click to untick";
+            const std::wstring when = (byHand ? L"Ticked manually "
+                                       : assumed ? L"Assumed - Contract paid none on " : L"Since ") +
+                                      stamp.substr(0, 10) + L"  \u00B7  Click to untick";
             Gdiplus::RectF r(M, b.GetBottom() + scaleF(3), (float)cw - 2 * M, scaleF(14));
             g.DrawString(when.c_str(), -1, &subFont, r, &rightAlign, &faintBrush);
         }
@@ -12369,12 +12415,12 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
         else if (bp.seconds >= 60) sub += std::to_wstring(bp.seconds / 60) + L" min";
         else sub += std::to_wstring(bp.seconds) + L" s";
         sub += L" to craft";
-        if (bp.knownFromStart) sub += L"  \u00B7  known from the start";
+        if (bp.knownFromStart) sub += L"  \u00B7  Known from start";
         else if (bp.missions) {
-            sub += L"  \u00B7  dropped by " + std::to_wstring(bp.missions) + L" contract";
+            sub += L"  \u00B7  Reward from " + std::to_wstring(bp.missions) + L" contract";
             if (bp.missions != 1) sub += L"s";
         } else {
-            sub += L"  \u00B7  no contract known to drop it";
+            sub += L"  \u00B7  No known contract reward";
         }
         g.DrawString(sub.c_str(), -1, &subFont, Gdiplus::PointF(M + scaleF(86), (float)scale(38)), &dimBrush);
     }
@@ -12498,7 +12544,7 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
         std::wstringstream amount;
         if (slot.scu > 0) amount << std::fixed << std::setprecision(slot.scu < 1.0f ? 2 : 1) << slot.scu << L" SCU";
         else amount << L"\u00D7" << slot.units;
-        if (slot.minQuality > 1) amount << L"   min quality " << slot.minQuality;
+        if (slot.minQuality > 1) amount << L"   Min quality " << slot.minQuality;
         Gdiplus::RectF amountRect(left, my, right - left, scaleF(20));
         g.DrawString(amount.str().c_str(), -1, &rowFont, amountRect, &rightAlign, &dimBrush);
 
@@ -12589,7 +12635,7 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
         // What that does to the item - every value the slot moves, one line
         // each.
         if (slot.effCount == 0) {
-            g.DrawString(L"no stat on this slot \u2014 material and amount only", -1, &subFont,
+            g.DrawString(L"No stat on this slot - Material and amount only", -1, &subFont,
                          Gdiplus::PointF(left, y + scaleF(128) + drop), &faintBrush);
         }
         for (int k = 0; k < slot.effCount; k++) {
@@ -12602,10 +12648,10 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
                 g.DrawString(line.c_str(), -1, &statFont, Gdiplus::PointF(left, ly), &dimBrush);
                 Gdiplus::RectF flatRect(left, ly + scaleF(1), right - left, scaleF(18));
                 g.DrawString(effectCurveUnknown(eff)
-                                 ? L"the game files will not say what quality does here"
+                                 ? L"Quality effect not defined in game files"
                                  : effectDataBroken(eff)
-                                       ? L"the game data for this one is out of range"
-                                       : L"any quality will do here",
+                                       ? L"Game data out of range"
+                                       : L"Any quality accepted",
                              -1, &subFont, flatRect, &rightAlign, &faintBrush);
                 continue;
             }
@@ -12619,7 +12665,7 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
             g.DrawString(line.str().c_str(), -1, &statFont, Gdiplus::PointF(left, ly), &textBrush);
 
             std::wstringstream pctText;
-            if (std::abs(pct) < 0.005) pctText << L"stock";
+            if (std::abs(pct) < 0.005) pctText << L"Stock";
             else pctText << std::showpos << std::fixed << std::setprecision(2) << pct << L" %";
             Gdiplus::RectF pctRect(left, ly - scaleF(2), right - left, scaleF(20));
             // Green means better, not bigger
@@ -12652,7 +12698,7 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
             g.DrawString(L"MINE IT AT", -1, &tinyFont, Gdiplus::PointF(left, wy + scaleF(4)), &faintBrush);
             float wx = left + scaleF(80);
             if (places.empty()) {
-                g.DrawString(L"no place for this one in the location table", -1, &placeFont,
+                g.DrawString(L"No location data", -1, &placeFont,
                              Gdiplus::PointF(wx, wy + scaleF(1)), &dimBrush);
             }
             // Some of these names are not places you can fly to. "Lagrange D"
@@ -12718,7 +12764,7 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
             // on this recipe's name and keeps only the sets that hand it out.
             // The count is drawn as one line with the link so the two sit on one
             // baseline; the link's own width is what can be clicked.
-            const std::wstring link = L"find in the grind planner \u203A";
+            const std::wstring link = L"Find in Grind Planner \u203A";
             // The link is drawn first, against the right edge, and the count
             // ends where it begins: one string drawn over the other lands a few
             // pixels off wherever measuring and drawing disagree about a width,
@@ -12852,9 +12898,9 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
             // unfolding it in place would draw the briefing over the rows below.
         }
         if (more) {
-            std::wstring text = L"showing " + std::to_wstring(craftSourceScroll_ + 1) + L"\u2013" +
+            std::wstring text = L"Showing " + std::to_wstring(craftSourceScroll_ + 1) + L"\u2013" +
                                 std::to_wstring(lastShown + 1) + L" of " +
-                                std::to_wstring(bp.srcCount) + L"  \u00B7  wheel to scroll";
+                                std::to_wstring(bp.srcCount) + L"  \u00B7  Scroll with mouse wheel";
             Gdiplus::RectF r(rowLeft, result ? sy2 + scaleF(2) : (float)ch - scaleF(72), rowRight - rowLeft,
                              scaleF(14));
             g.DrawString(text.c_str(), -1, &subFont, r, &rightAlign, &faintBrush);
@@ -12907,11 +12953,11 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
 
     const float fy = (float)ch - scaleF(24);
     hairline(g, M, fy - scaleF(10), (float)cw - M);
-    g.DrawString(L"Quality: drag, click a tooth of the comb, or use the arrow keys  \u00B7  "
-                 L"material \u2192 mining places  \u00B7  contract \u2192 its card  \u00B7  Esc back",
+    g.DrawString(L"Quality: Drag, click a comb tooth or use the arrow keys  \u00B7  Material "
+                 L"\u2192 Mining locations  \u00B7  Contract \u2192 Contract card  \u00B7  Esc: Back",
                  -1, &subFont, Gdiplus::PointF(M, fy), &faintBrush);
     Gdiplus::RectF fr(M, fy, (float)cw - 2 * M, scaleF(16));
-    std::wstring src = L"game data  \u00B7  " + toW(CRAFT_DATA_VERSION);
+    std::wstring src = L"Game data  \u00B7  " + toW(CRAFT_DATA_VERSION);
     g.DrawString(src.c_str(), -1, &subFont, fr, &rightAlign, &faintBrush);
 }
 
@@ -13390,7 +13436,7 @@ void MinerGUI::drawKeysCard(Gdiplus::Graphics& g, int cw, int ch) {
     const float right = card.GetRight() - scaleF(16);
     float y = card.Y + scaleF(14);
     g.DrawString(L"Keys", -1, &markFont, Gdiplus::PointF(left, y), &textBrush);
-    g.DrawString(L"click anywhere to close", -1, &subFont,
+    g.DrawString(L"Click anywhere to close", -1, &subFont,
                  Gdiplus::RectF(left, y + scaleF(8), right - left, scaleF(16)), &rightAlign, &faintBrush);
     y += scaleF(34);
 
@@ -13427,47 +13473,47 @@ void MinerGUI::drawKeysCard(Gdiplus::Graphics& g, int cw, int ch) {
     };
 
     group(L"WINDOWS");
-    row(L"F", L"Ore Finder", L"\u2013 pick an ore before the trip");
-    row(L"R", L"Refinery", L"\u2013 how much of a hold survives refining");
-    row(L"B", L"Blueprints", L"\u2013 every recipe, and what you own");
-    row(L"G", L"Grind Planner", L"\u2013 what is worth earning where you are");
-    row(L"N", L"Notes", L"\u2013 your own notebook");
-    row(L"O", L"Overlay", L"\u2013 the compact view, over the game");
+    row(L"F", L"Ore Finder", L"\u2013 Locations and prices per ore");
+    row(L"R", L"Refinery", L"\u2013 Refining yield, cost and time per station");
+    row(L"B", L"Blueprints", L"\u2013 All recipes and owned blueprints");
+    row(L"G", L"Grind Planner", L"\u2013 Missions that pay out missing blueprints");
+    row(L"N", L"Notes", L"\u2013 Personal notebook");
+    row(L"O", L"Overlay", L"\u2013 Compact view over the game");
 
     group(L"SIZE");
-    row(L"Ctrl +", nullptr, L"everything bigger \u2013 in the overlay, just the text");
-    row(L"Ctrl -", nullptr, L"everything smaller \u2013 in the overlay, just the text");
-    row(L"Ctrl 0", nullptr, L"back to the standard size");
+    row(L"Ctrl +", nullptr, L"Larger \u2013 Text only in the overlay");
+    row(L"Ctrl -", nullptr, L"Smaller \u2013 Text only in the overlay");
+    row(L"Ctrl 0", nullptr, L"Default size");
 
     group(L"SCANNING");
-    row(L"L", nullptr, L"live scanning on and off");
-    row(L"S", nullptr, L"one scan, now");
-    row(L"+ -", nullptr, L"how often it scans");
+    row(L"L", nullptr, L"Live scanning on / off");
+    row(L"S", nullptr, L"Single scan");
+    row(L"+ -", nullptr, L"Scan rate");
 
-    group(L"ANY TIME, EVEN IN THE GAME");
-    row(L"Ctrl+Alt+S", nullptr, L"snapshot for a bug report, into debug\\");
+    group(L"GLOBAL, ALSO IN GAME");
+    row(L"Ctrl+Alt+S", nullptr, L"Bug report snapshot, saved to debug\\");
 
     group(L"CLOSING");
-    row(L"Esc", nullptr, L"closes the window you are in");
-    row(L"Q", nullptr, L"quits");
+    row(L"Esc", nullptr, L"Close current window");
+    row(L"Q", nullptr, L"Quit");
 
     // The things that are only true inside one window, said once here rather
     // than in four footers
     y += scaleF(10);
     hairline(g, left, y, right);
     y += scaleF(12);
-    g.DrawString(L"INSIDE A WINDOW", -1, &groupFont, Gdiplus::PointF(left, y), &faintBrush);
+    g.DrawString(L"IN WINDOWS", -1, &groupFont, Gdiplus::PointF(left, y), &faintBrush);
     y += scaleF(20);
     // ...the window in the column of the keys, what it does in the column
     // of what they do. A window with several lines is named on the first of
     // them only: the same bright word three times over would be the loudest
     // thing on the card.
     const struct { const wchar_t* window; const wchar_t* what; } notes[] = {
-        {L"Blueprints", L"just type to search; arrow keys move the quality sliders"},
-        {L"Notes", L"just type to start one; drag a note onto another folder to move it"},
-        {L"Notes", L"Ctrl+V drops a picture from the clipboard into the note"},
-        {L"Notes", L"type an ore, a place or a recipe and press Enter to link it"},
-        {L"Ore Finder", L"F, B, N and O work here too"},
+        {L"Blueprints", L"Type to search \u00B7 Arrow keys move the quality sliders"},
+        {L"Notes", L"Type to start a note \u00B7 Drag a note onto a folder to move it"},
+        {L"Notes", L"Ctrl+V pastes a picture from the clipboard into the note"},
+        {L"Notes", L"Type an ore, location or recipe and press Enter to link it"},
+        {L"Ore Finder", L"F, B, N and O also work here"},
     };
     const wchar_t* named = nullptr;
     for (const auto& line : notes) {
@@ -13479,7 +13525,7 @@ void MinerGUI::drawKeysCard(Gdiplus::Graphics& g, int cw, int ch) {
         y += scaleF(18);
     }
 
-    g.DrawString(L"game data 4.10", -1, &subFont,
+    g.DrawString(L"Game data 4.10", -1, &subFont,
                  Gdiplus::RectF(left, card.GetBottom() - scaleF(22), right - left, scaleF(16)),
                  &rightAlign, &faintBrush);
 }
@@ -13537,11 +13583,11 @@ void MinerGUI::drawAboutCard(Gdiplus::Graphics& g, int cw, int ch) {
     float y = card.Y + scaleF(14);
 
     g.DrawString(L"Bedrock", -1, &markFont, Gdiplus::PointF(left, y), &textBrush);
-    g.DrawString(L"click anywhere to close", -1, &subFont,
+    g.DrawString(L"Click anywhere to close", -1, &subFont,
                  Gdiplus::RectF(left, y + scaleF(8), width, scaleF(16)), &rightAlign, &faintBrush);
     y += scaleF(26);
     g.DrawString(L"Version " BEDROCK_VERSION_W L"  ·  commit " BEDROCK_GIT_SHORT_W
-                 L"  ·  a mining companion for Star Citizen",
+                 L"  ·  Mining companion for Star Citizen",
                  -1, &subFont, Gdiplus::PointF(left, y), &dimBrush);
     y += scaleF(24);
 
@@ -13585,20 +13631,20 @@ void MinerGUI::drawAboutCard(Gdiplus::Graphics& g, int cw, int ch) {
         return hit;
     };
 
-    float paneBottom = group(L"SOMETHING WRONG, OR AN IDEA?", paneA, 7);
+    float paneBottom = group(L"BUG REPORTS AND IDEAS", paneA, 7);
     aboutDiscordHit_ = link(L".ravaxx",
-                            aboutCopied_ ? L"copied — paste it into Discord"
-                                         : L"Discord · click to copy",
+                            aboutCopied_ ? L"Copied - Paste it into Discord"
+                                         : L"Discord · Click to copy",
                             aboutCopied_);
-    note(L"A wrong reading is worth reporting. Ctrl+Alt+S writes a snapshot");
-    note(L"into debug\\ while the game runs - that is what makes it findable.");
+    note(L"Please report wrong readings. Ctrl+Alt+S saves a snapshot to debug\\");
+    note(L"while the game runs, which makes the issue traceable.");
     y = paneBottom + scaleF(14);
 
-    paneBottom = group(L"IF IT IS WORTH SOMETHING TO YOU", paneB, 7);
-    aboutKofiHit_ = link(L"ko-fi.com/ravaxx", L"click to open", false);
-    note(L"Bedrock is free and stays free - nothing in it is held back. If you");
-    note(L"like it and want to help with the work on it and with the server it");
-    note(L"fetches its updates from, there is a tip jar. Entirely optional.");
+    paneBottom = group(L"SUPPORT DEVELOPMENT", paneB, 7);
+    aboutKofiHit_ = link(L"ko-fi.com/ravaxx", L"Click to open", false);
+    note(L"Bedrock is free and will stay free, with no features held back. If you would");
+    note(L"like to support its development and the server it gets its updates from, a");
+    note(L"tip jar is available. Entirely optional.");
 
     // The footer of the card, at its foot rather than after the text, so the
     // disclaimer sits where a disclaimer belongs
@@ -13668,10 +13714,10 @@ void MinerGUI::drawWhatsNewCard(Gdiplus::Graphics& g, int cw, int ch) {
     // The name and the version stay put; only the list of changes moves
     g.DrawString(L"What\u2019s new", -1, &markFont,
                  Gdiplus::PointF(left, card.Y + scaleF(14)), &textBrush);
-    g.DrawString(L"click anywhere to close", -1, &subFont,
+    g.DrawString(L"Click anywhere to close", -1, &subFont,
                  Gdiplus::RectF(left, card.Y + scaleF(22), width, scaleF(16)), &rightAlign,
                  &faintBrush);
-    g.DrawString(L"Version " BEDROCK_VERSION_W L"  \u00B7  what changed since the one you had",
+    g.DrawString(L"Version " BEDROCK_VERSION_W L"  \u00B7  Changes since your previous version",
                  -1, &subFont, Gdiplus::PointF(left, card.Y + scaleF(40)), &dimBrush);
 
     // ...and the middle, clipped to the card and shifted by the scroll. The
@@ -13757,114 +13803,112 @@ void MinerGUI::drawWhatsNewCard(Gdiplus::Graphics& g, int cw, int ch) {
     version(L"2.7.0", L"25 October");
     group(L"NEW");
     item(L"Colours");
-    note(L"The new gear beside the ? opens the settings. There you can pick the");
-    note(L"colours of every window and the overlay: Bedrock\u2019s own, a set for");
-    note(L"protanopia, deuteranopia or tritanopia, or your own. The three sets");
-    note(L"are made so that their colours stay easy to tell apart with that kind");
-    note(L"of colour blindness. Each colour has sliders for hue, saturation and");
-    note(L"lightness, and takes a hex code. The preview shows the main window and");
-    note(L"the overlay, and how they look with each kind of colour blindness.");
+    note(L"The gear beside the ? opens the new settings. The colours of every");
+    note(L"window and the overlay can be set there: Bedrock\u2019s own, a set for");
+    note(L"protanopia, deuteranopia or tritanopia, or your own. Each of the three");
+    note(L"sets keeps its colours distinguishable for that type of colour blindness.");
+    note(L"Every colour has sliders for hue, saturation and lightness and accepts a");
+    note(L"hex code. The preview shows the main window and the overlay as seen");
+    note(L"with each type of colour blindness.");
     gap(6);
     item(L"Overlay opacity");
-    note(L"The overlay\u2019s opacity can now be set, from 40 to 100 %. Its text size");
-    note(L"and its size are in the settings too.");
+    note(L"The overlay opacity is now adjustable from 40 to 100 %. Text size and");
+    note(L"overlay size are in the settings as well.");
     gap(6);
     item(L"Component names");
-    note(L"A second box in the Blueprints window, \u201CShow class and grade in");
-    note(L"component names\u201D, puts each ship component\u2019s class, size and grade");
-    note(L"before its name in the game (Mil/1/D Tundra), and each missile\u2019s and");
-    note(L"torpedo\u2019s tracking signal and size before its own ([CS1] Spark");
-    note(L"Missile), the way StarStrings names them.");
+    note(L"A second option in the Blueprints window, \u201CShow class and grade in");
+    note(L"component names\u201D, adds class, size and grade in front of each ship");
+    note(L"component\u2019s name in the game (Mil/1/D Tundra), and tracking signal and");
+    note(L"size in front of each missile and torpedo ([CS1] Spark Missile), in the");
+    note(L"StarStrings format.");
     gap(10);
     group(L"CHANGED");
     item(L"Overlay text size");
     note(L"In the overlay, Ctrl+plus and Ctrl+minus now change only the text size,");
-    note(L"not the whole overlay. Ctrl+0 sets it back.");
+    note(L"not the whole overlay. Ctrl+0 resets it.");
     gap(6);
     item(L"Golem");
-    note(L"The Golem\u2019s head can be swapped now: pick it on the ship card, like");
-    note(L"the Prospector\u2019s. Bedrock uses the head the Golem\u2019s HUD shows.");
+    note(L"The Golem\u2019s laser head can now be swapped: select it on the ship card, as");
+    note(L"on the Prospector. Bedrock uses the laser head shown in the Golem\u2019s");
+    note(L"HUD.");
     gap(6);
     item(L"MOLE");
-    note(L"The MOLE\u2019s turrets only take size 2 heads, so only those are listed");
-    note(L"and suggested. A size 1 head saved on a MOLE is taken off; pick");
-    note(L"another one for that turret.");
+    note(L"The MOLE\u2019s turrets only accept size 2 laser heads, so only those are listed");
+    note(L"and recommended. A size 1 laser head saved on a MOLE is removed;");
+    note(L"select another one for that turret.");
     gap(10);
     version(L"2.6.7", L"21 October");
     note(L"Thanks to andydsm for the screenshots from the MOLE turrets!");
     gap(10);
     group(L"IMPROVED");
     item(L"MOLE turrets");
-    note(L"Rocks under 1 SCU now show in SCU as well. The turret writes their size");
-    note(L"in thousandths (\u201C364.01m SCU\u201D), and Bedrock reads that now.");
+    note(L"Deposits under 1 SCU now also show their size in SCU. The turret displays");
+    note(L"it in thousandths (\u201C364.01m SCU\u201D), which Bedrock now reads.");
     gap(6);
     item(L"What\u2019s in a rock");
-    note(L"The list of what\u2019s in a rock shows up more reliably. Over a bright");
-    note(L"background it sometimes didn\u2019t show at all.");
+    note(L"The rock composition list now appears more reliably. Against a bright");
+    note(L"background it sometimes did not appear at all.");
     gap(10);
     group(L"CHANGED");
     item(L"Install number");
-    note(L"Bedrock now makes a random number for your install and sends it when it");
-    note(L"checks for updates and when it shares refinery workloads. Bedrock\u2019s");
-    note(L"statistics count installs by this number instead of by IP address. It");
-    note(L"says nothing about you or your PC. An install that sends a lot of");
-    note(L"refinery readings that can\u2019t be right is held back from sharing for");
-    note(L"ten minutes. To leave the number out, close Bedrock and set stats=0 in");
-    note(L"region_config.txt (in %LOCALAPPDATA%\\Bedrock).");
+    note(L"Bedrock now generates a random number for your installation and sends");
+    note(L"it with update checks and shared refinery workloads. Bedrock\u2019s statistics");
+    note(L"count installations by this number instead of by IP address. It contains no");
+    note(L"information about you or your PC. An installation that sends many");
+    note(L"implausible refinery readings is excluded from sharing for ten minutes. To");
+    note(L"omit the number, close Bedrock and set stats=0 in region_config.txt (in");
+    note(L"%LOCALAPPDATA%\\Bedrock).");
     gap(10);
     version(L"2.6.6", L"20 October");
     note(L"Thanks to andydsm for the feedback on the overlay and the MOLE turrets!");
     gap(10);
     group(L"NEW");
     item(L"Refinery workloads");
-    note(L"Since 4.10.2, a busy refinery charges extra for new work orders, and");
-    note(L"only the refinery terminal shows how busy it is. Bedrock now reads this");
-    note(L"when you use a terminal and shows it next to the station in the");
-    note(L"Refinery window. With \u201CShare refinery workloads\u201D ticked, Bedrock");
-    note(L"sends these readings, and the cost, time and yield of the work orders");
-    note(L"you set up, to Bedrock\u2019s server, and shows the workloads other");
-    note(L"players have seen. That way you can check a station before you fly");
-    note(L"there. Nothing about you is sent. Sharing is on by default; you can");
-    note(L"untick it in the Refinery window.");
+    note(L"Since 4.10.2, a busy refinery charges extra for new work orders, and only");
+    note(L"the refinery terminal shows its workload. Bedrock now reads it when you");
+    note(L"use a terminal and shows it next to the station in the Refinery window.");
+    note(L"With \u201CShare refinery workloads\u201D ticked, Bedrock sends these readings,");
+    note(L"together with cost, time and yield of the work orders you set up, to");
+    note(L"Bedrock\u2019s server, and shows the workloads other players have seen. This");
+    note(L"lets you check a station before flying there. No personal data is sent.");
+    note(L"Sharing is on by default and can be turned off in the Refinery window.");
     gap(6);
     item(L"Resizable overlay");
-    note(L"Drag the bottom-right corner of the overlay to make it bigger or");
-    note(L"smaller.");
+    note(L"Drag the bottom-right corner of the overlay to resize it.");
     gap(10);
     group(L"IMPROVED");
     item(L"Overlay");
-    note(L"On Windows, clicks on the overlay now go through to the game, so it no");
-    note(L"longer takes the game out of focus. To use its buttons, move it or");
-    note(L"resize it, Alt-Tab to Bedrock first. The overlay is also a bit narrower.");
+    note(L"On Windows, clicks on the overlay now pass through to the game, so the");
+    note(L"game keeps focus. To use the overlay\u2019s buttons, move it or resize it,");
+    note(L"Alt-Tab to Bedrock first. The overlay is also slightly narrower.");
     gap(6);
     item(L"MOLE turrets");
-    note(L"In the MOLE\u2019s turrets, what\u2019s in the rock now shows in SCU instead of");
-    note(L"per cent. Rocks under 1 SCU still show per cent.");
+    note(L"In the MOLE\u2019s turrets, the rock composition now shows in SCU instead of");
+    note(L"per cent. Deposits under 1 SCU still show per cent.");
     gap(6);
     item(L"Blueprints");
     note(L"Updated for Star Citizen 4.10.2: the F55 \u201CShadowflux\u201D, the Monolith");
-    note(L"armor, two new Wikelo contracts, and four renamed blueprints, among");
-    note(L"them DayBreak and Goliath. Pressurized Ice now shows where to mine it");
-    note(L"(it\u2019s refined from ice), and its quality snaps to steps like the");
-    note(L"other materials.");
+    note(L"armor, two new Wikelo contracts and four renamed blueprints, including");
+    note(L"DayBreak and Goliath. Pressurized Ice now shows where to mine it (it is");
+    note(L"refined from ice), and its quality snaps to steps like the other materials.");
     gap(10);
     group(L"FIXED");
-    note(L"Refinery jobs to UEX: with several work orders set up one after");
-    note(L"another, one of them could go missing.");
+    note(L"Refinery jobs sent to UEX: with several work orders set up in a row, one of");
+    note(L"them could be missing.");
     gap(6);
     note(L"Work orders for construction salvage are now read at the refinery");
     note(L"terminal.");
     gap(10);
     group(L"CHANGED");
-    note(L"Bedrock no longer reports prices to UEX: reading them off the terminal");
-    note(L"wasn\u2019t reliable enough. Refinery jobs still go to your UEX account if");
-    note(L"you\u2019ve turned that on.");
+    note(L"Bedrock no longer reports prices to UEX, as reading them from the");
+    note(L"terminal was not reliable enough. Refinery jobs are still sent to your UEX");
+    note(L"account if enabled.");
     gap(10);
     version(L"2.6.5.2", L"7 October");
-    note(L"Reporting prices and refinery jobs to UEX works again: 2.6.5.1");
-    note(L"went out without Bedrock\u2019s UEX app token. Builds are now");
-    note(L"reproducible: the same code, built with the same tools, gives the");
-    note(L"same Bedrock.exe. The README on GitHub says how to check it.");
+    note(L"Reporting prices and refinery jobs to UEX works again: 2.6.5.1 was");
+    note(L"released without Bedrock\u2019s UEX app token. Builds are now reproducible:");
+    note(L"the same code built with the same tools produces the same Bedrock.exe.");
+    note(L"The README on GitHub describes how to verify it.");
     gap(10);
     version(L"2.6.5.1", L"7 October");
     note(L"Bedrock is now open source under the GNU GPL, at");
@@ -13876,72 +13920,70 @@ void MinerGUI::drawWhatsNewCard(Gdiplus::Graphics& g, int cw, int ch) {
     gap(10);
     group(L"NEW");
     item(L"Prices from UEX");
-    note(L"The Ore Finder now shows where refined ore sells best: the five");
-    note(L"terminals paying the most for each ore, from the prices players");
-    note(L"report on uexcorp.space. The ore that sells highest blinks red.");
-    note(L"For ROC deposits and hand minables, it shows the best buyer for");
-    note(L"each gem. Terminals that are nearly full are marked, since they");
-    note(L"may not buy your whole load.");
+    note(L"The Ore Finder now shows where refined ore sells best: the five terminals");
+    note(L"paying the most for each ore, from the prices players report on");
+    note(L"uexcorp.space. The highest-selling ore blinks red. For ROC deposits and");
+    note(L"hand minables, it shows the best buyer for each gem. Terminals that are");
+    note(L"nearly full are marked, as they may not buy the whole load.");
     gap(6);
     item(L"UEX market");
-    note(L"A new tab in the Ore Finder shows what players are buying and");
-    note(L"selling an ore for on UEX, and at what quality. Click a listing");
-    note(L"to open it on UEX. In the rock view, a part of quality 900 or");
-    note(L"more shows what a player is paying for it.");
+    note(L"A new tab in the Ore Finder shows the prices and qualities at which");
+    note(L"players buy and sell an ore on UEX. Click a listing to open it on UEX. In the");
+    note(L"rock view, a part of quality 900 or more shows what a player is paying for");
+    note(L"it.");
     gap(6);
     item(L"Report to UEX");
-    note(L"If you like, connect your UEX account. Bedrock can then report");
-    note(L"the prices you trade at and add your refinery jobs to your UEX");
-    note(L"account. It asks once at the first start, and you can change it");
-    note(L"later in the Ore Finder. All of this is optional. UEX only takes");
-    note(L"reports from data runners, and Bedrock shows you where to sign");
-    note(L"up. The last screenshot sent to UEX can be opened from the UEX");
-    note(L"account window.");
+    note(L"Optionally connect your UEX account. Bedrock can then report the prices");
+    note(L"you trade at and add your refinery jobs to your UEX account. It asks once");
+    note(L"at the first start; the setting can be changed later in the Ore Finder. UEX");
+    note(L"only accepts reports from data runners, and Bedrock shows where to sign");
+    note(L"up. The last screenshot sent to UEX can be opened from the UEX account");
+    note(L"window.");
     gap(6);
     item(L"Refinery work orders");
-    note(L"When you use a refinery terminal, Bedrock reads your work orders");
-    note(L"and lists them in the Refinery window under Work orders: what");
-    note(L"comes out and when it’s done. The Refinery button shows how many");
-    note(L"are done, and orders you collect come off the list. Tested at");
-    note(L"Levski, Checkmate and Pyro Gateway.");
+    note(L"When you use a refinery terminal, Bedrock reads your work orders and");
+    note(L"lists them in the Refinery window under Work orders, with output and");
+    note(L"completion time. The Refinery button shows how many are complete, and");
+    note(L"collected orders are removed from the list. Tested at Levski, Checkmate");
+    note(L"and Pyro Gateway.");
     gap(6);
     item(L"What’s in the rock");
-    note(L"After a scan, the overlay and the rock view list what the rock is");
-    note(L"made of: each ore with its quality and SCU, best quality first.");
-    note(L"The ores you’re looking for blink red. The Ore Finder also shows");
-    note(L"what a rock of each ore usually holds, and at what quality.");
+    note(L"After a scan, the overlay and the rock view list the rock’s composition:");
+    note(L"each ore with quality and SCU, highest quality first. Target ores blink red.");
+    note(L"The Ore Finder also shows the typical composition and quality of each");
+    note(L"ore’s rocks.");
     gap(6);
     item(L"Your trades");
-    note(L"The Ore Finder lists what you bought and sold at the terminals,");
-    note(L"from the game log, next to the best price on UEX right now.");
+    note(L"The Ore Finder lists your purchases and sales at the terminals from the");
+    note(L"game log, next to the current best price on UEX.");
     gap(10);
     group(L"IMPROVED");
     item(L"Loadout from the HUD");
-    note(L"In mining mode, Bedrock reads the loadout from the HUD before your");
-    note(L"first scan. Lasers with longer names, like the Hofstede, and the");
-    note(L"FLTR, XTR, Vaux and Forel modules are now recognized. A module");
-    note(L"you swap is swapped in the saved loadout too.");
+    note(L"In mining mode, Bedrock reads the loadout from the HUD before the first");
+    note(L"scan. Lasers with longer names, such as the Hofstede, and the FLTR, XTR,");
+    note(L"Vaux and Forel modules are now recognized. A swapped module is also");
+    note(L"updated in the saved loadout.");
     gap(6);
     item(L"Overlay");
-    note(L"The overlay keeps its width and only grows in height. The laser");
-    note(L"power scale is gone. A rock you can’t break now says “LASER");
-    note(L"UNABLE TO BREAK DEPOSIT”, with the power it needs and what your");
-    note(L"laser provides. The hold value says what it means: “52 % laser");
-    note(L"power holds it steady, more makes it climb”.");
+    note(L"The overlay keeps its width and only grows in height. The laser power");
+    note(L"scale has been removed. A rock that cannot be broken now shows “LASER");
+    note(L"UNABLE TO BREAK DEPOSIT” with the required power and what the laser");
+    note(L"provides. The hold value states its meaning: “52 % laser power holds it");
+    note(L"steady, more makes it climb”.");
     gap(6);
     item(L"Contracts and gadgets");
-    note(L"Ores that a gathering contract you’ve accepted asks for blink in");
-    note(L"the scan. The Grind Planner shows which contracts you’ve accepted");
-    note(L"and when a finished one is back. A gadget you place on a rock is");
-    note(L"counted in the rock view.");
+    note(L"Ores requested by an accepted gathering contract blink in the scan. The");
+    note(L"Grind Planner shows accepted contracts and when a completed one");
+    note(L"becomes available again. A gadget placed on a rock is included in the");
+    note(L"rock view.");
     gap(6);
     item(L"Lighter on the game");
     note(L"Bedrock runs at a lower priority, so the game gets the CPU first.");
     gap(6);
     item(L"Picking a place");
-    note(L"The list of places you can pick by hand is sorted alphabetically");
-    note(L"within each system and now includes Stanton’s Lagrange points.");
-    note(L"Pyro’s asteroid clusters are listed as one entry.");
+    note(L"The list of locations for manual selection is sorted alphabetically within");
+    note(L"each system and now includes Stanton’s Lagrange points. Pyro’s asteroid");
+    note(L"clusters are listed as one entry.");
     gap(10);
     group(L"FIXED");
     item(L"Phantom signatures");
@@ -13949,18 +13991,17 @@ void MinerGUI::drawWhatsNewCard(Gdiplus::Graphics& g, int cw, int ch) {
     note(L"signatures.");
     gap(6);
     item(L"Bedrock reading itself");
-    note(L"The overlay could be read as a signature when it sat over the");
-    note(L"search area. While live mode is on, the overlay is now hidden");
-    note(L"from screen captures, so it also won’t show in recordings or");
-    note(L"streams.");
+    note(L"The overlay could be read as a signature when placed over the search");
+    note(L"area. While live mode is on, the overlay is now hidden from screen");
+    note(L"captures, so it also does not appear in recordings or streams.");
     gap(6);
     item(L"Second screen");
     note(L"The scan no longer slows down when a window is in front on");
     note(L"another screen.");
     gap(6);
     item(L"Lasers of the ship before");
-    note(L"The overlay could show the lasers of the ship you flew before.");
-    note(L"Each new rock now checks the loadout again.");
+    note(L"The overlay could show the lasers of the previously flown ship. The");
+    note(L"loadout is now checked again for each new rock.");
     gap(6);
     item(L"Linux");
     note(L"Numbers with a decimal point are now read correctly when the");
@@ -13973,32 +14014,31 @@ void MinerGUI::drawWhatsNewCard(Gdiplus::Graphics& g, int cw, int ch) {
     gap(10);
     group(L"NEW");
     item(L"Loadout from the mining HUD");
-    note(L"In a Prospector or a Golem, Bedrock now reads the laser and the");
-    note(L"modules from the mining HUD when you scan a rock, and switches");
-    note(L"to the saved ship that has them. Before, it had to wait until");
-    note(L"the game log named the ship, which sometimes took until the");
-    note(L"second quantum jump. In the MOLE nothing changes: the pilot");
-    note(L"can’t see how the heads are fitted, so it keeps the loadout");
-    note(L"you picked.");
+    note(L"In a Prospector or Golem, Bedrock now reads the laser and modules from");
+    note(L"the mining HUD when you scan a rock, and switches to the matching");
+    note(L"saved ship. Previously it had to wait until the game log named the ship,");
+    note(L"which sometimes took until the second quantum jump. The MOLE is");
+    note(L"unchanged: the pilot cannot see how the laser heads are fitted, so the");
+    note(L"selected loadout is kept.");
     gap(6);
     item(L"Your rank in the Grind Planner");
-    note(L"The Grind Planner now shows your rank with each outfit, worked");
-    note(L"out from your game logs: the contracts you took and finished");
-    note(L"yourself since the reputation reset in 4.8. Missions above your");
-    note(L"rank have a lock, and you can see roughly how much reputation");
-    note(L"you still need. “Open to me” shows only the sets with a mission");
-    note(L"open to you. If a rank is wrong, open a set and pick the right");
-    note(L"one under YOUR RANK. Bedrock counts on from there.");
+    note(L"The Grind Planner now shows your rank with each outfit, calculated from");
+    note(L"your game logs: the contracts you accepted and completed yourself since");
+    note(L"the reputation reset in 4.8. Missions above your rank show a lock, along");
+    note(L"with the approximate reputation still required. “Open to me” shows only");
+    note(L"sets with a mission available to you. If a rank is wrong, open a set and");
+    note(L"select the correct one under YOUR RANK. Bedrock continues counting");
+    note(L"from there.");
     gap(10);
     group(L"IMPROVED");
     item(L"Ship name in the overlay");
-    note(L"The overlay’s rock view shows which ship the numbers are for,");
-    note(L"in the bottom left corner.");
+    note(L"The overlay’s rock view shows the ship the figures apply to, in the bottom");
+    note(L"left corner.");
     gap(6);
     item(L"Rock view in the Golem");
-    note(L"The rock view now also comes up in the Golem when the game");
-    note(L"shows its long labels (MASS, RESISTANCE, INSTABILITY), as it");
-    note(L"does without a language pack.");
+    note(L"The rock view now also appears in the Golem when the game shows its");
+    note(L"long labels (MASS, RESISTANCE, INSTABILITY), as it does without a");
+    note(L"language pack.");
     gap(6);
     item(L"Contracts in the game’s own words");
     note(L"Contract titles and descriptions now come from the game itself");
@@ -14006,25 +14046,24 @@ void MinerGUI::drawWhatsNewCard(Gdiplus::Graphics& g, int cw, int ch) {
     note(L"is read from the game files.");
     gap(6);
     item(L"Destroyed ships");
-    note(L"If your ship is destroyed while you’re in it, the replacement");
-    note(L"you claim takes over its loadout.");
+    note(L"If your ship is destroyed while you are in it, the claimed replacement");
+    note(L"inherits its loadout.");
     gap(10);
     group(L"FIXED");
     item(L"Golem rock view");
-    note(L"While the laser was on, the rock view could keep showing the");
-    note(L"rock you looked at before. It now clears until the new rock can");
-    note(L"be read.");
+    note(L"While the laser was active, the rock view could keep showing the previous");
+    note(L"rock. It now clears until the new rock can be read.");
     gap(6);
     item(L"Blueprints from the PTU");
-    note(L"Blueprints you only got on the PTU no longer count as owned on");
-    note(L"LIVE. The launcher sometimes leaves PTU logs in the LIVE folder,");
-    note(L"and Bedrock read those too. The first start after the update");
-    note(L"reads your old logs once more, which can take a minute.");
+    note(L"Blueprints received only on the PTU no longer count as owned on LIVE.");
+    note(L"The launcher sometimes leaves PTU logs in the LIVE folder, and Bedrock");
+    note(L"read those as well. The first start after the update reads your old logs");
+    note(L"once more, which can take a minute.");
     gap(6);
     item(L"Contracts under the wrong outfit");
-    note(L"Some Headhunters and Citizens For Prosperity contracts were");
-    note(L"listed under the outfit they work against. They’re now under the");
-    note(L"one that offers them.");
+    note(L"Some Headhunters and Citizens For Prosperity contracts were listed under");
+    note(L"the outfit they work against. They are now listed under the outfit that");
+    note(L"offers them.");
     gap(6);
     item(L"Power scale");
     note(L"The “min” label no longer covers the 0.");
@@ -14033,17 +14072,17 @@ void MinerGUI::drawWhatsNewCard(Gdiplus::Graphics& g, int cw, int ch) {
     version(L"2.5.1.1", L"30 September");
     group(L"NEW");
     item(L"Several ships");
-    note(L"You can now save several ships, also more than one of the same");
-    note(L"type, and name them. Add one at the bottom of the ship list,");
-    note(L"change it with “Edit ship”. Pick a ship once while you’re sitting");
-    note(L"in it, after that Bedrock recognizes it by itself.");
+    note(L"Several ships can now be saved and named, including more than one of");
+    note(L"the same type. Add one at the bottom of the ship list and change it with");
+    note(L"“Edit ship”. Select a ship once while seated in it; after that Bedrock");
+    note(L"recognizes it automatically.");
     gap(6);
     item(L"Blueprints marked automatically");
     note(L"If a contract that always gives a blueprint gives you none, you");
     note(L"already have all of its blueprints. Bedrock now marks them as owned.");
     gap(6);
     item(L"Overlay position");
-    note(L"The overlay now opens where you last put it.");
+    note(L"The overlay now opens at its last position.");
     gap(10);
     group(L"IMPROVED");
     item(L"Less CPU while scanning");
@@ -14053,10 +14092,10 @@ void MinerGUI::drawWhatsNewCard(Gdiplus::Graphics& g, int cw, int ch) {
     note(L"Long location names no longer overlap the percentage.");
     gap(6);
     item(L"Backups");
-    note(L"Backups are now saved as .bedrock files instead of .txt, because");
-    note(L"editing one in a text editor could break it. Your old .txt backups");
-    note(L"still work. Backups are also much smaller now, and after a restore");
-    note(L"your ships and blueprints are back right away.");
+    note(L"Backups are now saved as .bedrock files instead of .txt, as editing one in a");
+    note(L"text editor could damage it. Existing .txt backups still work. Backups are");
+    note(L"also much smaller, and ships and blueprints are available immediately");
+    note(L"after a restore.");
     gap(8);
     note(L"Thanks to andydsm for the feedback!");
     gap(14);
@@ -14064,156 +14103,147 @@ void MinerGUI::drawWhatsNewCard(Gdiplus::Graphics& g, int cw, int ch) {
     version(L"2.5.0", L"30 September");
     group(L"IN THE GAME");
     item(L"Your blueprints in the game\u2019s contracts (game restart required)");
-    note(L"Tick the box at the top of the Blueprints window: contracts that");
-    note(L"pay out blueprints get [BP], and their description lists them, the");
-    note(L"ones you don\u2019t have yet in blue. Not together with another");
-    note(L"language pack - Bedrock leaves that one alone.");
+    note(L"Tick the box at the top of the Blueprints window: contracts that pay out");
+    note(L"blueprints are marked [BP], and their description lists them, with the ones");
+    note(L"you do not own yet in blue. Not compatible with another language pack -");
+    note(L"Bedrock leaves an existing one untouched.");
     gap(10);
     group(L"LOOK");
     item(L"A new look");
-    note(L"Every window has been redone, on cards and frosted glass.");
+    note(L"Every window has been redesigned with cards and frosted glass.");
     gap(10);
     version(L"2.0.3", L"28 September");
     group(L"LINUX");
     item(L"Bedrock runs on Linux");
-    note(L"One file, no install: Bedrock-2.0.3-x86_64.AppImage runs on");
-    note(L"SteamOS, Arch, Ubuntu, Fedora and any other distribution from");
-    note(L"2022 on. Same readers, same windows. The game is read from");
-    note(L"its window under X11 or XWayland, which is where Proton and");
-    note(L"Wine put it.");
+    note(L"One file, no installation: Bedrock-2.0.3-x86_64.AppImage runs on");
+    note(L"SteamOS, Arch, Ubuntu, Fedora and any other distribution from 2022");
+    note(L"onward, with the same readers and windows. The game is read from its");
+    note(L"window under X11 or XWayland, where Proton and Wine place it.");
     gap(10);
     group(L"FIXED");
     item(L"Where you are");
-    note(L"Other ships’ log lines no longer move the place: an Idris parked");
-    note(L"nearby used to flip the header 200 times a session. The ground");
-    note(L"under the ship is read from the game’s own terrain statistics as");
-    note(L"well, and a place set by hand hands back to the log as soon as it");
-    note(L"names somewhere else. Thank you, Tatau, for the report that set");
-    note(L"this off.");
+    note(L"Log lines from other ships no longer change the location: an Idris parked");
+    note(L"nearby used to switch the header 200 times per session. The ground");
+    note(L"under the ship is also read from the game’s terrain statistics, and a");
+    note(L"manually set location returns to the log as soon as it names another one.");
+    note(L"Thanks to Tatau for the report.");
     gap(6);
     item(L"The × in match rows");
-    note(L"“ROC Deposit ×7” showed a Korean letter where the × belongs.");
+    note(L"“ROC Deposit ×7” showed a Korean character instead of the ×.");
     gap(14);
 
     version(L"2.0.2.1", L"26 September");
     group(L"SCANNER");
     item(L"Two readers on every signature");
-    note(L"Bedrock’s digit reader is now backed by a small neural text");
-    note(L"recogniser. It runs on your PC and needs no connection. When");
-    note(L"the two disagree, the more certain one wins, which catches the");
-    note(L"mistakes that used to repeat on every frame, like a 6 read as");
-    note(L"an 8.");
+    note(L"Bedrock’s digit reader is now backed by a small neural text recogniser that");
+    note(L"runs locally and needs no connection. When the two disagree, the more");
+    note(L"confident result wins, which corrects errors that used to repeat on every");
+    note(L"frame, such as a 6 read as an 8.");
     gap(6);
     item(L"Fewer wrong numbers");
-    note(L"On four minutes of MOLE flight through a field, the old reader");
-    note(L"alone would have shown 12 wrong numbers (18,000 for 16,000,");
-    note(L"88,540 for 68,540 …). Now all of them come out right. On 230");
-    note(L"test pictures, 88 of 100 markers read correctly instead of 77.");
+    note(L"In four minutes of MOLE flight through a field, the old reader alone would");
+    note(L"have shown 12 wrong values (18,000 for 16,000, 88,540 for 68,540 …). All");
+    note(L"of them are now read correctly. On 230 test images, 88 of 100 markers are");
+    note(L"read correctly instead of 77.");
     gap(6);
     item(L"Further performance improvements");
-    note(L"A number both readers agree on shows on the first scan instead");
-    note(L"of after a few repeats, and a look that reads a rock is a");
-    note(L"little quicker than before.");
+    note(L"A value both readers agree on now appears on the first scan instead of");
+    note(L"after several repeats, and reading a rock is slightly faster.");
     gap(6);
     item(L"Rocks are read from the MOLE’s turrets");
-    note(L"The turret HUD prints its figures larger and in a different");
-    note(L"face, which the shape reader couldn’t make out. The new reader");
-    note(L"handles those lines.");
+    note(L"The turret HUD shows its figures larger and in a different typeface, which");
+    note(L"the shape reader could not read. The new reader handles those lines.");
     gap(6);
     item(L"The ore’s name");
     note(L"The name above a rock is read by the new reader as well.");
     gap(10);
     group(L"GRIND PLANNER & BLUEPRINTS");
     item(L"Contracts have their real names");
-    note(L"Bit Zeros, Dead Saints and Foxwell contracts are named the way");
-    note(L"the game names them (“Data Transfer”, “Pick Up, Put Down” …)");
-    note(L"instead of “Bit Zeros contract”.");
+    note(L"Bit Zeros, Dead Saints and Foxwell contracts now use their in-game");
+    note(L"names (“Data Transfer”, “Pick Up, Put Down” …) instead of “Bit Zeros");
+    note(L"contract”.");
     gap(6);
     item(L"Search box");
-    note(L"Type part of a mission, a blueprint or an outfit (“pick”,");
-    note(L"“woodland”, “fox”, “bitzeros”) in the planner or in the");
-    note(L"Blueprints window.");
+    note(L"Type part of a mission, blueprint or outfit name (“pick”, “woodland”, “fox”,");
+    note(L"“bitzeros”) in the planner or in the Blueprints window.");
     gap(6);
     item(L"Missions by rank");
-    note(L"A set lists its missions in rank order, so you can see which");
-    note(L"one the board offers at your standing.");
+    note(L"A set lists its missions in rank order, showing which one the mission");
+    note(L"board offers at your standing.");
     gap(6);
     item(L"Contracts with several reward pools");
-    note(L"Foxwell’s Orange escort run pays out repeaters and coolers. The");
-    note(L"card shows both pools, and the planner shows which other sets");
-    note(L"the same runs feed.");
+    note(L"Foxwell’s Orange escort run pays out repeaters and coolers. The card");
+    note(L"shows both pools, and the planner shows which other sets the same runs");
+    note(L"contribute to.");
     gap(6);
     item(L"Straight from a blueprint to the planner");
-    note(L"“find in the grind planner” on a blueprint, and from a contract");
-    note(L"card to its set with “show this set in the grind planner”.");
+    note(L"“Find in Grind Planner” on a blueprint, and “Show set in Grind Planner”");
+    note(L"from a contract card to its set.");
     gap(10);
     // Only a mention here; the rule itself is in countedModules and on the
     // LOADOUT card.
     group(L"MODULES");
     item(L"Module logic improved");
-    note(L"How active modules are counted has been reworked, and the rock");
-    note(L"view says which laser power it means.");
+    note(L"The counting of active modules has been reworked, and the rock view");
+    note(L"states which laser power a value refers to.");
     gap(10);
     group(L"FIXED");
     item(L"Found in");
-    note(L"The line was empty under combined readings like Stileron + ROC");
+    note(L"The line was empty for combined readings such as Stileron + ROC");
     note(L"Deposit ×7.");
     gap(6);
     item(L"Contract cards");
     note(L"A click on an open card no longer opens the contract behind it.");
     gap(10);
     group(L"GOOD TO KNOW");
-    note(L"The download is about 15 MB bigger because of the second");
-    note(L"reader, and a scan takes a fraction longer, roughly 0.12 s");
-    note(L"instead of 0.08.");
+    note(L"The download is about 15 MB larger due to the second reader, and a scan");
+    note(L"takes slightly longer, about 0.12 s instead of 0.08 s.");
     gap(14);
 
     version(L"2.0.1", L"18 September");
     group(L"FASTER");
-    item(L"A rock comes in sooner");
-    note(L"Bedrock keeps an eye on the spot where the last scan panel");
-    note(L"stood and looks again the moment it is back, instead of waiting");
-    note(L"for its next full look. It remembers the spot across restarts.");
+    item(L"Faster rock detection");
+    note(L"Bedrock watches the position of the last scan panel and checks again as");
+    note(L"soon as it reappears, instead of waiting for the next full scan. The position");
+    note(L"is kept across restarts.");
     gap(6);
     item(L"The MOLE's pilot seat in bright light");
-    note(L"Under a bright sky the panel's labels were barely recognised");
-    note(L"while its figures read fine; those looks count now. Going from");
-    note(L"one rock to the next no longer waits five looks for the panel's");
-    note(L"size to settle.");
+    note(L"Under a bright sky the panel labels were barely recognised while the");
+    note(L"figures read fine; those scans now count. Switching from one rock to the");
+    note(L"next no longer waits five scans for the panel size to settle.");
     gap(10);
     group(L"CHANGED");
     item(L"I'M LOOKING FOR, by rarity");
-    note(L"The list on the main window is in the Ore Finder's order now:");
+    note(L"The list in the main window now follows the Ore Finder's order:");
     note(L"Legendary first, each rarity under its own heading.");
     gap(10);
     group(L"FIXED");
     item(L"Closing Bedrock");
-    note(L"After a note with a picture in it had been open, it could crash");
-    note(L"on the way out.");
+    note(L"After a note with a picture had been open, Bedrock could crash when");
+    note(L"closing.");
     gap(6);
     item(L"Grind Planner");
-    note(L"An open row named a Pyro region twice and listed the mission it");
-    note(L"offered among its own alternatives.");
+    note(L"An expanded row named a Pyro region twice and listed its own mission");
+    note(L"among the alternatives.");
     gap(10);
     group(L"KNOWN");
     item(L"A sun behind the panel");
-    note(L"With a bright star right behind the figures they cannot be read");
-    note(L"at all — by Bedrock, and barely by eye.");
+    note(L"With a bright star directly behind the figures, they cannot be read at all -");
+    note(L"by Bedrock, and barely by eye.");
     gap(14);
 
     version(L"2.0.0", L"17 September");
     group(L"NEW");
-    item(L"Scan a rock: can you crack it?");
-    note(L"While the game's scan panel is up the window shows the rock");
-    note(L"instead of the signatures: whether it holds, on your own or");
-    note(L"with a crew, which head, at what laser power, whether a gadget");
-    note(L"is needed — and what would break it if nothing on board does.");
-    note(L"Fill in your LOADOUT first; the answer is only as good as that.");
+    item(L"Rock analysis: can it be broken?");
+    note(L"While the game's scan panel is open, the window shows the rock instead");
+    note(L"of the signatures: whether the charge can be held, solo or with a crew,");
+    note(L"with which laser head and at what laser power, whether a gadget is");
+    note(L"required, and what would break it if nothing on board can. Set up your");
+    note(L"loadout first; the result depends on it.");
     gap(6);
     item(L"The reader knows more seats");
-    note(L"The MOLE's pilot seat and turrets, the Golem, the Prospector");
-    note(L"under LAMP by day — with the game's own labels and with the");
-    note(L"language pack's.");
+    note(L"The MOLE's pilot seat and turrets, the Golem, and the Prospector under");
+    note(L"LAMP by day, with both the game's own labels and the language pack's.");
     gap(10);
     group(L"FASTER");
     item(L"Half the scan time");
@@ -14221,119 +14251,106 @@ void MinerGUI::drawWhatsNewCard(Gdiplus::Graphics& g, int cw, int ch) {
     note(L"of the time; a scan takes about half as long as before.");
     gap(10);
     group(L"KNOWN");
-    item(L"A rock takes a moment to come in");
-    note(L"Sometimes more than a moment. A fix that costs no scanning");
-    note(L"speed is being looked for.");
+    item(L"Rock detection delay");
+    note(L"Sometimes longer. A fix without cost to scanning speed is in progress.");
     gap(14);
 
     version(L"1.2.8", L"15 September");
     group(L"FIXED");
-    item(L"Where you are, without a jump");
-    note(L"Thank you, Clear-Sky, for the report: Bedrock kept naming the");
-    note(L"moon you had left behind. It read the place from one line only");
-    note(L"— the one the game writes when a quantum route is set —");
-    note(L"and a ship moves in plenty of ways that write no such line.");
+    item(L"Location without a quantum jump");
+    note(L"Thanks to Clear-Sky for the report: Bedrock kept showing the moon you");
+    note(L"had already left. It read the location from one log line only, written when");
+    note(L"a quantum route is set, and a ship can move in many ways that write no");
+    note(L"such line.");
     gap(6);
-    note(L"A second line is read alongside it now, one the game writes on");
-    note(L"arrival. Hop between two moons without a jump and the header");
-    note(L"goes with you.");
+    note(L"A second line, written on arrival, is now read as well. Travelling between");
+    note(L"two moons without a quantum jump now updates the header.");
     gap(6);
-    note(L"And when neither can say: PLACE, at the top left, sets it by");
-    note(L"hand. A fallback rather than a setting — it holds until you");
-    note(L"hand it back with “Follow the game log”.");
+    note(L"When neither line applies, PLACE at the top left sets the location");
+    note(L"manually. This is a fallback rather than a setting: it holds until “Follow the");
+    note(L"game log” is selected.");
     gap(10);
-    item(L"Being told there is an update");
-    note(L"The line that says a new version is out runs along the foot of");
-    note(L"the window, and the overlay has no foot \u2014 so if you keep it");
-    note(L"up while you fly, nobody ever told you. Its top right corner");
-    note(L"carries a button now, beside LIVE and FULL.");
+    item(L"Update notification");
+    note(L"The update notice runs along the bottom of the window, which the");
+    note(L"overlay does not have, so it never appeared while flying with the overlay.");
+    note(L"The overlay now has a button in its top right corner, next to LIVE and");
+    note(L"FULL.");
     gap(10);
     group(L"SOON");
-    note(L"The LOADOUT button at the top is the first piece of something");
-    note(L"that is not finished yet. It does nothing on its own, and");
-    note(L"nothing that worked before depends on it.");
+    note(L"The LOADOUT button at the top is the first part of an upcoming feature. It");
+    note(L"has no function yet, and nothing that worked before depends on it.");
     gap(16);
 
     version(L"1.2.7", L"14 September");
     group(L"NEW");
     item(L"Pictures in your notes");
-    note(L"A picture tells more than a thousand words, and nobody wants to");
-    note(L"type a thousand words about a rock. So notes take screenshots");
-    note(L"now: Ctrl+V drops in whatever the Snipping Tool left on the");
-    note(L"clipboard, ADD FILE fetches one off the disk, and the rail on");
-    note(L"the right folds away when you would rather read.");
+    note(L"Notes now accept screenshots: Ctrl+V pastes the Snipping Tool's");
+    note(L"clipboard image, ADD FILE adds one from disk, and the rail on the right");
+    note(L"can be collapsed for reading.");
     gap(6);
-    note(L"Click one and it opens in a window of Bedrock’s own, arrows");
-    note(L"stepping through the rest — no other program muscling in. And");
-    note(L"the cross asks before it throws anything away.");
+    note(L"A picture opens in Bedrock’s own viewer, with arrow keys to step through");
+    note(L"the rest. The cross asks for confirmation before deleting.");
     gap(6);
-    note(L"Bedrock does not take the picture itself \u2014 by the time you are");
-    note(L"looking at your notes the game is behind you anyway, and");
-    note(L"Windows has perfectly good keys for that.");
+    note(L"Bedrock does not capture screenshots itself; Windows provides keys for");
+    note(L"that.");
     gap(6);
-    note(L"The pictures sit beside the note rather than in it, so rename");
-    note(L"it, move it or bin it and they come along.");
+    note(L"Pictures are stored beside the note, so they follow it when the note is");
+    note(L"renamed, moved or deleted.");
     gap(16);
 
     version(L"1.2.6", L"13 September");
     group(L"NEW");
     item(L"Grind Planner");
-    note(L"The amber button in Blueprints answers the question that comes");
-    note(L"up at 2 a.m.: what should I go and earn, and how long will it");
-    note(L"take? Missions do not hand over a recipe you picked \u2014 they draw");
-    note(L"from a pool \u2014 so a row here is a pool, and any contract that");
-    note(L"feeds it fills the same set. Pyro's four regions each keep");
-    note(L"their own, and the planner says which one to stand in.");
+    note(L"The amber button in Blueprints opens the Grind Planner: what to earn");
+    note(L"next, and how long it takes. Missions do not pay out a chosen recipe but");
+    note(L"draw from a pool, so each row is a pool, and any contract that feeds it fills");
+    note(L"the same set. Pyro's four regions each have their own, and the planner");
+    note(L"shows which region to be in.");
     gap(6);
-    note(L"Nine missing, nine runs: a payout never gives you something you");
-    note(L"already have. Only Rayari make you roll for it, at 25 %.");
+    note(L"Nine missing means nine runs: a payout never repeats a blueprint you");
+    note(L"already own. Only Rayari pays out by chance, at 25 %.");
     gap(10);
     item(L"Where a recipe comes from");
-    note(L"Two new rows in the filter bar: which system a contract runs");
-    note(L"in, and which factions hand it over \u2014 several at once, because");
-    note(L"\u201CShubin or Rayari\u201D is a real question. 117 of the 1,606 come");
-    note(L"from one faction in Pyro alone.");
+    note(L"Two new rows in the filter bar: the system a contract runs in, and the");
+    note(L"factions that offer it, several at once. 117 of the 1,606 come from a single");
+    note(L"faction in Pyro.");
     gap(12);
     group(L"FIXED");
     item(L"Blueprints and missions");
-    note(L"The crafting table now comes straight out of the game files");
-    note(L"instead of secondhand. 439 links pointed at missions that give");
-    note(L"no such thing, 132 real ones were missing, and reward pools");
-    note(L"were quietly cut off at twelve. All sorted.");
+    note(L"The crafting data now comes directly from the game files instead of a");
+    note(L"secondary source. 439 links pointed to missions that do not award the");
+    note(L"item, 132 valid ones were missing, and reward pools were cut off at");
+    note(L"twelve. All corrected.");
     gap(6);
-    note(L"Ten contracts even got their real name back: one of them is");
-    note(L"\u201CJorrit Dossier: Project Hyperion\u201D, not the rather less");
-    note(L"catchy \u201CHockrow_FacilityDelve_P3MM_Repeat\u201D.");
+    note(L"Ten contracts now show their real names, for example \u201CJorrit Dossier:");
+    note(L"Project Hyperion\u201D instead of \u201CHockrow_FacilityDelve_P3MM_Repeat\u201D.");
     gap(10);
     item(L"Standing at a jump point");
-    note(L"Reaching the gateway is not the same as going through it, which");
-    note(L"Bedrock cheerfully disagreed with: touch the jump point and it");
-    note(L"moved you a whole system early. It waits for you now.");
+    note(L"Reaching the gateway is not the same as passing through it: Bedrock");
+    note(L"switched systems as soon as the jump point was reached. It now waits");
+    note(L"until the jump is made.");
     gap(16);
 
     version(L"1.2.3 \u2013 1.2.5", L"12 September");
     group(L"FIXED");
     item(L"Faster scanning");
-    note(L"The scan used to take a nap when nothing had been readable for");
-    note(L"a while \u2014 one look a second. And since nothing is readable");
-    note(L"while you are breaking a rock, that nap was precisely what you");
-    note(L"came back to every single time.");
+    note(L"The scan used to slow down to one look per second when nothing had");
+    note(L"been readable for a while. Since nothing is readable while breaking a rock,");
+    note(L"scanning was slow every time afterwards.");
     gap(6);
-    note(L"It no longer dozes off while the game is in front: a look every");
-    note(L"0.3 s, mostly around your crosshair, every eighth one sweeping");
-    note(L"wide. That costs less processor time than the nap did, and a");
-    note(L"marker turns up in a third of a second instead of a whole one.");
+    note(L"It no longer slows down while the game is in front: one look every 0.3 s,");
+    note(L"mostly around the crosshair, with every eighth look covering the full area.");
+    note(L"This uses less CPU time than before, and a marker appears within a third");
+    note(L"of a second instead of a full second.");
     gap(10);
-    item(L"A reading the pointer got wrong");
-    note(L"The search tells the reader which row to look at, and over a");
-    note(L"compass ribbon it helpfully pointed at two rows at once. Such");
-    note(L"a row is read again without the hint now: 50 of 68 recorded");
-    note(L"frames read, where it was 47.");
+    item(L"Misread compass rows");
+    note(L"The search tells the reader which row to read, and over a compass ribbon");
+    note(L"it pointed at two rows at once. Such a row is now read again without the");
+    note(L"hint: 50 of 68 recorded frames read correctly, up from 47.");
     gap(10);
-    item(L"Where you are, after a restart");
-    note(L"Start Bedrock in the middle of a session and it used to shrug");
-    note(L"about where you were. It reads the whole game log now \u2014 15 MB");
-    note(L"in a fifth of a second \u2014 so it knows before you do.");
+    item(L"Location after a restart");
+    note(L"When started mid-session, Bedrock previously did not know the current");
+    note(L"location. It now reads the whole game log, 15 MB in a fifth of a second.");
 
     // What the list actually came to. Measured, not declared: the next
     // section somebody adds is carried by this figure without touching it.
@@ -14357,8 +14374,8 @@ void MinerGUI::drawWhatsNewCard(Gdiplus::Graphics& g, int cw, int ch) {
     const bool more = whatsNewContent_ > whatsNewView_ + 1.0f;
     // The tip jar is not named here either: this is the window somebody
     // opened to read what is new.
-    g.DrawString(more ? L"Scroll for the rest.  The ? button is where to report a wrong reading."
-                      : L"The ? button is where to report a wrong reading, and how to reach me.",
+    g.DrawString(more ? L"Scroll for more.  Report wrong readings via the ? button."
+                      : L"Report wrong readings and find contact details via the ? button.",
                  -1, &subFont, Gdiplus::PointF(left, fy), &faintBrush);
 }
 
@@ -14434,17 +14451,17 @@ void MinerGUI::drawFooter(Gdiplus::Graphics& g, int cw, int ch) {
     if (updateWaiting) {
         leftBrush = &accentBrush;
         if (updateState_ == 3) {
-            leftText = L"Bedrock " + toW(updateVersion_) + L" is out  ·  click to download";
+            leftText = L"Bedrock " + toW(updateVersion_) + L" available  ·  Click to download";
         } else if (updateState_ == 4) {
-            leftText = L"downloading " + toW(updateVersion_) + L"  ·  " +
+            leftText = L"Downloading " + toW(updateVersion_) + L"  ·  " +
                        std::to_wstring(updatePercent_) + L" %";
             leftBrush = &dimBrush;
             leftClickable = false;
         } else if (updateState_ == 5) {
             leftText = L"Bedrock " + toW(updateVersion_) +
-                       L" is ready  ·  click to install and restart";
+                       L" ready  ·  Click to install and restart";
         } else {
-            leftText = L"update: " + toW(updateNote_);
+            leftText = L"Update: " + toW(updateNote_);
             leftBrush = &faintBrush;
             leftClickable = false;
         }
@@ -14461,7 +14478,7 @@ void MinerGUI::drawFooter(Gdiplus::Graphics& g, int cw, int ch) {
     // is an update sentence, the lead-in goes and the link stays, and if
     // even that will not fit, the update has the foot to itself.
     {
-        const wchar_t* ask = L"Like the app? Support the dev:";
+        const wchar_t* ask = L"Support development:";
         const wchar_t* link = L"ko-fi.com/ravaxx";
         Gdiplus::RectF linkW, askW;
         g.MeasureString(link, -1, &footerFont, Gdiplus::PointF(0, 0), &linkW);
@@ -14660,7 +14677,7 @@ void MinerGUI::drawCompactRock(Gdiplus::Graphics& g, int cw, int ch) {
             } else if (rock_.resistanceAdjusted && rock_.resistance > 0) {
                 std::swprintf(part, 64, L"%.0f %%", rock_.resistance);
                 wchar_t ownPart[64];
-                std::swprintf(ownPart, 64, L"(own %.0f %%)", own);
+                std::swprintf(ownPart, 64, L"(base %.0f %%)", own);
                 figures.push_back({L"RES", part, ownPart});
             } else {
                 std::swprintf(part, 64, L"%.0f %%", rock_.resistance);
@@ -14943,7 +14960,7 @@ void MinerGUI::drawCompactRock(Gdiplus::Graphics& g, int cw, int ch) {
         const Suggestion s = headSuggestion();
         if (!s.line.empty()) {
             Gdiplus::SolidBrush sBrush(s.good ? COL_GREEN : COL_YELLOW);
-            line(s.good ? L"Recommended loadout - " + s.line : s.line, infoFont, sBrush);
+            line(s.good ? L"RECOMMENDED LOADOUT - " + s.line : s.line, infoFont, sBrush);
             line(s.note, infoFont, faintBrush);
         }
     } else {
@@ -14955,13 +14972,17 @@ void MinerGUI::drawCompactRock(Gdiplus::Graphics& g, int cw, int ch) {
         const GadgetWords words = gadgetWords();
         if (words.gadget) {
             Gdiplus::SolidBrush wBrush(fittedGadget_ ? COL_ACCENT : words.tone);
-            std::wstring text = toW(words.gadget->name);
-            if (fittedGadget_) text += L" on the rock";
-            else if (words.tag == L"NEEDED") text += L" needed";
-            else if (words.tag == L"WOULD HELP") text += L" would help";
-            else text = L"optional: " + text;
+            const std::wstring name = toW(words.gadget->name);
+            std::wstring text;
+            switch (words.advice) {
+                case GadgetWords::Applied: text = name + L" APPLIED TO DEPOSIT"; break;
+                case GadgetWords::IfApplied: text = name + L" IF APPLIED TO DEPOSIT"; break;
+                case GadgetWords::Required: text = name + L" REQUIRED ON DEPOSIT"; break;
+                case GadgetWords::Recommended: text = name + L" RECOMMENDED"; break;
+                default: text = L"Optional: " + name; break;
+            }
             if (!words.line.empty()) text += L"  ·  " + words.line;
-            line(text, infoFont, fittedGadget_ || words.tag == L"NEEDED" ? wBrush : dimBrush);
+            line(text, infoFont, fittedGadget_ || words.advice == GadgetWords::Required ? wBrush : dimBrush);
         } else if (!words.line.empty()) {
             line(words.line, infoFont, faintBrush);
         }
@@ -15090,10 +15111,10 @@ void MinerGUI::drawCompact(Gdiplus::Graphics& g, int cw, int ch) {
         if (currentSignature_ > MAX_VALID_SIGNATURE) {
             Gdiplus::SolidBrush warnBrush(COL_YELLOW);
             Gdiplus::RectF r(M, y, (float)cw - 2 * M, textF(60));
-            g.DrawString(L"Above every known signature \u2014 most likely a misread.",
+            g.DrawString(L"Signature not matching known values - Probable misread",
                          -1, &infoFont, r, nullptr, &warnBrush);
         } else {
-            g.DrawString(L"waiting for a scan", -1, &infoFont, Gdiplus::PointF(M, y + textF(8)), &faintBrush);
+            g.DrawString(L"AWAITING SCAN", -1, &infoFont, Gdiplus::PointF(M, y + textF(8)), &faintBrush);
         }
         drawCompactShip(g, cw, ch, y + textF(40));
         return;
@@ -15101,7 +15122,7 @@ void MinerGUI::drawCompact(Gdiplus::Graphics& g, int cw, int ch) {
 
     if (currentResults_[0].difference >= 1.0) {
         Gdiplus::SolidBrush warnBrush(COL_YELLOW);
-        g.DrawString(L"no exact match \u2014 nearest values", -1, &infoFont, Gdiplus::PointF(M, y - textF(4)), &warnBrush);
+        g.DrawString(L"NO EXACT MATCH - NEAREST VALUES SHOWN", -1, &infoFont, Gdiplus::PointF(M, y - textF(4)), &warnBrush);
         y += textF(12);
     }
 
@@ -15751,21 +15772,21 @@ void MinerGUI::drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& vi
             state += L". Your refinery jobs have been added to it since " + dayOf(account.since) + L".";
             words.push_back({state, &textFont, &textBrush, scaleF(10)});
         } else if (keyed) {
-            words.push_back({L"Your UEX account is connected. Refinery jobs aren't sent.", &textFont, &textBrush,
+            words.push_back({L"Your UEX account is connected. Refinery jobs are not sent.", &textFont, &textBrush,
                              scaleF(6)});
-            words.push_back({L"In the Ore Finder's UEX market tab, clicking a listing you've already messaged about "
-                             L"opens that conversation.",
+            words.push_back({L"In the Ore Finder's UEX market tab, clicking a listing "
+                             L"with an existing conversation opens that conversation.",
                              &textFont, &dimBrush, scaleF(10)});
         } else {
             words.push_back({L"Bedrock can use your account on UEX (uexcorp.space):", &textFont, &dimBrush, scaleF(6)});
-            words.push_back({L"\u00B7  In the Ore Finder's UEX market tab, clicking a listing you've already messaged "
-                             L"about opens that conversation.",
+            words.push_back({L"\u00B7  In the Ore Finder's UEX market tab, clicking a listing "
+                             L"with an existing conversation opens that conversation.",
                              &textFont, &dimBrush, scaleF(2)});
-            words.push_back({L"\u00B7  If you want, Bedrock can also add your refinery jobs to your UEX account. "
-                             L"You'll be asked about this next.",
+            words.push_back({L"\u00B7  Optionally, Bedrock can also add your refinery "
+                             L"jobs to your UEX account. This is asked next.",
                              &textFont, &dimBrush, scaleF(6)});
-            words.push_back({view.welcome ? L"This is optional. If you skip it, you can connect later in the Ore "
-                                            L"Finder (Connect UEX, bottom right)."
+            words.push_back({view.welcome ? L"This is optional. If skipped, the account can be connected "
+                                            L"later in the Ore Finder (Connect UEX, bottom right)."
                                           : L"This is optional. Prices and the UEX market tab work without an account.",
                              &textFont, &dimBrush, scaleF(12)});
         }
@@ -15775,7 +15796,7 @@ void MinerGUI::drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& vi
         const wchar_t* kept = L"The key is stored only on this PC, readable only by your user.";
 #endif
         words.push_back({std::wstring(L"Your secret key is on your UEX account page under Secret Key. Click Get key to "
-                                      L"open that page (log in if asked), copy the key, then click Paste key. ") + kept,
+                                      L"open that page (log in if prompted), copy the key, then click Paste key. ") + kept,
                          &subFont, &faintBrush, scaleF(8)});
     }
     float wordsH = 0;
@@ -15786,8 +15807,8 @@ void MinerGUI::drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& vi
     }
     // what came of the last press or report, and what stands in the way
     std::wstring trouble;
-    if (view.step != 1 && !account.hasToken) trouble = L"This build has no UEX app token, so nothing can be reported.";
-    else if (account.keyTrouble) trouble = L"UEX didn't accept this key. Copy it again from your UEX account page and paste it.";
+    if (view.step != 1 && !account.hasToken) trouble = L"This build has no UEX app token. Reporting is unavailable.";
+    else if (account.keyTrouble) trouble = L"UEX did not accept this key. Copy it again from your UEX account page and paste it.";
     else if (view.step == 1 && account.on && account.accountTrouble == "blocked") {
         trouble = L"UEX has blocked reports from this account.";
     } else if (view.step == 1 && account.on && account.accountTrouble == "unverified") {
@@ -15800,7 +15821,7 @@ void MinerGUI::drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& vi
     // the key's row: Get key, Paste key, the key's last four and Remove key -
     // Remove key under them where the row has no room (it ran into the key
     // in the narrowest window)
-    const std::wstring keyText = keyed ? L"Key \u2026" + toW(account.keyEnd) : L"No key yet";
+    const std::wstring keyText = keyed ? L"Key \u2026" + toW(account.keyEnd) : L"No key";
     bool removeBelow = false;
     if (view.step == 1 && keyed) {
         Gdiplus::RectF keyRoom;
@@ -15938,8 +15959,8 @@ std::wstring MinerGUI::rockMarketLine() const {
         }
     }
     if (!bestBuyer) return L"";
-    return L"UEX market: a player is buying " + toW(bestPart->ore) + L" (quality " + std::to_wstring(bestPart->quality) +
-           L") for " + formatNumber((int)(std::min)(bestBuyer->price, 2.0e9)) + L" aUEC per " +
+    return L"UEX market: Player buying " + toW(bestPart->ore) + L" (quality " + std::to_wstring(bestPart->quality) +
+           L") at " + formatNumber((int)(std::min)(bestBuyer->price, 2.0e9)) + L" aUEC per " +
            unitWord(bestBuyer->unit);
 }
 
@@ -16037,8 +16058,8 @@ void MinerGUI::paintMarketColumn(Gdiplus::Graphics& g, int cw, int ch, float car
         std::wstring count = rows.empty() ? L"" : std::to_wstring(rows.size()) + (rows.size() == 1 ? L" listing" : L" listings");
         // the order, on the right: the one in use bright, the other a link
         float sortLeft = rx + rw;
-        for (const wchar_t* way : {L"newest", L"price"}) {
-            const bool on = (way == std::wstring(L"newest")) == marketByRecent_;
+        for (const wchar_t* way : {L"Newest", L"Price"}) {
+            const bool on = (way == std::wstring(L"Newest")) == marketByRecent_;
             Gdiplus::RectF wayW;
             g.MeasureString(way, -1, &subFont, Gdiplus::PointF(0, 0), &wayW);
             sortLeft -= wayW.Width;
@@ -16056,8 +16077,8 @@ void MinerGUI::paintMarketColumn(Gdiplus::Graphics& g, int cw, int ch, float car
             std::wstring none;
             if (!uexEnabled_) none = L"";
             else if (entry == uexMarket_.end()) none = L"Loading listings from uexcorp.space\u2026";
-            else if (!entry->second.listings) none = L"Couldn't load listings from uexcorp.space (" + toW(entry->second.note) + L").";
-            else none = L"No open listings right now.";
+            else if (!entry->second.listings) none = L"Listings could not be loaded from uexcorp.space (" + toW(entry->second.note) + L")";
+            else none = L"No open listings";
             g.DrawString(none.c_str(), -1, &subFont, Gdiplus::PointF(rx, ry + scaleF(2)), &dimBrush);
         }
         for (int i = 0; i < shown && i < (int)rows.size(); i++) {
@@ -16105,7 +16126,7 @@ void MinerGUI::paintMarketColumn(Gdiplus::Graphics& g, int cw, int ch, float car
             }
             float subX = rx;
             if (talking) {
-                const wchar_t* mine = L"your conversation  \u00B7  ";
+                const wchar_t* mine = L"Your conversation  \u00B7  ";
                 Gdiplus::RectF mineW;
                 g.MeasureString(mine, -1, &subFont, Gdiplus::PointF(0, 0), &mineW);
                 g.DrawString(mine, -1, &subFont, Gdiplus::PointF(rx, ry + scaleF(18)), &accentBrush);
@@ -16116,7 +16137,7 @@ void MinerGUI::paintMarketColumn(Gdiplus::Graphics& g, int cw, int ch, float car
             ry += rowH;
         }
         if (last) {
-            g.DrawString(L"Click a listing to open it on uexcorp.space, where you can message the player", -1, &subFont,
+            g.DrawString(L"Click a listing to open it on uexcorp.space and message the player", -1, &subFont,
                          Gdiplus::RectF(rx, y + h - scaleF(22), rw, scaleF(14)), &rightAlign, &faintBrush);
         }
         y += h + scaleF(10);
@@ -16177,7 +16198,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
                                      4, "https://uexcorp.space"});
             }
         }
-        g.DrawString(L"pick an ore before the trip \u00B7 the places whose rocks carry it as their main ore, best chance first",
+        g.DrawString(L"Select an ore before the trip \u00B7 Locations where it is the main ore, highest chance first",
                      -1, &subFont, Gdiplus::PointF(M + scaleF(15), (float)scale(36)), &dimBrush);
 
         // System tabs: words, the one in use bright with an amber bar lying
@@ -16413,7 +16434,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
                     }
                 }
                 if (!partLines.empty() && !hosts.empty()) {
-                    sideNote = L"Also a side ore: ";
+                    sideNote = L"Also secondary ore: ";
                     for (size_t h = 0; h < hosts.size(); h++) {
                         if (h) sideNote += L", ";
                         sideNote += hosts[h].first + L" of ";
@@ -16460,12 +16481,12 @@ void MinerGUI::paintPlanner(HDC hdc) {
             std::wstring sellTail;   // under them: the gems no price was reported for
             const bool sellCard = uexEnabled_ && !byPlace && !plannerMineral_.empty();
             const long long nowUtc = (long long)std::time(nullptr);
-            const std::wstring fullTag = L"  \u00B7  nearly full";
+            const std::wstring fullTag = L"  \u00B7  Nearly full";
             if (sellCard) {
                 if (!uexPrices_) {
                     sellNote = uexNote_.empty() ? L"Loading prices from uexcorp.space\u2026"
-                                                : L"Couldn't load prices from uexcorp.space (" + toW(uexNote_) +
-                                                      L"). Trying again in a few minutes.";
+                                                : L"Prices could not be loaded from uexcorp.space (" + toW(uexNote_) +
+                                                      L") - Retrying in a few minutes";
                 } else {
                     Gdiplus::RectF priceW, fullW;
                     g.MeasureString((roc || fps) ? L"0,000,000" : L"000,000", -1, &pctFont, Gdiplus::PointF(0, 0), &priceW);
@@ -16517,7 +16538,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
                         for (const auto& gem : gems) {
                             sellLines.push_back(lineOf(toW(gem.first), *gem.second, toW(gem.second->terminal) + L"  \u00B7  "));
                         }
-                        if (gems.empty()) sellNote = L"No terminal has reported buying any of these in the last 30 days.";
+                        if (gems.empty()) sellNote = L"No terminal reported buying any of these in the last 30 days";
                         if (!unpriced.empty()) {
                             sellTail = L"No prices reported for ";
                             for (size_t i = 0; i < unpriced.size(); i++) {
@@ -16529,8 +16550,8 @@ void MinerGUI::paintPlanner(HDC hdc) {
                     } else {
                         const auto& offers = uexPrices_->offersFor(plannerMineral_);
                         if (offers.empty()) {
-                            sellNote = L"No terminal has reported buying refined " + toW(plannerMineral_) +
-                                       L" in the last 30 days.";
+                            sellNote = L"No terminal reported buying refined " + toW(plannerMineral_) +
+                                       L" in the last 30 days";
                         }
                         bool homeListed = false;
                         for (const UexOffer& offer : offers) {
@@ -16541,7 +16562,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
                         }
                         if (!offers.empty() && !homeListed) {
                             if (const UexOffer* home = uexPrices_->bestIn(plannerMineral_, currentSystem_)) {
-                                SellLine line = lineOf(toW(home->terminal), *home, L"best in your system  \u00B7  ");
+                                SellLine line = lineOf(toW(home->terminal), *home, L"Best in your system  \u00B7  ");
                                 line.home = true;
                                 sellLines.push_back(std::move(line));
                             }
@@ -16640,7 +16661,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
 
             // The heading names what is asked about in the bright ink, after
             // the quiet words that say which way round the list runs
-            std::wstring label = byPlace ? L"WHAT IS MINED AT  \u00B7" : L"WHERE TO FIND  \u00B7";
+            std::wstring label = byPlace ? L"MINED AT  \u00B7" : L"WHERE TO FIND  \u00B7";
             std::wstring subject = toW(byPlace ? plannerPlace_ : plannerMineral_);
             std::transform(subject.begin(), subject.end(), subject.begin(), ::towupper);
             g.DrawString(label.c_str(), -1, &smallFont, Gdiplus::PointF(rx, listTop + scaleF(4)), &faintBrush);
@@ -16650,13 +16671,13 @@ void MinerGUI::paintPlanner(HDC hdc) {
                 g.DrawString(subject.c_str(), -1, &smallFont,
                              Gdiplus::PointF(rx + measured.Width + scaleF(3), listTop + scaleF(4)), &textBrush);
             }
-            std::wstring scope = (plannerSystem_ == "ALL") ? L"all systems" : toW(plannerSystem_);
+            std::wstring scope = (plannerSystem_ == "ALL") ? L"All systems" : toW(plannerSystem_);
             scope += L"  \u00B7  " + std::to_wstring((int)rows.size()) + (byPlace ? L" ores" : L" places");
             Gdiplus::RectF scopeRect(rx, listTop + scaleF(5), rw, scaleF(14));
             g.DrawString(scope.c_str(), -1, &subFont, scopeRect, &rightAlign, &faintBrush);
 
             if (rows.empty()) {
-                g.DrawString(L"Nothing known here for this ore.", -1, &subFont, Gdiplus::PointF(rx, ry + scaleF(4)), &dimBrush);
+                g.DrawString(L"No known locations for this ore", -1, &subFont, Gdiplus::PointF(rx, ry + scaleF(4)), &dimBrush);
             }
             Gdiplus::StringFormat trimmed;   // a line longer than the card itself, still
             trimmed.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
@@ -16693,8 +16714,8 @@ void MinerGUI::paintPlanner(HDC hdc) {
             }
             if (more && shown > 0) {
                 // The way the Blueprints list says it
-                std::wstring moreText = L"showing " + std::to_wstring(first + 1) + L"\u2013" +
-                                        std::to_wstring(first + shown) + L"  \u00B7  wheel to scroll";
+                std::wstring moreText = L"Showing " + std::to_wstring(first + 1) + L"\u2013" +
+                                        std::to_wstring(first + shown) + L"  \u00B7  Scroll with mouse wheel";
                 Gdiplus::RectF r(rx, rowsTop + listH, rw, scaleF(12));
                 g.DrawString(moreText.c_str(), -1, &subFont, r, &rightAlign, &faintBrush);
             } else if (more) {
@@ -16711,7 +16732,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
                 cardLight(g, rockCard, scaleF(R_CARD), scaleF(44));
                 strokeRoundRect(g, rockCard, scaleF(R_CARD), COL_BORDER);
                 float py = rockCard.Y + scaleF(10);
-                const std::wstring label2 = L"IN A ROCK OF  \u00B7";
+                const std::wstring label2 = L"ROCK COMPOSITION  \u00B7";
                 std::wstring ore = toW(plannerMineral_);
                 std::transform(ore.begin(), ore.end(), ore.begin(), ::towupper);
                 g.DrawString(label2.c_str(), -1, &smallFont, Gdiplus::PointF(rx, py), &faintBrush);
@@ -16721,7 +16742,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
                     g.DrawString(ore.c_str(), -1, &smallFont, Gdiplus::PointF(rx + measured.Width + scaleF(3), py),
                                  &textBrush);
                 }
-                g.DrawString(L"share of the rock  \u00B7  quality", -1, &subFont,
+                g.DrawString(L"Share of rock  \u00B7  Quality", -1, &subFont,
                              Gdiplus::RectF(rx, py + scaleF(1), rw, scaleF(14)), &rightAlign, &faintBrush);
                 py += scaleF(24);
                 for (const PartLine& part : partLines) {
@@ -16756,7 +16777,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
                     g.DrawString(ore.c_str(), -1, &smallFont, Gdiplus::PointF(rx + measured.Width + scaleF(3), sy),
                                  &textBrush);
                 }
-                g.DrawString((roc || fps) ? L"best terminal  \u00B7  aUEC per SCU" : L"refined  \u00B7  aUEC per SCU", -1,
+                g.DrawString((roc || fps) ? L"Best terminal  \u00B7  aUEC per SCU" : L"Refined  \u00B7  aUEC per SCU", -1,
                              &subFont, Gdiplus::RectF(rx, sy + scaleF(1), rw, scaleF(14)), &rightAlign, &faintBrush);
                 sy += scaleF(24);
                 if (sellLines.empty()) {
@@ -16805,8 +16826,8 @@ void MinerGUI::paintPlanner(HDC hdc) {
                 if (uexPrices_) {
                     std::wstring source = L"Prices reported by players on uexcorp.space";
                     if (uexFetchedAt_ > 0) {
-                        source += L"  \u00B7  as of " + clockOf(uexFetchedAt_, nowUtc);
-                        if (!uexNote_.empty()) source += L" (couldn't update since)";
+                        source += L"  \u00B7  As of " + clockOf(uexFetchedAt_, nowUtc);
+                        if (!uexNote_.empty()) source += L" (update failed since)";
                     }
                     g.DrawString(source.c_str(), -1, &subFont,
                                  Gdiplus::RectF(rx, sellCardR.Y + sellCardH - scaleF(21), rw, scaleF(14)), &rightAlign,
@@ -16822,7 +16843,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
                 cardLight(g, dealCard, scaleF(R_CARD), scaleF(44));
                 strokeRoundRect(g, dealCard, scaleF(R_CARD), COL_BORDER);
                 float dy = dealCard.Y + scaleF(10);
-                const std::wstring label3 = L"YOUR DEALS IN  \u00B7";
+                const std::wstring label3 = L"YOUR TRADES  \u00B7";
                 std::wstring ore = toW(plannerMineral_);
                 std::transform(ore.begin(), ore.end(), ore.begin(), ::towupper);
                 g.DrawString(label3.c_str(), -1, &smallFont, Gdiplus::PointF(rx, dy), &faintBrush);
@@ -16832,7 +16853,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
                     g.DrawString(ore.c_str(), -1, &smallFont, Gdiplus::PointF(rx + measured.Width + scaleF(3), dy),
                                  &textBrush);
                 }
-                g.DrawString(L"from the game log", -1, &subFont,
+                g.DrawString(L"From game log", -1, &subFont,
                              Gdiplus::RectF(rx, dy + scaleF(1), rw, scaleF(14)), &rightAlign, &faintBrush);
                 dy += scaleF(24);
                 static const wchar_t* const MONTHS[] = {L"Jan", L"Feb", L"Mar", L"Apr", L"May", L"Jun",
@@ -16844,7 +16865,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
                     const Trade& deal = *deals[(size_t)i];
                     // "sold  15,960 aUEC / SCU" and on the right the day; under it
                     // what exactly, how much, and where
-                    const std::wstring verb = deal.sold ? L"sold" : L"bought";
+                    const std::wstring verb = deal.sold ? L"Sold" : L"Bought";
                     g.DrawString(verb.c_str(), -1, &subFont, Gdiplus::PointF(rx, dy + scaleF(3)), &dimBrush);
                     const std::wstring price = formatNumber((int)(deal.perScu() + 0.5)) + L" aUEC / SCU";
                     g.DrawString(price.c_str(), -1, &placeFont, Gdiplus::PointF(rx + scaleF(48), dy), &textBrush);
@@ -16890,9 +16911,9 @@ void MinerGUI::paintPlanner(HDC hdc) {
                         if (!traded.empty() && traded.find(" (") == std::string::npos) {
                             if (deal.sold) {
                                 const double best = uexPrices_->bestPrice(traded);
-                                if (best > 0) market = L"currently up to " + formatNumber((int)(best + 0.5));
+                                if (best > 0) market = L"Currently up to " + formatNumber((int)(best + 0.5));
                             } else if (const UexOffer* cheapest = uexPrices_->cheapestBuy(traded)) {
-                                market = L"currently from " + formatNumber((int)(cheapest->price + 0.5));
+                                market = L"Currently from " + formatNumber((int)(cheapest->price + 0.5));
                             }
                         }
                     }
@@ -16931,14 +16952,14 @@ void MinerGUI::paintPlanner(HDC hdc) {
         // and the card end the page on their own
         const float fy = (float)ch - scaleF(20);
         Gdiplus::RectF fr(M, fy, (float)cw - 2 * M, scaleF(16));
-        g.DrawString(L"game data 4.10", -1, &subFont, fr, &rightAlign, &faintBrush);
+        g.DrawString(L"Game data 4.10", -1, &subFont, fr, &rightAlign, &faintBrush);
         // ...and before it the way to Report to UEX, a link as the main
         // window's tip jar is one
         float footerRoom = (float)cw - M;
         if (uexEnabled_) {
             Gdiplus::RectF dataW, linkW;
             g.MeasureString(L"game data 4.10", -1, &subFont, Gdiplus::PointF(0, 0), &dataW);
-            const std::wstring link = uexAccount_.on              ? L"UEX account \u00B7 reporting on"
+            const std::wstring link = uexAccount_.on              ? L"UEX account \u00B7 Reporting on"
                                       : uexAccount_.keyEnd.empty() ? L"Connect UEX"
                                                                    : L"UEX account";
             g.MeasureString(link.c_str(), -1, &subFont, Gdiplus::PointF(0, 0), &linkW);
@@ -16953,10 +16974,10 @@ void MinerGUI::paintPlanner(HDC hdc) {
             footerRoom = lx - scaleF(12);
         }
         // the left's words, as many of them as end before it
-        std::wstring footer = L"F / Esc close  \u00B7  tick an ore to have it blink in the reader";
+        std::wstring footer = L"F / Esc: Close  \u00B7  Tick an ore to highlight it in scans";
         if (!paysMost.empty()) {
             // (not "red": the colour is the player's to pick - the beat is not)
-            const std::wstring longer = footer + L"  \u00B7  blinking: sells for the most right now";
+            const std::wstring longer = footer + L"  \u00B7  Blinking: highest price right now";
             Gdiplus::RectF longW;
             g.MeasureString(longer.c_str(), -1, &subFont, Gdiplus::PointF(0, 0), &longW);
             if (M + longW.Width <= footerRoom) footer = longer;
@@ -17039,9 +17060,9 @@ std::wstring MinerGUI::rockPartQuality(const RockPart& part) {
         if (_stricmp(ORE_BANDS[b].ore, part.ore) == 0) bands = &ORE_BANDS[b];
     }
     const int low = lowestQualityBand(part), top = topQualityBand(part.qualityScale);
-    if (!bands) return top >= 7 ? L"any quality" : L"lower qualities only";
+    if (!bands) return top >= 7 ? L"Any quality" : L"Lower qualities only";
     auto value = [&](int b) { return std::to_wstring(bands->bands[b]); };
-    if (low >= top) return L"quality " + value(top);
+    if (low >= top) return L"Quality " + value(top);
     const std::array<double, 8> odds = qualityOdds(part);
     int first = low, second = -1;
     for (int b = low; b <= top; b++) {
@@ -17052,11 +17073,11 @@ std::wstring MinerGUI::rockPartQuality(const RockPart& part) {
     }
     // "264, rarely 553": two bands, one of them nearly always
     if (odds[(size_t)first] >= 0.85) {
-        if (top - low == 1) return L"quality " + value(first) + L", rarely " + value(second);
-        return L"mostly " + value(first) + L" \u00B7 " + value(low) + L"\u2013" + value(top);
+        if (top - low == 1) return L"Quality " + value(first) + L", rarely " + value(second);
+        return L"Mostly " + value(first) + L" \u00B7 " + value(low) + L"\u2013" + value(top);
     }
     const int a = (std::min)(first, second), b = (std::max)(first, second);
-    return value(low) + L"\u2013" + value(top) + L" \u00B7 mostly " + value(a) + L" or " + value(b);
+    return value(low) + L"\u2013" + value(top) + L" \u00B7 Mostly " + value(a) + L" or " + value(b);
 }
 
 int MinerGUI::cartQuality(const std::string& mineral) const {
@@ -17187,7 +17208,7 @@ std::wstring MinerGUI::contractMoment(const CraftSource& src) const {
         if (c.running) running = true;
         else finished = (std::max)(finished, c.finishedAt);
     }
-    if (running) return L"accepted";
+    if (running) return L"Accepted";
     // Back once the outfit's own block on a contract just finished has run
     // out - the card's "AFTER FINISHING: blocked 45 min". Not the respawn
     // time: that is how long the board takes to make another, and no wait
@@ -17198,8 +17219,8 @@ std::wstring MinerGUI::contractMoment(const CraftSource& src) const {
     const long long wait = (long long)src.cooldown * 60;
     if (finished <= 0 || wait <= 0) return L"";
     const long long left = finished + wait - (long long)std::time(nullptr);
-    if (left > 45) return L"back in ~" + std::to_wstring((left + 59) / 60) + L" min";
-    if (left > -60) return L"back any moment";
+    if (left > 45) return L"Available in ~" + std::to_wstring((left + 59) / 60) + L" min";
+    if (left > -60) return L"Available shortly";
     return L"";
 }
 
@@ -17662,16 +17683,16 @@ void MinerGUI::drawGrindWarning(Gdiplus::Graphics& g, int cw, int ch) {
     const float left = card.X + scaleF(24);
     const float right = card.GetRight() - scaleF(24);
     float y = card.Y + scaleF(22);
-    g.DrawString(L"First, about your library", -1, &markFont, Gdiplus::PointF(left - scaleF(2), y), &textBrush);
+    g.DrawString(L"Before you start: your library", -1, &markFont, Gdiplus::PointF(left - scaleF(2), y), &textBrush);
     y += scaleF(32);
 
     {
         const std::wstring blurb =
-            L"Bedrock works out what you already own from the game's own log, and a log only "
-            L"reaches back so far. On a fresh install it knows less than you do \u2014 and then "
-            L"this window will send you out for things already sitting in your inventory.\n\n"
-            L"So tick off what you have: open Blueprints and mark them owned. Every one you add "
-            L"makes this list sharper.";
+            L"Bedrock determines owned blueprints from the game log, which only "
+            L"covers a limited period. On a fresh installation it knows less "
+            L"than you do, and this window may list blueprints already in your "
+            L"inventory. \u23CE  \u23CE Mark the ones you own: open Blueprints and mark "
+            L"them as owned. Each one added makes this list more accurate.";
         Gdiplus::RectF box(left - scaleF(2), y, right - left + scaleF(4), card.GetBottom() - scaleF(72) - y);
         g.DrawString(blurb.c_str(), -1, &textFont, box, nullptr, &dimBrush);
     }
@@ -17716,7 +17737,7 @@ void MinerGUI::drawGrindWarning(Gdiplus::Graphics& g, int cw, int ch) {
     }
 
     // The one thing the notice is waiting for, so the one amber face on it
-    drawButton(g, grindWarnHit_, L"Got it", btnFont, ButtonKind::Primary, isHot(hoverGrind_, grindWarnHit_),
+    drawButton(g, grindWarnHit_, L"OK", btnFont, ButtonKind::Primary, isHot(hoverGrind_, grindWarnHit_),
                scaleF(R_CONTROL));
     grindHits_.push_back({grindWarnHit_, 3, 0});
 }
@@ -17957,24 +17978,24 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
         const int missing = CRAFT_BLUEPRINT_COUNT - ownedCount();
         int here = 0;
         for (const auto& set : sets) here += (set.inSystem > 0) ? 1 : 0;
-        std::wstring sub = std::to_wstring(missing) + L" recipes not in your library  \u00B7  ";
+        std::wstring sub = std::to_wstring(missing) + L" recipes not in library  \u00B7  ";
         if (grindQuery_.empty() && grindGroup_ < 0) {
             if (grindOpenOnly_ && ranksKnown_) {
                 sub += std::to_wstring((int)sets.size()) + L" of " + std::to_wstring((int)grindSets(false).size()) +
-                       L" reward sets have a mission open to you";
+                       L" reward sets have an available mission";
             } else {
-                sub += std::to_wstring((int)sets.size()) + L" reward sets still hold one";
+                sub += std::to_wstring((int)sets.size()) + L" reward sets still contain one";
             }
             if (here && here != (int)sets.size()) {
-                sub += L", " + std::to_wstring(here) + L" of them where you are";
+                sub += L", " + std::to_wstring(here) + L" at your location";
             }
         } else {
             // the finder narrowed it: say so, against the whole
             const int all = (int)grindSets(false).size();
-            sub += grindGroup_ >= 0 ? L"one set, from a contract card  \u00B7  "
+            sub += grindGroup_ >= 0 ? L"One set, from a contract card  \u00B7  "
                                     : std::to_wstring((int)sets.size()) + L" of " + std::to_wstring(all) +
                                           L" sets match  \u00B7  ";
-            sub += L"Esc clears it";
+            sub += L"Esc to clear";
         }
         g.DrawString(sub.c_str(), -1, &subFont, Gdiplus::PointF(M + scaleF(15), (float)scale(36)),
                      &dimBrush);
@@ -17984,10 +18005,10 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
     {
         // The log's own words, not a system name worked out from them: if the
         // planner has the place wrong, the line it went by is what shows it
-        std::wstring where = L"the log names no system — showing everywhere";
-        if (!placeLine_.empty()) where = L"you are at " + placeLine_;
+        std::wstring where = L"No system in log - Showing all";
+        if (!placeLine_.empty()) where = L"Location: " + placeLine_;
         else if (systemIAmIn()) {
-            where = std::wstring(L"you are in ") + CRAFT_SYSTEM_NAMES[systemIAmIn()];
+            where = std::wstring(L"Location: ") + CRAFT_SYSTEM_NAMES[systemIAmIn()];
         }
         // In a pill level with the title, with a dot that is green while the
         // log has a fix on the player and grey while it has none. Held to
@@ -18039,9 +18060,9 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
             grindHits_.push_back({box, 1, value});
             fx += box.Width + scaleF(6);
         };
-        chip(L"Where I am", 0);
+        chip(L"Current location", 0);
         for (int i = 1; i <= 3; i++) chip(CRAFT_SYSTEM_NAMES[i], i);
-        chip(L"Everywhere", 4);
+        chip(L"All locations", 4);
         // ...and apart from them a switch of its own: only the sets with a
         // mission the game offers the player at their rank
         if (ranksKnown_) {
@@ -18101,7 +18122,7 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
             oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
             const Gdiplus::RectF typed(box.X + scaleF(24), box.Y, box.Width - scaleF(34), box.Height);
             if (grindQuery_.empty() && !grindTyping_) {
-                g.DrawString(L"find a mission, an outfit or a blueprint", -1, &subFont, typed, &oneLine, &faintBrush);
+                g.DrawString(L"Search missions, outfits or blueprints", -1, &subFont, typed, &oneLine, &faintBrush);
             } else {
                 g.DrawString(grindQuery_.c_str(), -1, &subFont, typed, &oneLine, &textBrush);
             }
@@ -18147,8 +18168,8 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
             }
         }
         if (!ranksKnown_ || shown.empty()) {
-            const wchar_t* why = !ranksKnown_ ? L"read from your game logs \u2014 not known yet"
-                                              : L"none of the missions listed asks for a rank";
+            const wchar_t* why = !ranksKnown_ ? L"From game logs - Not known yet"
+                                              : L"No listed mission requires a rank";
             g.DrawString(why, -1, &subFont, Gdiplus::RectF(rx, ry, edge - rx, pillH), &oneLine, &faintBrush);
         } else {
             size_t k = 0;
@@ -18222,12 +18243,12 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
     float y = top + scaleF(26);
     if (sets.empty()) {
         const std::wstring why =
-            grindGroup_ >= 0 ? L"Every blueprint this set hands out is already in your library."
+            grindGroup_ >= 0 ? L"All blueprints of this set are in your library"
             : !grindQuery_.empty()
-                ? L"Nothing still missing matches \u201C" + grindQuery_ +
-                      L"\u201D \u2014 what hands it out is in your library, or no mission, blueprint or "
-                      L"outfit has that in its name."
-                : L"Nothing left to grind for \u2014 every reward set in the game files is in your library.";
+                ? L"No missing blueprint matches \u201C" + grindQuery_ +
+                      L"\u201D - Already in library, or no mission, "
+                      L"blueprint or outfit with that name"
+                : L"Nothing left to earn - Every reward set in the game files is in your library";
         g.DrawString(why.c_str(), -1, &bodyFont,
                      Gdiplus::RectF(left, y, edge - left, scaleF(40)), nullptr, &dimBrush);
     }
@@ -18336,13 +18357,13 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
             const std::wstring unit = toW(lad.name);
             const std::wstring held = toW(REP_RANKS[lad.first + mine.rank].name);
             if (mine.rank >= lad.count - 1) {
-                rankFrom = held + L", the top of the ladder";
-                rankAmount = L"about " + roughly(mine.reputation) + L" " + unit;
+                rankFrom = held + L" - Highest rank";
+                rankAmount = L"Approx. " + roughly(mine.reputation) + L" " + unit;
             } else {
                 const long long low = REP_RANKS[lad.first + mine.rank].min;
                 const long long high = REP_RANKS[lad.first + mine.rank + 1].min;
                 rankFrom = held + L"  \u2192  " + toW(REP_RANKS[lad.first + mine.rank + 1].name);
-                rankAmount = L"about " + roughly(mine.reputation) + L" of " + grouped(high) + L" " + unit;
+                rankAmount = L"Approx. " + roughly(mine.reputation) + L" of " + grouped(high) + L" " + unit;
                 rankFrac = high > low ? (float)(mine.reputation - low) / (float)(high - low) : 0.0f;
                 // the run of this set's that brings the next rank soonest
                 int best = -1;
@@ -18354,13 +18375,13 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
                 if (best >= 0) {
                     const long long gain = CRAFT_SOURCES[best].repGain;
                     const long long runs = (std::max)(1LL, (high - mine.reputation + gain - 1) / gain);
-                    rankNext = L"Next rank in about " + std::to_wstring(runs) + (runs == 1 ? L" run of " : L" runs of ") +
+                    rankNext = L"Next rank in approx. " + std::to_wstring(runs) + (runs == 1 ? L" run of " : L" runs of ") +
                                contractTitle(CRAFT_SOURCES[best]) + L" (+" + grouped(gain) + L" " + unit + L" each)";
                 }
             }
             const std::wstring version = toW(Reputation::versionName(ranksFrom_));
             const std::wstring counted =
-                ranksFrom_ == Reputation::LIVE_WIPE ? L"since the reset with " + version : L"in the logs of " + version;
+                ranksFrom_ == Reputation::LIVE_WIPE ? L"since the " + version + L" reset" : L"in the " + version + L" logs";
             const std::wstring since =
                 mine.completions > 0 ? L", +" + grouped(mine.gained) + L" " + unit + L" since" : std::wstring();
             if (mine.anchorRank >= 0) {
@@ -18412,7 +18433,7 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
             for (int k = 0; k < lad.count; k++) {
                 one(toW(REP_RANKS[lad.first + k].name), k == mine.rank, 6, (lf << 16) | (ll << 8) | k);
             }
-            if (mine.set) one(L"back to my logs", false, 8, (lf << 16) | (ll << 8));
+            if (mine.set) one(L"Reset to game logs", false, 8, (lf << 16) | (ll << 8));
             return ty + tagH - y0;
         };
 
@@ -18527,7 +18548,7 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
                          open ? &accentBrush : &textBrush);
         }
         {
-            std::wstring note = unnamed ? std::wstring(L"the files do not name this one")
+            std::wstring note = unnamed ? std::wstring(L"Not named in game files")
                                         : toW(src.faction);
             // Every separator below leads with the thing before it, so an
             // empty outfit must not leave a dot hanging at the front
@@ -18555,18 +18576,18 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
                 bool later = false;   // one of them asks for more than the player has yet
                 for (int r : set.rungs) later = later || rungOpen(r) == -1;
                 if (n == 1) {
-                    add(set.open ? L"open to you" : later ? L"not open to you yet" : L"no longer offered to you");
+                    add(set.open ? L"Available" : later ? L"Not available yet" : L"No longer offered");
                 } else if (set.open == n) {
-                    add(L"all " + std::to_wstring(n) + L" open to you");
+                    add(L"All " + std::to_wstring(n) + L" available");
                 } else if (set.open == 0) {
-                    add(later ? L"none open to you yet" : L"none offered to you any more");
+                    add(later ? L"None available yet" : L"None offered anymore");
                 } else {
-                    add(std::to_wstring(set.open) + L" of " + std::to_wstring(n) + L" open to you");
+                    add(std::to_wstring(set.open) + L" of " + std::to_wstring(n) + L" available");
                 }
             }
             if (set.chance != 100) add(std::to_wstring(set.chance) + L" % payout");
             if (!set.also.empty()) {
-                add(L"also pays into " + std::to_wstring(set.also.size()) +
+                add(L"Also pays into " + std::to_wstring(set.also.size()) +
                     (set.also.size() == 1 ? L" more set" : L" more sets"));
             }
             g.DrawString(note.c_str(), -1, &subFont,
@@ -18583,7 +18604,7 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
             const std::wstring live = contractMoment(src);
             if (!live.empty() || set.respawn > 0) {
                 const std::wstring again =
-                    !live.empty() ? live : L"again after " + std::to_wstring(set.respawn) + L" min";
+                    !live.empty() ? live : L"Again after " + std::to_wstring(set.respawn) + L" min";
                 g.DrawString(again.c_str(), -1, &subFont,
                              Gdiplus::RectF(runsX - scaleF(104), subBase - subAsc, scaleF(104),
                                             scaleF(16)),
@@ -18700,15 +18721,15 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
                     std::wstring note;
                     const Gdiplus::Brush* noteInk = &faintBrush;
                     if ((int)r == hereRung) {
-                        note = L"you are here";
+                        note = L"Current location";
                         noteInk = &accentBrush;
                     } else if ((int)r == firstLocked) {
                         const Standing at = standingOn(rung.repFaction, rung.repLadder);
                         const long long need = Reputation::rankMin(rung.repLadder, rung.repRank) - at.reputation;
-                        note = L"about " + roughly((std::max)(need, 0LL)) + L" " + toW(REP_LADDERS[rung.repLadder].name) +
-                               L" to go";
+                        note = L"Approx. " + roughly((std::max)(need, 0LL)) + L" " + toW(REP_LADDERS[rung.repLadder].name) +
+                               L" remaining";
                     } else if (state == -2) {
-                        note = L"offered up to " +
+                        note = L"Offered up to " +
                                toW(REP_RANKS[REP_LADDERS[rung.repLadder].first + rung.repRankMax].name);
                     }
                     if (const std::wstring live = contractMoment(rung); !live.empty()) {
@@ -18796,8 +18817,8 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
                     if (missing > named) names += L"  \u00B7  +" + std::to_wstring(missing - named);
                     const std::wstring head =
                         missing ? std::to_wstring(missing) + L" of " + std::to_wstring(any.poolCount) +
-                                      L" still missing: " + names
-                                : L"all " + std::to_wstring(any.poolCount) + L" in your library";
+                                      L" missing: " + names
+                                : L"All " + std::to_wstring(any.poolCount) + L" in library";
                     const Gdiplus::RectF link(left, uy, textW, rungH * 2.0f);
                     const bool hot = isHot(hoverGrind_, link);
                     if (hot) {
@@ -18843,15 +18864,15 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
     hairline(g, M, footY - scaleF(6), right);
     {
         const std::wstring note =
-            L"A payout hands over a recipe you do not have yet, so it is one run each. Rayari's "
-            L"three sets are the only ones that roll for it at all, at 25 %.";
+            L"Each payout awards a recipe not yet owned, so one run per blueprint. "
+            L"Only Rayari's three sets pay out by chance, at 25 %.";
         g.DrawString(note.c_str(), -1, &subFont,
                      Gdiplus::RectF(left, footY + scaleF(2), edge - left, scaleF(32)), nullptr,
                      &faintBrush);
-        std::wstring keys = L"click a row for what is missing  ·  wheel to scroll  ·  "
-                            L"G or Esc closes";
+        std::wstring keys = L"Click a row for missing blueprints  ·  Scroll "
+                            L"with mouse wheel  ·  G / Esc: Close";
         if (drawn < (int)sets.size()) {
-            keys = L"showing " + std::to_wstring(grindScroll_ + 1) + L"–" +
+            keys = L"Showing " + std::to_wstring(grindScroll_ + 1) + L"–" +
                    std::to_wstring(grindScroll_ + drawn) + L" of " +
                    std::to_wstring((int)sets.size()) + L"  ·  " + keys;
         }
@@ -19132,8 +19153,8 @@ void MinerGUI::paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float t
     g.DrawString(L"YOUR WORK ORDERS", -1, &smallFont, Gdiplus::PointF(M, y), &faintBrush);
     if (refineryOrders_.empty()) {
         Gdiplus::RectF text(M, y + scaleF(24), (float)cw - 2 * M, scaleF(60));
-        g.DrawString(L"None yet. Open a refinery's REFINEMENT CENTER with Bedrock running: the work orders it shows "
-                     L"are read off the screen and listed here, with what comes out of them and when.",
+        g.DrawString(L"No work orders yet. Open a refinery's REFINEMENT CENTER while Bedrock is running: the work orders "
+                     L"shown there are read from the screen and listed here with output and completion time.",
                      -1, &rowFont, text, nullptr, &dimBrush);
     } else {
         int ready = 0;
@@ -19161,14 +19182,14 @@ void MinerGUI::paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float t
             const float x0 = card.X + in, w = card.Width - 2 * in;
             // where, and which order
             std::wstring where = toW(o.station);
-            if (o.number >= 0) where += L"   ·  work order " + std::to_wstring(o.number);
+            if (o.number >= 0) where += L"   ·  Work order " + std::to_wstring(o.number);
             g.DrawString(where.c_str(), -1, &stationFont, Gdiplus::RectF(x0, card.Y + scaleF(6), w * 0.6f, scaleF(20)),
                          &leftMid, &textBrush);
             // when - and since when only where the terminal said so: an order
             // first read COMPLETED was done before anyone looked
             const bool sinceKnown = !(o.completed > 0 && o.due >= o.completed);
-            const std::wstring when = done ? (sinceKnown ? L"done  ·  since " + clock(o.due) : std::wstring(L"done"))
-                                           : L"done in " + span(o.due - now) + L"  ·  " + clock(o.due);
+            const std::wstring when = done ? (sinceKnown ? L"Complete  ·  Since " + clock(o.due) : std::wstring(L"Complete"))
+                                           : L"Complete in " + span(o.due - now) + L"  ·  " + clock(o.due);
             g.DrawString(when.c_str(), -1, &statusFont, Gdiplus::RectF(x0, card.Y + scaleF(6), w, scaleF(20)), &rightMid,
                          done ? &goodBrush : &accentBrush);
             // what comes out: material, its quality in its rarity's colour, SCU -
@@ -19202,7 +19223,7 @@ void MinerGUI::paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float t
                 how += (how.empty() ? L"" : L"  ·  ") + c.str();
             }
             if (o.placed > 0) how += (how.empty() ? L"" : L"  ·  ") + std::wstring(L"placed ") + clock(o.placed);
-            if (how.empty()) how = L"read off the terminal at " + clock(o.seen);
+            if (how.empty()) how = L"Read at terminal, " + clock(o.seen);
             g.DrawString(how.c_str(), -1, &subFont, Gdiplus::RectF(x0, card.Y + scaleF(48), w - scaleF(96), scaleF(16)),
                          &leftMid, &dimBrush);
             const Gdiplus::RectF collected(card.X + card.Width - in - scaleF(82), card.Y + scaleF(46), scaleF(82), scaleF(20));
@@ -19212,14 +19233,14 @@ void MinerGUI::paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float t
             y += cardH + gap;
         }
         if (total > fit) {
-            const std::wstring more = L"showing " + std::to_wstring(first + 1) + L"\u2013" + std::to_wstring(last) +
-                                      L"  \u00B7  wheel to scroll";
+            const std::wstring more = L"Showing " + std::to_wstring(first + 1) + L"\u2013" + std::to_wstring(last) +
+                                      L"  \u00B7  Scroll with mouse wheel";
             g.DrawString(more.c_str(), -1, &subFont, Gdiplus::RectF(M, y, (float)cw - 2 * M, scaleF(14)), &rightMid,
                          &faintBrush);
         }
     }
-    g.DrawString(L"read off the REFINEMENT CENTER while you stand at it  ·  collected there, an order comes off by "
-                 L"itself  ·  \"Collected\" takes one off by hand",
+    g.DrawString(L"Read at the REFINEMENT CENTER  ·  Collected orders are removed "
+                 L"automatically  ·  \"Collected\" removes one manually",
                  -1, &subFont, Gdiplus::PointF(M, footY), &faintBrush);
 }
 
@@ -19546,8 +19567,8 @@ void MinerGUI::paintRefinery(HDC hdc) {
         auto factors = [](const RefiningMethod& m) {
             std::wstringstream fac;
             fac << std::fixed << std::setprecision(2)
-                << L"yield \u00D7" << m.yield << L"   time \u00D7" << m.time
-                << L"   cost \u00D7" << m.cost;
+                << L"Yield \u00D7" << m.yield << L"   Time \u00D7" << m.time
+                << L"   Cost \u00D7" << m.cost;
             return fac.str();
         };
 
@@ -19583,8 +19604,8 @@ void MinerGUI::paintRefinery(HDC hdc) {
             subRight = b.X - scaleF(10);
         }
         g.DrawString(refineryOrdersView_
-                         ? L"the work orders a refinery's terminal showed you · what comes out of them, and when"
-                         : L"tick what is in the hold, set how much, pick a method · the stations sort themselves by yield",
+                         ? L"Work orders read at refinery terminals · Output and completion time"
+                         : L"Tick the cargo, set the amount, select a method · Stations sorted by yield",
                      -1, &subFont,
                      Gdiplus::RectF(M + scaleF(15), (float)scale(36), (std::max)(scaleF(40), subRight - M - scaleF(15)),
                                     scaleF(14)),
@@ -19708,7 +19729,7 @@ void MinerGUI::paintRefinery(HDC hdc) {
         };
 
         // ---- left: the hold -------------------------------------------------
-        g.DrawString(L"IN THE HOLD", -1, &smallFont, Gdiplus::PointF(M, listTop), &faintBrush);
+        g.DrawString(L"CARGO", -1, &smallFont, Gdiplus::PointF(M, listTop), &faintBrush);
         if (!refineryPicked_.empty()) {
             Gdiplus::RectF clear(M + leftW - scaleF(50), listTop - scaleF(4), scaleF(50), scaleF(20));
             drawButton(g, clear, L"Clear", buttonFont, ButtonKind::Ghost, isHot(hoverRef_, clear),
@@ -19804,7 +19825,7 @@ void MinerGUI::paintRefinery(HDC hdc) {
             } else if (best == REFINERY_NONE) {
                 g.DrawString(L"—", -1, &numFont, at, &rightAlign, &faintBrush);
             } else {
-                g.DrawString((L"best " + withSign(best)).c_str(), -1, &numFont, at, &rightAlign,
+                g.DrawString((L"Best " + withSign(best)).c_str(), -1, &numFont, at, &rightAlign,
                              &faintBrush);
             }
             refHits_.push_back({row, 0, m});
@@ -19871,10 +19892,10 @@ void MinerGUI::paintRefinery(HDC hdc) {
             strokeRoundRect(g, card, scaleF(R_CARD), COL_BORDER);
         }
 
-        g.DrawString(refineryPicked_.empty() ? L"WHAT EACH STATION IS GOOD AT"
-                                             : L"WHAT THE HOLD COMES TO",
+        g.DrawString(refineryPicked_.empty() ? L"STATION YIELDS"
+                                             : L"CARGO RESULT",
                      -1, &smallFont, Gdiplus::PointF(rx, listTop), &faintBrush);
-        std::wstring scope = (refinerySystem_ == "ALL") ? L"all systems" : toW(refinerySystem_);
+        std::wstring scope = (refinerySystem_ == "ALL") ? L"All systems" : toW(refinerySystem_);
         scope += L"  ·  " + std::to_wstring((int)rows.size()) + L" stations";
         Gdiplus::RectF scopeRect(rx, listTop + scaleF(1), rw, scaleF(14));
         g.DrawString(scope.c_str(), -1, &subFont, scopeRect, &rightAlign, &faintBrush);
@@ -19899,7 +19920,7 @@ void MinerGUI::paintRefinery(HDC hdc) {
                 if (w.capacity >= 0) words = std::to_wstring(w.capacity) + L" %";
                 if (w.workload >= 0) words += (words.empty() ? L"" : L"  \u00B7  ") + toW(refineryWorkloadName(w.workload));
                 const long long age = (std::max)(0LL, (long long)std::time(nullptr) - w.observed);
-                words += L"  \u00B7  " + (age < 60      ? std::wstring(L"just now")
+                words += L"  \u00B7  " + (age < 60      ? std::wstring(L"Just now")
                                           : age < 3600   ? std::to_wstring(age / 60) + L" min ago"
                                           : age < 86400  ? std::to_wstring(age / 3600) + L" h ago"
                                                          : std::to_wstring(age / 86400) + L" d ago");
@@ -19937,7 +19958,7 @@ void MinerGUI::paintRefinery(HDC hdc) {
                     sub += toW(shortName(REFINERY_MATERIALS[best[k].second])) + L" " +
                            withSign(best[k].first);
                 }
-                if (best.empty()) sub = L"nothing listed above stock";
+                if (best.empty()) sub = L"No station above base yield";
             } else {
                 // The bill and the wait. The yield itself is the big figure
                 // on the right, because that is what the choice is about.
@@ -19946,7 +19967,7 @@ void MinerGUI::paintRefinery(HDC hdc) {
                     // Eight of the twenty refineries have a published yield
                     // and nothing else. Saying so beats printing a cost that
                     // was assumed to be average.
-                    sub += L"   ·   yield only";
+                    sub += L"   ·   Yield only";
                 }
             }
             g.DrawString(sub.c_str(), -1, &subFont, Gdiplus::PointF(rx, ry + scaleF(16)), &dimBrush);
@@ -19967,8 +19988,8 @@ void MinerGUI::paintRefinery(HDC hdc) {
         }
         if (more) {
             // The way the Blueprints list says it
-            std::wstring moreText = L"showing " + std::to_wstring(first + 1) + L"\u2013" +
-                                    std::to_wstring(first + shown) + L"  \u00B7  wheel to scroll";
+            std::wstring moreText = L"Showing " + std::to_wstring(first + 1) + L"\u2013" +
+                                    std::to_wstring(first + shown) + L"  \u00B7  Scroll with mouse wheel";
             Gdiplus::RectF r(rx, ry, rw, scaleF(12));
             g.DrawString(moreText.c_str(), -1, &subFont, r, &rightAlign, &faintBrush);
         }
@@ -19980,11 +20001,11 @@ void MinerGUI::paintRefinery(HDC hdc) {
         // Nine work orders at Levski, one per method, reproduce every yield
         // to the unit - the station modifier included, which is what proves
         // it applies at all. The bill and the clock are measured for one ore.
-        g.DrawString(L"R / Esc close  ·  yields check out against a real work order  ·  "
-                     L"bill and time measured for aluminium, other ores scaled to it",
+        g.DrawString(L"R / Esc: Close  ·  Yields verified against a real work order "
+                     L" ·  Cost and time measured for aluminium, other ores scaled",
                      -1, &subFont, Gdiplus::PointF(M, fy), &faintBrush);
         Gdiplus::RectF fr(M, fy, (float)cw - 2 * M, scaleF(16));
-        g.DrawString(L"game data 4.10", -1, &subFont, fr, &rightAlign, &faintBrush);
+        g.DrawString(L"Game data 4.10", -1, &subFont, fr, &rightAlign, &faintBrush);
 
         // The work orders' view takes everything under the tabs: the
         // calculator is drawn and then covered, its places to click with it
@@ -20090,8 +20111,8 @@ std::wstring MinerGUI::outOfScopeNote(const AnalysisResult& result) const {
     const bool ground = anyPart(result.name, [](const std::string& n) {
         return n == "ROC Deposit" || n == "FPS Minable";
     });
-    if (placeInSpace_ && ground) return L"not in open space";
-    return placeOre_.empty() ? L"not in " + toW(currentSystem_) : L"not at " + placeOre_;
+    if (placeInSpace_ && ground) return L"NOT IN OPEN SPACE";
+    return placeOre_.empty() ? L"NOT IN " + upperWords(toW(currentSystem_)) : L"NOT AT " + upperWords(placeOre_);
 }
 
 void MinerGUI::setShip(const std::string& label, bool inSeat, const std::string& hull) {
@@ -20642,7 +20663,7 @@ void MinerGUI::paintNews(HDC hdc) {
             newsTabs_[0] = newsTabs_[1] = Gdiplus::RectF();
         } else {
             // (No hover is followed in this window, so the buttons never light.)
-            drawButton(g, newsButton_, L"Got it", buttonFont, ButtonKind::Primary, false, scaleF(R_CONTROL));
+            drawButton(g, newsButton_, L"OK", buttonFont, ButtonKind::Primary, false, scaleF(R_CONTROL));
             const wchar_t* tabNames[2] = {L"2.5", L"2.0"};
             float tx = newsButton_.GetRight() + scaleF(12);
             for (int i = 0; i < 2; i++) {
@@ -20651,7 +20672,7 @@ void MinerGUI::paintNews(HDC hdc) {
                            newsPage_ == i ? ButtonKind::Selected : ButtonKind::Secondary, false, scaleF(R_CONTROL));
                 tx = newsTabs_[i].GetRight() + scaleF(6);
             }
-            g.DrawString(L"Esc closes it too", -1, &smallFont,
+            g.DrawString(L"Esc to close", -1, &smallFont,
                          Gdiplus::RectF(tx + scaleF(8), newsButton_.Y, M + textW - tx - scaleF(8), bh), &leftMid,
                          &faintBrush);
         }
@@ -20667,7 +20688,7 @@ void MinerGUI::paintNews(HDC hdc) {
             Gdiplus::Font letterFont(&textFamily(), scaleF(14), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
             g.DrawString(L"Thank you!", -1, &letterTitle, Gdiplus::PointF(M - scaleF(2), y), &textBrush);
             y += scaleF(54);
-            para(L"Bedrock " BEDROCK_VERSION_W L"  \u00B7  a few words before what\u2019s new", subFont, faintBrush,
+            para(L"Bedrock " BEDROCK_VERSION_W L"  \u00B7  A message before the release notes", subFont, faintBrush,
                  22);
             para(L"More and more of you are using Bedrock.", letterLead, textBrush, 12);
             para(L"In mid-September, about 50 of you used it in a week. Last week it was more than 100. That "
@@ -20732,12 +20753,12 @@ void MinerGUI::paintNews(HDC hdc) {
                 g.DrawString(words, -1, &subFont, Gdiplus::RectF(centre - scaleF(110), wordsY, scaleF(220), scaleF(20)),
                              &centredTop, &brush);
             };
-            under(L"a week, mid-September", thenX + thenW.Width / 2.0f, faintBrush);
-            under(L"last week", nowX + nowW.Width / 2.0f, dimBrush);
+            under(L"One week, mid-September", thenX + thenW.Width / 2.0f, faintBrush);
+            under(L"Last week", nowX + nowW.Width / 2.0f, dimBrush);
             g.DrawString(L"Thank you for being one of them.", -1, &oneFont,
                          Gdiplus::RectF(pane.X, wordsY + scaleF(20 + 44), pane.Width, scaleF(28)), &centredTop,
                          &textBrush);
-            g.DrawString(L"Installs that checked for an update in a week", -1, &smallFont,
+            g.DrawString(L"Installations checking for updates per week", -1, &smallFont,
                          Gdiplus::RectF(pane.X + scaleF(16), newsButton_.Y, pane.Width - scaleF(32), bh), &leftMid,
                          &faintBrush);
         } else if (newsPage_ == 0) {
@@ -20751,24 +20772,24 @@ void MinerGUI::paintNews(HDC hdc) {
                 g.DrawString(L"2.5", -1, &titleFont, Gdiplus::PointF(at.X + name.Width, y), &accentBrush);
             }
             y += scaleF(44);
-            para(L"Your blueprints, right in the game\u2019s contracts.", leadFont, textBrush, 16);
-            para(L"Tick \u201CShow them in the game\u2019s contracts\u201D at the top of the Blueprints window. "
-                 L"From your next game start, contracts that pay out blueprints have [BP] in their title, and "
-                 L"the description lists every blueprint they can give. The ones you don\u2019t have yet are "
-                 L"blue.",
+            para(L"Your blueprints in the game\u2019s contracts.", leadFont, textBrush, 16);
+            para(L"Tick \u201CShow them in the game\u2019s contracts\u201D at the top of the Blueprints "
+                 L"window. From the next game start, contracts that pay out blueprints "
+                 L"show [BP] in their title, and the description lists every blueprint "
+                 L"they can award. Blueprints you do not own yet are shown in blue.",
                  bodyFont, dimBrush, 16);
-            para(L"How it works: Star Citizen reads its texts from a language file when it starts. Bedrock "
-                 L"writes that file for you \u2013 the game\u2019s own English text, straight from your game "
-                 L"files, with just these lists added \u2013 and updates it whenever you get a new blueprint.",
+            para(L"How it works: Star Citizen reads its texts from a language file at startup. Bedrock "
+                 L"writes that file - the game\u2019s own English text from your game files, with "
+                 L"only these lists added - and updates it whenever you receive a new blueprint.",
                  bodyFont, dimBrush, 16);
-            para(L"One catch: the game only reads one language file. If you use a translation or another "
-                 L"language pack, Bedrock leaves it alone, and you won\u2019t see the lists.",
+            para(L"Limitation: the game reads only one language file. If you use a translation or another "
+                 L"language pack, Bedrock leaves it untouched and the lists are not shown.",
                  bodyFont, dimBrush, 16);
-            para(L"To use Bedrock\u2019s file instead, move the pack\u2019s global.ini out of "
-                 L"StarCitizen\\LIVE\\data\\Localization\\english \u2013 keep it somewhere, so you can put "
-                 L"it back later. Then tick the box. Untick it, and Bedrock removes its file again.",
+            para(L"To use Bedrock\u2019s file instead, move the pack\u2019s global.ini out of StarCitizen\\LIVE\\data\\Localization\\english "
+                 L"and keep it to restore later. "
+                 L"Then tick the box. Unticking it removes Bedrock\u2019s file again.",
                  bodyFont, dimBrush, 16);
-            para(L"And Bedrock looks new: every window has been redone, on cards and frosted glass.",
+            para(L"Bedrock also has a new look: every window has been redesigned with cards and frosted glass.",
                  bodyFont, dimBrush, 16);
 
             // What it looks like where it is read: a picture of a contract in the
@@ -20788,7 +20809,7 @@ void MinerGUI::paintNews(HDC hdc) {
                 refplanGlassPane(g, pane, scaleF(R_CARD), scaleF(14), COL_BG);
                 g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
                 g.DrawImage(shot, Gdiplus::RectF(x, top + pad, w, h));
-                g.DrawString(L"In the game: the blue ones are still missing.", -1, &smallFont,
+                g.DrawString(L"In game: blueprints in blue are not owned yet.", -1, &smallFont,
                              Gdiplus::RectF(x, newsButton_.Y, w, bh), &leftMid, &faintBrush);
             }
         } else {
@@ -20803,33 +20824,33 @@ void MinerGUI::paintNews(HDC hdc) {
                 g.DrawString(L"2.0", -1, &titleFont, Gdiplus::PointF(at.X + name.Width, y), &accentBrush);
             }
             y += scaleF(44);
-            para(L"This is big \u2014 hence a big window, for some update news.", subFont, dimBrush, 18);
+            para(L"A major update, so a larger window for the release notes.", subFont, dimBrush, 18);
 
-            para(L"Scanning got faster and steadier. The search for the signature markers does the same work "
-                 L"in a fifth of the time, so a scan takes about half as long as before. And readouts go "
-                 L"through a second opinion now: a signature has to be read the same way a few times before "
-                 L"it counts, and a rock's figures are read by two independent readers and only show once "
-                 L"they hold still over several looks.",
+            para(L"Scanning is faster and more stable. The search for signature markers does "
+                 L"the same work in a fifth of the time, so a scan takes about half as long "
+                 L"as before. Readings are now verified: a signature must be read identically "
+                 L"several times before it counts, and a rock's figures are read by two independent "
+                 L"readers and only shown once they are stable over several scans.",
                  bodyFont, dimBrush, 16);
 
-            para(L"Now to the big part: scan a rock, and Bedrock tells you whether you can crack it.", leadFont,
+            para(L"The main addition: scan a rock, and Bedrock tells you whether it can be broken.", leadFont,
                  textBrush, 6);
-            para(L"On your own or with a crew, with which head, at what laser power, whether a gadget is "
-                 L"needed or would just help \u2014 and what would break it if nothing on board does. The "
-                 L"window switches to the rock by itself while the scan panel is up, and back to the "
-                 L"signatures when it goes. The compact overlay shows the same answer.",
+            para(L"Solo or with a crew, with which laser head, at what laser power, whether a gadget "
+                 L"is required or recommended, and what would break it if nothing on board can. The "
+                 L"window switches to the rock automatically while the scan panel is open, and back "
+                 L"to the signatures when it closes. The compact overlay shows the same result.",
                  bodyFont, dimBrush, 16);
 
-            para(L"Set up your ship under EDIT SHIP first: its heads, the modules on them and the crafted "
-                 L"bonus the item shows. The answer is only as good as what Bedrock knows about your lasers.",
+            para(L"Set up your ship under EDIT SHIP first: its laser heads, their modules and the crafted "
+                 L"bonus shown on the item. The result is only as accurate as the loadout data.",
                  bodyFont, dimBrush, 16);
 
-            para(L"The maths behind it is measured against real rocks and lands close to the game. Not "
-                 L"perfect yet \u2014 take the laser power as a starting point, not a promise.",
+            para(L"The calculation is calibrated against real rocks and comes close to the game. It "
+                 L"is not perfect yet: treat the laser power as a starting point, not a guarantee.",
                  bodyFont, dimBrush, 16);
 
-            para(L"Known, and being worked on: it takes a moment for a rock to be recognised, sometimes more "
-                 L"than a moment. I am looking for a fix that does not cost scanning speed.",
+            para(L"Known issue: rock detection can take a moment, sometimes longer. "
+                 L"A fix without cost to scanning speed is in progress.",
                  bodyFont, dimBrush, 16);
 
             // the rock view, on the right, with an example in it - on a pane of
@@ -20847,7 +20868,7 @@ void MinerGUI::paintNews(HDC hdc) {
                                       newsButton_.Y + bh - (demoY - scaleF(14)));
             refplanGlassPane(g, pane, scaleF(R_CARD), scaleF(14), COL_BG);
             drawRockDemo(g, demoX, demoY, demoW);
-            g.DrawString(L"Example: a MOLE, 12 m from a 22,593 kg tin rock", -1, &smallFont,
+            g.DrawString(L"Example: MOLE, 12 m from a 22,593 kg tin deposit", -1, &smallFont,
                          Gdiplus::RectF(demoX + (float)scale(MARGIN), newsButton_.Y,
                                         (float)demoW - 2.0f * (float)scale(MARGIN), bh),
                          &leftMid, &faintBrush);
@@ -20927,37 +20948,37 @@ namespace {
 
 const wchar_t* const COLOUR_NAMES[Colours::ROLE_COUNT] = {
     L"Legendary", L"Epic", L"Rare", L"Uncommon", L"Common",
-    L"Highlight", L"Good", L"Caution", L"Bad", L"Looked for",
+    L"Highlight", L"Good", L"Caution", L"Bad", L"Target ores",
     L"Background", L"Text",
 };
 // What each one paints, under its name while it is on the sliders
 const wchar_t* const COLOUR_USES[Colours::ROLE_COUNT] = {
-    L"The rarity, and a rock part's quality from 900 up.",
-    L"The rarity, and a rock part's quality from 800 to 899.",
-    L"The rarity, and a rock part's quality from 700 to 799.",
-    L"The rarity, and a rock part's quality from 600 to 699.",
-    L"The rarity, and a rock part's quality under 600.",
-    L"The figures that count, what you picked, the main buttons.",
-    L"It breaks, the best match, done.",
+    L"Rarity, and rock part quality 900 and above",
+    L"Rarity, and rock part quality 800 to 899",
+    L"Rarity, and rock part quality 700 to 799",
+    L"Rarity, and rock part quality 600 to 699",
+    L"Rarity, and rock part quality below 600",
+    L"Key figures, selections, main buttons",
+    L"Breakable, best match, complete",
     L"Only with help, slow, nearly full.",
-    L"It won't hold, something went wrong.",
-    L"The ores you look for, blinking, and the live dot.",
-    L"Every window and the overlay. Kept dark, so the words stay readable.",
-    L"Words and figures. Kept light enough to read on the background.",
+    L"Cannot break, errors",
+    L"Target ores, blinking, and the live indicator",
+    L"All windows and the overlay. Kept dark for readability",
+    L"Text and figures. Kept light enough to read on the background",
 };
 const wchar_t* const SET_NAMES[(int)Colours::Set::COUNT] = {
     L"Bedrock", L"Protanopia", L"Deuteranopia", L"Tritanopia", L"Own",
 };
 const wchar_t* const SET_USES[(int)Colours::Set::COUNT] = {
-    L"Bedrock's own colours.",
-    L"Red-weak sight: red looks darker and close to green. Nothing here relies on red against green, "
-    L"and the reds are lighter.",
-    L"Green-weak sight, the most common kind: red and green look alike. Nothing here relies on telling them apart.",
-    L"Blue-weak sight: blue looks like green, and yellow like pink. Nothing here relies on telling those apart.",
-    L"Your own colours. Picking a set above keeps them to come back to.",
+    L"Bedrock's default colours.",
+    L"Red-weak vision: red appears darker and close to green. No colour "
+    L"pair relies on red against green, and reds are lighter.",
+    L"Green-weak vision, the most common type: red and green look alike. No colour pair relies on telling them apart.",
+    L"Blue-weak vision: blue looks like green, and yellow like pink. No colour pair relies on telling those apart.",
+    L"Your own colours. They are kept when another set is selected.",
 };
 const wchar_t* const VISION_NAMES[(int)Colours::Vision::COUNT] = {
-    L"Normal sight", L"Protanopia", L"Deuteranopia", L"Tritanopia",
+    L"Normal vision", L"Protanopia", L"Deuteranopia", L"Tritanopia",
 };
 // ...and in a sentence
 const wchar_t* const VISION_WORDS[(int)Colours::Vision::COUNT] = {
@@ -21865,9 +21886,9 @@ float MinerGUI::drawOverlaySample(Gdiplus::Graphics& g, float width) {
         g.DrawString(text, -1, &font, Gdiplus::RectF(M, y, rowW, step + scaleF(2)), &oneLine, &brush);
         y += step;
     };
-    line(L"YES, ON YOUR OWN  \u00B7  RIGHT Helix II", lineFont, goodBrush);
-    line(L"57\u201365 % laser power holds it steady, more makes it climb", infoFont, textBrush);
-    line(L"without Surge: near 92 %  \u00B7  also LEFT at 98 %", infoFont, faintBrush);
+    line(L"CAPABLE SOLO  \u00B7  RIGHT Helix II", lineFont, goodBrush);
+    line(L"57\u201365 % laser power will hold charge steady", infoFont, textBrush);
+    line(L"Without Surge approximately 92 %  \u00B7  Also capable - LEFT at 98 %", infoFont, faintBrush);
     // ...and the ship on the last line, the switch for the rows beside it
     y += scaleF(8);
     const Gdiplus::RectF rowsButton(width - M - scaleF(46), y - scaleF(4), scaleF(46), scaleF(22));
@@ -21964,10 +21985,10 @@ void MinerGUI::drawMainSample(Gdiplus::Graphics& g, float x0, float y0, float wi
         g.DrawString(m.label, -1, &nameFont, Gdiplus::PointF(x0 + scaleF(30), y + scaleF(5)), &textBrush);
         if (wanted) {
             const float markX = x0 + scaleF(30) + widthOf(m.label, nameFont) + scaleF(6);
-            const Gdiplus::RectF mark(markX, y + scaleF(8), widthOf(L"LOOKING FOR", badgeFont) + scaleF(10), scaleF(13));
+            const Gdiplus::RectF mark(markX, y + scaleF(8), widthOf(L"TARGET", badgeFont) + scaleF(10), scaleF(13));
             fillRoundRect(g, mark, mark.Height / 2, COL_WANTED);
             Gdiplus::SolidBrush ink(inkOn(COL_WANTED));
-            g.DrawString(L"LOOKING FOR", -1, &badgeFont, mark, &centred, &ink);
+            g.DrawString(L"TARGET", -1, &badgeFont, mark, &centred, &ink);
         }
         // the second line: the value, how near, and the rarity in its colour
         g.DrawString(m.info, -1, &infoFont, Gdiplus::PointF(x0 + scaleF(30), y + scaleF(24)), &dimBrush);
@@ -22028,12 +22049,12 @@ void MinerGUI::drawMainSample(Gdiplus::Graphics& g, float x0, float y0, float wi
     }
 
     // the verdicts, one of each kind
-    g.DrawString(L"CAN YOU BREAK IT?", -1, &headerFont, Gdiplus::PointF(x0, y), &faintBrush);
+    g.DrawString(L"BREAK ANALYSIS", -1, &headerFont, Gdiplus::PointF(x0, y), &faintBrush);
     y += scaleF(17);
     const struct { const wchar_t* words; Gdiplus::Color colour; } verdicts[3] = {
-        {L"YES, ON YOUR OWN", COL_GREEN},
-        {L"NEEDS 2 HEADS TOGETHER", COL_YELLOW},
-        {L"LASER UNABLE TO BREAK DEPOSIT", COL_RED},
+        {L"CAPABLE SOLO", COL_GREEN},
+        {L"2 LASERS REQUIRED", COL_YELLOW},
+        {L"LASER CANNOT BREAK DEPOSIT", COL_RED},
     };
     for (const auto& v : verdicts) {
         Gdiplus::SolidBrush brush(v.colour);
@@ -22205,8 +22226,8 @@ void MinerGUI::paintSettings(HDC hdc) {
         // the heading, as the Ore Finder has one
         g.FillRectangle(&accentBrush, M, (float)scale(18), scaleF(8), scaleF(8));
         g.DrawString(L"Settings", -1, &markFont, Gdiplus::PointF(M + scaleF(14), (float)scale(8)), &textBrush);
-        g.DrawString(L"the colours of every window and the overlay, how the overlay sits over the game, and Bedrock "
-                     L"on a phone  \u00B7  everything applies at once",
+        g.DrawString(L"Colours of all windows and the overlay, overlay display, "
+                     L"and Bedrock on a phone  \u00B7  Changes apply immediately",
                      -1, &subFont, Gdiplus::PointF(M + scaleF(15), (float)scale(36)), &dimBrush);
 
         const float leftX = M, leftW = scaleF(440);
@@ -22263,7 +22284,7 @@ void MinerGUI::paintSettings(HDC hdc) {
         card(Gdiplus::RectF(leftX, top, leftW, scaleF(468)));
         float y = top + scaleF(12);
         g.DrawString(L"COLOURS", -1, &smallFont, Gdiplus::PointF(ix, y), &faintBrush);
-        g.DrawString(L"for colour blindness, or to your taste", -1, &subFont, Gdiplus::RectF(ix, y + scaleF(1), iw, scaleF(14)),
+        g.DrawString(L"For colour blindness or personal preference", -1, &subFont, Gdiplus::RectF(ix, y + scaleF(1), iw, scaleF(14)),
                      &rightAlign, &faintBrush);
         y += scaleF(22);
         // the sets, a button each; Own once there is something of one's own
@@ -22380,7 +22401,7 @@ void MinerGUI::paintSettings(HDC hdc) {
             card(Gdiplus::RectF(leftX, otop, leftW, scaleF(128)));
             float oy = otop + scaleF(12);
             g.DrawString(L"OVERLAY", -1, &smallFont, Gdiplus::PointF(ix, oy), &faintBrush);
-            g.DrawString(L"on the overlay itself: drag its corner, or Ctrl + and Ctrl -", -1, &subFont,
+            g.DrawString(L"On the overlay: drag its corner, or use Ctrl + and Ctrl -", -1, &subFont,
                          Gdiplus::RectF(ix, oy + scaleF(1), iw, scaleF(14)), &rightAlign, &faintBrush);
             oy += scaleF(24);
             wchar_t figure[32];
@@ -22396,7 +22417,7 @@ void MinerGUI::paintSettings(HDC hdc) {
             slider(SLIDE_SIZE, L"Size", oy, (overlayZoom_ - OVERLAY_ZOOM_MIN) / (OVERLAY_ZOOM_MAX - OVERLAY_ZOOM_MIN), figure,
                    nullptr, COL_TEXT);
         }
-        g.DrawString(L"Esc closes", -1, &subFont, Gdiplus::PointF(ix, (float)ch - scaleF(22)), &faintBrush);
+        g.DrawString(L"Esc to close", -1, &subFont, Gdiplus::PointF(ix, (float)ch - scaleF(22)), &faintBrush);
 
         // ---- the phone or tablet ----
         {
@@ -22422,12 +22443,12 @@ void MinerGUI::paintSettings(HDC hdc) {
             }
             py += scaleF(36);
             const wchar_t* modeWords[3] = {
-                L"The overlay or the whole window, in the browser of a phone or tablet on your network. "
-                L"Nothing to install.",
-                L"The overlay or the whole window, in the browser of a phone or tablet on your network. "
-                L"Nothing to install, and only to look at.",
-                L"The overlay or the whole window, in the browser of a phone or tablet on your network. "
-                L"Nothing to install, and a tap on it works like a click here."};
+                L"The overlay or the full window in the browser of a phone "
+                L"or tablet on your network. No installation required.",
+                L"The overlay or the full window in the browser of a phone or tablet "
+                L"on your network. No installation required, view only.",
+                L"The overlay or the full window in the browser of a phone or tablet on "
+                L"your network. No installation required, a tap works like a click."};
             g.DrawString(modeWords[mode], -1, &noteFont, Gdiplus::RectF(qx, py, qw, scaleF(44)), nullptr, &dimBrush);
             py += scaleF(52);
 
@@ -22457,7 +22478,7 @@ void MinerGUI::paintSettings(HDC hdc) {
                 }
                 g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
                 py += side + scaleF(10);
-                g.DrawString(L"Scan it with the phone's camera. The phone has to be on the same network as this PC.", -1,
+                g.DrawString(L"Scan with the phone's camera. The phone must be on the same network as this PC.", -1,
                              &noteFont, Gdiplus::RectF(qx, py, qw, scaleF(30)), nullptr, &dimBrush);
                 py += scaleF(34);
                 g.DrawString(toW(address).c_str(), -1, &hexFont, Gdiplus::RectF(qx, py, qw, scaleF(32)), nullptr,
@@ -22480,37 +22501,37 @@ void MinerGUI::paintSettings(HDC hdc) {
                 }
                 py += scaleF(34);
                 const int watching = phone_ ? phone_->watching() : 0;
-                std::wstring who = watching == 0   ? L"Nobody is watching yet."
-                                   : watching == 1 ? L"1 device is watching."
-                                                   : std::to_wstring(watching) + L" devices are watching.";
+                std::wstring who = watching == 0   ? L"No devices connected"
+                                   : watching == 1 ? L"1 device connected"
+                                                   : std::to_wstring(watching) + L" devices connected";
                 Gdiplus::SolidBrush whoBrush(watching > 0 ? COL_GREEN : COL_TEXT_FAINT);
                 g.DrawString(who.c_str(), -1, &labelFont, Gdiplus::PointF(qx, py), &whoBrush);
                 if (phoneControl_) {
                     py += scaleF(24);
-                    g.DrawString(L"A long press is a right click. What opens a window of its own stays on the PC.", -1,
+                    g.DrawString(L"Long press is a right click. Separate windows open on the PC only.", -1,
                                  &noteFont, Gdiplus::RectF(qx, py, qw, scaleF(30)), nullptr, &dimBrush);
                 }
             } else if (phoneOn_) {
                 // on, and no address to give: why not
                 const std::wstring why = !phoneError_.empty()
-                    ? L"It could not start: " + toW(phoneError_) + L"."
-                    : L"This PC has no network address that a phone could reach.";
+                    ? L"Could not start: " + toW(phoneError_) + L""
+                    : L"No network address reachable from a phone";
                 Gdiplus::SolidBrush whyBrush(!phoneError_.empty() ? COL_RED : COL_YELLOW);
                 g.DrawString(why.c_str(), -1, &noteFont, Gdiplus::RectF(qx, py, qw, scaleF(60)), nullptr, &whyBrush);
             } else {
                 // off: where the code will be
                 const Gdiplus::RectF where(qx, py, qw, qw);
                 strokeRoundRect(g, where, scaleF(R_CONTROL), COL_BORDER);
-                g.DrawString(L"Switched on, the code to scan\nwith the phone shows here.", -1, &noteFont, where, &centred,
+                g.DrawString(L"When switched on, the code to scan \u23CE with the phone appears here.", -1, &noteFont, where, &centred,
                              &faintBrush);
             }
 #ifdef _WIN32
             const std::wstring firewall =
                 L"If Windows asks whether Bedrock may use the network, allow it for private networks.";
 #else
-            const std::wstring firewall = L"A firewall on this PC has to let port " +
+            const std::wstring firewall = L"A firewall on this PC must allow incoming connections on port " +
                                           std::to_wstring(phone_ && phone_->running() ? phone_->port() : phonePort_) +
-                                          L" in.";
+                                          L".";
 #endif
             g.DrawString(firewall.c_str(), -1, &subFont, Gdiplus::RectF(qx, pbottom - scaleF(40), qw, scaleF(30)), nullptr,
                          &faintBrush);
@@ -22529,7 +22550,7 @@ void MinerGUI::paintSettings(HDC hdc) {
                 settingsHits_.push_back({chip, 5, v});
                 x -= scaleF(4);
             }
-            g.DrawString(L"seen with", -1, &subFont, Gdiplus::RectF(rightX, top + scaleF(5), x - rightX - scaleF(4), scaleF(14)),
+            g.DrawString(L"Seen with", -1, &subFont, Gdiplus::RectF(rightX, top + scaleF(5), x - rightX - scaleF(4), scaleF(14)),
                          &rightAlign, &faintBrush);
             const float py = top + scaleF(32);
             drawSettingsPreview(g, Gdiplus::RectF(std::round(rightX), std::round(py), std::round(rightW),
@@ -22547,12 +22568,12 @@ void MinerGUI::paintSettings(HDC hdc) {
                 std::wstring words;
                 if (settingsVision_ > 0) words = L"With " + std::wstring(VISION_WORDS[settingsVision_]) + L", ";
                 if (alike <= flat) {
-                    words += std::wstring(COLOUR_NAMES[a]) + L" and " + COLOUR_NAMES[b] + L" look almost alike.";
+                    words += std::wstring(COLOUR_NAMES[a]) + L" and " + COLOUR_NAMES[b] + L" look almost identical.";
                 } else {
                     words += std::wstring(COLOUR_NAMES[plain]) + L" looks almost like plain text.";
                 }
                 if (settingsVision_ > 0 && (int)colours_.set != settingsVision_) {
-                    words += L" The " + std::wstring(SET_NAMES[settingsVision_]) + L" set is made for this.";
+                    words += L" The " + std::wstring(SET_NAMES[settingsVision_]) + L" set is designed for this.";
                 }
                 Gdiplus::SolidBrush cautionBrush(COL_YELLOW);
                 g.DrawString(words.c_str(), -1, &noteFont,

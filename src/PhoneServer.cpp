@@ -171,10 +171,10 @@ bool PhoneServer::start(const std::string& token, int port, bool loopbackOnly) {
         error_ = why;
         return false;
     };
-    if (!tokenOk(token)) return fail("its address has no token");
-    if (!netReady()) return fail("Windows did not start its network sockets");
+    if (!tokenOk(token)) return fail("Address has no token");
+    if (!netReady()) return fail("Windows network sockets unavailable");
     Socket s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (s == NO_SOCKET) return fail("no socket to listen on");
+    if (s == NO_SOCKET) return fail("No socket available");
 #ifndef _WIN32
     // A restart finds its port again rather than a port still waiting out
     // the last connection. (Windows lets it have the port as it is, and its
@@ -193,13 +193,13 @@ bool PhoneServer::start(const std::string& token, int port, bool loopbackOnly) {
     }
     if (!bound) {
         closeSocket(s);
-        if (port <= 0) return fail("no free port");
-        return fail("ports " + std::to_string(port) + " to " + std::to_string(port + tries - 1) +
-                    " are all taken");
+        if (port <= 0) return fail("No free port");
+        return fail("Ports " + std::to_string(port) + " to " + std::to_string(port + tries - 1) +
+                    " all in use");
     }
     if (listen(s, 8) != 0) {
         closeSocket(s);
-        return fail("could not listen on the port");
+        return fail("Cannot listen on the port");
     }
     sockaddr_in got{};
     socklen_t length = sizeof(got);
@@ -267,7 +267,7 @@ void PhoneServer::serve() {
                         done = true;
                     } else if (client.head.size() > HEAD_MAX) {
                         const std::string out =
-                            reply("431 Request Header Fields Too Large", "text/plain", "Too long.\n");
+                            reply("431 Request Header Fields Too Large", "text/plain", "Request too long.\n");
                         sendAll(client.socket, out.data(), out.size());
                         done = true;
                     }
@@ -306,7 +306,7 @@ void PhoneServer::answer(intptr_t client, const std::string& peer, const std::st
     const auto send = [&](const std::string& out) { sendAll(s, out.data(), out.size()); };
     Request request;
     if (!parseRequest(head, request)) {
-        send(reply("400 Bad Request", "text/plain", "Not a request.\n"));
+        send(reply("400 Bad Request", "text/plain", "Invalid request.\n"));
         return;
     }
     const Route where = route(request, token_);
@@ -379,7 +379,7 @@ void PhoneServer::answer(intptr_t client, const std::string& peer, const std::st
                 if (shown.pngFrame == frame) encoded = shown.png;
             }
             if (!picture) {
-                send(reply("404 Not Found", "text/plain", "Nothing drawn yet.\n"));
+                send(reply("404 Not Found", "text/plain", "No image yet.\n"));
                 return;
             }
             // made here, on this thread, and kept for the next device that
@@ -398,7 +398,7 @@ void PhoneServer::answer(intptr_t client, const std::string& peer, const std::st
         }
         case Route::Tap: {
             if (!control_) {
-                send(reply("403 Forbidden", "text/plain", "Only to look at.\n"));
+                send(reply("403 Forbidden", "text/plain", "View only.\n"));
                 return;
             }
             Tap tap;
@@ -421,7 +421,7 @@ void PhoneServer::answer(intptr_t client, const std::string& peer, const std::st
         }
         case Route::NotFound:
         default:
-            send(reply("404 Not Found", "text/plain", "Not here.\n"));
+            send(reply("404 Not Found", "text/plain", "Not found.\n"));
             return;
     }
 }
@@ -697,7 +697,7 @@ body.control #shot{cursor:pointer}
 <div class="views"><button data-view="overlay">Overlay</button><button data-view="window">Window</button></div>
 <button id="full" title="Full screen" aria-label="Full screen"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 6V1h5M12 1h5v5M17 12v5h-5M6 17H1v-5"/></svg></button>
 </header>
-<div id="stage"><img id="shot" alt="" hidden draggable="false"><div id="note">Waiting for Bedrock&hellip;</div></div>
+<div id="stage"><img id="shot" alt="" hidden draggable="false"><div id="note">Connecting to Bedrock&hellip;</div></div>
 <div id="toast" role="status"></div>
 <script>
 'use strict';
@@ -729,9 +729,9 @@ async function poll(){if(busy||gone)return;busy=true;const v=view;
   // what Bedrock says about a tap - a word it has said before is not said again
   if(typeof s.noteN==='number'){if(heard>=0&&s.noteN!==heard&&s.note)toast(s.note);heard=s.noteN}
   if(v!==view)return;
-  if(!s.frame){if(!shown)say('Waiting for Bedrock\u2026');return}
+  if(!s.frame){if(!shown)say('Connecting to Bedrock\u2026');return}
   if(s.frame!==shown&&!loading)load(v,s.frame);else if(!loading&&shown)say('')}
- catch(e){if(++misses>=4)say('Bedrock is not answering. Is it still running, with this device on the same network?')}
+ catch(e){if(++misses>=4)say('Bedrock is not responding. Check that it is running and that this device is on the same network.')}
  finally{busy=false}}
 async function load(v,n){loading=true;
  try{const r=await fetch('frame?view='+v+'&n='+n,{cache:'no-store'});if(!r.ok||v!==view)return;

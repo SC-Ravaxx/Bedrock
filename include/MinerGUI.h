@@ -1066,9 +1066,9 @@ private:
     struct RockVerdict {
         enum Kind { NoLoadout, Unread, HeadsOff, OutOfRange, Solo, SoloOverpowered, Crew, AllHeads, WontHold };
         Kind kind = NoLoadout;
-        std::wstring headline;     // "YES, ON YOUR OWN"
+        std::wstring headline;     // "CAPABLE SOLO"
         std::wstring who;          // the head it names - "RIGHT Helix II" - empty on a single head
-        std::wstring instruction;  // "61 % laser power holds it steady, more makes it climb"
+        std::wstring instruction;  // "61 % laser power will hold charge steady"
         std::wstring note;         // a second line, or empty
         int head = -1;             // the head it is about, on a MOLE
         int crew = 0;              // how many heads together, when it takes more than one
@@ -1096,6 +1096,11 @@ private:
     HeadState headState(int head) const;
     // The gadget's line: on the rock, needed, a help, or optional
     struct GadgetWords {
+        // what the card says of it: placed on the rock in the game, picked
+        // here to see what it would do, needed, would help, or worth having
+        // for another reason
+        enum Advice { NoGadget, Applied, IfApplied, Required, Recommended, Optional };
+        Advice advice = NoGadget;
         const MiningGadget* gadget = nullptr;
         std::wstring tag, line, note;
         Gdiplus::Color tone;
@@ -1812,9 +1817,9 @@ private:
     bool phoneTapping_ = false;
     std::string phoneNote_;
     int phoneNoteN_ = 0;
-    static constexpr const char* PHONE_OPENS_ON_PC = "That opens on the PC only.";
-    static constexpr const char* PHONE_WORKS_ON_PC = "That works on the PC only.";
-    static constexpr const char* PHONE_TYPING_ON_PC = "Typing works on the PC only.";
+    static constexpr const char* PHONE_OPENS_ON_PC = "Opens on the PC only";
+    static constexpr const char* PHONE_WORKS_ON_PC = "Available on the PC only";
+    static constexpr const char* PHONE_TYPING_ON_PC = "Typing available on the PC only";
     void phoneSay(const char* words);
     bool phoneTaps();                          // true where there were any
     void phoneTap(const PhoneServer::Tap& tap);

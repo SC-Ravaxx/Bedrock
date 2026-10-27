@@ -29,7 +29,7 @@ Getting started
 4. LIVE is already on at start: the app scans about three times a second, and
    the search frame follows the marker by itself. The LIVE button turns the
    scanning off and on again.
-   The header says where you are ("You are at: Pyro - Monox") and which ship
+   The header says where you are (LOCATION, "Pyro - Monox") and which ship
    you sit in, both read off the game's own log: the route the ship computes
    names the place it starts from, the arrival after a quantum jump names the
    target, a gateway right after a jump point names the far side. The ore
@@ -39,9 +39,9 @@ Getting started
    "Salvage" - there is no salvage on a body and no harvestable in space.
    (The three system buttons are gone with it: the log says which system you
    are in, and better than a button you forget to press.)
-5. I'M LOOKING FOR, under the header, is the list of ores you want to be told
+5. TARGET ORES, under the header, is the list of ores you want to be told
    about. Open it, type a few letters to narrow the list, click as many ores
-   as you like. A match then blinks red and carries the word LOOKING FOR, so
+   as you like. A match then blinks red and carries the word TARGET, so
    you can watch the game rather than this window. Whatever a recipe on your
    shopping list needs blinks the same way on its own, marked ON YOUR LIST.
    The pick is kept in looking_for.txt and survives a restart.
@@ -53,7 +53,7 @@ Getting started
    buttons, move it or resize it, Alt-Tab to Bedrock first. ORE FINDER (F)
    opens the ore search, BLUEPRINTS (B) the crafting recipes, REFINERY (R)
    the station table, NOTES (N) your own notebook.
-7. SHIP, next to PLACE, holds the ships you mine with and what they carry -
+7. SHIP, next to LOCATION, holds the ships you mine with and what they carry -
    heads, modules, crafted bonus - which is what the rock view works with.
    You can save several, also more than one of the same type, each under its
    own name: add one at the bottom of the list, change it with "Edit ship".
@@ -66,7 +66,7 @@ Getting started
    text size and size. Click a colour to put it on the sliders for hue,
    saturation and lightness, or type a hex code into its field; Ctrl+V
    pastes one. The preview shows the overlay over a scene from the game
-   and the matches of the main window, and "seen with" shows them the way
+   and the matches of the main window, and "Seen with" shows them the way
    each kind of colour blindness sees them. Everything applies at once.
    Your own colours are kept in colours.txt, and picking a set keeps them
    to come back to.
@@ -274,7 +274,7 @@ Some of those gaps close by themselves. A contract that pays out blueprints
 gives you one every time you complete it, as long as one of its set is still
 missing - and nothing once you have them all. So when you complete such a
 contract and no blueprint comes, the app takes the rest of its set as owned
-(the recipe then says "assumed - its contract paid none on ..."). It only
+(the recipe then says "Assumed - Contract paid none on ..."). It only
 does this for contracts that always pay out and whose set does not depend
 on the region, and only from game logs of 4.10 on. Should one of them turn
 up later after all, the app drops what it assumed from that contract and

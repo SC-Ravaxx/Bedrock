@@ -18,7 +18,7 @@ What gets added, and only this, at the end of the game's values:
   - its DESCRIPTION gets the list, below an empty line, one blueprint per
     line - the mobiGlas panel holds about sixty characters, and a line of
     several names would break in the middle of one:
-        BLUEPRINTS · depends on the region
+        BLUEPRINTS · Depends on region
 
         Pyro I · Monox · one of 7 · 6 owned
         • 9-Series Longsword Cannon S1
@@ -230,7 +230,7 @@ def owned_phrase(rows):
 def count_phrase(n, chance):
     parts = []
     if n > 1:
-        parts.append("one of %d" % n)
+        parts.append("One of %d" % n)
     if chance < 0.999:
         parts.append("%d %% chance" % round(chance * 100))
     return (" · " + " · ".join(parts)) if parts else ""
@@ -328,25 +328,25 @@ def variant_labels(groups):
     the contract names"""
     regions = [{m for r in g for m in re.findall(r"Pyro_Region([A-D])", r["debug"])} for g in groups]
     if disjoint(regions):
-        return "depends on the region", [" · ".join(p for x in sorted(s) for p in REGION_PLACES[x]) for s in regions]
+        return "Depends on region", [" · ".join(p for x in sorted(s) for p in REGION_PLACES[x]) for s in regions]
     systems = [set().union(*[systems_of(r) for r in g]) for g in groups]
     if disjoint(systems):
-        return "depends on the system", [" · ".join(s for s in SYSTEMS if s in x) for x in systems]
+        return "Depends on system", [" · ".join(s for s in SYSTEMS if s in x) for x in systems]
     titles = title_labels(groups)
     if titles:
-        return "depends on the contract", titles
+        return "Depends on contract", titles
     ranks = [{r["standing"] for r in g if r["standing"]} for g in groups]
     if disjoint(ranks):
         order = [r["standing"] for g in groups for r in g]
-        return "depends on your rank", [ranks_phrase(sorted(s, key=order.index)) for s in ranks]
+        return "Depends on rank", [ranks_phrase(sorted(s, key=order.index)) for s in ranks]
     tokens = token_labels(groups)
     if tokens:
-        return "depends on the contract", tokens
+        return "Depends on contract", tokens
     everyone = [r for g in groups for r in g]
     words = [contract_words(g, everyone) for g in groups]
     if all(words) and len(set(words)) == len(words):
-        return "depends on the contract", words
-    return "depends on the variant", None
+        return "Depends on contract", words
+    return "Depends on variant", None
 
 
 KIND_WORD = [("WeaponPersonal", "Weapons"), ("WeaponAttachment", "Weapons"), ("Char_Armor_Undersuit", "Suits"),
@@ -421,7 +421,7 @@ def block_from_data(key, records):
         tags = [t for p in pools.values() for t in p["tags"]]
         body, rows = item_lines(tags)
         chance = min(p["chance"] for p in pools.values())
-        head = " · all of these" if singles else count_phrase(len(rows), chance)
+        head = " · All of these" if singles else count_phrase(len(rows), chance)
         lines.append("<EM4>BLUEPRINTS</EM4>" + head + owned_phrase(rows))
         if only_some:
             ranks = [x for p in pools.values() for x in p["ranks"] if x]
@@ -432,7 +432,7 @@ def block_from_data(key, records):
     names = list(pools)
     if each:
         # one contract, several lists: a blueprint out of each
-        header = "one from each group"
+        header = "One from each group"
         labels = distinct_labels([kinds_label(pools[p]["tags"]) for p in names], names, names)
         groups = [(label, pools[p]["tags"], pools[p]["chance"]) for label, p in zip(labels, names)]
     elif all(len(c) == 1 for c in combos):
@@ -445,7 +445,7 @@ def block_from_data(key, records):
         # several lists per contract, some of them only in some variants:
         # those named for the contracts that pay out of them, the ones every
         # variant pays out of for what they are made of
-        header = "one per group that fits"
+        header = "One per group that fits"
         shared = [p for p in names if all(p in c for c in combos)]
         varying = [p for p in names if p not in shared]
         sets = OrderedDict()             # which combos a varying list belongs to -> its lists
@@ -528,7 +528,7 @@ for key, users in desc_users.items():
         note = ("Only the %s variants pay out" if len(ranks) > 1 else "Only the %s variant pays out") % ranks_phrase(ranks)
     else:
         note = "Another variant of this contract pays out"
-    marks[key] = NL + NL + "<EM4>BLUEPRINTS</EM4> · none in this variant" + NL + note
+    marks[key] = NL + NL + "<EM4>BLUEPRINTS</EM4> · None in this variant" + NL + note
     report["variants that pay nothing"] += 1
 
 # --- what a contract is sure to pay out of ---------------------------------------

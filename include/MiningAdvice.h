@@ -465,27 +465,27 @@ inline GadgetAdvice adviseFor(MiningGoal goal) {
     switch (goal) {
         case MiningGoal::Breakable:
             out.gadget = detail::bestOn(&MiningGadget::resistance, false);
-            out.because = "brings the rock's resistance down furthest";
+            out.because = "Largest resistance reduction";
             if (out.gadget) out.effect = out.gadget->resistance;
             break;
         case MiningGoal::Safe:
             out.gadget = detail::bestOn(&MiningGadget::instability, false);
-            out.because = "takes the most instability out of it";
+            out.because = "Largest instability reduction";
             if (out.gadget) out.effect = out.gadget->instability;
             break;
         case MiningGoal::Easier:
             out.gadget = detail::bestOn(&MiningGadget::window, true);
-            out.because = "widens the charge window the most";
+            out.because = "Largest charge window increase";
             if (out.gadget) out.effect = out.gadget->window;
             break;
         case MiningGoal::Faster:
             out.gadget = detail::bestOn(&MiningGadget::rate, true);
-            out.because = "fills the window fastest";
+            out.because = "Fastest charge rate";
             if (out.gadget) out.effect = out.gadget->rate;
             break;
         case MiningGoal::Yield:
             out.gadget = detail::bestOn(&MiningGadget::cluster, true);
-            out.because = "keeps the most ore together when it shatters";
+            out.because = "Best ore clustering on fracture";
             if (out.gadget) out.effect = out.gadget->cluster;
             break;
         case MiningGoal::Automatic:
@@ -530,10 +530,10 @@ inline GadgetAdvice advise(const RockStats& rock, const MiningLoadout& fit,
     if (fit.laser && rock.distance > fit.laser->fullRange) {
         GadgetAdvice advice;
         advice.reason = MiningGoal::Automatic;
-        advice.because = "you are past this laser's full-power range - closing in "
-                         "is worth more than any gadget";
+        advice.because = "NEAR END OF LASER RANGE - "
+                         "Move closer to deposit";
         if (rock.distance >= fit.laser->zeroRange) {
-            advice.because = "you are out of range entirely - nothing reaches the rock";
+            advice.because = "OUT OF RANGE - Laser cannot reach deposit";
         }
         return advice;
     }
@@ -575,13 +575,13 @@ inline GadgetAdvice advise(const RockStats& rock, const MiningLoadout& fit,
                     advice.holdWithout = asIs * 100.0f;
                     advice.holdWith = bestShare * 100.0f;
                     std::snprintf(text, sizeof(text),
-                                  "needed - without it the rock will not hold at any throttle; "
-                                  "with it, hold around %.0f %%", bestShare * 100.0f);
+                                  "Required - Without it charge cannot be held steady "
+                                  "at any power, with it approximately %.0f %%", bestShare * 100.0f);
                     advice.because = text;
                     return advice;
                 }
                 advice.reason = MiningGoal::Automatic;
-                advice.because = "no gadget brings this rock within reach - it wants more power";
+                advice.because = "NO GADGET CAN HELP BREAK DEPOSIT - More laser power is required";
                 return advice;
             }
             if (best && bestShare <= BREAK_COMFORTABLE) {
@@ -591,8 +591,8 @@ inline GadgetAdvice advise(const RockStats& rock, const MiningLoadout& fit,
                 advice.holdWithout = asIs * 100.0f;
                 advice.holdWith = bestShare * 100.0f;
                 std::snprintf(text, sizeof(text),
-                              "not needed, but it would help - from %.0f %% down to %.0f %%, "
-                              "with room to drive the bar up", asIs * 100.0f, bestShare * 100.0f);
+                              "Recommended - Laser power %.0f \u2192 %.0f "
+                              "%%, more reserve to raise charge", asIs * 100.0f, bestShare * 100.0f);
                 advice.because = text;
                 return advice;
             }

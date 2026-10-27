@@ -61,12 +61,12 @@ namespace UexMarket {
 bool readItems(const std::string& averagesJson, std::map<std::string, int>& items, std::string& why) {
     JsonValue answer;
     if (!parseJson(averagesJson, answer, why)) {
-        why = "the marketplace's items: " + why;
+        why = "Marketplace items: " + why;
         return false;
     }
     const JsonValue* rows = answer.find("data");
     if (answer.textOr("status") != "ok" || !rows || rows->kind != JsonValue::Kind::Array) {
-        why = "the item list was empty";
+        why = "Item list empty";
         return false;
     }
     std::map<std::string, int> read;
@@ -76,7 +76,7 @@ bool readItems(const std::string& averagesJson, std::map<std::string, int>& item
         if (id > 0 && !name.empty()) read.emplace(name, id);
     }
     if (read.empty()) {
-        why = "the marketplace has no items";
+        why = "Marketplace has no items";
         return false;
     }
     items = std::move(read);
@@ -92,12 +92,12 @@ bool readListings(const std::string& json, long long now, std::vector<UexListing
     out.clear();
     JsonValue answer;
     if (!parseJson(json, answer, why)) {
-        why = "the listings: " + why;
+        why = "Listings: " + why;
         return false;
     }
     const JsonValue* rows = answer.find("data");
     if (answer.textOr("status") != "ok") {
-        why = "UEX said " + answer.textOr("status", "nothing");
+        why = "UEX responded: " + answer.textOr("status", "nothing");
         return false;
     }
     if (!rows || rows->kind != JsonValue::Kind::Array) return true;   // none open
@@ -135,11 +135,11 @@ bool readListings(const std::string& json, long long now, std::vector<UexListing
 bool readNegotiations(const std::string& json, UexThreads& threads, std::string& why) {
     JsonValue answer;
     if (!parseJson(json, answer, why)) {
-        why = "the conversations: " + why;
+        why = "Conversations: " + why;
         return false;
     }
     if (answer.textOr("status") != "ok") {
-        why = "UEX said " + answer.textOr("status", "nothing");
+        why = "UEX responded: " + answer.textOr("status", "nothing");
         return false;
     }
     threads.hashByListing.clear();

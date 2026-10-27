@@ -190,7 +190,7 @@ void drawWindow(Gdiplus::Graphics& g, float W, float H, int signature,
     hairline(g, M, 112, W - M);
 
     // --- what to watch for
-    g.DrawString(L"I'M LOOKING FOR", -1, &label, Gdiplus::PointF(M, 122), &faint);
+    g.DrawString(L"TARGET ORES", -1, &label, Gdiplus::PointF(M, 122), &faint);
     const Gdiplus::RectF drop(M, 138, W - 2 * M, 30);
     fillRoundRect(g, drop, 4, COL_CARD);
     strokeRoundRect(g, drop, 4, COL_BORDER);

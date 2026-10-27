@@ -215,7 +215,7 @@ bool baseText(const std::filesystem::path& channel, std::string& text, std::stri
     std::error_code ec;
     const auto size = std::filesystem::file_size(archive, ec);
     if (ec) {
-        error = "no Data.p4k in " + channel.string();
+        error = "No Data.p4k in " + channel.string();
         return false;
     }
     const auto time = std::filesystem::last_write_time(archive, ec);
@@ -321,11 +321,11 @@ std::string GameTexts::render(const char* text, const std::string& value, const 
         }
         // The count says what the colours mean: blue is what is missing
         if (kind == 'O') {
-            if (n > 0 && have == n) out += DOT + std::string("all owned");
-            else if (have == 0) out += DOT + stillToGet("none owned");
+            if (n > 0 && have == n) out += DOT + std::string("All owned");
+            else if (have == 0) out += DOT + stillToGet("None owned");
             else out += DOT + stillToGet(std::to_string(n - have) + " missing");
         } else if (kind == 'A') {
-            if (n > 0 && have == n) out += DOT + std::string("all owned");
+            if (n > 0 && have == n) out += DOT + std::string("All owned");
         } else if (kind == 'T') {
             const std::string tag = bar == std::string::npos ? std::string("[BP]") : tok.substr(bar + 1);
             out += (n > 0 && have == n) ? tag : stillToGet(tag);
@@ -393,7 +393,7 @@ int GameTexts::compose(const std::string& base, const OwnedFn& owned, std::strin
     // whose file this is - and so whose it is to rewrite or take away
     if (!out.empty() && out.compare(out.size() - nl.size(), nl.size(), nl) != 0) out += nl;
     out += std::string(MARKER_KEY) + "=Written by Bedrock " + BEDROCK_VERSION +
-           ". Untick the boxes in its Blueprints window to take this file away again.";
+           ". Untick the options in its Blueprints window to remove this file.";
     if (named) *named = renamed;
     return marked;
 }
@@ -488,15 +488,15 @@ bool GameTexts::build(const std::filesystem::path& channel, const std::vector<bo
                       std::string& text, int& marked, std::string& note, bool marks, bool names) {
     std::string base, error;
     if (!baseText(channel, base, error)) {
-        note = "the game's text could not be read: " + error;
+        note = "Game text unreadable: " + error;
         return false;
     }
     const OwnedFn isOwned = [&owned](int b) { return b >= 0 && b < (int)owned.size() && owned[b]; };
     int named = 0;
     marked = compose(base, isOwned, text, marks, names, &named);
     if (marked == 0 && named == 0) {
-        note = marks ? "none of the contracts Bedrock knows is in this game's text"
-                     : "no component's class and grade in this game's text";
+        note = marks ? "No known contracts in this game text"
+                     : "No component class and grade in this game text";
         return false;
     }
     return true;
@@ -523,7 +523,7 @@ GameTexts::Outcome GameTexts::write(const std::filesystem::path& channel, const 
             std::error_code ignored;
             std::filesystem::remove(one, ignored);
         }
-        o.note = "the game has someone else's language file - left alone";
+        o.note = "Another language file is installed - Left untouched";
         return o;
     }
     const std::filesystem::path file = ours.empty() ? target(channel) : ours.front();
@@ -532,7 +532,7 @@ GameTexts::Outcome GameTexts::write(const std::filesystem::path& channel, const 
     readFile(cfgPath, cfg);
     bool cfgChanged = false;
     if (!wantEnglish(cfg, language, cfgChanged)) {
-        o.note = "the game is set to " + language + " - the marks are English only";
+        o.note = "Game language is " + language + " - Marks are English only";
         return o;
     }
     std::string text;
@@ -544,7 +544,7 @@ GameTexts::Outcome GameTexts::write(const std::filesystem::path& channel, const 
     // reads the old file or the new one, never half of one
     const std::filesystem::path fresh = file.string() + ".bedrock";
     if (!writeFile(fresh, text)) {
-        o.note = "could not write into " + file.parent_path().string();
+        o.note = "Cannot write to " + file.parent_path().string();
         return o;
     }
     std::filesystem::rename(fresh, file, ec);
@@ -553,7 +553,7 @@ GameTexts::Outcome GameTexts::write(const std::filesystem::path& channel, const 
         std::error_code ignored;
         std::filesystem::remove(fresh, ignored);
         if (ec) {
-            o.note = "could not put the file in place: " + ec.message();
+            o.note = "Cannot place the file: " + ec.message();
             return o;
         }
     }
@@ -563,12 +563,12 @@ GameTexts::Outcome GameTexts::write(const std::filesystem::path& channel, const 
         std::filesystem::remove(ours[i], ignored);
     }
     if (cfgChanged && !writeFile(cfgPath, cfg)) {
-        o.note = "written, but user.cfg could not be told g_language = english";
+        o.note = "Written, but g_language = english could not be set in user.cfg";
         o.written = true;
         return o;
     }
     o.written = true;
-    o.note = "in the game from its next start (written " + now() + ")";
+    o.note = "Active in game from next start (written " + now() + ")";
     return o;
 }
 
@@ -589,10 +589,10 @@ GameTexts::Outcome GameTexts::remove(const std::filesystem::path& channel) {
         std::filesystem::remove(one, ec);
         if (ec) failed = ec;
     }
-    if (failed) o.note = "could not take the file away: " + failed.message();
-    else if (foreign) o.note = "the game has someone else's language file - left alone";
-    else if (!any) o.note = "the game shows its own texts";
-    else o.note = "taken away - the game shows its own texts from its next start";
+    if (failed) o.note = "Cannot remove the file: " + failed.message();
+    else if (foreign) o.note = "Another language file is installed - Left untouched";
+    else if (!any) o.note = "Game shows its own texts";
+    else o.note = "Removed - Game shows its own texts from next start";
     return o;
 }
 

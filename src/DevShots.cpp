@@ -588,7 +588,7 @@ int runScreenshots(const std::string& dir) {
     analyzer.setPlaceFilter("");
     analyzer.setGround(SCMiner::SignatureAnalyzer::Ground::Space);
     gui.setCurrentSystem("NYX");
-    gui.setPlace("Nyx - open space", "", true);
+    gui.setPlace("Nyx - Open space", "", true);
     scanned(28000, 96);
     pump();
     shoot(gui.windowHandle(), "main_space.png");
@@ -598,13 +598,13 @@ int runScreenshots(const std::string& dir) {
     // Nyx for what follows.
     analyzer.setSystemFilter("STANTON");
     gui.setCurrentSystem("Stanton");
-    gui.setPlace("Stanton - open space", "", true);
+    gui.setPlace("Stanton - Open space", "", true);
     scanned(12855, 97);
     pump();
     shoot(gui.windowHandle(), "main_long_places.png");
     analyzer.setSystemFilter("NYX");
     gui.setCurrentSystem("NYX");
-    gui.setPlace("Nyx - open space", "", true);
+    gui.setPlace("Nyx - Open space", "", true);
     scanned(28000, 96);
     pump();
     // The rock view: what the window shows while the game's scan panel is up.
@@ -1056,7 +1056,7 @@ int runScreenshots(const std::string& dir) {
                 pump();
             }
             gui.setCurrentSystem("NYX");
-            gui.setPlace("Nyx - open space", "", true);
+            gui.setPlace("Nyx - Open space", "", true);
         }
 
         gui.clearRock();

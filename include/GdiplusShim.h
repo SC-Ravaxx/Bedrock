@@ -77,6 +77,33 @@ inline QString toQ(const wchar_t* text, int length) {
 inline qreal pad(const QFont& f) {
     return (f.pixelSize() > 0 ? f.pixelSize() : f.pointSizeF() * 96.0 / 72.0) / 6.0;
 }
+// A text broken at its spaces into at most that many lines of that width,
+// as GDI+ wraps it, the last of them ending in "…" where the rest would
+// not fit on it
+inline QString wrapAndTrim(const QString& s, const QFontMetricsF& fm, qreal width, int maxLines) {
+    const QStringList words = s.split(QLatin1Char(' '));
+    QStringList lines;
+    QString line;
+    int i = 0;
+    for (; i < words.size(); ++i) {
+        const QString longer = line.isEmpty() ? words[i] : line + QLatin1Char(' ') + words[i];
+        if (line.isEmpty() || fm.horizontalAdvance(longer) <= width) {
+            line = longer;
+            continue;
+        }
+        if (lines.size() + 1 == maxLines) break;
+        lines << line;
+        line = words[i];
+    }
+    if (i < words.size()) {
+        QString rest = line;
+        for (; i < words.size(); ++i) rest += QLatin1Char(' ') + words[i];
+        lines << fm.elidedText(rest, Qt::ElideRight, width);
+    } else {
+        lines << line;
+    }
+    return lines.join(QLatin1Char('\n'));
+}
 }  // namespace detail
 using ARGB = std::uint32_t;
 
@@ -764,11 +791,27 @@ public:
         QRectF box = layout.q().adjusted(pad, 0, -pad, 0);
         if (box.width() <= 0) box = layout.q();
         QString shown = s;
+        int drawn = flags;
         if (format && format->trimming() != StringTrimmingNone && layout.Width > 0) {
+            // GDI+ trims the last line that fits, not the first: a rectangle
+            // with room for more lines than one wraps there and ends in the
+            // ellipsis only where the text goes on past the last of them.
+            // The lines are broken here, and Qt is not to break them again -
+            // a line that just fits by its advance can be a hair too wide
+            // for Qt's own layout, and would put its last word on a line of
+            // its own
             const QFontMetricsF fm(font->q());
-            shown = fm.elidedText(s, Qt::ElideRight, box.width());
+            const int lines = (flags & Qt::TextSingleLine)
+                                  ? 1
+                                  : std::max(1, (int)((box.height() + 0.01) / std::max<qreal>(1.0, fm.lineSpacing())));
+            if (lines > 1) {
+                shown = detail::wrapAndTrim(s, fm, box.width(), lines);
+                drawn &= ~Qt::TextWordWrap;
+            } else {
+                shown = fm.elidedText(s, Qt::ElideRight, box.width());
+            }
         }
-        p_->drawText(box, flags, shown);
+        p_->drawText(box, drawn, shown);
         p_->restore();
         return Ok;
     }

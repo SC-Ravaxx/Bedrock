@@ -46,12 +46,12 @@ std::string lowered(std::string text) {
 const JsonValue* rowsOf(const JsonValue& answer, std::string& why) {
     const std::string status = answer.textOr("status");
     if (status != "ok") {
-        why = status.empty() ? "an answer without a status" : "UEX said " + status;
+        why = status.empty() ? "Response without status" : "UEX responded: " + status;
         return nullptr;
     }
     const JsonValue* data = answer.find("data");
     if (!data || data->kind != JsonValue::Kind::Array) {
-        why = "the answer had no data";
+        why = "Response contained no data";
         return nullptr;
     }
     return data;
@@ -63,7 +63,7 @@ bool UexPrices::read(const std::string& pricesJson, const std::string& terminals
                      std::string& why) {
     JsonValue prices;
     if (!parseJson(pricesJson, prices, why)) {
-        why = "the price list couldn't be read: " + why;
+        why = "Price list unreadable: " + why;
         return false;
     }
     const JsonValue* priceRows = rowsOf(prices, why);
@@ -133,7 +133,7 @@ bool UexPrices::read(const std::string& pricesJson, const std::string& terminals
         if ((int)offers.size() > OFFERS_KEPT) offers.resize(OFFERS_KEPT);
     }
     if (byCommodity.empty()) {
-        why = "the price list was empty";
+        why = "Price list empty";
         return false;
     }
     byCommodity_ = std::move(byCommodity);
