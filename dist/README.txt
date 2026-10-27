@@ -90,7 +90,8 @@ Refinery (key R)
 Twenty refineries, and how much of a load each one gives back. Tick the
 materials in your hold on the left and the stations sort themselves by what
 comes back out; tick nothing and the list shows instead what each station is
-GOOD at. The tabs narrow it to one system.
+GOOD at. The tabs narrow it to one system. When there are more stations or
+work orders than the window has room for, the wheel scrolls the list.
 
 Work orders: when you use a refinery terminal (REFINEMENT CENTER), Bedrock
 reads your work orders off it and lists them under Work orders, the tab on
