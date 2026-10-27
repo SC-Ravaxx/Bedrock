@@ -23872,7 +23872,7 @@ std::vector<Plugins::UiItem> MinerGUI::pluginListPieces() {
         end.kind = UiItem::Kind::CardEnd;
         out.push_back(end);
     }
-    if (!any) text("No plugins installed yet - Install one below", UiItem::Tone::Dim);
+    if (!any) text("No plugins installed", UiItem::Tone::Dim);
 
     heading("AVAILABLE");
     bool offeredAny = false;
@@ -23920,12 +23920,6 @@ std::vector<Plugins::UiItem> MinerGUI::pluginListPieces() {
     again.options.push_back("Check again");
     again.kinds.push_back("plain");
     out.push_back(again);
-    UiItem gap;
-    gap.kind = UiItem::Kind::Gap;
-    out.push_back(gap);
-    text("Plugins come from Ravaxx alone. Bedrock checks each one's signature before it runs it, and a plugin "
-         "reads nothing but the game's log and its own data.",
-         UiItem::Tone::Dim);
     return out;
 }
 

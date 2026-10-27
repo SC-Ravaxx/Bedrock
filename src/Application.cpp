@@ -4634,11 +4634,11 @@ void Application::pluginAction(const std::string& id, const std::string& action)
     if (action == "refresh") {
         if (pluginJob_.valid()) return;
         if (pluginIndexUrl_.empty()) {
-            pluginServerNote_ = "This build has no plugin server to ask";
+            pluginServerNote_ = "No plugin server in this build";
             pushPlugins();
             return;
         }
-        pluginServerNote_ = "Asking the server for plugins...";
+        pluginServerNote_ = "Checking for plugins...";
         fetchForPlugins("", pluginIndexUrl_);
     } else if (action == "install") {
         if (pluginJob_.valid()) return;
@@ -4708,7 +4708,7 @@ void Application::servicePlugins() {
                 pluginServerNote_.clear();
                 std::cout << "[plugins] the server offers " << offers.size() << std::endl;
             } else {
-                pluginServerNote_ = "The list of plugins could not be fetched - " + why;
+                pluginServerNote_ = "Plugin list not available - " + why;
                 std::cout << "[plugins] list: " << why << std::endl;
             }
         } else {
@@ -4719,7 +4719,7 @@ void Application::servicePlugins() {
                 pluginServerNote_.clear();
                 std::cout << "[plugins] " << id << " installed" << std::endl;
             } else {
-                pluginServerNote_ = "It could not be installed - " + why;
+                pluginServerNote_ = "Not installed - " + why;
                 std::cout << "[plugins] " << f.id << ": " << why << std::endl;
             }
         }
