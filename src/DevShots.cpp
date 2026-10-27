@@ -571,7 +571,7 @@ int runScreenshots(const std::string& dir) {
         if (gui.pluginsWindow()) shoot(gui.pluginsWindow(), "plugin_wikelo_log.png", true);
         gui.togglePlugins();
         pump();
-        // ...and the header, with the jigsaw piece beside the gear
+        // ...and the main window, the plugin on its rail
         shoot(gui.windowHandle(), "plugins_header.png");
         // ...and the list and Wikelo as pages of the main window, as the
         // rail opens them

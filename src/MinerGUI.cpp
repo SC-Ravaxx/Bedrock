@@ -3588,14 +3588,16 @@ void MinerGUI::onPaint(HDC hdc) {
             // The rail down the left, and the page right of it drawn as it
             // always was, moved over by the rail - the pointer with it
             drawRail(g, rw, ch);
-            const POINT hover = hoverMain_;
-            if (hover.x >= 0) hoverMain_ = hover.x >= rw ? POINT{hover.x - rw, hover.y} : POINT{-1, -1};
-            const Gdiplus::GraphicsState plain = g.Save();
-            g.TranslateTransform((float)rw, 0.0f);
-            g.SetClip(Gdiplus::RectF(0.0f, 0.0f, (float)(cw - rw), (float)ch));
-            paintWindowBody(g, cw - rw, ch);
-            g.Restore(plain);
-            hoverMain_ = hover;
+            if (cw > rw) {
+                const POINT hover = hoverMain_;
+                if (hover.x >= 0) hoverMain_ = hover.x >= rw ? POINT{hover.x - rw, hover.y} : POINT{-1, -1};
+                const Gdiplus::GraphicsState plain = g.Save();
+                g.TranslateTransform((float)rw, 0.0f);
+                g.SetClip(Gdiplus::RectF(0.0f, 0.0f, (float)(cw - rw), (float)ch));
+                paintWindowBody(g, cw - rw, ch);
+                g.Restore(plain);
+                hoverMain_ = hover;
+            }
         }
     }
 
