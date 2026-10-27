@@ -3,6 +3,8 @@
 #include "CommodityData.h"
 #include "Reputation.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -46,6 +48,50 @@ constexpr std::string_view SELL = "SendCommoditySellRequest>";
 constexpr std::string_view BUY = "SendCommodityBuyRequest>";
 constexpr std::string_view ANSWER = "RmToken_CommodityTransactionResponse>";
 constexpr int ANSWER_WITHIN = 5;   // seconds a refusal may take: 0.4 measured
+
+// A resource's name in the game's records in words, upper case: at each
+// turn from small letters to a capital, from letters to figures and at
+// anything else - "ShipAmmoSize4" SHIP AMMO SIZE 4, "RMC" RMC
+std::vector<std::string> recordWords(const std::string& name) {
+    std::vector<std::string> words;
+    std::string word;
+    for (size_t i = 0; i < name.size(); i++) {
+        const unsigned char c = static_cast<unsigned char>(name[i]);
+        if (!std::isalnum(c)) {
+            if (!word.empty()) words.push_back(word);
+            word.clear();
+            continue;
+        }
+        if (!word.empty()) {
+            const unsigned char before = static_cast<unsigned char>(name[i - 1]);
+            if ((std::isdigit(c) != 0) != (std::isdigit(before) != 0) || (std::isupper(c) && std::islower(before))) {
+                words.push_back(word);
+                word.clear();
+            }
+        }
+        word += static_cast<char>(std::toupper(c));
+    }
+    if (!word.empty()) words.push_back(word);
+    return words;
+}
+
+// ...and a commodity's name as it is written: "Ship Ammunition - Size 4"
+// SHIP AMMUNITION SIZE 4
+std::vector<std::string> writtenWords(const std::string& name) {
+    std::vector<std::string> words;
+    std::string word;
+    for (const char ch : name) {
+        const unsigned char c = static_cast<unsigned char>(ch);
+        if (std::isalnum(c)) {
+            word += static_cast<char>(std::toupper(c));
+        } else if (c != '\'' && !word.empty()) {
+            words.push_back(word);
+            word.clear();
+        }
+    }
+    if (!word.empty()) words.push_back(word);
+    return words;
+}
 
 }  // namespace
 
@@ -137,7 +183,110 @@ bool TradeBook::live(std::string_view text) {
     GameState::Event event;
     if (GameState::parse(text, &event)) where_.apply(event);
     if (text.find("Commodity") == std::string_view::npos) return false;
+    std::string resource, sizes;
+    if (parseBoxes(text, resource, sizes)) {
+        // a terminal's list filling: its lines come at once, a new fill is
+        // another shop or the same one a few seconds later
+        const long long at = millisOf(stampOf(text));
+        const std::string shopId(fieldOf(text, "shopId"));
+        if (fills_.empty() || fills_.back().shopId != shopId || at < 0 || at - fills_.back().ms > 2000) {
+            TerminalFill fill;
+            fill.ms = at;
+            fill.shopId = shopId;
+            fill.shop = std::string(fieldOf(text, "shopName"));
+            fill.place = placeOf(where_);
+            fills_.push_back(std::move(fill));
+            while (fills_.size() > FILLS_KEPT) fills_.pop_front();
+        }
+        fills_.back().boxes[resource] = sizes;
+        return false;
+    }
     return line(text, placeOf(where_));
+}
+
+const TradeBook::TerminalFill* TradeBook::terminalAt(long long ms, long long within) const {
+    for (auto it = fills_.rbegin(); it != fills_.rend(); ++it) {
+        if (it->ms > ms) continue;
+        return ms - it->ms <= within ? &*it : nullptr;
+    }
+    return nullptr;
+}
+
+bool TradeBook::parseBoxes(std::string_view line, std::string& resource, std::string& sizes) {
+    // the shop's own list (LoadShopInventoryData); the player's boxes come
+    // in lines of the same name, with Cargo Box Data and no sizes
+    if (line.find("AddingCommodityBox") == std::string_view::npos) return false;
+    std::string_view name = fieldOf(line, "commodityName");
+    constexpr std::string_view KIND = "ResourceType.";
+    if (name.substr(0, KIND.size()) == KIND) name.remove_prefix(KIND.size());
+    const size_t listed = line.find("Available Box Sizes:");
+    if (name.empty() || listed == std::string_view::npos) return false;
+    resource = std::string(name);
+    sizes.clear();
+    constexpr std::string_view BOX = "boxSize[";
+    for (size_t at = line.find(BOX, listed); at != std::string_view::npos; at = line.find(BOX, at + BOX.size())) {
+        const size_t close = line.find(']', at + BOX.size());
+        if (close == std::string_view::npos) break;
+        const std::string_view figure = line.substr(at + BOX.size(), close - at - BOX.size());
+        int size = figure.empty() ? -1 : 0;
+        for (const char c : figure) size = std::isdigit(static_cast<unsigned char>(c)) && size >= 0 && size < 100000 ? size * 10 + (c - '0') : -1;
+        if (size <= 0) continue;
+        sizes += (sizes.empty() ? "" : ",") + std::to_string(size);
+    }
+    return true;
+}
+
+bool TradeBook::resourceIs(const std::string& resource, const std::string& name) {
+    // the game's own older name for one, its misspellings of two, and a name
+    // it shortens
+    static const std::pair<const char*, const char*> RECORDS[] = {
+        {"PlasmaFuel", "HydrogenFuel"}, {"Atlassium", "Atlasium"}, {"Flourine", "Fluorine"},
+        {"CK13SeedBlend", "CK13GIDSeedBlend"}};
+    std::string key = resource;
+    for (const auto& [record, written] : RECORDS) {
+        if (key == record) key = written;
+    }
+    std::vector<std::string> record = recordWords(key);
+    std::vector<std::string> written = writtenWords(name);
+    if (record.empty() || written.empty()) return false;
+    for (std::string& word : record) {
+        if (word == "AMMO") word = "AMMUNITION";
+    }
+    // the same letters and figures in a row - "LifeCureMedsticks" LifeCure
+    // Medsticks, "Etam" E'tam
+    std::string recordRun, writtenRun;
+    for (const std::string& word : record) recordRun += word;
+    for (const std::string& word : written) writtenRun += word;
+    if (recordRun == writtenRun) return true;
+    // a name's initials: RMC, Recycled Material Composite
+    if (record.size() == 1 && written.size() > 1 && record[0].size() == written.size()) {
+        bool initials = true;
+        for (size_t i = 0; i < written.size() && initials; i++) {
+            initials = std::isalpha(static_cast<unsigned char>(record[0][i])) && written[i][0] == record[0][i];
+        }
+        if (initials) return true;
+    }
+    // the same words, in any order: SHIP COUNTERMEASURES DECOY is Ship Decoy
+    // Countermeasures
+    std::sort(record.begin(), record.end());
+    std::sort(written.begin(), written.end());
+    return record == written;
+}
+
+long long TradeBook::millisOf(const std::string& stamp) {
+    const long long seconds = Reputation::epochOf(stamp.substr(0, 19));
+    if (seconds < 0) return -1;
+    long long ms = seconds * 1000;
+    // the thousandths after the point, where the stamp has them
+    if (stamp.size() >= 23 && stamp[19] == '.') {
+        int part = 0;
+        for (size_t i = 20; i < 23; i++) {
+            if (!std::isdigit(static_cast<unsigned char>(stamp[i]))) return ms;
+            part = part * 10 + (stamp[i] - '0');
+        }
+        ms += part;
+    }
+    return ms;
 }
 
 void TradeBook::liveLogRestarted() {

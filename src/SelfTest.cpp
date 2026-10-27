@@ -38,6 +38,7 @@
 #include "MiniJson.h"
 #include "RefineryShare.h"
 #include "CommodityTerminal.h"
+#include "Datarunner.h"
 #include "UexPrices.h"
 #include "UexReports.h"
 #include "UexMarket.h"
@@ -1333,6 +1334,31 @@ int runSelfTest() {
                            directory.method("PYROMETRIC CHROMALYSIS") == 2 && directory.method("XCR Reaction") == 0;
         allPassed &= check(names, "UEX's names for what the refinery says otherwise: Raw Ice, Stileron (Ore), "
                                   "Construction Rubble, Aluminium, the Cormack Method - and a refinery by its station");
+        // ...and the commodity terminal a Datarunner's picture was taken at:
+        // the town its shop is named after before a wrong place, a station's
+        // or an outpost's own name, SMO read as SM0, ore sales at the raw
+        // terminal, a gateway with its system, a Pyro rest stop by its name
+        // or its point - and every one at a place with several, none where
+        // the terminal is gone
+        using IdList = std::vector<int>;
+        const bool terminalsFit =
+            read && directory.tradeTerminals("SCShop_Levski_CargoOffice_Commodities", "Crusader") == IdList{778} &&
+            directory.tradeTerminals("SCShop_Admin_lt_base_g", "HUR-L1") == IdList{100} &&
+            directory.tradeTerminals("SCShop_Trdpst_Warehouse_OTLW_Int_A", "Ignis") == IdList{507} &&
+            directory.tradeTerminals("SCShop_Admin_lt_base_g", "Shubin SMO-18") == IdList{900} &&
+            directory.tradeTerminals("SCShop_Levski_Refinery_OreSales", "Levski") == IdList{786} &&
+            directory.tradeTerminals("SCShop_Trdpst_Warehouse_CFP_Int_A", "Pyro IV") == IdList({510, 688}) &&
+            directory.tradeTerminals("SCShop_Admin_lt_base_g", "Pyro Gateway (Stanton)") == IdList{252} &&
+            directory.tradeTerminals("SCShop_Admin_lt_base_g", "Pyro Gateway (Nyx)") == IdList{743} &&
+            directory.tradeTerminals("SCShop_Admin_lt_base_g", "Checkmate") == IdList{436} &&
+            directory.tradeTerminals("SCShop_Admin_lt_base_g", "PYR2 L4") == IdList{436} &&
+            directory.tradeTerminals("SCShop_Admin_lt_base_g", "Gone").empty() &&
+            directory.tradeTerminals("SCShop_Admin_lt_base_g", "").empty() &&
+            directory.terminalName(436) == "Admin - Checkmate" && directory.terminalName(12345).empty() &&
+            directory.commodityTerminals().size() == 10 && directory.commodityNames().size() == 7;
+        allPassed &= check(terminalsFit, "a Datarunner picture's terminal: by its shop's town, a station, an outpost, "
+                                         "ore sales, a gateway's system, a Lagrange point - every one at a place with "
+                                         "several, none where it is gone");
         SCMiner::UexRefineryJob::Item iron;
         iron.material = "Iron (Ore)";
         iron.quantity = 484;
@@ -1459,6 +1485,299 @@ int runSelfTest() {
                           SCMiner::CommodityCard().priceSure() == Certainty::Missing;
         allPassed &= check(sure, "how sure a card's values are: sure where two readings agree or the words are the "
                                  "game's, to check where read once, missing where a cargo box is picked");
+    }
+
+    // --- UEX Datarunner: the report as UEX's documentation writes it - one
+    //     side of the list, the cargo box sizes per row where the log has
+    //     them, the game version, the picture's date, the picture -, UEX's
+    //     answers, the terminal the log saw fill, and the five minutes kept
+    //     over a restart ---
+    {
+        namespace R = SCMiner::UexReports;
+        namespace D = SCMiner::Datarunner;
+        SCMiner::UexPriceRow argon, iron;
+        argon.commodity = 111;
+        argon.price = 316;
+        argon.stock = 24000;
+        argon.level = 7;
+        argon.boxes = "1,2,4,8,16,24,32";
+        iron.commodity = 44;
+        iron.price = 2850;
+        iron.stock = 4;
+        iron.level = 2;
+        const std::string bought = R::priceReport(252, false, {argon, iron}, 1791700000, "4.10.2", "QUJD", true);
+        SCMiner::UexPriceRow waste;
+        waste.commodity = 192;
+        waste.price = 229.5;
+        waste.stock = 0;
+        waste.level = 1;
+        waste.boxes = "8\",\"x";
+        const std::string sold = R::priceReport(436, true, {waste}, 0, "", "", false);
+        const bool bodies =
+            bought == "{\"id_terminal\":252,\"type\":\"commodity\",\"is_production\":1,\"prices\":["
+                      "{\"id_commodity\":111,\"price_buy\":316,\"scu_buy\":24000,\"status_buy\":7,"
+                      "\"container_sizes\":\"1,2,4,8,16,24,32\"},"
+                      "{\"id_commodity\":44,\"price_buy\":2850,\"scu_buy\":4,\"status_buy\":2}],"
+                      "\"game_version\":\"4.10.2\",\"date_added\":1791700000,\"screenshot\":\"QUJD\"}" &&
+            sold == "{\"id_terminal\":436,\"type\":\"commodity\",\"is_production\":0,\"prices\":["
+                    "{\"id_commodity\":192,\"price_sell\":229.5,\"scu_sell\":0,\"status_sell\":1}]}" &&
+            bought.find("_sell") == std::string::npos && sold.find("_buy") == std::string::npos &&
+            R::base64((const unsigned char*)"Man", 3) == "TWFu" && R::base64((const unsigned char*)"Ma", 2) == "TWE=" &&
+            R::base64((const unsigned char*)"M", 1) == "TQ==";
+        allPassed &= check(bodies, "a Datarunner report as UEX's documentation writes it: one side of the list, the "
+                                   "box sizes per row where known, the game version, the date and the picture where "
+                                   "there is one, and nothing else");
+        std::string user;
+        const std::vector<std::string> ids = R::reportIds(
+            "{\"status\":\"ok\",\"http_code\":200,\"data\":{\"ids_reports\":[\"964307\",\"964311\"],\"date_added\":"
+            "\"1787083440\",\"username\":\"Runner\"},\"message\":\"\"}");
+        auto said = [](const char* status) { return R::verdict(400, std::string("{\"status\":\"") + status + "\"}"); };
+        const bool answers =
+            R::verdict(200, "{\"status\":\"ok\",\"data\":{\"ids_reports\":[\"964307\"],\"username\":\"Runner\"}}", &user)
+                .empty() &&
+            user == "Runner" && ids == std::vector<std::string>{"964307", "964311"} &&
+            R::reportIds("{\"status\":\"ok\",\"data\":{\"ids_reports\":[0]}}") == std::vector<std::string>{"0"} &&
+            R::reportIds("{\"status\":\"duplicated_report\"}").empty() &&
+            said("duplicated_report") == "Already reported in the last 5 minutes" &&
+            said("screenshot_required").find("screenshot") != std::string::npos &&
+            said("screenshot_length_exceeds_limit").find("10 MB") != std::string::npos &&
+            said("invalid_game_version").find("game version") != std::string::npos &&
+            said("ptu_reports_not_allowed").find("PTU") != std::string::npos &&
+            said("too_many_reports").find("30 minutes") != std::string::npos &&
+            said("max_rows_exceeded").find("500") != std::string::npos &&
+            said("user_not_allowed").find("this account") != std::string::npos &&
+            said("user_disabled").find("blocked") != std::string::npos &&
+            said("invalid_date").find("date") != std::string::npos &&
+            said("terminal_not_found").find("Terminal") != std::string::npos &&
+            said("has_both_price_buy_and_price_sell") == "UEX responded: has both price buy and price sell" &&
+            R::accountTrouble(400, "{\"status\":\"user_not_allowed\"}") == "datarunner" &&
+            R::duplicateNamed("{\"status\":\"duplicated_report\",\"report\":\"44\"}") == "44" &&
+            R::duplicateNamed("{\"status\":\"duplicated_report\",\"data\":{\"report\":{\"id_commodity\":44}}}") == "44" &&
+            R::duplicateNamed("{\"status\":\"duplicated_report\"}").empty() &&
+            R::duplicateNamed("{\"status\":\"ok\",\"report\":\"44\"}").empty();
+        allPassed &= check(answers, "UEX's answers to a Datarunner report: its ids, each refusal in the window's words, "
+                                    "the row a duplicate stopped at");
+
+        // the channel of a screenshot folder: HOTFIX is LIVE's servers
+        const bool channels = D::channelOf("C:/Games/StarCitizen/LIVE/ScreenShots") == "LIVE" &&
+                              D::channelOf("C:/Games/StarCitizen/HOTFIX/ScreenShots") == "LIVE" &&
+                              D::channelOf("C:/Games/StarCitizen/PTU/ScreenShots") == "PTU" &&
+                              D::channelOf("C:/Games/StarCitizen/EPTU/ScreenShots") == "PTU" &&
+                              D::channelOf("C:/Games/StarCitizen/TECH-PREVIEW/ScreenShots") == "PTU" &&
+                              D::channelOf("C:/Games/StarCitizen/LIVE") == "LIVE" &&
+                              D::channelOf("D:/Pictures").empty() &&
+                              D::screenshotsBeside("C:/Games/StarCitizen/LIVE/Game.log") ==
+                                  std::filesystem::path("C:/Games/StarCitizen/LIVE") / "ScreenShots" &&
+                              D::screenshotsBeside("").empty();
+        allPassed &= check(channels, "a screenshot folder's channel: LIVE and HOTFIX are LIVE, PTU, EPTU and "
+                                     "TECH-PREVIEW are PTU, any other folder neither");
+
+        // the terminal the log saw fill - its shop, the place, the sizes of
+        // what it sells; the player's own boxes in lines of the same name
+        // are no list (Everus Harbor's admin office, 11 October 2026)
+        SCMiner::TradeBook book;
+        const std::string filling = "<2026-10-11T21:48:41.127Z> [Notice] <CEntityComponentCommodityUIProvider::"
+                                    "LoadShopInventoryData::<lambda_1>::operator ()> AddingCommodityBox - "
+                                    "playerId[1] shopId[863685056484] shopName[SCShop_Admin_lt_base_g] "
+                                    "commodityName[ResourceType.";
+        const std::string team = " [Team_CoreGameplayFeatures][Shops][UI]\r";
+        book.live("<2026-10-11T21:40:00.000Z> [Notice] <RequestLocationInventory> Player[Someone] requested inventory "
+                  "for Location[RR_JP_StantonPyro] [Team_CoreGameplayFeatures][Inventory]");
+        book.live(filling + "Titanium] Available Box Sizes:  boxSize[8] boxSize[16] boxSize[24] boxSize[32]" + team);
+        book.live(filling + "ShipAmmoSize4] Available Box Sizes:  boxSize[1] boxSize[2] boxSize[4] boxSize[8] "
+                            "boxSize[16] boxSize[24] boxSize[32]" + team);
+        book.live(filling + "RMC] Available Box Sizes:  boxSize[1] boxSize[3] boxSize[64]" + team);
+        book.live("<2026-10-11T21:48:44.000Z> [Notice] <CEntityComponentCommodityUIProvider::AddPlayerCommodityItem> "
+                  "AddingCommodityBox - playerId[1] shopId[863685056484] shopName[SCShop_Admin_lt_base_g] "
+                  "commodityName[] Cargo Box Data:  [2 | unitAmount[62]]" + team);
+        book.live("<2026-10-11T21:55:00.000Z> [Notice] <CEntityComponentCommodityUIProvider::LoadShopInventoryData::"
+                  "<lambda_1>::operator ()> AddingCommodityBox - playerId[1] shopId[111] "
+                  "shopName[SCShop_Trdpst_Warehouse_OTLW_Int_A] commodityName[ResourceType.Scrap] Available Box "
+                  "Sizes:  boxSize[1] boxSize[2]" + team);
+        const long long at = SCMiner::TradeBook::millisOf("2026-10-11T21:48:41.127");
+        const SCMiner::TradeBook::TerminalFill* first = book.terminalAt(at + 60000, 30 * 60000);
+        const SCMiner::TradeBook::TerminalFill* second = book.terminalAt(at + 10 * 60000, 30 * 60000);
+        std::string resource, sizes;
+        const bool fills =
+            book.terminalFills().size() == 2 && first && first->ms == at && first->shop == "SCShop_Admin_lt_base_g" &&
+            first->place == "Pyro Gateway (Stanton)" && first->boxes.size() == 3 &&
+            first->boxes.at("Titanium") == "8,16,24,32" && first->boxes.at("ShipAmmoSize4") == "1,2,4,8,16,24,32" &&
+            first->boxes.at("RMC") == "1,3,64" && second && second->boxes.size() == 1 &&
+            second->boxes.at("Scrap") == "1,2" && !book.terminalAt(at - 1000, 30 * 60000) &&
+            !book.terminalAt(at + 120 * 60000, 30 * 60000) &&
+            !SCMiner::TradeBook::parseBoxes("<2026-10-11T21:48:44.000Z> AddingCommodityBox - commodityName[] Cargo Box "
+                                            "Data:  [2 | unitAmount[62]]", resource, sizes) &&
+            at == 1791755321127LL && SCMiner::TradeBook::millisOf("noon") == -1 &&
+            D::boxesUexTakes("8,16,24,32") && !D::boxesUexTakes("1,3,64") && !D::boxesUexTakes("");
+        allPassed &= check(fills, "a terminal's list filling, from the game's log: its shop, the place, the box sizes of "
+                                  "what it sells - the one filled last before a picture, within half an hour");
+        const bool resources = SCMiner::TradeBook::resourceIs("ShipAmmoSize4", "Ship Ammunition - Size 4") &&
+                               !SCMiner::TradeBook::resourceIs("ShipAmmoSize4", "Ship Ammunition - Size 1") &&
+                               SCMiner::TradeBook::resourceIs("RMC", "Recycled Material Composite") &&
+                               SCMiner::TradeBook::resourceIs("PlasmaFuel", "Hydrogen Fuel") &&
+                               !SCMiner::TradeBook::resourceIs("Hydrogen", "Hydrogen Fuel") &&
+                               SCMiner::TradeBook::resourceIs("ShipCountermeasuresDecoy", "Ship Decoy Countermeasures") &&
+                               SCMiner::TradeBook::resourceIs("Etam", "E'tam") &&
+                               SCMiner::TradeBook::resourceIs("LifeCureMedsticks", "LifeCure Medsticks") &&
+                               SCMiner::TradeBook::resourceIs("CK13SeedBlend", "CK13-GID Seed Blend") &&
+                               SCMiner::TradeBook::resourceIs("Titanium", "Titanium") &&
+                               !SCMiner::TradeBook::resourceIs("Titanium", "Titanium (Ore)");
+        allPassed &= check(resources, "a resource's name in the game's records read as the commodity UEX writes so");
+
+        // a picture's rows matched to UEX's commodities and its terminal:
+        // a name letter for letter is sure, one with a slip to check, the
+        // log's list first; the box sizes for the BUY list only, and only
+        // where UEX takes them all
+        SCMiner::UexDirectory uex;
+        std::string why;
+        const bool uexRead = uex.read(
+            "{\"status\":\"ok\",\"data\":[{\"id\":252,\"type\":\"commodity\",\"name\":\"Admin - Pyro Gateway "
+            "(Stanton)\",\"nickname\":\"Pyro Gateway (Stanton)\",\"space_station_name\":\"Pyro Gateway (Stanton)\","
+            "\"is_available\":1},{\"id\":18,\"type\":\"commodity\",\"name\":\"CBD - Central Business District - "
+            "Lorville\",\"nickname\":\"CBD Lorville\",\"city_name\":\"Lorville\",\"is_available\":1},{\"id\":51,"
+            "\"type\":\"commodity\",\"name\":\"Admin - L19 Residences - Metro Center - Lorville\",\"nickname\":"
+            "\"Lorville L19\",\"city_name\":\"Lorville\",\"is_available\":1}]}",
+            "{\"status\":\"ok\",\"data\":[{\"id\":234,\"name\":\"Titanium\"},{\"id\":204,\"name\":\"Ship Ammunition - "
+            "Size 4\"},{\"id\":201,\"name\":\"Ship Ammunition - Size 1\"},{\"id\":151,\"name\":\"Recycled Material "
+            "Composite\"},{\"id\":30,\"name\":\"Gold\"},{\"id\":31,\"name\":\"Gald\"}]}",
+            "{\"status\":\"ok\",\"data\":[]}", why);
+        D::Shot shot;
+        shot.side = 1;
+        auto rowOf = [](const char* name) {
+            D::Row row;
+            row.read = name;
+            return row;
+        };
+        shot.rows = {rowOf("TITANIUM"), rowOf("SHIP AMMUNITION - SIZE 4"), rowOf("RECYCLED MATERIAL COMPOSITE"),
+                     rowOf("Ship Ammunition- Sizel"), rowOf("GXLD"), rowOf("UNOBTAINIUM")};
+        D::match(shot, uex, first);
+        D::Shot selling = shot;
+        selling.side = 2;
+        D::match(selling, uex, first);
+        D::Shot lorville;
+        SCMiner::TradeBook::TerminalFill city;
+        city.shop = "SCShop_Admin_hur_cbd";
+        city.place = "Lorville";
+        D::match(lorville, uex, &city);
+        using SCMiner::Certainty;
+        std::string named;
+        Certainty how = Certainty::Sure;
+        const bool matched =
+            uexRead && shot.terminal == 252 && shot.terminals.size() == 1 && shot.rows[0].commodity == 234 &&
+            shot.rows[0].nameSure == Certainty::Sure && shot.rows[0].boxes == "8,16,24,32" &&
+            shot.rows[1].commodity == 204 && shot.rows[1].name == "Ship Ammunition - Size 4" &&
+            shot.rows[1].boxes == "1,2,4,8,16,24,32" && shot.rows[2].commodity == 151 && shot.rows[2].boxes.empty() &&
+            shot.rows[3].commodity == 201 && shot.rows[3].nameSure == Certainty::Check &&
+            shot.rows[4].commodity == 0 && shot.rows[4].nameSure == Certainty::Missing &&
+            shot.rows[5].commodity == 0 && selling.rows[0].commodity == 234 && selling.rows[0].boxes.empty() &&
+            lorville.terminal == 0 && lorville.terminals.size() == 2 &&
+            D::matchCommodity("GXLD", uex.commodityNames(), {30}, named, how) == 30 && how == Certainty::Check &&
+            D::matchCommodity("", uex.commodityNames(), {}, named, how) == 0 && how == Certainty::Missing;
+        allPassed &= check(matched, "a Datarunner picture's rows matched to UEX: a name letter for letter sure, one with "
+                                    "a slip to check, the log's list first; box sizes for the BUY list only; both of "
+                                    "Lorville's terminals to pick from");
+
+        // what stands in the way of Send, and the five minutes - kept over a
+        // restart in the record of what went
+        const long long now = 1791754800;
+        D::Shot ready;
+        ready.terminal = 252;
+        ready.side = 1;
+        ready.channel = "LIVE";
+        ready.taken = now - 120;
+        D::Row good;
+        good.commodity = 234;
+        good.level = 7;
+        good.stock = 6000;
+        good.price = 7681;
+        good.nameSure = good.levelSure = good.stockSure = good.priceSure = Certainty::Sure;
+        D::Row unsure = good;
+        unsure.commodity = 204;
+        unsure.priceSure = Certainty::Check;
+        ready.rows = {good, unsure};
+        D::Shot checked = ready;
+        checked.rows[1].priceSure = Certainty::Sure;
+        D::Shot boxPrice = checked;
+        boxPrice.rows[1].perUnit = true;
+        D::Shot noTerminal = checked;
+        noTerminal.terminal = 0;
+        D::Shot old = checked;
+        old.taken = now - 31ll * 24 * 3600;
+        D::Shot allGone = checked;
+        allGone.rows[0].removed = allGone.rows[1].removed = true;
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        const fs::path folder = fs::temp_directory_path(ec) / "bedrock-datarunner-selftest";
+        fs::remove_all(folder, ec);
+        fs::create_directories(folder, ec);
+        {
+            // sent a minute ago, off a picture taken under five minutes
+            // before this one
+            D::Sent went;
+            went.terminal = 252;
+            went.side = 1;
+            went.commodity = 234;
+            went.sent = now - 60;
+            went.taken = now - 400;
+            std::ofstream out(folder / "reported.txt");
+            out << "refinery|Levski|1|1791000000\n" << D::sentKey(went) << "\nprice|252|3|234|1|2\n";
+        }
+        std::vector<D::Sent> record;   // read back as after a restart
+        {
+            std::ifstream in(folder / "reported.txt");
+            std::string line;
+            while (std::getline(in, line)) {
+                D::Sent s;
+                if (D::readSentKey(line, s)) record.push_back(s);
+            }
+        }
+        fs::remove_all(folder, ec);
+        D::Shot later = checked;
+        later.taken = now - 10;       // a new look, six and a half minutes after the one that went
+        long long wait = 0;
+        const D::Hold heldLater = D::holdOf(later, later.rows[0], record, now, &wait);
+        const bool sendable =
+            D::whyNotSend(checked, {}, now).empty() &&
+            D::whyNotSend(ready, {}, now) == "1 value to check - Compare with the picture, then click Confirm" &&
+            D::whyNotSend(boxPrice, {}, now).rfind("Values missing", 0) == 0 &&
+            D::whyNotSend(noTerminal, {}, now).rfind("Terminal not known", 0) == 0 &&
+            D::whyNotSend(old, {}, now).rfind("Picture older than 30 days", 0) == 0 &&
+            D::whyNotSend(allGone, {}, now).rfind("Nothing to send", 0) == 0 &&
+            record.size() == 1 && D::sentKey(record[0]) == "price|252|1|234|" + std::to_string(now - 60) + "|" +
+                                                               std::to_string(now - 400) &&
+            D::holdOf(checked, checked.rows[0], record, now) == D::Hold::Sent &&
+            D::rowsToSend(checked, record, now).size() == 1 && heldLater == D::Hold::Wait && wait == 240 &&
+            D::whyNotSend(later, record, now) == "Reported less than 5 minutes ago - Send in 4 min" &&
+            D::holdOf(later, later.rows[1], record, now) == D::Hold::None &&
+            D::whyNotSend(later, record, now + 240).empty();
+        allPassed &= check(sendable, "Send waits for every value sure, a terminal, a list and a date UEX takes; a row "
+                                     "another picture of the same moment carried is left out, and the same commodity "
+                                     "waits UEX's five minutes - over a restart too");
+        // ...and what goes: the rows as checked, the BUY list's box sizes,
+        // the picture's date, a picture at most 1080 tall under UEX's 10 MB
+        cv::Mat wide(1440, 5120, CV_8UC3, cv::Scalar(40, 60, 80));
+        for (int x = 0; x < wide.cols; x += 64) {
+            cv::putText(wide, "15,960", cv::Point(x, 700), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(230, 230, 230), 2);
+        }
+        checked.jpeg = D::pictureForUex(wide);
+        checked.rows[0].boxes = "8,16,24,32";
+        const cv::Mat back = cv::imdecode(checked.jpeg, cv::IMREAD_COLOR);
+        const std::string body = D::reportBody(checked, {}, now, "4.10.2", false);
+        D::Shot sellSide = checked;
+        sellSide.side = 2;
+        const std::string sellBody = D::reportBody(sellSide, {}, now, "4.10.2", false);
+        const bool goes = back.cols == 3840 && back.rows == 1080 && checked.jpeg.size() / 3 * 4 < 10u * 1024 * 1024 &&
+                          D::pictureForUex(cv::Mat()).empty() &&
+                          body.rfind("{\"id_terminal\":252,\"type\":\"commodity\",\"is_production\":0,\"prices\":["
+                                     "{\"id_commodity\":234,\"price_buy\":7681,\"scu_buy\":6000,\"status_buy\":7,"
+                                     "\"container_sizes\":\"8,16,24,32\"},{\"id_commodity\":204,\"price_buy\":7681,",
+                                     0) == 0 &&
+                          body.find("\"game_version\":\"4.10.2\",\"date_added\":" + std::to_string(now - 120) +
+                                    ",\"screenshot\":\"/9j/") != std::string::npos &&
+                          sellBody.find("container_sizes") == std::string::npos &&
+                          sellBody.find("\"price_sell\":7681") != std::string::npos;
+        allPassed &= check(goes, "a Datarunner report carries the rows as checked, box sizes on the BUY list only, the "
+                                 "picture's date, and the very picture - at most 1080 tall, under UEX's 10 MB");
     }
 
     // --- The UEX marketplace: its figures come as numbers or as

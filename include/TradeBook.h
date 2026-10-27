@@ -33,6 +33,7 @@
 
 #include "GameState.h"
 
+#include <deque>
 #include <filesystem>
 #include <map>
 #include <string>
@@ -68,6 +69,39 @@ public:
     // the player is are read here too. True when the book changed.
     bool live(std::string_view line);
     void liveLogRestarted();   // the game started again: where the player is has to be said anew
+
+    // A commodity terminal filling its list, as the live log has it: the
+    // game lists what the terminal's shop sells, each with the cargo box
+    // sizes it comes in, whenever the list fills - when the player opens it,
+    // and again after each trade:
+    //   <...::LoadShopInventoryData::<lambda_1>::operator ()> AddingCommodityBox
+    //   - playerId[..] shopId[..] shopName[SCShop_Admin_lt_base_g]
+    //   commodityName[ResourceType.Titanium] Available Box Sizes:  boxSize[8]
+    //   boxSize[16] boxSize[24] boxSize[32] [Team_CoreGameplayFeatures]...
+    // What the shop buys is not listed (a warehouse that bought Elespo on
+    // 26 October 2026 listed Neon, Amioshi Plague and E'tam).
+    struct TerminalFill {
+        long long ms = 0;          // its first line, in milliseconds since 1970, UTC
+        std::string shopId, shop;  // as the log names them
+        std::string place;         // where the log had the player then
+        // by the resource's name in the game's records ("Titanium",
+        // "ShipAmmoSize4", "RMC"): the sizes listed, in SCU ("8,16,24,32")
+        std::map<std::string, std::string> boxes;
+    };
+    // The last ones seen, the newest last
+    const std::deque<TerminalFill>& terminalFills() const { return fills_; }
+    // The one filled last at or before `ms`, no longer than `within` ms
+    // before it - the terminal a picture taken then shows; nullptr for none
+    const TerminalFill* terminalAt(long long ms, long long within) const;
+    // One such line: the resource's name and its sizes; false for any other
+    static bool parseBoxes(std::string_view line, std::string& resource, std::string& sizes);
+    // Whether a resource's name in the game's records is the commodity
+    // written so - "ShipAmmoSize4" Ship Ammunition - Size 4, "RMC" Recycled
+    // Material Composite, "PlasmaFuel" Hydrogen Fuel, "Etam" E'tam
+    static bool resourceIs(const std::string& resource, const std::string& name);
+    // "2026-09-28T11:37:34.512", a line's time, in milliseconds since 1970,
+    // UTC; -1 for anything else
+    static long long millisOf(const std::string& stamp);
     // A log that is over, all of it at once. Asked only of a log with a
     // request in it (hasRequest), since finding the place means reading
     // every line of it a second time.
@@ -91,6 +125,8 @@ private:
     std::map<std::string, Trade> byKey_;   // stamp, kind and resource: one request, however often its line is read
     std::string lastKey_[2];               // the newest request bought [0] and sold [1], for a refusal to find
     GameState where_;                      // the live log's
+    std::deque<TerminalFill> fills_;
+    static constexpr size_t FILLS_KEPT = 40;
     std::filesystem::path file_;
     bool dirty_ = false;
     int changes_ = 0;

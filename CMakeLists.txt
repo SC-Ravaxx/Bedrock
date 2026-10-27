@@ -198,6 +198,7 @@ set(CORE_SOURCES
     src/RefineryShare.cpp
     src/TradeBook.cpp
     src/CommodityTerminal.cpp
+    src/Datarunner.cpp
     src/BlueprintLibrary.cpp
     src/Reputation.cpp
     src/NoteBook.cpp
@@ -256,6 +257,7 @@ set(HEADERS
     include/RefineryOrders.h
     include/TradeBook.h
     include/CommodityTerminal.h
+    include/Datarunner.h
     include/CommodityData.h
     include/MiniJson.h
     include/UexPrices.h
