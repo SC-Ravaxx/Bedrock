@@ -1432,6 +1432,8 @@ int runSelfTest() {
         allPassed &= check(levels, "a commodity card's level in the game's words, exactly or with a slip, on UEX's scale");
         const bool figures =
             SCMiner::parseShopQuantity("24,000 SCU") == 24000 && SCMiner::parseShopQuantity("4SCU") == 4 &&
+            SCMiner::parseShopQuantity("OSCU") == 0 && SCMiner::parseShopQuantity("0 SCU") == 0 &&
+            SCMiner::parseShopQuantity("lOSCU") == 10 && SCMiner::parseShopQuantity("MAXSCU") == -1 &&
             SCMiner::parseShopQuantity("1,O5O SCU") == 1050 && SCMiner::parseShopQuantity("24,00 SCU") == -1 &&
             SCMiner::parseShopQuantity("SHOP QUANTITY") == -1 && SCMiner::parseShopQuantity("1050 SCU") == -1 &&
             SCMiner::parseShopQuantity("000 SCU") == -1 && SCMiner::parseShopQuantity("0 SCU") == 0 &&
@@ -1697,7 +1699,8 @@ int runSelfTest() {
             shot.rows[1].boxes == "1,2,4,8,16,24,32" && shot.rows[2].commodity == 151 && shot.rows[2].boxes.empty() &&
             shot.rows[3].commodity == 201 && shot.rows[3].nameSure == Certainty::Check &&
             shot.rows[4].commodity == 0 && shot.rows[4].nameSure == Certainty::Missing &&
-            shot.rows[5].commodity == 0 && selling.rows[0].commodity == 234 &&
+            shot.rows[5].commodity == 0 && selling.rows[0].commodity == 234 && selling.rows[0].boxes.empty() &&
+            selling.rows[1].commodity == 204 && selling.rows[1].boxes.empty() &&
             D::nearestCommodities("GXLD", uex.commodityNames(), 2) ==
                 std::vector<std::pair<std::string, int>>{{"Gold", 30}, {"Gald", 31}} &&
             D::nearestCommodities("SHIP AMMUNITION", uex.commodityNames(), 1).front().second == 204 &&
@@ -1723,7 +1726,8 @@ int runSelfTest() {
                                          "commodity");
         allPassed &= check(matched, "a Datarunner picture's rows matched to UEX: a name letter for letter sure, one with "
                                     "a slip to check, the log's list first, the nearest names to pick from; box sizes "
-                                    "where UEX takes them all; both of Lorville's terminals to pick from");
+                                    "where UEX takes them all, the log's of what the terminal sells only; both of "
+                                    "Lorville's terminals to pick from");
 
         // what stands in the way of Send, and the five minutes - kept over a
         // restart in the record of what went
@@ -1894,9 +1898,13 @@ int runSelfTest() {
             const D::Shot after = D::newRowsOf(look, {sent}, now - 1800);
             D::Shot unknown = look;
             unknown.side = 0;
+            D::Shot twice = look;            // LOCAL MARKET VALUE: SELLABLE CARGO over IN DEMAND
+            twice.side = 2;
+            twice.rows = {whole("Elespo", 0), whole("Elespo", 0), whole("Stims", 70)};
             const std::vector<std::pair<std::string, int>> done = {{"SCShop_Pyro_RestStop_Rund_Admin", 1}};
             const bool byCommodity = after.rows.size() == 1 && after.rows[0].read == "Hydrogen Fuel" &&
                                      D::newRowsOf(unknown, {sent}, now - 1800).rows.size() == 1 &&
+                                     D::newRowsOf(twice, {}, now - 1800).rows.size() == 2 &&
                                      D::listDone(done, look.shop, 1) && D::listDone(done, look.shop, 0) &&
                                      !D::listDone(done, look.shop, 2) &&
                                      !D::listDone(done, "SCShop_Admin_lt_base_g", 1) && !D::listDone({}, look.shop, 1);

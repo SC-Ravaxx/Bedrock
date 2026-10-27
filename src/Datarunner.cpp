@@ -156,6 +156,13 @@ Shot readPicture(const cv::Mat& bgr, TextLineReader& reader) {
     shot.side = screen.side;
     shot.sideSure = screen.side != 0;
     for (const CommodityCard& card : screen.cards) {
+        // a commodity listed twice alike - LOCAL MARKET VALUE has the
+        // player's sellable cargo over all it buys - is one row
+        const bool twice = std::any_of(shot.rows.begin(), shot.rows.end(), [&](const Row& other) {
+            return folded(other.read) == folded(card.name) && other.stock == card.stock && other.price == card.price &&
+                   other.level == (card.level >= 1 && card.level <= 7 ? card.level : -1);
+        });
+        if (twice && !folded(card.name).empty()) continue;
         Row row;
         row.read = card.name;
         row.level = card.level >= 1 && card.level <= 7 ? card.level : -1;
@@ -224,6 +231,11 @@ Shot newRowsOf(const Shot& look, const std::vector<std::shared_ptr<Shot>>& shots
         if (!complete(row)) continue;
         const std::string name = folded(row.read);
         bool seen = false;
+        for (const Row& other : fresh.rows) {
+            if (row.commodity > 0 && other.commodity > 0 ? other.commodity == row.commodity : folded(other.read) == name) {
+                seen = true;
+            }
+        }
         for (const auto& shot : shots) {
             if (!shot || shot->shop != look.shop || shot->taken < since) continue;
             if (shot->side != look.side && shot->side != 0 && look.side != 0) continue;
@@ -331,10 +343,11 @@ void match(Shot& shot, const UexDirectory& directory, const TradeBook::TerminalF
     }
     if (shot.terminals.size() == 1) shot.terminal = shot.terminals.front().first;
     // the commodities the log listed for it, UEX's ids for them, and their
-    // cargo box sizes: a resource that reads as one of UEX's commodities
+    // cargo box sizes: a resource that reads as one of UEX's commodities.
+    // The log lists what the terminal sells, nothing of LOCAL MARKET VALUE.
     std::vector<int> listed;
     std::vector<std::pair<int, std::string>> boxes;
-    if (fill) {
+    if (fill && shot.side != 2) {
         for (const auto& [resource, sizes] : fill->boxes) {
             int found = 0, count = 0;
             for (const auto& [written, id] : directory.commodityNames()) {

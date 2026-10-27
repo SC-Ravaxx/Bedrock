@@ -128,6 +128,7 @@ std::vector<cv::Rect> textLines(const cv::Mat& bgr, std::vector<cv::Rect>* allPi
     cv::morphologyEx(ink, tall, cv::MORPH_OPEN, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(1, barH)));
     cv::dilate(tall, tall, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3)));
     ink.setTo(0, tall);
+    const cv::Mat unclosed = ink.clone();   // a figure's hole still open in it
     const int gap = (std::max)(3, static_cast<int>(std::lround(0.0035 * H)));
     cv::morphologyEx(ink, ink, cv::MORPH_CLOSE, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(gap, 1)));
     cv::Mat labels, stats, centroids;
@@ -148,7 +149,30 @@ std::vector<cv::Rect> textLines(const cv::Mat& bgr, std::vector<cv::Rect>* allPi
         // solid (a short fill, 7 by 11 at 94 %); a narrow figure is neither -
         // Baijini Point's 6 (7 by 13, 75 %) went for one, and 6,000 SCU read 0
         const bool slender = r.width * 5 <= r.height * 2 && area * 10 >= r.area() * 7;
-        const bool solid = r.height * 5 >= r.width * 6 && area * 100 >= r.area() * 88;
+        // ...but a figure with a hole the closing all but filled is no bar:
+        // before it, a third of its rows or more have ink, a gap and ink
+        // again (the 0 of "0 SCU", 8 by 14 at 90 % closed, 66 % open, went
+        // for one and left "SCU" alone)
+        auto holed = [&]() {
+            const int left = stats.at<int>(i, cv::CC_STAT_LEFT);
+            int rows = 0;
+            for (int y = r.y; y < r.y + r.height; y++) {
+                const uchar* row = unclosed.ptr<uchar>(y) + left;
+                int first = -1, last = -1;
+                for (int x = 0; x < r.width; x++) {
+                    if (!row[x]) continue;
+                    if (first < 0) first = x;
+                    last = x;
+                }
+                bool apart = false;
+                for (int x = first + 1; first >= 0 && x < last; x++) {
+                    if (!row[x]) apart = true;
+                }
+                if (apart) rows++;
+            }
+            return rows * 3 >= r.height;
+        };
+        const bool solid = r.height * 5 >= r.width * 6 && area * 100 >= r.area() * 88 && !holed();
         const bool bar = (r.width <= barW && (slender || solid)) ||
                          r.width <= (std::max)(2, static_cast<int>(std::lround(0.003 * H)));
         if (trace) {
@@ -409,13 +433,30 @@ int commodityLevelIn(const std::string& text, int* slips, int* margin) {
     return level;
 }
 
+// A line that ends in SCU, as a stock does: a price ends so too, after its
+// slash
+static bool stockLike(const std::string& text) {
+    if (text.find('/') != std::string::npos) return false;
+    size_t end = text.size();
+    while (end > 0 && text[end - 1] == ' ') end--;
+    size_t unit = end;
+    while (unit > 0 && std::isalpha(static_cast<unsigned char>(text[unit - 1]))) unit--;
+    return end - unit >= 2 && distance(folded(text.substr(unit, end - unit), false), "SCU") <= 1;
+}
+
 int parseShopQuantity(const std::string& text) {
     // the figure, then the unit: the letters at the end read as SCU
     size_t end = text.size();
     while (end > 0 && text[end - 1] == ' ') end--;
     size_t unit = end;
     while (unit > 0 && std::isalpha(static_cast<unsigned char>(text[unit - 1]))) unit--;
-    if (end - unit < 2 || distance(folded(text.substr(unit, end - unit), false), "SCU") > 1) return -1;
+    const std::string letters = folded(text.substr(unit, end - unit), false);
+    // ...and a figure taken for a letter run into it: "OSCU" for 0 SCU
+    if (letters.size() > 3 && letters.compare(letters.size() - 3, 3, "SCU") == 0) {
+        const int figure = wholeFigure(text.substr(0, end - 3));
+        if (figure >= 0) return figure;
+    }
+    if (end - unit < 2 || distance(letters, "SCU") > 1) return -1;
     return wholeFigure(text.substr(0, unit));
 }
 
@@ -603,6 +644,10 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader) 
         }
         return boxes.size();
     };
+    struct Column {
+        size_t label, stock, price;   // label: boxes.size() where the card has none
+    };
+    std::vector<Column> columns;
     for (size_t i = 0; i < boxes.size(); i++) {
         if (used[i]) continue;
         const size_t qi = under(i);
@@ -615,9 +660,36 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader) 
         if (q.height < a.height || q.height < p.height || q.height > 2 * a.height) continue;
         if (distance(folded(text(i), false), "SHOPQUANTITY") > 3) continue;
         used[i] = used[qi] = used[pi] = true;
-        const int h = a.height;
+        columns.push_back({i, qi, pi});
+    }
+    // A card of LOCAL MARKET VALUE, what the shop buys, has no SHOP QUANTITY:
+    // the stock and the price stand flush right alone, the stock about as
+    // tall as the price, the price about as wide or wider. Looked for where
+    // the picture has no card of BUY.
+    const bool labelled = !columns.empty();
+    if (!labelled) {
+        for (size_t i = 0; i < boxes.size(); i++) {
+            if (used[i]) continue;
+            const size_t pi = under(i);
+            if (pi == boxes.size()) continue;
+            const cv::Rect& q = boxes[i];
+            const cv::Rect& p = boxes[pi];
+            if (q.height * 4 < p.height * 3 || q.height > 2 * p.height || p.width * 5 < q.width * 4) continue;
+            if (!stockLike(text(i))) continue;
+            used[i] = used[pi] = true;
+            columns.push_back({boxes.size(), i, pi});
+        }
+    }
+    for (const Column& column : columns) {
+        const size_t qi = column.stock, pi = column.price;
+        const bool label = column.label < boxes.size();
+        // SHOP QUANTITY's height - where the card has none, a fifth less
+        // than the stock's, as it is beside one
+        const int h = label ? boxes[column.label].height : (std::max)(1, boxes[qi].height * 4 / 5);
         CommodityCard card;
-        cv::Rect band = a | q | p;
+        cv::Rect band = boxes[qi] | boxes[pi];
+        if (label) band |= boxes[column.label];
+        const int columnX = band.x;
         // ...and left of them the name and the level, one under the other,
         // flush left: the lines within the card's height
         const int top = band.y - h, foot = bottom(band) + h;
@@ -626,11 +698,12 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader) 
             const cv::Rect& l = boxes[i];
             const int middleY = l.y + l.height / 2;
             if (middleY < top || middleY > foot) continue;
-            if (right(l) > a.x - h / 2 || l.x < a.x - 30 * h) continue;
+            if (right(l) > columnX - h / 2 || l.x < columnX - 30 * h) continue;
             left.push_back(i);
         }
         if (trace) {
-            std::printf("    card %d,%d %dx%d - left:", band.x, band.y, band.width, band.height);
+            std::printf("    card %d,%d %dx%d%s - left:", band.x, band.y, band.width, band.height,
+                        label ? "" : " (no SHOP QUANTITY)");
             for (size_t i : left) std::printf(" %d,%d %dx%d", boxes[i].x, boxes[i].y, boxes[i].width, boxes[i].height);
             std::printf("\n");
         }
@@ -648,8 +721,24 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader) 
         }
         for (size_t k = 0; k < left.size(); k++) {
             const cv::Rect& l = boxes[left[k]];
-            if (levelLine < left.size() &&
-                (k >= levelLine || std::abs(l.x - boxes[left[levelLine]].x) > h * 3 / 2)) continue;
+            if (levelLine < left.size() && k >= levelLine) continue;
+            if (levelLine < left.size() && std::abs(l.x - boxes[left[levelLine]].x) > h * 3 / 2) {
+                // the commodity's icon run into the name's line (Sunset
+                // Berries): the name read from where the level's line
+                // begins, walled off the icon
+                const int from = boxes[left[levelLine]].x - h / 3;
+                if (l.x >= from || right(l) < from + 2 * h) continue;
+                const cv::Rect name(from, l.y, right(l) - from, l.height);
+                const Line read = readLine(bgr, name, reader, from);
+                screen.lines++;
+                if (trace) {
+                    std::printf("      name without the icon %d,%d %dx%d: '%s'\n", name.x, name.y, name.width, name.height,
+                                read.text.c_str());
+                }
+                card.name += (card.name.empty() ? "" : " ") + read.text;
+                band |= name;
+                continue;
+            }
             card.name += (card.name.empty() ? "" : " ") + text(left[k]);
             band |= l;
         }
@@ -731,7 +820,7 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader) 
             for (size_t j = 0; j < boxes.size(); j++) {
                 const cv::Rect& t = boxes[j];
                 if (used[j] || t.y <= bottom(band) || t.y > bottom(band) + 24 * h) continue;
-                if (t.x < band.x - 8 * h || right(t) > a.x) continue;
+                if (t.x < band.x - 8 * h || right(t) > columnX) continue;
                 // the word alone first: "8 SCU" can come apart from it
                 if (folded(text(j), false).rfind("TOT", 0) != 0) continue;
                 const cv::Rect totalLine = wholeRow(pieces, t);
@@ -761,6 +850,9 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader) 
             card.stock = -1;
             card.stockReads = 0;
         }
+        // ...one of LOCAL MARKET VALUE without a price is none: what was
+        // taken for its stock may be another line
+        if (!label && card.price < 0) continue;
         if (screen.cards.empty()) firstH = h;
         screen.cards.push_back(card);
     }
@@ -779,8 +871,17 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader) 
             if (b.x < top.x - 12 * firstH || b.x > right(top) + 4 * firstH) continue;
             const std::string t = folded(text(i), false);
             if (t.size() < 3) continue;
-            if (distance(t, "INSTOCK") <= 1 || distance(t, "NOSTOCK") <= 1 || distance(t, "OUTOFSTOCK") <= 2) heading = 1;
-            else if (distance(t, "INDEMAND") <= 2 || distance(t, "NODEMAND") <= 2) heading = 2;
+            // a heading is set in capitals; a card's level is not - Out of
+            // Stock, of a card above the topmost read
+            const std::string& read = text(i);
+            const bool capitals =
+                std::count_if(read.begin(), read.end(), [](char c) { return std::islower(static_cast<unsigned char>(c)) != 0; }) <= 1;
+            if (capitals && (distance(t, "INSTOCK") <= 1 || distance(t, "NOSTOCK") <= 1 || distance(t, "OUTOFSTOCK") <= 2)) {
+                heading = 1;
+            } else if (capitals && (distance(t, "INDEMAND") <= 2 || distance(t, "NODEMAND") <= 2 ||
+                                    distance(t, "SELLABLECARGO") <= 2 || distance(t, "READYFORTRADE") <= 2)) {
+                heading = 2;
+            }
             else if (t == "BUY") {
                 buyFill = fillBeside(bgr, b);
                 buyTab = b;
@@ -846,7 +947,17 @@ CommodityScreen readCommodityScreen(const cv::Mat& bgr, TextLineReader& reader) 
                 if (left >= 0 && std::abs(left - sellFill) >= 12) screen.side = left > sellFill ? 1 : 2;
             }
         }
-        if (trace) std::printf("    side %d: heading %d, BUY fill %d, LOCAL MARKET VALUE fill %d\n", screen.side, heading, buyFill, sellFill);
+        // ...and the cards themselves: BUY's have SHOP QUANTITY, LOCAL MARKET
+        // VALUE's not. They tell the list where the heading and the tabs are
+        // out of sight - the list scrolled - or not made out; where those
+        // say the other, the list is not made out.
+        const int byCards = labelled ? 1 : 2;
+        if (screen.side == 0) screen.side = byCards;
+        else if (screen.side != byCards) screen.side = 0;
+        if (trace) {
+            std::printf("    side %d: heading %d, BUY fill %d, LOCAL MARKET VALUE fill %d, cards %d\n", screen.side, heading,
+                        buyFill, sellFill, byCards);
+        }
     }
     screen.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     return screen;
