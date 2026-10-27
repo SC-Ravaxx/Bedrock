@@ -13,6 +13,7 @@
 #include "RefineryTerminal.h"
 #include "RefineryOrders.h"
 #include "RefineryShare.h"
+#include "CommodityTerminal.h"
 #include "RefineryData.h"
 #include "RefiningData.h"
 #include "Updater.h"
@@ -799,5 +800,42 @@ int runRefineryReplay(const std::string& dir, const std::string& station, long l
     }
     // ...and SCMINER_REFINERY_SAVE: where to keep the book for the next set
     if (const char* to = std::getenv("SCMINER_REFINERY_SAVE")) book.save(to);
+    return 0;
+}
+
+int runDatarunner(const std::vector<std::string>& files) {
+    SCMiner::TextLineReader* lines = panelLines();
+    if (!lines) return 1;
+    auto mark = [](SCMiner::Certainty c) {
+        return c == SCMiner::Certainty::Sure ? "S" : c == SCMiner::Certainty::Check ? "C" : "M";
+    };
+    int pictures = 0, withCards = 0, cards = 0, whole = 0, sure = 0;
+    double ms = 0;
+    for (const std::string& file : files) {
+        const cv::Mat frame = cv::imread(file, cv::IMREAD_COLOR);
+        if (frame.empty()) continue;
+        pictures++;
+        const SCMiner::CommodityScreen screen = SCMiner::readCommodityScreen(frame, *lines);
+        ms += screen.ms;
+        std::cout << std::filesystem::path(file).filename().string() << ": " << frame.cols << "x" << frame.rows << ", "
+                  << screen.cards.size() << " cards, " << screen.lines << " lines, " << (int)std::lround(screen.ms)
+                  << " ms, side " << screen.side << std::endl;
+        if (!screen.cards.empty()) withCards++;
+        for (const SCMiner::CommodityCard& c : screen.cards) {
+            cards++;
+            const bool all = !c.name.empty() && c.level > 0 && c.stock >= 0 && c.price >= 0 && !c.perUnit;
+            if (all) whole++;
+            const bool green = c.levelSure() == SCMiner::Certainty::Sure && c.stockSure() == SCMiner::Certainty::Sure &&
+                               c.priceSure() == SCMiner::Certainty::Sure;
+            if (green) sure++;
+            std::cout << "    '" << c.name << "' level " << c.level << " " << mark(c.levelSure()) << ", stock " << c.stock
+                      << " SCU " << mark(c.stockSure()) << ", " << c.price << (c.perUnit ? " a box " : " a SCU ")
+                      << mark(c.priceSure()) << "  at " << c.card.x << "," << c.card.y << " " << c.card.width << "x"
+                      << c.card.height << "  level slips " << c.levelSlips << "/" << c.levelMargin << std::endl;
+        }
+    }
+    std::cout << pictures << " pictures, " << withCards << " with cards: " << cards << " cards, " << whole
+              << " read whole, " << sure << " with level, stock and price sure; "
+              << (pictures ? (int)std::lround(ms / pictures) : 0) << " ms a picture" << std::endl;
     return 0;
 }

@@ -37,6 +37,7 @@
 #include "TextLineReader.h"
 #include "MiniJson.h"
 #include "RefineryShare.h"
+#include "CommodityTerminal.h"
 #include "UexPrices.h"
 #include "UexReports.h"
 #include "UexMarket.h"
@@ -1377,6 +1378,87 @@ int runSelfTest() {
                 std::cout << "  (no uex_token.dat beside the program: this build asks UEX anonymously)" << std::endl;
             }
         }
+    }
+
+    // --- UEX Datarunner: the commodity terminal's card, its lines as the
+    //     reader takes them - the stock's level in the game's words, the
+    //     stock, the price of a SCU or of one cargo box, the name with its
+    //     figures exact ---
+    {
+        bool unitA = true, unitB = false, unitC = true, unitD = true;
+        int exact = -1, slipped = -1, margin = 0, slippedAside = -1, marginAside = 0;
+        const bool levels =
+            SCMiner::commodityLevelIn("MAX INVENTORY", &exact) == 7 && exact == 0 &&
+            // a slip in the word that tells the levels apart leaves another
+            // level near; one in INVENTORY does not
+            SCMiner::commodityLevelIn("HAX INVENTORY", &slipped, &margin) == 7 && slipped == 1 && margin == 2 &&
+            SCMiner::commodityLevelIn("MAX INVENTOR", &slippedAside, &marginAside) == 7 && slippedAside == 1 &&
+            marginAside >= 3 &&
+            SCMiner::commodityLevelIn("VERY LOV INVENTORY") == 2 && SCMiner::commodityLevelIn("Low Inventory") == 3 &&
+            SCMiner::commodityLevelIn("HEDIUN INVENTORY") == 4 && SCMiner::commodityLevelIn("Very High Inventory") == 6 &&
+            SCMiner::commodityLevelIn("Out of Stock") == 1 && SCMiner::commodityLevelIn("No Inventory") == 1 &&
+            SCMiner::commodityLevelIn("Inventory Updating") == 0 && SCMiner::commodityLevelIn("NOW INVENTORY") == -1 &&
+            SCMiner::commodityLevelIn("INVENTORY") == -1 && SCMiner::commodityLevelIn("NAX INVENTORY") == 7 &&
+            SCMiner::commodityLevelIn("SHOP QUANTITY") == -1 &&
+            std::string(SCMiner::commodityLevelWords(7)) == "MAX INVENTORY" &&
+            std::string(SCMiner::commodityLevelWords(1)) == "OUT OF STOCK" &&
+            std::string(SCMiner::commodityLevelWords(0)).empty();
+        allPassed &= check(levels, "a commodity card's level in the game's words, exactly or with a slip, on UEX's scale");
+        const bool figures =
+            SCMiner::parseShopQuantity("24,000 SCU") == 24000 && SCMiner::parseShopQuantity("4SCU") == 4 &&
+            SCMiner::parseShopQuantity("1,O5O SCU") == 1050 && SCMiner::parseShopQuantity("24,00 SCU") == -1 &&
+            SCMiner::parseShopQuantity("SHOP QUANTITY") == -1 && SCMiner::parseShopQuantity("1050 SCU") == -1 &&
+            SCMiner::parseShopQuantity("000 SCU") == -1 && SCMiner::parseShopQuantity("0 SCU") == 0 &&
+            SCMiner::parseCommodityPrice("4.167/SCU", unitA) == 4167 && !unitA &&
+            SCMiner::parseCommodityPrice("02.850/SCU", unitA) == -1 &&
+            SCMiner::parseCommodityPrice("\xC2\xA4" "1,879/Units", unitB) == 1879 && unitB &&
+            SCMiner::parseCommodityPrice("316/SCU", unitC) == 316 && !unitC &&
+            SCMiner::parseCommodityPrice("1,108", unitC) == -1 && SCMiner::parseCommodityPrice("1316/SCU", unitC) == -1 &&
+            // the currency sign is no figure: the 6,705 after it is 6,705
+            // (another tool took the sign for a 9, and sent 96,705)
+            SCMiner::parseCommodityPrice("\xC2\xA4" "6,705/SCU", unitD) == 6705 && !unitD &&
+            SCMiner::parseCommodityPrice("96705/SCU", unitD) == -1;
+        allPassed &= check(figures, "a commodity card's stock and price: thousands set off by commas, no nought in front, "
+                                    "the currency sign no figure, a price per SCU or per cargo box");
+        const bool named = SCMiner::commodityNamed("SHIP AMMUNITION SIZE 1", "Ship Ammunition - Size 1") &&
+                           !SCMiner::commodityNamed("SHIP AMMUNITION SIZE 2", "Ship Ammunition - Size 1") &&
+                           SCMiner::commodityNamed("Ship Ammunition- Sizel", "Ship Ammunition - Size 1") &&
+                           SCMiner::commodityNamed("HEPHAESTANITE", "Hephaestanite") &&
+                           SCMiner::commodityNamed("Agricultural Supplies", "Agricultural Supplies") &&
+                           !SCMiner::commodityNamed("IRON", "Tin");
+        allPassed &= check(named, "a commodity card's name: the letters with a slip or two, the figures exact");
+        // ...and how sure each value is: two readings that agree, the
+        // game's words exactly; a box's price none for UEX
+        SCMiner::CommodityCard card;
+        card.level = 7;
+        card.levelSlips = 0;
+        card.stock = 1050;
+        card.stockReads = 2;
+        card.price = 4167;
+        card.priceReads = 2;
+        SCMiner::CommodityCard slip = card;
+        slip.levelSlips = 1;
+        slip.levelMargin = 3;
+        SCMiner::CommodityCard once = card;
+        once.levelSlips = 1;
+        once.levelMargin = 2;
+        once.stockReads = 1;
+        once.priceReads = 1;
+        SCMiner::CommodityCard box = card;
+        box.perUnit = true;
+        SCMiner::CommodityCard empty = card;
+        empty.level = 1;
+        using SCMiner::Certainty;
+        const bool sure = card.levelSure() == Certainty::Sure && card.stockSure() == Certainty::Sure &&
+                          card.priceSure() == Certainty::Sure && slip.levelSure() == Certainty::Sure &&
+                          once.levelSure() == Certainty::Check &&
+                          once.stockSure() == Certainty::Check && once.priceSure() == Certainty::Check &&
+                          box.priceSure() == Certainty::Missing && empty.stockSure() == Certainty::Check &&
+                          SCMiner::CommodityCard().levelSure() == Certainty::Missing &&
+                          SCMiner::CommodityCard().stockSure() == Certainty::Missing &&
+                          SCMiner::CommodityCard().priceSure() == Certainty::Missing;
+        allPassed &= check(sure, "how sure a card's values are: sure where two readings agree or the words are the "
+                                 "game's, to check where read once, missing where a cargo box is picked");
     }
 
     // --- The UEX marketplace: its figures come as numbers or as

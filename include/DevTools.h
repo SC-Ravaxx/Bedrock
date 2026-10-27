@@ -49,3 +49,11 @@ int runRefineryShare(const std::string& picture, const std::string& service);
 // book printed at the end
 int runRefineryReplay(const std::string& dir, const std::string& station, long long start, double frameSeconds,
                       int every);
+
+// --datarunner <pictures, or a folder>: the commodity terminal's list read
+// off each picture as a UEX Datarunner report reads it - every card's name,
+// stock level, stock and price, each with how sure the reader is of it
+// (S sure, C check, M missing), and which list it is (side 1 BUY, 2 LOCAL
+// MARKET VALUE). A picture with no cards shows no commodity terminal.
+// (SCMINER_COMMODITY_TRACE: every line of text read)
+int runDatarunner(const std::vector<std::string>& files);

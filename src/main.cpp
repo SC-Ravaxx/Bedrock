@@ -4305,6 +4305,26 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             setupConsole(true);
             return runRefineryShare(__argv[i + 1], __argv[i + 2]);
         }
+        else if (arg == "--datarunner" && i + 1 < __argc) {
+            // --datarunner <pictures, or a folder>
+            setupConsole(true);
+            std::vector<std::string> files;
+            for (int k = i + 1; k < __argc; k++) {
+                const std::string a = __argv[k];
+                if (std::filesystem::is_directory(a)) {
+                    std::vector<std::string> found;
+                    for (const auto& entry : std::filesystem::directory_iterator(a)) {
+                        const std::string ext = entry.path().extension().string();
+                        if (ext == ".jpg" || ext == ".png") found.push_back(entry.path().string());
+                    }
+                    std::sort(found.begin(), found.end());
+                    files.insert(files.end(), found.begin(), found.end());
+                } else {
+                    files.push_back(a);
+                }
+            }
+            return runDatarunner(files);
+        }
         else if (arg == "--refinery" && i + 1 < __argc) {
             // --refinery <pictures, or a folder> [--draw <dir>]
             setupConsole(true);
