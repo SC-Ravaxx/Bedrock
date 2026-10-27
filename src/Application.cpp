@@ -5504,19 +5504,49 @@ bool Application::watchTerminal() {
                     offered->rows = fresh->rows;
                     for (Datarunner::Row& row : offered->rows) row.snippet.release();
                     terminalOffered_.push_back(std::move(offered));
-                    fresh->id = datarunnerNextId_++;
-                    fresh->shown = keepPicture(fresh->jpeg, AppPaths::data() / "debug" / "uex_pictures",
-                                               "terminal_" + timeStamp("%Y%m%d_%H%M%S"));
-                    std::cout << "\nUEX Datarunner: the terminal at " << (fresh->shop.empty() ? "?" : fresh->shop)
-                              << " - " << fresh->rows.size() << " new rows" << std::endl;
-                    datarunnerShots_.push_back(std::move(fresh));
+                    // One picture and one report for a list: the rows join
+                    // the picture of the same shop's same list not sent yet,
+                    // and their piece of the look goes under it
+                    std::shared_ptr<Datarunner::Shot> into;
+                    for (const auto& shot : datarunnerShots_) {
+                        if (shot->automatic && shot->shop == fresh->shop && shot->side == fresh->side &&
+                            shot->state == Datarunner::Shot::State::Check && shot->taken >= since &&
+                            !shot->montage.empty()) {
+                            into = shot;
+                        }
+                    }
+                    std::vector<cv::Rect> where;
+                    for (const Datarunner::Row& row : fresh->rows) where.push_back(row.card);
+                    const int frameHeight = look->montage.rows;
+                    if (into) {
+                        Datarunner::addToMontage(into->montage, look->montage, where);
+                        into->jpeg = Datarunner::montageForUex(into->montage, frameHeight);
+                        if (!into->shown.empty()) {
+                            std::ofstream out(into->shown, std::ios::binary | std::ios::trunc);
+                            out.write(reinterpret_cast<const char*>(into->jpeg.data()), (std::streamsize)into->jpeg.size());
+                        }
+                        for (Datarunner::Row& row : fresh->rows) into->rows.push_back(std::move(row));
+                        into->matched = false;   // the new rows to UEX's commodities, and their box sizes
+                        std::cout << "\nUEX Datarunner: the terminal at " << (into->shop.empty() ? "?" : into->shop)
+                                  << " - " << where.size() << " rows more, " << into->rows.size() << " in all" << std::endl;
+                    } else {
+                        fresh->montage.release();
+                        Datarunner::addToMontage(fresh->montage, look->montage, where);
+                        fresh->jpeg = Datarunner::montageForUex(fresh->montage, frameHeight);
+                        fresh->shown = keepPicture(fresh->jpeg, AppPaths::data() / "debug" / "uex_pictures",
+                                                   "terminal_" + timeStamp("%Y%m%d_%H%M%S"));
+                        fresh->id = datarunnerNextId_++;
+                        std::cout << "\nUEX Datarunner: the terminal at " << (fresh->shop.empty() ? "?" : fresh->shop)
+                                  << " - " << fresh->rows.size() << " new rows" << std::endl;
+                        datarunnerShots_.push_back(std::move(fresh));
+                    }
                     datarunnerNote_.clear();
                     changed = true;
                 }
             }
         }
         if (sawTerminal) {
-            look->jpeg.clear();   // kept to compare with, not to send
+            look->montage.release();   // kept to compare with, not to send
             terminalLastLook_ = look;
         } else {
             terminalLastLook_.reset();
@@ -5580,6 +5610,8 @@ bool Application::watchTerminal() {
     terminalJob_ = std::async(std::launch::async, [frame, reader, taken, channel, shop]() {
         auto look = std::make_shared<Datarunner::Shot>(Datarunner::readPicture(frame, *reader));
         look->automatic = true;
+        look->montage = frame;   // the look itself, for the list's one picture
+        look->jpeg.clear();      // ...which is made of it where rows are new
         look->taken = taken;
         look->channel = channel;
         look->shop = shop;

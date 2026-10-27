@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <iterator>
@@ -85,19 +86,64 @@ bool boxesUexTakes(const std::string& sizes) {
     return true;
 }
 
-std::vector<unsigned char> pictureForUex(cv::Mat frame) {
+namespace {
+
+// A picture as one JPEG under UEX's 10 MB, the best quality that fits
+std::vector<unsigned char> jpegForUex(const cv::Mat& bgr) {
     std::vector<unsigned char> jpeg;
-    if (frame.empty()) return jpeg;
-    if (frame.channels() == 4) cv::cvtColor(frame, frame, cv::COLOR_BGRA2BGR);
-    if (frame.rows > 1080) {
-        cv::resize(frame, frame, cv::Size((int)((long long)frame.cols * 1080 / frame.rows), 1080), 0, 0, cv::INTER_AREA);
-    }
     for (int quality : {85, 72, 58, 44}) {
-        if (!cv::imencode(".jpg", frame, jpeg, {cv::IMWRITE_JPEG_QUALITY, quality})) jpeg.clear();
+        if (!cv::imencode(".jpg", bgr, jpeg, {cv::IMWRITE_JPEG_QUALITY, quality})) jpeg.clear();
         // base64 makes four of three; UEX takes up to 10 MB
         if (jpeg.empty() || jpeg.size() / 3 * 4 < 9u * 1024 * 1024) break;
     }
     return jpeg;
+}
+
+}  // namespace
+
+std::vector<unsigned char> pictureForUex(cv::Mat frame) {
+    if (frame.empty()) return {};
+    if (frame.channels() == 4) cv::cvtColor(frame, frame, cv::COLOR_BGRA2BGR);
+    if (frame.rows > 1080) {
+        cv::resize(frame, frame, cv::Size((int)((long long)frame.cols * 1080 / frame.rows), 1080), 0, 0, cv::INTER_AREA);
+    }
+    return jpegForUex(frame);
+}
+
+void addToMontage(cv::Mat& montage, const cv::Mat& frame, const std::vector<cv::Rect>& rows) {
+    if (frame.empty()) return;
+    cv::Mat bgr = frame;
+    if (bgr.channels() == 4) cv::cvtColor(bgr, bgr, cv::COLOR_BGRA2BGR);
+    if (montage.empty()) {
+        montage = bgr.clone();
+        return;
+    }
+    if (rows.empty() || bgr.type() != montage.type()) return;
+    cv::Rect piece = rows.front();
+    for (const cv::Rect& r : rows) piece |= r;
+    // a card's height around them: the level's bar and the icon on the left
+    const int h = (std::max)(8, rows.front().height);
+    piece = cv::Rect(piece.x - h, piece.y - h / 2, piece.width + h + h / 4, piece.height + h) &
+            cv::Rect(0, 0, bgr.cols, bgr.rows);
+    if (piece.area() <= 0) return;
+    // a dark gap over it, then the piece at its own place across
+    const int gap = (std::max)(4, h / 8);
+    cv::Mat band(piece.height + gap, montage.cols, montage.type(), cv::Scalar(0, 0, 0));
+    const cv::Rect at = cv::Rect(piece.x, gap, piece.width, piece.height) & cv::Rect(0, 0, band.cols, band.rows);
+    if (at.area() <= 0) return;
+    bgr(cv::Rect(piece.x, piece.y, at.width, at.height)).copyTo(band(at));
+    cv::vconcat(montage, band, montage);
+}
+
+std::vector<unsigned char> montageForUex(const cv::Mat& montage, int frameHeight) {
+    if (montage.empty()) return {};
+    cv::Mat out = montage;
+    if (frameHeight > 1080) {
+        const double k = 1080.0 / frameHeight;
+        cv::resize(montage, out, cv::Size((int)std::lround(montage.cols * k), (int)std::lround(montage.rows * k)), 0, 0,
+                   cv::INTER_AREA);
+    }
+    return jpegForUex(out);
 }
 
 Shot readPicture(const cv::Mat& bgr, TextLineReader& reader) {

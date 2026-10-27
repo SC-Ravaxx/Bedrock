@@ -89,8 +89,12 @@ struct Shot {
     bool black = false;
     std::filesystem::path shown;
     // Bedrock's own look at a terminal in use, no Print Screen: no file of
-    // the game's, `shown` the picture (watchTerminal in Application)
+    // the game's, `shown` the picture (watchTerminal in Application). The
+    // looks at one list go into one picture and one report: `montage` is
+    // that picture at the game's own size - the first look whole, under it
+    // the piece of each later look with the rows it added (addToMontage)
     bool automatic = false;
+    cv::Mat montage;
     long long taken = 0;            // when it was written, Unix seconds
     int width = 0, height = 0;
     std::string channel;            // "LIVE", "PTU"; "" not known
@@ -113,6 +117,14 @@ struct Shot {
 // 5120x1440 game comes out 3840x1080, its terminal readable - a JPEG well
 // under UEX's 10 MB. Empty for an empty picture.
 std::vector<unsigned char> pictureForUex(cv::Mat frame);
+// Bedrock's looks at one list put together: the first one whole; of each
+// later one, the piece with the cards at `rows` (where they stand on it) and
+// a little around them, under what is there - at its own place across, so
+// the columns stand under the first look's
+void addToMontage(cv::Mat& montage, const cv::Mat& frame, const std::vector<cv::Rect>& rows);
+// ...as UEX gets it: at the size a look of `frameHeight` would come at (a
+// 1440 game's at 1080), one JPEG under UEX's 10 MB. Empty for none.
+std::vector<unsigned char> montageForUex(const cv::Mat& montage, int frameHeight);
 
 // A picture read: its rows as the reader made them out, each with its piece
 // of the picture, the list it shows, and the picture as UEX gets it. No rows

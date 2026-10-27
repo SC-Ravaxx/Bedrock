@@ -1925,6 +1925,30 @@ int runSelfTest() {
                           sellBody.find("\"price_sell\":7681") != std::string::npos;
         allPassed &= check(goes, "a Datarunner report carries the rows as checked, box sizes on the BUY list only, the "
                                  "picture's date, and the very picture - at most 1080 tall, under UEX's 10 MB");
+        // Bedrock's looks at one list put together for one report: the first
+        // whole, of a later one the piece with its new cards - a card's
+        // height around them - at its own place across, under a dark gap;
+        // as UEX gets it, at the size the looks would come at
+        {
+            const cv::Mat first(720, 1280, CV_8UC3, cv::Scalar(10, 20, 30));
+            cv::Mat later(720, 1280, CV_8UC3, cv::Scalar(10, 20, 30));
+            cv::rectangle(later, cv::Rect(800, 300, 300, 60), cv::Scalar(200, 180, 160), cv::FILLED);
+            cv::Mat montage;
+            D::addToMontage(montage, first, {});
+            const bool firstWhole = montage.rows == 720 && montage.cols == 1280;
+            D::addToMontage(montage, later, {cv::Rect(800, 300, 300, 60)});
+            const bool under = montage.rows == 720 + 7 + 120 && montage.cols == 1280 &&
+                               montage.at<cv::Vec3b>(720 + 7 + 30 + 10, 810) == cv::Vec3b(200, 180, 160) &&
+                               montage.at<cv::Vec3b>(720 + 3, 810) == cv::Vec3b(0, 0, 0) &&
+                               montage.at<cv::Vec3b>(720 + 50, 100) == cv::Vec3b(0, 0, 0);
+            const cv::Mat asIs = cv::imdecode(D::montageForUex(montage, 720), cv::IMREAD_COLOR);
+            const cv::Mat at1080 = cv::imdecode(D::montageForUex(montage, 1440), cv::IMREAD_COLOR);
+            const bool sized = asIs.cols == 1280 && asIs.rows == 847 && at1080.cols == 960 && at1080.rows == 635 &&
+                               D::montageForUex(cv::Mat(), 1440).empty();
+            allPassed &= check(firstWhole && under && sized,
+                               "Bedrock's looks at one list in one picture: the first whole, under it the piece of each "
+                               "later one with its new cards, at its own place across");
+        }
         // Star Citizen can save its screenshots black (seen with HDR on): then
         // the picture Bedrock took the moment the game's came is read instead
         // - only then, and only where it took one. A dark scene is no black one.
