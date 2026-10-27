@@ -41,21 +41,6 @@ std::string hexOf(const unsigned char* bytes, size_t size) {
     return out;
 }
 
-bool bytesOfHex(const std::string& hex, unsigned char* out, size_t size) {
-    if (hex.size() != size * 2) return false;
-    auto value = [](char c) {
-        if (c >= '0' && c <= '9') return c - '0';
-        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-        return -1;
-    };
-    for (size_t i = 0; i < size; i++) {
-        const int high = value(hex[2 * i]), low = value(hex[2 * i + 1]);
-        if (high < 0 || low < 0) return false;
-        out[i] = static_cast<unsigned char>(high * 16 + low);
-    }
-    return true;
-}
 
 // A file's SHA-512 in hex; "" where it cannot be read
 std::string sha512OfFile(const std::filesystem::path& file) {
@@ -292,16 +277,96 @@ std::string jsonText(std::string_view text) {
 
 // ---- keys and signatures -----------------------------------------------------
 
-Key seedOf(const std::string& secret) {
-    uint8_t hash[64];
-    crypto_sha512(hash, reinterpret_cast<const uint8_t*>(secret.data()), secret.size());
-    Key seed{};
-    std::memcpy(seed.data(), hash, seed.size());
-    crypto_wipe(hash, sizeof hash);
-    return seed;
+namespace {
+
+constexpr const char* SIG_NAMESPACE = "bedrock-plugin";
+constexpr const char* SIG_BEGIN = "-----BEGIN SSH SIGNATURE-----";
+constexpr const char* SIG_END = "-----END SSH SIGNATURE-----";
+
+std::string base64Of(std::string_view bytes) {
+    static const char* abc = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    for (size_t i = 0; i < bytes.size(); i += 3) {
+        const size_t n = std::min<size_t>(3, bytes.size() - i);
+        uint32_t v = (uint32_t)(uint8_t)bytes[i] << 16;
+        if (n > 1) v |= (uint32_t)(uint8_t)bytes[i + 1] << 8;
+        if (n > 2) v |= (uint8_t)bytes[i + 2];
+        out += abc[v >> 18 & 63];
+        out += abc[v >> 12 & 63];
+        out += n > 1 ? abc[v >> 6 & 63] : '=';
+        out += n > 2 ? abc[v & 63] : '=';
+    }
+    return out;
 }
 
-Key testSeed() { return seedOf(PLUGIN_TEST_SEED_TEXT); }
+bool bytesOfBase64(std::string_view text, std::string& out) {
+    out.clear();
+    uint32_t v = 0;
+    int bits = 0, pad = 0;
+    for (char c : text) {
+        if (std::isspace((unsigned char)c)) continue;
+        if (c == '=') {
+            pad++;
+            continue;
+        }
+        const int d = c >= 'A' && c <= 'Z'   ? c - 'A'
+                      : c >= 'a' && c <= 'z' ? c - 'a' + 26
+                      : c >= '0' && c <= '9' ? c - '0' + 52
+                      : c == '+'             ? 62
+                      : c == '/'             ? 63
+                                             : -1;
+        if (d < 0 || pad) return false;
+        v = v << 6 | (uint32_t)d;
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            out += (char)(v >> bits & 0xFF);
+        }
+    }
+    return pad <= 2;
+}
+
+// SSH's string: uint32 length, big-endian, then the bytes
+void putString(std::string& out, std::string_view s) {
+    const uint32_t n = (uint32_t)s.size();
+    out += (char)(n >> 24);
+    out += (char)(n >> 16 & 0xFF);
+    out += (char)(n >> 8 & 0xFF);
+    out += (char)(n & 0xFF);
+    out.append(s.data(), s.size());
+}
+
+bool takeString(std::string_view& in, std::string_view& s) {
+    if (in.size() < 4) return false;
+    const uint32_t n = (uint32_t)(uint8_t)in[0] << 24 | (uint32_t)(uint8_t)in[1] << 16 | (uint32_t)(uint8_t)in[2] << 8 |
+                       (uint32_t)(uint8_t)in[3];
+    if (in.size() - 4 < n) return false;
+    s = in.substr(4, n);
+    in.remove_prefix(4 + (size_t)n);
+    return true;
+}
+
+// What the key signs (PROTOCOL.sshsig)
+std::string sshsigData(std::string_view ns, std::string_view reserved, const std::string& message) {
+    uint8_t hash[64];
+    crypto_sha512(hash, reinterpret_cast<const uint8_t*>(message.data()), message.size());
+    std::string data = "SSHSIG";
+    putString(data, ns);
+    putString(data, reserved);
+    putString(data, "sha512");
+    putString(data, std::string_view(reinterpret_cast<const char*>(hash), sizeof hash));
+    return data;
+}
+
+}  // namespace
+
+Key testSeed() {
+    uint8_t hash[64];
+    crypto_sha512(hash, reinterpret_cast<const uint8_t*>(PLUGIN_TEST_SEED_TEXT), std::strlen(PLUGIN_TEST_SEED_TEXT));
+    Key seed{};
+    std::memcpy(seed.data(), hash, seed.size());
+    return seed;
+}
 
 Key publicKeyOf(const Key& seed) {
     uint8_t copy[32], secret[64];
@@ -341,26 +406,56 @@ std::string manifestOf(const std::filesystem::path& folder) {
     return manifest;
 }
 
-bool signedBy(const std::string& manifest, const std::string& signatureHex, const std::vector<Key>& keys) {
-    uint8_t signature[64];
-    if (manifest.empty() || !bytesOfHex(signatureHex, signature, sizeof signature)) return false;
-    const std::string message = SIGNED_PREFIX + manifest;
-    for (const Key& key : keys) {
-        if (crypto_ed25519_check(signature, key.data(), reinterpret_cast<const uint8_t*>(message.data()), message.size()) == 0) {
-            return true;
-        }
+std::string signedText(const std::string& manifest) { return SIGNED_PREFIX + manifest; }
+
+bool signedBy(const std::string& manifest, const std::string& signature, const std::vector<Key>& keys) {
+    if (manifest.empty()) return false;
+    const size_t begin = signature.find(SIG_BEGIN), end = signature.find(SIG_END);
+    if (begin == std::string::npos || end == std::string::npos || end < begin) return false;
+    const size_t from = begin + std::strlen(SIG_BEGIN);
+    std::string blob;
+    if (!bytesOfBase64(std::string_view(signature).substr(from, end - from), blob)) return false;
+    std::string_view in(blob), pub, ns, reserved, hash, sig, keyType, keyBytes, sigType, sigBytes;
+    if (in.size() < 10 || in.substr(0, 6) != "SSHSIG" || in.substr(6, 4) != std::string_view("\0\0\0\1", 4)) return false;
+    in.remove_prefix(10);
+    if (!takeString(in, pub) || !takeString(in, ns) || !takeString(in, reserved) || !takeString(in, hash) ||
+        !takeString(in, sig) || !in.empty() || ns != SIG_NAMESPACE || hash != "sha512") {
+        return false;
     }
-    return false;
+    if (!takeString(pub, keyType) || !takeString(pub, keyBytes) || !pub.empty() || keyType != "ssh-ed25519" ||
+        keyBytes.size() != 32 || !takeString(sig, sigType) || !takeString(sig, sigBytes) || !sig.empty() ||
+        sigType != "ssh-ed25519" || sigBytes.size() != 64) {
+        return false;
+    }
+    Key key{};
+    std::memcpy(key.data(), keyBytes.data(), key.size());
+    if (std::find(keys.begin(), keys.end(), key) == keys.end()) return false;
+    const std::string data = sshsigData(ns, reserved, signedText(manifest));
+    return crypto_ed25519_check(reinterpret_cast<const uint8_t*>(sigBytes.data()), key.data(),
+                                reinterpret_cast<const uint8_t*>(data.data()), data.size()) == 0;
 }
 
 std::string signatureOf(const std::string& manifest, const Key& seed) {
     uint8_t copy[32], secret[64], pub[32], signature[64];
     std::memcpy(copy, seed.data(), sizeof copy);
     crypto_ed25519_key_pair(secret, pub, copy);
-    const std::string message = SIGNED_PREFIX + manifest;
-    crypto_ed25519_sign(signature, secret, reinterpret_cast<const uint8_t*>(message.data()), message.size());
+    const std::string data = sshsigData(SIG_NAMESPACE, "", signedText(manifest));
+    crypto_ed25519_sign(signature, secret, reinterpret_cast<const uint8_t*>(data.data()), data.size());
     crypto_wipe(secret, sizeof secret);
-    return hexOf(signature, sizeof signature);
+    std::string keyBlob, sigBlob, blob = std::string("SSHSIG") + std::string("\0\0\0\1", 4);
+    putString(keyBlob, "ssh-ed25519");
+    putString(keyBlob, std::string_view(reinterpret_cast<const char*>(pub), sizeof pub));
+    putString(sigBlob, "ssh-ed25519");
+    putString(sigBlob, std::string_view(reinterpret_cast<const char*>(signature), sizeof signature));
+    putString(blob, keyBlob);
+    putString(blob, SIG_NAMESPACE);
+    putString(blob, "");
+    putString(blob, "sha512");
+    putString(blob, sigBlob);
+    const std::string text = base64Of(blob);
+    std::string out = std::string(SIG_BEGIN) + "\n";
+    for (size_t i = 0; i < text.size(); i += 70) out += text.substr(i, 70) + "\n";
+    return out + SIG_END + "\n";
 }
 
 // ---- the folders -------------------------------------------------------------
@@ -381,7 +476,7 @@ std::vector<Info> discover(const std::filesystem::path& root, const std::vector<
         if (!plainName(info.id, 32) || text.empty() || !parseJson(text, json, why) || json.kind != JsonValue::Kind::Object ||
             json.textOr("id") != info.id) {
             info.name = info.id;
-            info.problem = "BROKEN - Its plugin.json is missing or does not name this folder";
+            info.problem = "BROKEN - plugin.json missing or wrong";
             found.push_back(info);
             continue;
         }
@@ -389,13 +484,11 @@ std::vector<Info> discover(const std::filesystem::path& root, const std::vector<
         info.version = json.textOr("version");
         info.description = json.textOr("description");
         info.needs = json.textOr("bedrock");
-        std::string signature = readText(entry.path() / "plugin.sig", 1024);
-        signature.erase(std::remove_if(signature.begin(), signature.end(), [](char c) { return std::isspace((unsigned char)c); }),
-                        signature.end());
+        const std::string signature = readText(entry.path() / "plugin.sig", 4096);
         info.trusted = !signature.empty() && signedBy(manifestOf(entry.path()), signature, keys);
         if (!info.trusted && !acceptUnsigned) {
-            info.problem = signature.empty() ? "NOT SIGNED - Bedrock runs plugins by Ravaxx only"
-                                             : "FILES CHANGED - It is not as signed. Install it again";
+            info.problem = signature.empty() ? "NOT SIGNED - Install it again"
+                                             : "FILES CHANGED - Install it again";
         } else if (!info.needs.empty() && olderVersion(bedrockVersion, info.needs)) {
             info.problem = "NEEDS BEDROCK " + info.needs + " - Update Bedrock to run it";
         }

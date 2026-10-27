@@ -6003,15 +6003,29 @@ end
         P::Key otherSeed = seed;
         otherSeed[0] ^= 1;
         const std::string signature = P::signatureOf(manifest, seed);
+        // ...and one made by ssh-keygen -Y sign -n bedrock-plugin -O hashalg=sha512 (a throwaway key)
+        const P::Key sshKey = {0x22, 0xb1, 0x5a, 0xe9, 0x65, 0xf9, 0x7f, 0xa3, 0x8f, 0x5a, 0x36, 0xb5, 0x03, 0xf0, 0x46, 0xbd,
+                               0x73, 0x91, 0xd7, 0x13, 0x5b, 0x8b, 0x53, 0x16, 0x98, 0x1c, 0xde, 0x01, 0x25, 0x01, 0xac, 0xb1};
+        const std::string sshSignature = "-----BEGIN SSH SIGNATURE-----\n"
+                                 "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgIrFa6WX5f6OPWja1A/BGvXOR1x\n"
+                                 "Nbi1MWmBzeASUBrLEAAAAOYmVkcm9jay1wbHVnaW4AAAAAAAAABnNoYTUxMgAAAFMAAAAL\n"
+                                 "c3NoLWVkMjU1MTkAAABAPY/vx4W56U2l4dugVFhEjVZH3ouSrc/ysRTDQUe6HVJcFITi2Y\n"
+                                 "Q4+6Uy+yaeOTqxu4hJ3JorBxKwElHmywfqAw==\n"
+                                 "-----END SSH SIGNATURE-----\n";
+        const bool fromSsh = P::signedBy("0123abcd  main.lua\n", sshSignature, {sshKey}) &&
+                             !P::signedBy("0123abcd  main.lua\n", sshSignature, keys) &&
+                             !P::signedBy("0123abcd  main.lub\n", sshSignature, {sshKey});
         const bool signs = manifest.find("  main.lua\n") != std::string::npos &&
                            manifest.find("  data/things.json\n") != std::string::npos &&
-                           manifest.find("plugin.sig") == std::string::npos && signature.size() == 128 &&
+                           manifest.find("plugin.sig") == std::string::npos &&
+                           signature.rfind("-----BEGIN SSH SIGNATURE-----\n", 0) == 0 &&
                            P::signedBy(manifest, signature, keys) &&
                            !P::signedBy(manifest, signature, {P::publicKeyOf(otherSeed)}) &&
                            !P::signedBy(manifest + "x", signature, keys) && !P::signedBy(manifest, "", keys) &&
-                           !P::signedBy(manifest, std::string(128, 'g'), keys);
-        allPassed &= check(signs, "a plugin's manifest: every file but plugin.sig by its SHA-512; Ed25519 over it "
-                                  "passes with the signing key alone, and for that manifest alone");
+                           !P::signedBy(manifest, std::string(128, 'g'), keys) && fromSsh;
+        allPassed &= check(signs, "a plugin's manifest: every file but plugin.sig by its SHA-512; an SSH signature "
+                                  "of it passes with the signing key alone and for that manifest alone, "
+                                  "one by ssh-keygen too");
         const std::vector<P::Info> found = P::discover(root, keys, false, "2.7.0");
         auto info = [&](const std::string& id) {
             for (const P::Info& i : found) {

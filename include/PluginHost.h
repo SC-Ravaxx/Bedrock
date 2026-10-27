@@ -39,9 +39,11 @@ std::string indexUrlBeside(const std::string& updateUrl);
 
 // ---- packages --------------------------------------------------------------
 // A plugin in one file - JSON, its files as text and its signature:
-//   {"format": 1, "id": "wikelo", "version": "1.0.0", "signature": "<hex>",
+//   {"format": 1, "id": "wikelo", "version": "1.0.0", "signature": "<plugin.sig>",
 //    "files": {"plugin.json": "...", "main.lua": "...", "data/x.json": "..."}}
-// A plugin holds text alone: .lua, .json and .txt files, plain names.
+// Text files only: .lua, .json and .txt, plain names.
+std::string pack(const std::filesystem::path& folder, const std::string& signature, std::string& why);
+// ...signed with a seed (test key, self-test)
 std::string pack(const std::filesystem::path& folder, const Key& seed, std::string& why);
 // Into root/<id>, the plugin there before replaced whole - but only once it
 // checks out: its files plain text with plain names, its signature by one of

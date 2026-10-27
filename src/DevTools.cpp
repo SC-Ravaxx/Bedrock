@@ -18,6 +18,7 @@
 #include "RefiningData.h"
 #include "Updater.h"
 #include "PluginHost.h"
+#include "PluginKeys.h"
 #include "resource.h"
 
 #include <opencv2/opencv.hpp>
@@ -973,45 +974,38 @@ int runPluginCheck(const std::string& folder, const std::string& gameFolder, con
     return plugin->running() ? 0 : 1;
 }
 
-// The key in BEDROCK_PLUGIN_KEY, or the test key; `own` says which
-static SCMiner::Plugins::Key pluginKey(bool& own) {
+int runPluginManifest(const std::string& folder, const std::string& out) {
     namespace P = SCMiner::Plugins;
-    const char* secret = std::getenv("BEDROCK_PLUGIN_KEY");
-    own = secret && std::strlen(secret) >= 16;
-    if (secret && !own) std::cout << "BEDROCK_PLUGIN_KEY is too short to be a key - the test key signs" << std::endl;
-    return own ? P::seedOf(secret) : P::testSeed();
-}
-
-static std::string hexOfKey(const SCMiner::Plugins::Key& key) {
-    std::string hex;
-    for (unsigned char c : key) {
-        char two[3];
-        std::snprintf(two, sizeof two, "%02x", c);
-        hex += two;
+    const std::string manifest = P::manifestOf(folder);
+    if (manifest.empty()) {
+        std::cout << "No manifest: " << folder << " cannot be read" << std::endl;
+        return 1;
     }
-    return hex;
-}
-
-int runPluginPublicKey() {
-    bool own = false;
-    const SCMiner::Plugins::Key pub = SCMiner::Plugins::publicKeyOf(pluginKey(own));
-    std::cout << (own ? "The key given" : "THE TEST KEY") << ", public: " << hexOfKey(pub) << "\n"
-              << "As PluginKeys.h takes it:\n    {";
-    for (size_t i = 0; i < pub.size(); i++) {
-        char one[8];
-        std::snprintf(one, sizeof one, "0x%02x", pub[i]);
-        std::cout << (i ? (i % 8 ? ", " : ",\n     ") : "") << one;
+    const std::string text = P::signedText(manifest);
+    std::ofstream file(out, std::ios::binary | std::ios::trunc);
+    file.write(text.data(), (std::streamsize)text.size());
+    if (!file.good()) {
+        std::cout << "Could not write " << out << std::endl;
+        return 1;
     }
-    std::cout << "}," << std::endl;
-    return own ? 0 : 1;
+    std::cout << out << ": " << text.size() << " bytes" << std::endl;
+    return 0;
 }
 
-int runPackPlugin(const std::string& folder, const std::string& out) {
+int runPackPlugin(const std::string& folder, const std::string& out, const std::string& signatureFile) {
     namespace P = SCMiner::Plugins;
-    bool own = false;
-    const P::Key seed = pluginKey(own);
-    std::string why;
-    const std::string package = P::pack(folder, seed, why);
+    std::string why, package;
+    if (signatureFile.empty()) {
+        package = P::pack(folder, P::testSeed(), why);
+    } else {
+        std::ifstream in(signatureFile, std::ios::binary);
+        const std::string signature((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        if (signature.empty()) {
+            std::cout << "No signature in " << signatureFile << std::endl;
+            return 1;
+        }
+        package = P::pack(folder, signature, why);
+    }
     if (package.empty()) {
         std::cout << "Not packed: " << why << std::endl;
         return 1;
@@ -1022,16 +1016,17 @@ int runPackPlugin(const std::string& folder, const std::string& out) {
         std::cout << "Could not write " << out << std::endl;
         return 1;
     }
-    const P::Key pub = P::publicKeyOf(seed);
-    std::cout << out << ": " << package.size() << " bytes, signed with " << (own ? "the key given" : "THE TEST KEY")
-              << " (public " << hexOfKey(pub) << ")" << std::endl;
-    // ...and unpacked again into a folder of its own, as Bedrock would
+    // unpacked again as a release build would, then as a developer build
     const std::filesystem::path tryRoot = std::filesystem::temp_directory_path() / "bedrock_pack_check";
     std::error_code ec;
     std::filesystem::remove_all(tryRoot, ec);
     std::string id;
-    const bool back = P::unpack(package, tryRoot, {pub}, false, id, why);
-    std::cout << (back ? "Unpacks and checks out as " + id : "DOES NOT UNPACK: " + why) << std::endl;
+    const bool ravaxx = P::unpack(package, tryRoot, P::RAVAXX_PLUGIN_KEYS, false, id, why);
     std::filesystem::remove_all(tryRoot, ec);
-    return back ? 0 : 1;
+    const bool test = !ravaxx && P::unpack(package, tryRoot, {P::publicKeyOf(P::testSeed())}, false, id, why);
+    std::filesystem::remove_all(tryRoot, ec);
+    std::cout << out << ": " << package.size() << " bytes, "
+              << (ravaxx ? "signed by Ravaxx" : test ? "signed with THE TEST KEY" : "DOES NOT CHECK OUT - " + why)
+              << std::endl;
+    return ravaxx || (test && signatureFile.empty()) ? 0 : 1;
 }

@@ -4310,14 +4310,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             setupConsole(true);
             return runPluginCheck(__argv[i + 1], __argv[i + 2], i + 3 < __argc ? __argv[i + 3] : "");
         }
-        else if (arg == "--plugin-public-key") {
+        else if (arg == "--plugin-manifest" && i + 2 < __argc) {
+            // --plugin-manifest <plugin folder> <file>
             setupConsole(true);
-            return runPluginPublicKey();
+            return runPluginManifest(__argv[i + 1], __argv[i + 2]);
         }
         else if (arg == "--pack-plugin" && i + 2 < __argc) {
-            // --pack-plugin <plugin folder> <package>
+            // --pack-plugin <plugin folder> <package> [signature file]
             setupConsole(true);
-            return runPackPlugin(__argv[i + 1], __argv[i + 2]);
+            return runPackPlugin(__argv[i + 1], __argv[i + 2], i + 3 < __argc ? __argv[i + 3] : "");
         }
         else if (arg == "--datarunner" && i + 1 < __argc) {
             // --datarunner <pictures, or a folder>

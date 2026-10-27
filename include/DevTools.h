@@ -65,13 +65,11 @@ int runDatarunner(const std::vector<std::string>& files);
 // the state folder, a fresh one in the temp folder where none is given.
 int runPluginCheck(const std::string& folder, const std::string& gameFolder, const std::string& stateFolder);
 
-// --pack-plugin <plugin folder> <package>: the folder packed and signed into
-// one file, for the server's list (PluginHost.h). The key is the secret in
-// BEDROCK_PLUGIN_KEY (Plugins::seedOf), put there by whoever holds it - by
-// `op run`, so it never stands in a file or on a command line; without it the
-// test key signs, and the package runs in a developer's build alone.
-int runPackPlugin(const std::string& folder, const std::string& out);
+// --plugin-manifest <plugin folder> <file>: writes what is signed
+// (Plugins::signedText), for ssh-keygen -Y sign
+int runPluginManifest(const std::string& folder, const std::string& out);
 
-// --plugin-public-key: the public half of the key in BEDROCK_PLUGIN_KEY, in
-// hex and as the line PluginKeys.h takes
-int runPluginPublicKey();
+// --pack-plugin <plugin folder> <package> [signature file]: packs the folder
+// with the signature ssh-keygen made, or signed with the test key without
+// one; then checks the package (plugins/tools/release.py)
+int runPackPlugin(const std::string& folder, const std::string& out, const std::string& signatureFile);

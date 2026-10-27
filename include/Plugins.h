@@ -45,28 +45,25 @@ namespace Plugins {
 
 using Key = std::array<unsigned char, 32>;
 
-// The keys a plugin's signature is taken from (PluginKeys.h); a developer's
-// build takes the test key besides
+// Keys a signature is checked against (PluginKeys.h); developer builds add
+// the test key
 std::vector<Key> trustedKeys();
-// The test key's secret seed - known to all (PluginKeys.h)
+// The test key's seed (PluginKeys.h)
 Key testSeed();
-// A key's secret seed out of a secret of any length: the first 32 bytes of
-// its SHA-512. Ravaxx's key is a password in 1Password; the test key is
-// PLUGIN_TEST_SEED_TEXT made a seed the same way.
-Key seedOf(const std::string& secret);
-
-// A plugin folder's manifest: a line for every file in it but plugin.sig -
-// its SHA-512 in hex, two spaces, its path in the folder with '/' between
-// the folders - sorted by path. What a signature covers. "" where a file
-// cannot be read.
-std::string manifestOf(const std::filesystem::path& folder);
-// Whether `signatureHex` (128 hex figures) is the Ed25519 signature of the
-// manifest by one of `keys`
-bool signedBy(const std::string& manifest, const std::string& signatureHex, const std::vector<Key>& keys);
-// ...the signature with a secret key (its 32-byte seed): for the developer's
-// signing tool and the self-test
-std::string signatureOf(const std::string& manifest, const Key& seed);
 Key publicKeyOf(const Key& seed);
+
+// A plugin folder's manifest: per file but plugin.sig its SHA-512 in hex,
+// two spaces and its path ('/'), sorted by path. "" if a file cannot be read.
+std::string manifestOf(const std::filesystem::path& folder);
+// The bytes that are signed: "Bedrock plugin 1\n" and the manifest
+std::string signedText(const std::string& manifest);
+// plugin.sig: an SSH signature (SSHSIG, ssh-ed25519, namespace
+// "bedrock-plugin", sha512) of signedText - what
+//   ssh-keygen -Y sign -f <key> -n bedrock-plugin -O hashalg=sha512 <file>
+// writes. True if it is valid and by one of `keys`.
+bool signedBy(const std::string& manifest, const std::string& signature, const std::vector<Key>& keys);
+// The same signature made with a seed (test key, self-test)
+std::string signatureOf(const std::string& manifest, const Key& seed);
 
 // A plugin folder, as Bedrock finds it
 struct Info {

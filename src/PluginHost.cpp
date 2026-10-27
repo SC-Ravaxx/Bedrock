@@ -120,6 +120,10 @@ std::string indexUrlBeside(const std::string& updateUrl) {
 // ---- packages ----------------------------------------------------------------
 
 std::string pack(const std::filesystem::path& folder, const Key& seed, std::string& why) {
+    return pack(folder, signatureOf(manifestOf(folder), seed), why);
+}
+
+std::string pack(const std::filesystem::path& folder, const std::string& signature, std::string& why) {
     JsonValue manifest;
     const std::string pluginJson = readWhole(folder / "plugin.json", 1 << 16);
     if (pluginJson.empty() || !parseJson(pluginJson, manifest, why) || manifest.kind != JsonValue::Kind::Object) {
@@ -149,7 +153,6 @@ std::string pack(const std::filesystem::path& folder, const Key& seed, std::stri
         return {};
     }
     std::sort(files.begin(), files.end());
-    const std::string signature = signatureOf(manifestOf(folder), seed);
     std::string out = "{\"format\":1,\"id\":" + jsonText(id) + ",\"version\":" + jsonText(version) +
                       ",\"signature\":" + jsonText(signature) + ",\"files\":{";
     for (size_t i = 0; i < files.size(); i++) {
