@@ -24188,8 +24188,7 @@ void MinerGUI::refreshPluginView(bool twice) {
             else if (!e.offered.empty()) offered++;
         }
         pluginCurrent_.subtitle = (installed ? std::to_string(installed) + " installed" : std::string("None installed")) +
-                                  "  \u00B7  " +
-                                  (offered ? std::to_string(offered) + " more available" : std::string("None more available"));
+                                  (offered ? "  \u00B7  " + std::to_string(offered) + " available" : std::string());
         pluginCurrent_.items = pluginListPieces();
         return;
     }
@@ -24776,7 +24775,6 @@ void MinerGUI::paintPluginView(Gdiplus::Graphics& g, int cw, int ch, bool page) 
 
         // the foot: what the plugin last said, or why it stopped, or how far
         // its older logs are read
-        hairline(g, M, footY, right);
         std::wstring foot;
         Gdiplus::SolidBrush* footBrush = &faintBrush;
         if (!pluginShown_.empty()) {
@@ -24796,10 +24794,9 @@ void MinerGUI::paintPluginView(Gdiplus::Graphics& g, int cw, int ch, bool page) 
                     foot = toW(e.name + " " + e.version + "  \u00B7  Plugin by Ravaxx");
                 }
             }
-        } else {
-            foot = L"Plugins run inside Bedrock and stop with it";
         }
         Gdiplus::SolidBrush redBrush(COL_RED);
+        if (!foot.empty()) hairline(g, M, footY, right);
         g.DrawString(foot.c_str(), -1, &footFont, Gdiplus::RectF(M, footY + scaleF(8), right - M, scaleF(18)), &oneLine,
                      footBrush ? footBrush : &redBrush);
     }
