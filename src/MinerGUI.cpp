@@ -20557,13 +20557,13 @@ void MinerGUI::placeRefinery() {
 // The work orders the refinery's terminal showed (Application::lookForRefinery):
 // a card each, the soonest done first - where, what comes out of it, and when
 void MinerGUI::paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float top) {
-    Gdiplus::Font smallFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font subFont(&textFamily(), scaleF(9), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font rowFont(&textFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font stationFont(&markFamily(), scaleF(13), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font statusFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font numFont(&numeralFamily(), scaleF(12), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font buttonFont(&markFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font smallFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font subFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font rowFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font stationFont(&markFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font statusFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font numFont(&numeralFamily(), scaleF(Type::BODY), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font buttonFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush textBrush(COL_TEXT), dimBrush(COL_TEXT_DIM), faintBrush(COL_TEXT_FAINT);
     Gdiplus::SolidBrush accentBrush(COL_ACCENT), goodBrush(COL_GREEN);
     Gdiplus::StringFormat leftMid, rightMid;
@@ -20631,7 +20631,7 @@ void MinerGUI::paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float t
             const Gdiplus::RectF card(M, y, (float)cw - 2 * M, cardH);
             const bool done = o.due <= now;
             fillRoundRect(g, card, scaleF(R_CARD), COL_CARD);
-            if (done) strokeRoundRect(g, card, scaleF(R_CARD), tint(COL_GREEN, 140));
+            if (done) markedSurface(g, card, scaleF(R_CARD), scaleF(1.0f), COL_GREEN);
             const float in = scaleF(14);
             const float x0 = card.X + in, w = card.Width - 2 * in;
             // where, and which order
@@ -20990,15 +20990,15 @@ void MinerGUI::paintRefinery(HDC hdc) {
         const POINT hover = hoverRef_;
         if (refineryMethodOpen_) hoverRef_ = {-1, -1};
 
-        Gdiplus::Font markFont(&markFamily(), scaleF(21), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-        Gdiplus::Font smallFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-        Gdiplus::Font subFont(&textFamily(), scaleF(9), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-        Gdiplus::Font rowFont(&textFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-        Gdiplus::Font numFont(&numeralFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-        Gdiplus::Font totalFont(&numeralFamily(), scaleF(14), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-        Gdiplus::Font tabFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-        Gdiplus::Font stationFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-        Gdiplus::Font buttonFont(&markFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font markFont(&markFamily(), scaleF(Type::TITLE), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font smallFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+        Gdiplus::Font subFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font rowFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font numFont(&numeralFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font totalFont(&numeralFamily(), scaleF(Type::NUMBER), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+        Gdiplus::Font tabFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font stationFont(&markFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font buttonFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
         Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
         Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
         Gdiplus::SolidBrush textBrush(COL_TEXT);
@@ -21063,8 +21063,8 @@ void MinerGUI::paintRefinery(HDC hdc) {
                          ? L"Work orders read at refinery terminals · Output and completion time"
                          : L"Tick the cargo, set the amount, select a method · Stations sorted by yield",
                      -1, &subFont,
-                     Gdiplus::RectF(M + scaleF(15), (float)scale(36), (std::max)(scaleF(40), subRight - M - scaleF(15)),
-                                    scaleF(14)),
+                     Gdiplus::RectF(M + scaleF(15), (float)scale(35), (std::max)(scaleF(40), subRight - M - scaleF(15)),
+                                    scaleF(16)),
                      &leftMid, &dimBrush);
 
         // System tabs, the same words the Ore Finder uses
@@ -21331,7 +21331,7 @@ void MinerGUI::paintRefinery(HDC hdc) {
         }
 
         float ry = listTop + scaleF(22);
-        const float srowH = scaleF(30);
+        const float srowH = scaleF(33);
         const int fit = (std::max)(0, (int)(((float)ch - scaleF(58) - ry) / srowH));
         // More stations than there is room for (all systems: 20 against 18)
         // and the wheel walks them; the line under the last row says so
@@ -21341,7 +21341,7 @@ void MinerGUI::paintRefinery(HDC hdc) {
         const bool more = (int)rows.size() > fit;
         {
             const float cardTop = listTop - scaleF(12);
-            const float cardBottom = ry + (float)shown * srowH + (more ? scaleF(14) : 0.0f) + scaleF(8);
+            const float cardBottom = ry + (float)shown * srowH + (more ? scaleF(16) : 0.0f) + scaleF(8);
             const Gdiplus::RectF card(cardX, cardTop, (float)cw - M - cardX, cardBottom - cardTop);
             fillRoundRect(g, card, scaleF(R_CARD), COL_CARD);
             cardLight(g, card, scaleF(R_CARD), scaleF(44));
@@ -21426,9 +21426,9 @@ void MinerGUI::paintRefinery(HDC hdc) {
                     sub += L"   ·   Yield only";
                 }
             }
-            g.DrawString(sub.c_str(), -1, &subFont, Gdiplus::PointF(rx, ry + scaleF(16)), &dimBrush);
+            g.DrawString(sub.c_str(), -1, &subFont, Gdiplus::PointF(rx, ry + scaleF(17)), &dimBrush);
             if (refinerySystem_ == "ALL") {
-                Gdiplus::RectF sys(rx, ry + scaleF(16), rw - scaleF(2), scaleF(14));
+                Gdiplus::RectF sys(rx, ry + scaleF(17), rw - scaleF(2), scaleF(16));
                 g.DrawString(toW(st.system).c_str(), -1, &subFont, sys, &rightAlign, &faintBrush);
             }
 
@@ -21446,7 +21446,7 @@ void MinerGUI::paintRefinery(HDC hdc) {
             // The way the Blueprints list says it
             std::wstring moreText = L"Showing " + std::to_wstring(first + 1) + L"\u2013" +
                                     std::to_wstring(first + shown) + L"  \u00B7  Scroll with mouse wheel";
-            Gdiplus::RectF r(rx, ry, rw, scaleF(12));
+            Gdiplus::RectF r(rx, ry, rw, scaleF(16));
             g.DrawString(moreText.c_str(), -1, &subFont, r, &rightAlign, &faintBrush);
         }
 
