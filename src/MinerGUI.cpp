@@ -7257,17 +7257,16 @@ int MinerGUI::drawLocationCard(Gdiplus::Graphics& g, int cw, int yPos, int ch) {
         const bool dimmed = !inSystem(row);
         const float thisH = rowH + (w.twoLines ? lineH : 0.0f);
 
-        // A surface each, a step up from the card - lower for a place in
-        // another system - and the chance as a thin bar along its foot, in
-        // the ore's colour, in a groove the row's width: a chance of 2 % is
-        // then a short piece of something long, and reads as small
+        // A plain row - a surface only under the pointer - and the chance
+        // as a thin bar along its foot, in the ore's colour, in a groove the
+        // row's width: a chance of 2 % is then a short piece of something
+        // long, and reads as small
         const Gdiplus::RectF surface(left, y, rowW, thisH);
         const bool hot = isHot(hoverMain_, surface);
-        fillRoundRect(g, surface, scaleF(R_CONTROL),
-                      dimmed ? (hot ? COL_CARD_HI : tint(COL_CARD_HI, 110)) : (hot ? COL_HOVER : COL_CARD_HI));
+        if (hot) fillRoundRect(g, surface, scaleF(R_CONTROL), COL_CARD_HI);
         const Gdiplus::Color bar = getMineralColor(byFamily ? std::string(row.mineral) : oreName);
         const Gdiplus::RectF groove(left + scaleF(10), y + thisH - scaleF(7), rowW - scaleF(20), scaleF(3));
-        fillRoundRect(g, groove, groove.Height / 2, COL_CARD);
+        fillRoundRect(g, groove, groove.Height / 2, hot ? COL_CARD : COL_CARD_HI);
         const float fillW = (std::max)(groove.Width * (float)(row.chance / 100.0), groove.Height);
         fillRoundRect(g, Gdiplus::RectF(groove.X, groove.Y, (std::min)(fillW, groove.Width), groove.Height),
                       groove.Height / 2, tint(bar, dimmed ? 90 : 220));
