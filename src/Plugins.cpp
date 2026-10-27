@@ -292,13 +292,16 @@ std::string jsonText(std::string_view text) {
 
 // ---- keys and signatures -----------------------------------------------------
 
-Key testSeed() {
+Key seedOf(const std::string& secret) {
     uint8_t hash[64];
-    crypto_sha512(hash, reinterpret_cast<const uint8_t*>(PLUGIN_TEST_SEED_TEXT), std::strlen(PLUGIN_TEST_SEED_TEXT));
+    crypto_sha512(hash, reinterpret_cast<const uint8_t*>(secret.data()), secret.size());
     Key seed{};
     std::memcpy(seed.data(), hash, seed.size());
+    crypto_wipe(hash, sizeof hash);
     return seed;
 }
+
+Key testSeed() { return seedOf(PLUGIN_TEST_SEED_TEXT); }
 
 Key publicKeyOf(const Key& seed) {
     uint8_t copy[32], secret[64];

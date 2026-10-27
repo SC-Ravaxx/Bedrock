@@ -4310,6 +4310,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             setupConsole(true);
             return runPluginCheck(__argv[i + 1], __argv[i + 2], i + 3 < __argc ? __argv[i + 3] : "");
         }
+        else if (arg == "--plugin-public-key") {
+            setupConsole(true);
+            return runPluginPublicKey();
+        }
         else if (arg == "--pack-plugin" && i + 2 < __argc) {
             // --pack-plugin <plugin folder> <package>
             setupConsole(true);

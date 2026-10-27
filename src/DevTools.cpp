@@ -27,6 +27,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -972,19 +973,43 @@ int runPluginCheck(const std::string& folder, const std::string& gameFolder, con
     return plugin->running() ? 0 : 1;
 }
 
+// The key in BEDROCK_PLUGIN_KEY, or the test key; `own` says which
+static SCMiner::Plugins::Key pluginKey(bool& own) {
+    namespace P = SCMiner::Plugins;
+    const char* secret = std::getenv("BEDROCK_PLUGIN_KEY");
+    own = secret && std::strlen(secret) >= 16;
+    if (secret && !own) std::cout << "BEDROCK_PLUGIN_KEY is too short to be a key - the test key signs" << std::endl;
+    return own ? P::seedOf(secret) : P::testSeed();
+}
+
+static std::string hexOfKey(const SCMiner::Plugins::Key& key) {
+    std::string hex;
+    for (unsigned char c : key) {
+        char two[3];
+        std::snprintf(two, sizeof two, "%02x", c);
+        hex += two;
+    }
+    return hex;
+}
+
+int runPluginPublicKey() {
+    bool own = false;
+    const SCMiner::Plugins::Key pub = SCMiner::Plugins::publicKeyOf(pluginKey(own));
+    std::cout << (own ? "The key given" : "THE TEST KEY") << ", public: " << hexOfKey(pub) << "\n"
+              << "As PluginKeys.h takes it:\n    {";
+    for (size_t i = 0; i < pub.size(); i++) {
+        char one[8];
+        std::snprintf(one, sizeof one, "0x%02x", pub[i]);
+        std::cout << (i ? (i % 8 ? ", " : ",\n     ") : "") << one;
+    }
+    std::cout << "}," << std::endl;
+    return own ? 0 : 1;
+}
+
 int runPackPlugin(const std::string& folder, const std::string& out) {
     namespace P = SCMiner::Plugins;
-    P::Key seed = P::testSeed();
     bool own = false;
-    if (const char* hex = std::getenv("BEDROCK_PLUGIN_SEED")) {
-        const std::string text(hex);
-        if (text.size() != 64) {
-            std::cout << "BEDROCK_PLUGIN_SEED is no key - 64 hex figures" << std::endl;
-            return 1;
-        }
-        for (size_t i = 0; i < 32; i++) seed[i] = (unsigned char)std::strtoul(text.substr(2 * i, 2).c_str(), nullptr, 16);
-        own = true;
-    }
+    const P::Key seed = pluginKey(own);
     std::string why;
     const std::string package = P::pack(folder, seed, why);
     if (package.empty()) {
@@ -998,14 +1023,8 @@ int runPackPlugin(const std::string& folder, const std::string& out) {
         return 1;
     }
     const P::Key pub = P::publicKeyOf(seed);
-    std::string hexKey;
-    for (unsigned char c : pub) {
-        char two[3];
-        std::snprintf(two, sizeof two, "%02x", c);
-        hexKey += two;
-    }
     std::cout << out << ": " << package.size() << " bytes, signed with " << (own ? "the key given" : "THE TEST KEY")
-              << " (public " << hexKey << ")" << std::endl;
+              << " (public " << hexOfKey(pub) << ")" << std::endl;
     // ...and unpacked again into a folder of its own, as Bedrock would
     const std::filesystem::path tryRoot = std::filesystem::temp_directory_path() / "bedrock_pack_check";
     std::error_code ec;

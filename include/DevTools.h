@@ -66,8 +66,12 @@ int runDatarunner(const std::vector<std::string>& files);
 int runPluginCheck(const std::string& folder, const std::string& gameFolder, const std::string& stateFolder);
 
 // --pack-plugin <plugin folder> <package>: the folder packed and signed into
-// one file, for the server's list (PluginHost.h). The key is the seed in
-// BEDROCK_PLUGIN_SEED (64 hex figures), put there by whoever holds it - by
-// `op run`, so it never stands in a file or a command line; without it the
+// one file, for the server's list (PluginHost.h). The key is the secret in
+// BEDROCK_PLUGIN_KEY (Plugins::seedOf), put there by whoever holds it - by
+// `op run`, so it never stands in a file or on a command line; without it the
 // test key signs, and the package runs in a developer's build alone.
 int runPackPlugin(const std::string& folder, const std::string& out);
+
+// --plugin-public-key: the public half of the key in BEDROCK_PLUGIN_KEY, in
+// hex and as the line PluginKeys.h takes
+int runPluginPublicKey();

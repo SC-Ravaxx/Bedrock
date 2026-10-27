@@ -50,6 +50,10 @@ using Key = std::array<unsigned char, 32>;
 std::vector<Key> trustedKeys();
 // The test key's secret seed - known to all (PluginKeys.h)
 Key testSeed();
+// A key's secret seed out of a secret of any length: the first 32 bytes of
+// its SHA-512. Ravaxx's key is a password in 1Password; the test key is
+// PLUGIN_TEST_SEED_TEXT made a seed the same way.
+Key seedOf(const std::string& secret);
 
 // A plugin folder's manifest: a line for every file in it but plugin.sig -
 // its SHA-512 in hex, two spaces, its path in the folder with '/' between
