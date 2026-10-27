@@ -5575,8 +5575,11 @@ void Application::datarunnerAnswered(const UexSent& sent) {
                            [&](const std::shared_ptr<Datarunner::Shot>& s) { return s->id == sent.shot; });
     Datarunner::Shot* shot = it == datarunnerShots_.end() ? nullptr : it->get();
     // the rows UEX stored: all of them, or - turned down as a duplicate -
-    // the ones before the entry it names
-    std::vector<Datarunner::Sent> stored;
+    // the ones before the entry it names. That entry is on UEX too, from
+    // this player's report of the last five minutes, so it is held like a
+    // row that went: a second Send carries only the rows after it, which
+    // UEX did not get.
+    std::vector<Datarunner::Sent> stored, onUex;
     if (sent.answered && sent.said.empty()) {
         stored = sent.rows;
     } else if (sent.answered && !sent.duplicate.empty()) {
@@ -5587,11 +5590,15 @@ void Application::datarunnerAnswered(const UexSent& sent) {
                     if (id == row.commodity) name = written;
                 }
             }
-            if (sent.duplicate == std::to_string(row.commodity) || sent.duplicate == name) break;
+            if (sent.duplicate == std::to_string(row.commodity) || sent.duplicate == name) {
+                onUex.push_back(row);
+                break;
+            }
             stored.push_back(row);
         }
     }
-    for (Datarunner::Sent row : stored) {
+    onUex.insert(onUex.begin(), stored.begin(), stored.end());
+    for (Datarunner::Sent row : onUex) {
         row.sent = now;
         datarunnerSent_.push_back(row);
         rememberUexReported(Datarunner::sentKey(row));
@@ -5606,7 +5613,9 @@ void Application::datarunnerAnswered(const UexSent& sent) {
     std::cout << "\nUEX Datarunner: " << (shot ? shot->file.filename().string() : std::string("a picture")) << " - "
               << line << std::endl;
     if (shot) {
-        shot->ids = sent.ids;
+        // the ids of every report the picture went in: after a duplicate,
+        // the rest goes in a second one
+        shot->ids.insert(shot->ids.end(), sent.ids.begin(), sent.ids.end());
         shot->note = sent.answered && sent.said.empty() ? std::string() : (sent.note.empty() ? "Not sent" : sent.note);
         shot->state = sent.answered && sent.said.empty() ? Datarunner::Shot::State::Sent
                       : !stored.empty()                  ? Datarunner::Shot::State::Partly

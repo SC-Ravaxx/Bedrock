@@ -294,7 +294,9 @@ std::vector<const Row*> rowsToSend(const Shot& shot, const std::vector<Sent>& se
 
 std::string whyNotSend(const Shot& shot, const std::vector<Sent>& sent, long long now) {
     if (shot.state == Shot::State::Sending) return "Sending - Waiting for UEX";
-    if (shot.state == Shot::State::Sent || shot.state == Shot::State::Partly) return "Sent - This picture's report is on UEX";
+    // ...but a report UEX stopped at a duplicate took only the rows before
+    // it: the rows after it can still go, and rowsToSend leaves out the rest
+    if (shot.state == Shot::State::Sent) return "Sent - This picture's report is on UEX";
     if (shot.taken > 0 && now - shot.taken > OLDEST_SECONDS) return "Picture older than 30 days - UEX takes reports up to 30 days old";
     if (shot.channel.empty()) return "Game version not known - The picture is not in a LIVE or PTU folder";
     if (shot.terminal <= 0) return "Terminal not known - Select the terminal the picture shows";

@@ -1473,7 +1473,7 @@ int runScreenshots(const std::string& dir) {
         refused->note = "Already reported in the last 5 minutes";
         auto notRunner = shotOf(7);
         notRunner->state = D::Shot::State::Refused;
-        notRunner->note = "UEX doesn't take reports from this account";
+        notRunner->note = "UEX does not accept reports from this account";   // UexReports::verdict's words
         gui.setDatarunner(stateOf({sent, refused}, false));
         gui.openDatarunnerForShot(0);
         pump();

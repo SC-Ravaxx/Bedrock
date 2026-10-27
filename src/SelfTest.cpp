@@ -1756,6 +1756,37 @@ int runSelfTest() {
         allPassed &= check(sendable, "Send waits for every value sure, a terminal, a list and a date UEX takes; a row "
                                      "another picture of the same moment carried is left out, and the same commodity "
                                      "waits UEX's five minutes - over a restart too");
+        // A report UEX stopped at its second row, a duplicate: the first row
+        // went, the second is on UEX from the player's report of the last
+        // five minutes - both held as sent, so Send goes on with the third
+        // and only that. A picture whose report went whole is done.
+        {
+            D::Shot partly = checked;
+            D::Row third = good;
+            third.commodity = 30;
+            partly.rows.push_back(third);
+            partly.state = D::Shot::State::Partly;
+            std::vector<D::Sent> onUex;
+            for (int i = 0; i < 2; i++) {
+                D::Sent s;
+                s.terminal = partly.terminal;
+                s.side = partly.side;
+                s.commodity = partly.rows[i].commodity;
+                s.sent = now;
+                s.taken = partly.taken;
+                onUex.push_back(s);
+            }
+            const std::vector<const D::Row*> rest = D::rowsToSend(partly, onUex, now);
+            D::Shot allThere = partly;
+            allThere.rows.pop_back();
+            D::Shot done = checked;
+            done.state = D::Shot::State::Sent;
+            allPassed &= check(rest.size() == 1 && rest[0]->commodity == 30 && D::whyNotSend(partly, onUex, now).empty() &&
+                                   D::whyNotSend(allThere, onUex, now).rfind("Nothing to send", 0) == 0 &&
+                                   D::whyNotSend(done, {}, now).rfind("Sent - ", 0) == 0,
+                               "a report UEX stopped at a duplicate: the rows before it and the duplicate held as "
+                               "sent, the rows after it still to go");
+        }
         // ...and what goes: the rows as checked, the BUY list's box sizes,
         // the picture's date, a picture at most 1080 tall under UEX's 10 MB
         cv::Mat wide(1440, 5120, CV_8UC3, cv::Scalar(40, 60, 80));
