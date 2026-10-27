@@ -100,6 +100,7 @@ namespace {
 // starts and whenever a colour changes (paintWith) - each window is painted
 // with them as they stand at that moment.
 Gdiplus::Color COL_BG(15, 16, 19);
+Gdiplus::Color COL_RAIL(11, 12, 14);        // the rail down the window's left, a step below it
 Gdiplus::Color COL_CARD(24, 26, 30);        // a surface
 Gdiplus::Color COL_CARD_HI(34, 37, 43);     // a raised surface
 Gdiplus::Color COL_BORDER(44, 47, 54);      // the hairline
@@ -161,6 +162,7 @@ void paintWith(const Colours::Scheme& s) {
                               (BYTE)std::clamp(greenOf(c) + dg, 0, 255), (BYTE)std::clamp(blueOf(c) + db, 0, 255));
     };
     COL_BG = colourOf(bg);
+    COL_RAIL = stepped(bg, -4, -4, -5);
     COL_CARD = stepped(bg, 9, 10, 11);
     COL_CARD_HI = stepped(bg, 19, 21, 24);
     COL_BORDER = stepped(bg, 29, 31, 35);
@@ -462,6 +464,126 @@ void drawPuzzle(Gdiplus::Graphics& g, float cx, float cy, float size, const Gdip
     path.AddEllipse(x + s - k * 0.28f, y + s / 2.0f - k / 2.0f, k, k);
     Gdiplus::SolidBrush brush(ink);
     g.FillPath(&brush, &path);
+}
+
+// The rail's icons: lines on a 20 by 20 grid, its top left at x, y, one
+// unit `s` pixels - a scope for the scan, a flask for the refinery, a lens
+// for the Ore Finder, a sheet for the blueprints, a pencil for the notes, an
+// arrow up for the Datarunner, a jigsaw piece for the plugins, a sun of
+// spokes for the settings
+void drawRailIcon(Gdiplus::Graphics& g, MinerGUI::RailItem item, float x, float y, float s,
+                  const Gdiplus::Color& ink) {
+    using R = MinerGUI::RailItem;
+    Gdiplus::Pen pen(ink, 1.6f * s);
+    pen.SetStartCap(Gdiplus::LineCapRound);
+    pen.SetEndCap(Gdiplus::LineCapRound);
+    pen.SetLineJoin(Gdiplus::LineJoinRound);
+    const auto line = [&](float x1, float y1, float x2, float y2) {
+        g.DrawLine(&pen, x + x1 * s, y + y1 * s, x + x2 * s, y + y2 * s);
+    };
+    const auto ring = [&](float cx, float cy, float r) {
+        g.DrawEllipse(&pen, x + (cx - r) * s, y + (cy - r) * s, 2 * r * s, 2 * r * s);
+    };
+    const auto shape = [&](std::initializer_list<Gdiplus::PointF> points, bool closed) {
+        Gdiplus::GraphicsPath path;
+        const Gdiplus::PointF* last = nullptr;
+        for (const Gdiplus::PointF& p : points) {
+            if (last) path.AddLine(x + last->X * s, y + last->Y * s, x + p.X * s, y + p.Y * s);
+            last = &p;
+        }
+        if (closed) path.CloseFigure();
+        g.DrawPath(&pen, &path);
+    };
+    switch (item) {
+        case R::Scan:
+            ring(10, 10, 7);
+            ring(10, 10, 3);
+            line(10, 10, 15, 5);
+            break;
+        case R::Datarunner:
+            line(10, 13, 10, 4);
+            shape({{6.5f, 7.5f}, {10, 4}, {13.5f, 7.5f}}, false);
+            line(4, 16, 16, 16);
+            break;
+        case R::Refinery:
+            line(8, 3, 12, 3);
+            shape({{9, 3}, {9, 8}, {5, 16}, {15, 16}, {11, 8}, {11, 3}}, false);
+            line(6.5f, 13, 13.5f, 13);
+            break;
+        case R::Finder:
+            ring(9, 9, 5);
+            line(13, 13, 17, 17);
+            break;
+        case R::Blueprints: {
+            Gdiplus::GraphicsPath sheet;
+            addRoundRect(sheet, Gdiplus::RectF(x + 4 * s, y + 3 * s, 12 * s, 14 * s), 1.5f * s);
+            g.DrawPath(&pen, &sheet);
+            line(7, 7, 13, 7);
+            line(7, 10, 13, 10);
+            line(7, 13, 11, 13);
+            break;
+        }
+        case R::Notes:
+            shape({{4, 16}, {5, 12}, {13, 4}, {16, 7}, {8, 15}}, true);
+            line(11, 6, 14, 9);
+            break;
+        case R::Plugins: {
+            // a knob on top and one on the right, a socket on the left
+            Gdiplus::GraphicsPath piece;
+            const auto at = [&](float u) { return u * s; };
+            piece.AddLine(x + at(5), y + at(7), x + at(8), y + at(7));
+            piece.AddArc(x + at(8), y + at(5), at(4), at(4), 180.0f, 180.0f);
+            piece.AddLine(x + at(12), y + at(7), x + at(15), y + at(7));
+            piece.AddLine(x + at(15), y + at(7), x + at(15), y + at(10));
+            piece.AddArc(x + at(13), y + at(10), at(4), at(4), 270.0f, 180.0f);
+            piece.AddLine(x + at(15), y + at(14), x + at(15), y + at(17));
+            piece.AddLine(x + at(15), y + at(17), x + at(5), y + at(17));
+            piece.AddLine(x + at(5), y + at(17), x + at(5), y + at(14));
+            piece.AddArc(x + at(3), y + at(10), at(4), at(4), 90.0f, -180.0f);
+            piece.CloseFigure();
+            g.DrawPath(&pen, &piece);
+            break;
+        }
+        case R::Settings:
+            ring(10, 10, 3);
+            line(10, 2.5f, 10, 5.5f);
+            line(10, 14.5f, 10, 17.5f);
+            line(2.5f, 10, 5.5f, 10);
+            line(14.5f, 10, 17.5f, 10);
+            line(4.7f, 4.7f, 6.8f, 6.8f);
+            line(13.2f, 13.2f, 15.3f, 15.3f);
+            line(4.7f, 15.3f, 6.8f, 13.2f);
+            line(13.2f, 6.8f, 15.3f, 4.7f);
+            break;
+        case R::Plugin: {
+            // its first letter is drawn by the rail; here the square round it
+            Gdiplus::GraphicsPath square;
+            addRoundRect(square, Gdiplus::RectF(x + 3 * s, y + 3 * s, 14 * s, 14 * s), 4.0f * s);
+            g.DrawPath(&pen, &square);
+            break;
+        }
+    }
+}
+
+// A count on the rail, at the top right of its item: a pill of `face` with
+// the figure in the ink that reads on it, its right edge at `right`
+void railBadge(Gdiplus::Graphics& g, float right, float top, int count, const Gdiplus::Color& face, float s) {
+    const std::wstring n = std::to_wstring(count);
+    Gdiplus::GraphicsPath numeral;
+    numeral.AddString(n.c_str(), -1, &numeralFamily(), Gdiplus::FontStyleBold, 10.0f * s, Gdiplus::PointF(0, 0),
+                      nullptr);
+    Gdiplus::RectF outline;
+    numeral.GetBounds(&outline);
+    const float h = 15.0f * s, w = (std::max)(h, outline.Width + 10.0f * s);
+    const Gdiplus::RectF pill(right - w, top, w, h);
+    fillRoundRect(g, pill, h / 2, face);
+    // the numeral centred by its own outline, as the Refinery button's is
+    Gdiplus::Matrix into;
+    into.Translate(pill.X + (pill.Width - outline.Width) / 2 - outline.X,
+                   pill.Y + (pill.Height - outline.Height) / 2 - outline.Y);
+    numeral.Transform(&into);
+    Gdiplus::SolidBrush ink(inkOn(face));
+    g.FillPath(&ink, &numeral);
 }
 
 // ---- frosted glass --------------------------------------------------------
@@ -1149,7 +1271,8 @@ bool MinerGUI::initialize(HINSTANCE hInstance) {
     }
 
     dpi_ = GetDpiForSystem();
-    RECT desired = {0, 0, scale(WINDOW_WIDTH), scale(WINDOW_HEIGHT)};
+    // (the rail beside the page: the page keeps its width)
+    RECT desired = {0, 0, scale(WINDOW_WIDTH + RAIL_W), scale(WINDOW_HEIGHT)};
     AdjustWindowRectExForDpi(&desired, WS_OVERLAPPEDWINDOW, FALSE, 0, dpi_);
 
     hwnd_ = CreateWindowExW(
@@ -1180,7 +1303,7 @@ bool MinerGUI::initialize(HINSTANCE hInstance) {
     UINT windowDpi = GetDpiForWindow(hwnd_);
     if (windowDpi != 0 && windowDpi != dpi_) {
         dpi_ = windowDpi;
-        RECT r = {0, 0, scale(WINDOW_WIDTH), scale(WINDOW_HEIGHT)};
+        RECT r = {0, 0, scale(WINDOW_WIDTH + RAIL_W), scale(WINDOW_HEIGHT)};
         AdjustWindowRectExForDpi(&r, WS_OVERLAPPEDWINDOW, FALSE, 0, dpi_);
         SetWindowPos(hwnd_, nullptr, 0, 0, r.right - r.left, r.bottom - r.top,
                      SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
@@ -1276,8 +1399,8 @@ void MinerGUI::createControls() {
 void MinerGUI::layoutControls() {
     RECT rc;
     GetClientRect(hwnd_, &rc);
-    const auto move = [&](const ButtonPlace& place) {
-        MoveWindow(place.button, place.rect.left, place.rect.top, place.rect.right - place.rect.left,
+    const auto move = [&](const ButtonPlace& place, int dx) {
+        MoveWindow(place.button, place.rect.left + dx, place.rect.top, place.rect.right - place.rect.left,
                    place.rect.bottom - place.rect.top, TRUE);
     };
 
@@ -1289,13 +1412,20 @@ void MinerGUI::layoutControls() {
         // (Rows is placed by placeOreRowsButton, which also says whether it
         // is up at all)
         for (const ButtonPlace& place : buttonPlaces(true, rc.right, rc.bottom, overlayZoom_)) {
-            if (place.button != btnOreRows_) move(place);
+            if (place.button != btnOreRows_) move(place, 0);
         }
         placeOreRowsButton();
         return;
     }
 
-    for (HWND h : fullOnly) ShowWindow(h, SW_SHOW);
+    // Beside the rail, the tools are on the rail: the action row, the gear
+    // and the jigsaw piece are not up at all
+    const bool rail = railShown();
+    for (HWND h : fullOnly) {
+        const bool onRail = h == btnPlan_ || h == btnCraft_ || h == btnNotes_ || h == btnRefinery_ ||
+                            h == btnSettings_ || h == btnPlugins_;
+        ShowWindow(h, rail && onRail ? SW_HIDE : SW_SHOW);
+    }
     placeOreRowsButton();
     // ...except those a panel is lying over. These are real child windows, so
     // they draw themselves on top of anything the parent paints - a card over
@@ -1313,10 +1443,12 @@ void MinerGUI::layoutControls() {
             if (b) ShowWindow(b, SW_HIDE);
         }
     }
-    for (const ButtonPlace& place : buttonPlaces(false, rc.right, rc.bottom, 1.0f)) move(place);
+    for (const ButtonPlace& place : buttonPlaces(false, rc.right - railWidth(), rc.bottom, 1.0f, rail)) {
+        move(place, railWidth());
+    }
 }
 
-std::vector<MinerGUI::ButtonPlace> MinerGUI::buttonPlaces(bool overlay, int cw, int ch, float zoom) const {
+std::vector<MinerGUI::ButtonPlace> MinerGUI::buttonPlaces(bool overlay, int cw, int ch, float zoom, bool rail) const {
     std::vector<ButtonPlace> places;
     const auto put = [&](HWND button, int x, int y, int w, int h) {
         if (button) places.push_back({button, {x, y, x + w, y + h}});
@@ -1344,6 +1476,16 @@ std::vector<MinerGUI::ButtonPlace> MinerGUI::buttonPlaces(bool overlay, int cw, 
     // nobody needs twice - the gear, the settings, next to it for the same
     // reason, and the plugins beside the settings.
     const int qW = scale(24);
+    if (rail) {
+        // Beside the rail: the ? at the end, OVERLAY, KEYS and LIVE before
+        // it as they were - the gear and the jigsaw piece are on the rail
+        put(btnAbout_, cw - M - qW, scale(14), qW, scale(24));
+        const int right = cw - M - qW - scale(4);
+        put(btnOverlay_, right - scale(78), scale(14), scale(78), scale(24));
+        put(btnKeys_, right - scale(78) - scale(52), scale(14), scale(48), scale(24));
+        put(btnLiveMode_, right - scale(78) - scale(52) - scale(66), scale(14), scale(62), scale(24));
+        return places;
+    }
     put(btnAbout_, cw - M - qW, scale(14), qW, scale(24));
     put(btnSettings_, cw - M - qW - scale(4) - qW, scale(14), qW, scale(24));
     put(btnPlugins_, cw - M - 3 * qW - scale(8), scale(14), qW, scale(24));
@@ -1691,6 +1833,7 @@ void MinerGUI::saveWindowPlace() const {
     out << "right=" << normal.right << std::endl;
     out << "bottom=" << normal.bottom << std::endl;
     out << "maximised=" << (maximised ? 1 : 0) << std::endl;
+    out << "rail=1" << std::endl;   // (the width is the rail's and the page's)
     if (overlayKnown) {
         out << "overlay_left=" << overlayAt.x << std::endl;
         out << "overlay_top=" << overlayAt.y << std::endl;
@@ -1707,6 +1850,7 @@ int MinerGUI::restoreWindowPlace() {
     RECT normal = {0, 0, 0, 0};
     int seen = 0, overlaySeen = 0;
     bool maximised = false;
+    bool rail = false;
     POINT overlayAt = {};
     std::string line;
     while (std::getline(in, line)) {
@@ -1719,6 +1863,7 @@ int MinerGUI::restoreWindowPlace() {
         else if (key == "right") { normal.right = value; seen++; }
         else if (key == "bottom") { normal.bottom = value; seen++; }
         else if (key == "maximised") maximised = value != 0;
+        else if (key == "rail") rail = value != 0;
         else if (key == "overlay_left") { overlayAt.x = value; overlaySeen++; }
         else if (key == "overlay_top") { overlayAt.y = value; overlaySeen++; }
         else if (key == "overlay_rows") overlayOreRows_ = value != 0;
@@ -1734,6 +1879,9 @@ int MinerGUI::restoreWindowPlace() {
     if (seen < 4 || normal.right - normal.left < 100 || normal.bottom - normal.top < 100) {
         return SW_SHOW;
     }
+    // A window kept before the rail was there: as much wider as the rail,
+    // so the page keeps the width it had
+    if (!rail) normal.right += scale(RAIL_W);
 
     // Only onto a screen that is still there. A monitor switched off, a
     // headset session over, a desk rearranged - and a window put back where it
@@ -1933,6 +2081,7 @@ void MinerGUI::keepRefineryBadge() {
     if (done != refineryDoneShown_) {
         refineryDoneShown_ = done;
         if (btnRefinery_) InvalidateRect(btnRefinery_, nullptr, FALSE);
+        railRepaint();   // ...and the rail's
     }
     if (!hwnd_) return;
     if (done < (int)refineryOrders_.size()) {
@@ -2270,7 +2419,8 @@ bool MinerGUI::processMessages() {
         //
         // Esc and Enter still arrive either way: the window procedure closes
         // the list and leaves the field on them.
-        const bool typingHere = (lookingOpen_ || datarunnerOpen_ || (loadoutOpen_ && (craftedEditing_ || nameEditing_))) &&
+        const bool typingHere = (lookingOpen_ || datarunnerOpen_ || (loadoutOpen_ && (craftedEditing_ || nameEditing_)) ||
+                                 (pluginPageUp() && !pluginTyping_.empty())) &&
             msg.hwnd == hwnd_ &&
             (msg.message == WM_KEYDOWN || msg.message == WM_KEYUP ||
              msg.message == WM_CHAR || msg.message == WM_SYSKEYDOWN);
@@ -2743,6 +2893,8 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 datarunnerChar((wchar_t)wParam);
                 return 0;
             }
+            // A plugin's page: a search or a counter being typed into
+            if (pluginPageUp() && pluginChar(hwnd, (wchar_t)wParam)) return 0;
             // The loadout's title being typed over: what the player calls
             // this ship. Enter or Tab keeps it, Esc leaves the old name.
             if (loadoutOpen_ && nameEditing_) {
@@ -2803,6 +2955,10 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 setLookingOpen(false);
                 return 0;
             }
+            if (pluginPageUp() && !(keysOpen_ || aboutOpen_ || backupOpen_ || whatsNewOpen_ || uexWelcome_.step) &&
+                pluginKey(hwnd, wParam)) {
+                return 0;
+            }
             break;
 
         case WM_MOUSEWHEEL:
@@ -2817,6 +2973,13 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 InvalidateRect(hwnd, nullptr, FALSE);
                 return 0;
             }
+            // ...and on a plugin's page its pane, as in their own window
+            if (pluginPageUp() && !(keysOpen_ || aboutOpen_ || backupOpen_ || uexWelcome_.step)) {
+                const int notches = GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
+                pluginScroll_ = (std::max)(0.0f, pluginScroll_ - (float)notches * scaleF(56));
+                InvalidateRect(hwnd, nullptr, FALSE);
+                return 0;
+            }
             break;
 
         case WM_RBUTTONDOWN: {
@@ -2825,7 +2988,10 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             // the same module can go in more than one slot, so removing
             // needed a gesture of its own.
             if (!loadoutOpen_) break;
-            const float px = (float)(short)LOWORD(lParam);
+            // (left of the page the rail, which has nothing for it)
+            const int rw = phoneTapping_ ? 0 : railWidth();
+            if ((short)LOWORD(lParam) < rw) break;
+            const float px = (float)((short)LOWORD(lParam) - rw);
             const float py = (float)(short)HIWORD(lParam);
             for (const auto& hit : loadoutHits_) {
                 if (hit.kind != 1 || !hit.rect.Contains(px, py)) continue;
@@ -2844,6 +3010,23 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
         }
 
         case WM_LBUTTONDOWN: {
+            // The rail, left of the page; the page's own pieces lie the
+            // rail's width further right than they are drawn (onPaint).
+            // (A tap from the phone is on its picture, which has no rail.)
+            if (!phoneTapping_ && railShown()) {
+                const int rw = railWidth();
+                const int cx = (short)LOWORD(lParam), cy = (short)HIWORD(lParam);
+                if (cx < rw) {
+                    for (const RailHit& hit : railHits_) {
+                        if (!hit.rect.Contains((float)cx, (float)cy)) continue;
+                        const RailHit picked = hit;   // (the rail is drawn anew under it)
+                        railPick(picked.item, picked.id);
+                        break;
+                    }
+                    return 0;
+                }
+                lParam = MAKELPARAM(cx - rw, cy);
+            }
             // The first start's UEX offer before anything: its buttons, and a
             // click off it skips it
             if (uexWelcome_.step) {
@@ -2987,6 +3170,12 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                     return 0;
                 }
                 showBackup(false);   // anywhere else closes it
+                return 0;
+            }
+            // A plugin's page, or the plugins': theirs, as in a window of
+            // their own
+            if (pluginPageUp() && !phoneTapping_) {
+                pluginPress(hwnd, px, py);
                 return 0;
             }
             // What lies over the page takes the click before anything under
@@ -3194,7 +3383,7 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 }
                 const std::string id = pluginNoteId_;
                 pluginNote_.clear();
-                openPlugin(id);
+                showPluginPage(id);   // its page, right of the rail
                 InvalidateRect(hwnd, nullptr, FALSE);
                 return 0;
             }
@@ -3301,7 +3490,7 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
         case WM_GETMINMAXINFO: {
             MINMAXINFO* mmi = reinterpret_cast<MINMAXINFO*>(lParam);
-            int minW = scale(overlayMode_ ? 240 : 420);
+            int minW = scale(overlayMode_ ? 240 : 420 + RAIL_W);
             int minH = scale(overlayMode_ ? 120 : 640);
             // The minimum is scaled with the zoom like everything else, and at
             // 175 % on a 1080p screen it comes out taller than the screen.
@@ -3352,11 +3541,13 @@ void MinerGUI::onPaint(HDC hdc) {
     const int ch = clientRect.bottom;
     const CardHairline edges(overlayMode_);
     // What a phone was sent may be out of date now (phoneTick) - and the
-    // full window's size, unscaled, is the one its picture of it has
+    // full window's size, unscaled, is the one its picture of it has: the
+    // page's, right of the rail
     if (!phoneRepainting_) phoneDirty_ = true;
-    if (!overlayMode_ && cw > 0 && ch > 0) {
+    const int rw = railWidth();
+    if (!overlayMode_ && cw > rw && ch > 0) {
         const int unit = (int)dpi_ * uiScale_;
-        phoneWindowSize_ = {MulDiv(cw, 9600, unit), MulDiv(ch, 9600, unit)};
+        phoneWindowSize_ = {MulDiv(cw - rw, 9600, unit), MulDiv(ch, 9600, unit)};
     }
 
     // Double buffering
@@ -3384,7 +3575,17 @@ void MinerGUI::onPaint(HDC hdc) {
             drawOverlayGrip(g, lw, lh);
             g.Restore(plain);
         } else {
-            paintWindowBody(g, cw, ch);
+            // The rail down the left, and the page right of it drawn as it
+            // always was, moved over by the rail - the pointer with it
+            drawRail(g, rw, ch);
+            const POINT hover = hoverMain_;
+            if (hover.x >= 0) hoverMain_ = hover.x >= rw ? POINT{hover.x - rw, hover.y} : POINT{-1, -1};
+            const Gdiplus::GraphicsState plain = g.Save();
+            g.TranslateTransform((float)rw, 0.0f);
+            g.SetClip(Gdiplus::RectF(0.0f, 0.0f, (float)(cw - rw), (float)ch));
+            paintWindowBody(g, cw - rw, ch);
+            g.Restore(plain);
+            hoverMain_ = hover;
         }
     }
 
@@ -3402,6 +3603,13 @@ void MinerGUI::paintWindowBody(Gdiplus::Graphics& g, int cw, int ch) {
     // it is drawn into a picture first and shows through the glass
     // blurred; otherwise straight onto the window.
     auto paintBase = [&](Gdiplus::Graphics& b) {
+        // a plugin's page, or the plugins': under the window's header
+        // (never in a phone's picture, which is the scan's)
+        if (pluginPageUp()) {
+            drawHeader(b, cw, true);
+            paintPluginView(b, cw, ch, true);
+            return;
+        }
         drawHeader(b, cw);
         lookHits_.clear();
         drawLookingField(b, cw);
@@ -3410,11 +3618,11 @@ void MinerGUI::paintWindowBody(Gdiplus::Graphics& g, int cw, int ch) {
             // it is the one the window answers. It goes back on its own
             // when the panel does.
             drawRockCard(b, cw);
-            int y = drawRockOutput(b, cw, scale(LY_RESULTS) + extraTop() + (int)rockStripHeight());
+            int y = drawRockOutput(b, cw, scale(LY_RESULTS) + extraTop() - scanShift() + (int)rockStripHeight());
             drawRockAdvice(b, cw, y);
         } else {
             drawSignatureCard(b, cw);
-            int y = drawResults(b, cw, scale(LY_RESULTS) + extraTop());
+            int y = drawResults(b, cw, scale(LY_RESULTS) + extraTop() - scanShift());
             y = drawDetailCard(b, cw, y);
             drawLocationCard(b, cw, y, ch);
         }
@@ -3423,6 +3631,7 @@ void MinerGUI::paintWindowBody(Gdiplus::Graphics& g, int cw, int ch) {
     // The three lists that drop out of their fields: the ores, the
     // ship, the place
     auto paintLists = [&](Gdiplus::Graphics& b) {
+        if (pluginPageUp()) return;   // (the scan page's own)
         if (lookingOpen_) drawLookingPanel(b, cw, ch);
         if (shipPickerOpen_) drawShipPicker(b, cw);
         if (placePickerOpen_) drawPlacePicker(b, cw, ch);
@@ -3437,7 +3646,7 @@ void MinerGUI::paintWindowBody(Gdiplus::Graphics& g, int cw, int ch) {
     // blur comes out of the cache (frostMain_).
     const bool sheet =
         keysOpen_ || aboutOpen_ || backupOpen_ || whatsNewOpen_ || loadoutOpen_ || uexWelcome_.step || datarunnerOpen_;
-    const bool lists = lookingOpen_ || shipPickerOpen_ || placePickerOpen_;
+    const bool lists = !pluginPageUp() && (lookingOpen_ || shipPickerOpen_ || placePickerOpen_);
     if (sheet || lists) {
         Gdiplus::Bitmap base(cw, ch, PixelFormat32bppPARGB);
         const POINT hover = hoverMain_;
@@ -3486,6 +3695,146 @@ void MinerGUI::paintWindowBody(Gdiplus::Graphics& g, int cw, int ch) {
     if (datarunnerOpen_) drawDatarunnerCard(g, cw, ch);
 }
 
+// ---- the rail ---------------------------------------------------------------
+// Down the full window's left, a step darker than the window: the pages -
+// the scan, the Datarunner, each plugin and the plugins' list - and the
+// tools that have windows of their own, lit while those are open, the
+// settings at the foot. A count where the window has one: the Datarunner's
+// pictures waiting, the Refinery's work orders done.
+void MinerGUI::drawRail(Gdiplus::Graphics& g, int rw, int ch) {
+    railHits_.clear();
+    if (rw <= 0) return;
+    using R = RailItem;
+    const float s = scaleF(1.0f);
+    Gdiplus::SolidBrush railBrush(COL_RAIL);
+    g.FillRectangle(&railBrush, 0.0f, 0.0f, (float)rw, (float)ch);
+
+    Gdiplus::Font labelFont(&markFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font letterFont(&markFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::StringFormat centred;
+    centred.SetAlignment(Gdiplus::StringAlignmentCenter);
+    centred.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    centred.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    centred.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+
+    const float itemW = 60 * s, itemH = 52 * s, gap = 2 * s;
+    const float x = ((float)rw - itemW) / 2.0f;
+    const float settingsY = (float)ch - 12 * s - itemH;
+    float y = 12 * s;
+    const bool page = !pluginPage_;   // the scan's page, or the Datarunner's over it
+    const auto item = [&](R kind, const std::wstring& label, const std::string& id, bool active, int count,
+                          const Gdiplus::Color& face) {
+        const Gdiplus::RectF box(x, y, itemW, itemH);
+        const bool hot = !active && isHot(hoverMain_, box);
+        if (active) fillRoundRect(g, box, 10 * s, COL_CARD_HI);
+        else if (hot) fillRoundRect(g, box, 10 * s, COL_CARD);
+        const Gdiplus::Color ink = active ? COL_ACCENT : hot ? COL_TEXT : COL_TEXT_DIM;
+        const float iconX = box.X + (itemW - 20 * s) / 2.0f, iconY = box.Y + 8 * s;
+        drawRailIcon(g, kind, iconX, iconY, s, ink);
+        if (kind == R::Plugin && !label.empty()) {
+            // a plugin's first letter, in the square
+            Gdiplus::SolidBrush letterInk(ink);
+            const std::wstring letter(1, (wchar_t)std::towupper(label[0]));
+            g.DrawString(letter.c_str(), -1, &letterFont,
+                         Gdiplus::RectF(iconX + 3 * s, iconY + 3 * s, 14 * s, 14 * s), &centred, &letterInk);
+        }
+        // the word under it, as wide as the rail: Datarunner is
+        Gdiplus::SolidBrush words(active || hot ? COL_TEXT : COL_TEXT_DIM);
+        g.DrawString(label.c_str(), -1, &labelFont, Gdiplus::RectF(0.0f, box.Y + 31 * s, (float)rw, 14 * s),
+                     &centred, &words);
+        if (count > 0) railBadge(g, box.GetRight() - 6 * s, box.Y + 4 * s, count, face, s);
+        railHits_.push_back({box, kind, id});
+        y += itemH + gap;
+    };
+
+    item(R::Scan, L"Scan", "", page && !datarunnerOpen_, 0, COL_ACCENT);
+    item(R::Datarunner, L"Datarunner", "", page && datarunnerOpen_, datarunnerWaiting(), COL_ACCENT);
+    item(R::Refinery, L"Refinery", "", refineryVisible_, refineryDoneCount(), COL_GREEN);
+    item(R::Finder, L"Ore Finder", "", plannerVisible_, 0, COL_ACCENT);
+    item(R::Blueprints, L"Blueprints", "", craftingVisible_, 0, COL_ACCENT);
+    item(R::Notes, L"Notes", "", notesVisible_, 0, COL_ACCENT);
+
+    // a short line, then each plugin put in that can run, and their list
+    const float lineY = std::round(y + 6 * s);
+    hairline(g, x + (itemW - 32 * s) / 2.0f, lineY, x + (itemW + 32 * s) / 2.0f);
+    y = lineY + 9 * s;
+    for (const auto& e : pluginList_) {
+        if (!e.installed || !e.problem.empty()) continue;
+        // (as many as leave room for the list's own above the settings)
+        if (y + 2 * itemH + gap > settingsY - gap) break;
+        item(R::Plugin, toW(e.name.empty() ? e.id : e.name), e.id, pluginPage_ && pluginShown_ == e.id, 0,
+             COL_ACCENT);
+    }
+    item(R::Plugins, L"Plugins", "", pluginPage_ && pluginShown_.empty(), 0, COL_ACCENT);
+
+    y = (std::max)(y, settingsY);
+    item(R::Settings, L"Settings", "", settingsVisible_, 0, COL_ACCENT);
+}
+
+void MinerGUI::railPick(RailItem item, const std::string& id) {
+    using R = RailItem;
+    const bool datarunnerWasOpen = datarunnerOpen_;
+    // a card over the page goes, as a click beside it would take it
+    // away - and with the Datarunner's, its page
+    closeOtherSheets(pluginPage_);
+    switch (item) {
+        case R::Scan:
+            toScanPage();
+            break;
+        case R::Datarunner:
+            // its card, the page; a second click shuts it
+            if (!datarunnerWasOpen) showDatarunner(true, true);
+            break;
+        case R::Refinery:
+            toggleRefinery();
+            break;
+        case R::Finder:
+            togglePlanner();
+            break;
+        case R::Blueprints:
+            toggleCrafting();
+            break;
+        case R::Notes:
+            toggleNotes();
+            break;
+        case R::Settings:
+            toggleSettings();
+            break;
+        case R::Plugins:
+            showPluginPage("");
+            break;
+        case R::Plugin:
+            showPluginPage(id);
+            break;
+    }
+    // the page has the keys: a search typed into, the arrows scrolling
+    const bool aPage = item == R::Scan || item == R::Datarunner || item == R::Plugins || item == R::Plugin;
+    if (aPage && hwnd_ && !headless_) SetFocus(hwnd_);
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void MinerGUI::toScanPage() {
+    if (!pluginPage_) return;
+    endPluginTyping(false);
+    pluginPage_ = false;
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void MinerGUI::railRepaint() {
+    if (hwnd_ && railShown()) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void MinerGUI::buttonsUnderCard(bool on) {
+    if (on) {
+        for (HWND b : {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_, btnOverlay_, btnRefinery_, btnAbout_,
+                       btnSettings_, btnPlugins_}) {
+            if (b) ShowWindow(b, SW_HIDE);
+        }
+    } else {
+        layoutControls();   // back as the window has them: beside the rail, or the overlay's few
+    }
+}
+
 // ---- the scan view's own pieces --------------------------------------------
 // Each takes `s`, what one pixel is at the window's scale, since they are not
 // members and cannot ask for it.
@@ -3528,7 +3877,7 @@ static void mainscanDropList(Gdiplus::Graphics& g, const Gdiplus::RectF& r, floa
     glassPane(g, r, R_CARD * s, 12 * s, frosted);
 }
 
-void MinerGUI::drawHeader(Gdiplus::Graphics& g, int cw) {
+void MinerGUI::drawHeader(Gdiplus::Graphics& g, int cw, bool stripOnly) {
     Gdiplus::Font markFont(&markFamily(), scaleF(21), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::Font subFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
 
@@ -3538,6 +3887,9 @@ void MinerGUI::drawHeader(Gdiplus::Graphics& g, int cw) {
 
     const float M = (float)scale(MARGIN);
     const float px = scaleF(1.0f);
+    // where the buttons begin, from the right: beside the rail the gear and
+    // the jigsaw piece are not among them
+    const float buttonsW = scaleF(railShown() ? 206 : 262);
 
     // Wordmark: an amber square, the name, the long name beneath
     fillRoundRect(g, Gdiplus::RectF(M, (float)scale(18), scaleF(8), scaleF(8)), scaleF(2), COL_ACCENT);
@@ -3556,7 +3908,7 @@ void MinerGUI::drawHeader(Gdiplus::Graphics& g, int cw) {
     // a ship name behind the version runs in under them. Out of the seat
     // the ship is shown fainter, not longer.
     const float subX = M + scaleF(15);
-    const float subRight = (float)cw - M - scaleF(262) - scaleF(10);
+    const float subRight = (float)cw - M - buttonsW - scaleF(10);
     Gdiplus::StringFormat oneLine;
     oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
     oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
@@ -3581,7 +3933,7 @@ void MinerGUI::drawHeader(Gdiplus::Graphics& g, int cw) {
     if (liveModeActive_) {
         Gdiplus::SolidBrush dot(pulseOn_ ? COL_WANTED : tint(COL_WANTED, 110));
         // ...and it moves with them: the ? and the gear take 56 px on the right
-        const float dotX = (float)cw - M - scaleF(262), dotY = (float)scale(23);
+        const float dotX = (float)cw - M - buttonsW, dotY = (float)scale(23);
         if (pulseOn_) {
             // the beat has a glow round it, which is what makes it read as
             // light rather than as a red full stop: faint rings that pile
@@ -3596,6 +3948,7 @@ void MinerGUI::drawHeader(Gdiplus::Graphics& g, int cw) {
         }
         g.FillEllipse(&dot, dotX, dotY, scaleF(7), scaleF(7));
     }
+    if (stripOnly) return;
 
     // The one setting the capture stands or falls with, where nobody can
     // miss it: a game in exclusive full screen hands Desktop Duplication -
@@ -3894,7 +4247,7 @@ void MinerGUI::drawSignatureCard(Gdiplus::Graphics& g, int cw) {
     Gdiplus::SolidBrush accentBrush(COL_ACCENT);
 
     const float M = (float)scale(MARGIN);
-    const float top = (float)scale(LY_SIGCARD) + extraTop();
+    const float top = (float)scale(LY_SIGCARD) + extraTop() - scanShift();
     const float cardH = scaleF(76);
     Gdiplus::RectF card(M - scaleF(6), top, (float)cw - 2 * M + scaleF(12), cardH);
     mainscanCard(g, card, scaleF(1.0f));
@@ -4393,6 +4746,7 @@ void MinerGUI::useHead(int index) {
 void MinerGUI::setShipPickerOpen(bool open) {
     if (shipPickerOpen_ == open) return;
     if (open) closeOtherSheets(shipPickerOpen_);
+    if (open) toScanPage();
     shipPickerOpen_ = open;
     layoutControls();
     InvalidateRect(hwnd_, nullptr, TRUE);
@@ -4418,6 +4772,7 @@ void MinerGUI::closeOtherSheets(const bool& opening) {
 void MinerGUI::showLoadout(bool open) {
     if (loadoutOpen_ == open) return;
     if (open) closeOtherSheets(loadoutOpen_);
+    if (open) toScanPage();
     endNameEditing(true);    // a title half typed is kept, as a click elsewhere keeps it
     removeArmed_ = false;
     loadoutOpen_ = open;
@@ -4960,6 +5315,7 @@ void MinerGUI::drawPlacePicker(Gdiplus::Graphics& g, int cw, int ch) {
 void MinerGUI::setPlacePickerOpen(bool open) {
     if (placePickerOpen_ == open) return;
     if (open) closeOtherSheets(placePickerOpen_);
+    if (open) toScanPage();
     placePickerOpen_ = open;
     layoutControls();   // the action row is four real windows - see there
     InvalidateRect(hwnd_, nullptr, TRUE);
@@ -5505,7 +5861,7 @@ void MinerGUI::drawRockCard(Gdiplus::Graphics& g, int cw) {
     Gdiplus::SolidBrush accentBrush(COL_ACCENT);
 
     const float M = (float)scale(MARGIN);
-    const float top = (float)scale(LY_SIGCARD) + extraTop();
+    const float top = (float)scale(LY_SIGCARD) + extraTop() - scanShift();
     const float stripH = rockStripHeight();
     const float cardH = scaleF(76) + stripH;
     Gdiplus::RectF card(M - scaleF(6), top, (float)cw - 2 * M + scaleF(12), cardH);
@@ -6967,7 +7323,7 @@ void MinerGUI::resizeForScale() {
     };
     // The compact view as toggleOverlayMode makes it; the full window from
     // the two constants.
-    resize(hwnd_, overlayMode_ ? overlayZoomed(OVERLAY_WIDTH) : WINDOW_WIDTH,
+    resize(hwnd_, overlayMode_ ? overlayZoomed(OVERLAY_WIDTH) : WINDOW_WIDTH + RAIL_W,
            overlayMode_ ? overlayZoomed(overlayHeight()) : WINDOW_HEIGHT);
     resize(planner_, PLANNER_WIDTH, PLANNER_HEIGHT);
     resize(crafting_, CRAFTING_WIDTH, CRAFTING_HEIGHT);
@@ -6979,6 +7335,7 @@ void MinerGUI::resizeForScale() {
 void MinerGUI::toggleNotes() {
     if (!notes_ && !createNotes()) return;
     notesVisible_ = !notesVisible_;
+    railRepaint();   // the rail shows it open or shut
     if (notesVisible_) {
         book_.load();
         // Reopening lands where it was left, when that note is still there
@@ -9771,6 +10128,7 @@ LRESULT MinerGUI::handleNotesMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
         case WM_CLOSE:
             saveNote();
             notesVisible_ = false;
+            railRepaint();
             ShowWindow(hwnd, SW_HIDE);
             return 0;
     }
@@ -9825,6 +10183,7 @@ void MinerGUI::placeCrafting() {
 void MinerGUI::toggleCrafting() {
     if (!crafting_ && !createCrafting()) return;
     craftingVisible_ = !craftingVisible_;
+    railRepaint();   // the rail shows it open or shut
     if (craftingVisible_) {
         // Opened without a pick of its own: start on the ore the scan is
         // showing. That is the question a miner actually has in front of a
@@ -10297,15 +10656,13 @@ void MinerGUI::loadLoadout() {
 void MinerGUI::setLookingOpen(bool open) {
     if (lookingOpen_ == open) return;
     if (open) closeOtherSheets(lookingOpen_);
+    if (open) toScanPage();   // the scan page's list
     lookingOpen_ = open;
     lookingSearch_.clear();
     // A card drawn by the parent cannot cover a child window, so the action
     // row steps aside while the panel is down - the same trade the keys
     // card makes. The header's own buttons stay: they sit above the panel.
-    const int show = (open || overlayMode_) ? SW_HIDE : SW_SHOW;
-    for (HWND b : {btnRefinery_, btnPlan_, btnCraft_, btnNotes_}) {
-        if (b) ShowWindow(b, show);
-    }
+    layoutControls();
     if (open) SetFocus(hwnd_);   // ...so that typing narrows the list
     InvalidateRect(hwnd_, nullptr, TRUE);
 }
@@ -13518,6 +13875,7 @@ LRESULT MinerGUI::handleCraftingMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
             break;
         case WM_CLOSE:
             craftingVisible_ = false;
+            railRepaint();
             cartPickOpen_ = 0;
             ShowWindow(hwnd, SW_HIDE);
             return 0;
@@ -13660,12 +14018,7 @@ void MinerGUI::showAbout(bool on) {
     if (on && keysOpen_) showKeys(false);   // one card at a time
     // Same as the keys card: a card drawn by the parent cannot cover a child
     // window, so the buttons take turns with it.
-    HWND buttons[] = {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_,
-                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_, btnPlugins_};
-    for (HWND b : buttons) {
-        if (b) ShowWindow(b, on ? SW_HIDE : SW_SHOW);
-    }
-    if (!on && overlayMode_) layoutControls();
+    buttonsUnderCard(on);
     if (hwnd_) InvalidateRect(hwnd_, nullptr, TRUE);
 }
 
@@ -13793,12 +14146,7 @@ void MinerGUI::showWhatsNew(bool on) {
     }
     // Same trade as the ? card: a card drawn by the parent cannot cover a
     // child window, so the buttons take turns with it.
-    HWND buttons[] = {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_,
-                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_, btnPlugins_};
-    for (HWND b : buttons) {
-        if (b) ShowWindow(b, on ? SW_HIDE : SW_SHOW);
-    }
-    if (!on && overlayMode_) layoutControls();
+    buttonsUnderCard(on);
     if (hwnd_) InvalidateRect(hwnd_, nullptr, TRUE);
 }
 
@@ -14518,12 +14866,7 @@ void MinerGUI::showBackup(bool on) {
     // The same trade the keys card and the ore pick make: a card drawn
     // by the parent cannot cover a child window, so the action row steps
     // aside while it is up.
-    HWND buttons[] = {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_,
-                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_, btnPlugins_};
-    for (HWND b : buttons) {
-        if (b) ShowWindow(b, on ? SW_HIDE : SW_SHOW);
-    }
-    if (!on && overlayMode_) layoutControls();
+    buttonsUnderCard(on);
     if (hwnd_) InvalidateRect(hwnd_, nullptr, TRUE);
 }
 
@@ -14533,12 +14876,7 @@ void MinerGUI::showKeys(bool on) {
     // Every button on the main window, out of the way and back again. A card
     // drawn by the parent cannot cover a child window, so the card and the
     // buttons take turns.
-    HWND buttons[] = {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_,
-                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_, btnPlugins_};
-    for (HWND b : buttons) {
-        if (b) ShowWindow(b, on ? SW_HIDE : SW_SHOW);
-    }
-    if (!on && overlayMode_) layoutControls();   // the compact view hides most of them anyway
+    buttonsUnderCard(on);
     if (hwnd_) InvalidateRect(hwnd_, nullptr, TRUE);
 }
 
@@ -15445,7 +15783,7 @@ void MinerGUI::paintOwnerButton(Gdiplus::Graphics& g, const DRAWITEMSTRUCT* dis,
         return;
     }
     if (id == ID_BTN_PLUGINS) {
-        const Gdiplus::Color ink = pluginsVisible_ ? COL_ACCENT : (pressed ? COL_TEXT : tint(COL_TEXT, 215));
+        const Gdiplus::Color ink = pluginsVisible_ || pluginPage_ ? COL_ACCENT : (pressed ? COL_TEXT : tint(COL_TEXT, 215));
         drawPuzzle(g, w / 2.0f, h / 2.0f, scaleF(10.0f), ink);
         return;
     }
@@ -15563,6 +15901,7 @@ void MinerGUI::paintPlannerTo(HDC hdc) {
 void MinerGUI::togglePlanner() {
     if (!planner_ && !createPlanner()) return;
     plannerVisible_ = !plannerVisible_;
+    railRepaint();   // the rail shows it open or shut
     if (plannerVisible_) {
         plannerScroll_ = 0;
         placePlanner();
@@ -15725,6 +16064,7 @@ LRESULT MinerGUI::handlePlannerMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
             break;
         case WM_CLOSE:
             plannerVisible_ = false;
+            railRepaint();
             ShowWindow(hwnd, SW_HIDE);
             keepPlanPulse();
             return 0;
@@ -15854,12 +16194,7 @@ void MinerGUI::showUexWelcome(int step) {
     if (step) uexWelcome_.keyChangesAtPaste = -1;
     // a card drawn by the parent cannot cover a child window: the buttons
     // take turns with it, as with the other cards
-    HWND buttons[] = {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_,
-                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_, btnPlugins_};
-    for (HWND b : buttons) {
-        if (b) ShowWindow(b, step ? SW_HIDE : SW_SHOW);
-    }
-    if (!step && overlayMode_) layoutControls();
+    buttonsUnderCard(step != 0);
     if (hwnd_) InvalidateRect(hwnd_, nullptr, TRUE);
 }
 
@@ -16137,6 +16472,7 @@ int MinerGUI::datarunnerWaiting() const {
 
 void MinerGUI::setDatarunner(const DatarunnerState& state) {
     const int shown = drIndex_ >= 0 && drIndex_ < (int)datarunner_.shots.size() ? datarunner_.shots[drIndex_]->id : 0;
+    const bool had = !datarunner_.shots.empty();
     datarunner_ = state;
     int index = -1;
     for (size_t i = 0; i < datarunner_.shots.size(); i++) {
@@ -16157,24 +16493,22 @@ void MinerGUI::setDatarunner(const DatarunnerState& state) {
                                       [&](const std::shared_ptr<const Datarunner::Shot>& s) { return s->id == id; });
         it = kept ? std::next(it) : drSnippets_.erase(it);
     }
-    if (datarunner_.shots.empty() && datarunnerOpen_) showDatarunner(false);
+    // the last picture gone: the card with it (the rail's page, opened
+    // with none, stays)
+    if (had && datarunner_.shots.empty() && datarunnerOpen_) showDatarunner(false);
     if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
-void MinerGUI::showDatarunner(bool on) {
-    if (on && datarunner_.shots.empty()) return;
+void MinerGUI::showDatarunner(bool on, bool evenEmpty) {
+    if (on && datarunner_.shots.empty() && !evenEmpty) return;
     if (on) closeOtherSheets(datarunnerOpen_);
+    if (on) toScanPage();   // (its card lies over the scan page)
     datarunnerOpen_ = on;
     endDatarunnerEdit();
     drScroll_ = 0;
     // a card drawn by the parent cannot cover a child window: the buttons
     // take turns with it, as with the other cards
-    HWND buttons[] = {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_,
-                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_, btnPlugins_};
-    for (HWND b : buttons) {
-        if (b) ShowWindow(b, on ? SW_HIDE : SW_SHOW);
-    }
-    if (!on && overlayMode_) layoutControls();
+    buttonsUnderCard(on);
     if (hwnd_) InvalidateRect(hwnd_, nullptr, TRUE);
 }
 
@@ -16418,7 +16752,27 @@ void MinerGUI::pressDatarunner(const DrHit& hit, HWND owner) {
 void MinerGUI::drawDatarunnerCard(Gdiplus::Graphics& g, int cw, int ch) {
     drHits_.clear();
     drRect_ = drRows_ = drList_ = Gdiplus::RectF();
-    if (datarunner_.shots.empty()) return;
+    if (datarunner_.shots.empty()) {
+        // the rail's page with no picture waiting: the card, saying so
+        Gdiplus::Font markFont(&markFamily(), scaleF(17), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font headFont(&textFamily(), scaleF(9), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+        Gdiplus::SolidBrush textBrush(COL_TEXT), dimBrush(COL_TEXT_DIM), faintBrush(COL_TEXT_FAINT);
+        Gdiplus::StringFormat rightLine;
+        rightLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+        rightLine.SetAlignment(Gdiplus::StringAlignmentFar);
+        rightLine.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+        const float cardX = scaleF(8), cardY = scaleF(8);
+        drRect_ = Gdiplus::RectF(cardX, cardY, (float)cw - 2 * cardX, (float)ch - 2 * cardY);
+        refplanGlassPane(g, drRect_, scaleF(R_CARD), scaleF(18), COL_CARD);
+        const float left = cardX + scaleF(14), width = drRect_.Width - 2 * scaleF(14);
+        const float y = cardY + scaleF(12);
+        g.DrawString(L"UEX DATARUNNER", -1, &markFont, Gdiplus::PointF(left, y), &textBrush);
+        g.DrawString(L"Esc to close", -1, &headFont, Gdiplus::RectF(left, y, width, scaleF(24)), &rightLine,
+                     &faintBrush);
+        g.DrawString(L"NO TERMINAL SCREENSHOTS TO CHECK", -1, &headFont, Gdiplus::PointF(left, y + scaleF(32)),
+                     &dimBrush);
+        return;
+    }
     if (drIndex_ < 0 || drIndex_ >= (int)datarunner_.shots.size()) drIndex_ = 0;
     const Datarunner::Shot& shot = *datarunner_.shots[drIndex_];
     const size_t index = (size_t)drIndex_;
@@ -20146,6 +20500,7 @@ void MinerGUI::paintRefineryTo(HDC hdc) {
 void MinerGUI::toggleRefinery() {
     if (!refinery_ && !createRefinery()) return;
     refineryVisible_ = !refineryVisible_;
+    railRepaint();   // the rail shows it open or shut
     if (refineryVisible_) {
         refineryScroll_ = 0;
         refineryOrdersScroll_ = 0;
@@ -20388,6 +20743,7 @@ LRESULT MinerGUI::handleRefineryMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
             break;
         case WM_CLOSE:
             refineryVisible_ = false;
+            railRepaint();
             refineryMethodOpen_ = false;
             ShowWindow(hwnd, SW_HIDE);
             return 0;
@@ -21480,10 +21836,10 @@ void MinerGUI::drawRockDemo(Gdiplus::Graphics& g, float x, float y, int width) {
     g.SetClip(Gdiplus::RectF(x, y, (float)width, 4000.0f));
     // the view draws itself where it sits in the main window; moved so the
     // card's top lands at y
-    const float top = (float)scale(LY_SIGCARD) + extraTop();
+    const float top = (float)scale(LY_SIGCARD) + extraTop() - scanShift();
     g.TranslateTransform(x, y - top);
     drawRockCard(g, width);
-    const int below = drawRockOutput(g, width, scale(LY_RESULTS) + extraTop());
+    const int below = drawRockOutput(g, width, scale(LY_RESULTS) + extraTop() - scanShift());
     drawRockAdvice(g, width, below);
     g.Restore(state);
 
@@ -22161,7 +22517,10 @@ PhoneServer::Picture MinerGUI::phonePicture(PhoneServer::View view, int devicePi
                 drawCompact(g, w, h);
                 drawn.updateChip = updateHit_;   // (in the picture's pixels)
             } else {
+                // the window as it was before the rail, the scan's page
+                phonePainting_ = true;
                 paintWindowBody(g, w, h);
+                phonePainting_ = false;
             }
             drawPhoneButtons(g, overlay, w, h);
         }
@@ -22241,8 +22600,8 @@ bool MinerGUI::phoneTaps() {
 // phone's size, or the overlay
 void MinerGUI::phoneLayOutWindow(int& cw, int& ch) {
     RECT rc{};
-    if (!overlayMode_ && GetClientRect(hwnd_, &rc) && rc.right > 0 && rc.bottom > 0) {
-        cw = rc.right;
+    if (!overlayMode_ && GetClientRect(hwnd_, &rc) && rc.right > railWidth() && rc.bottom > 0) {
+        cw = rc.right - railWidth();   // (the page's, right of the rail)
         ch = rc.bottom;
     } else {
         cw = scale(phoneWindowSize_.cx > 0 ? (int)phoneWindowSize_.cx : WINDOW_WIDTH);
@@ -22254,7 +22613,10 @@ void MinerGUI::phoneLayOutWindow(int& cw, int& ch) {
         Gdiplus::Bitmap scratch(cw, ch, PixelFormat32bppPARGB);
         Gdiplus::Graphics g(&scratch);
         prepareGraphics(g);
+        // ...laid out as the phone's picture has it
+        phonePainting_ = true;
         paintWindowBody(g, cw, ch);
+        phonePainting_ = false;
     }
     hoverMain_ = keptHover;
 }
@@ -22605,6 +22967,7 @@ void MinerGUI::placeSettings() {
 void MinerGUI::toggleSettings() {
     if (!settings_ && !createSettings()) return;
     settingsVisible_ = !settingsVisible_;
+    railRepaint();   // the rail shows it open or shut
     if (settingsVisible_) {
         settingsRoleChosen(settingsRole_);
         // the PC's address afresh: a laptop may be on another network now
@@ -23735,6 +24098,23 @@ void MinerGUI::openPlugin(const std::string& id) {
     }
 }
 
+// The main window's page of them, right of the rail: the list, or one
+// plugin's own (`id`)
+void MinerGUI::showPluginPage(const std::string& id) {
+    closeOtherSheets(pluginPage_);   // the scan page's lists and cards go
+    endPluginTyping(false);
+    if (!(pluginPage_ && pluginShown_ == id)) pluginScroll_ = 0;
+    pluginPage_ = true;
+    pluginShown_ = id;
+    // the server's list, once per start, as the window of their own has it
+    if (!pluginsAsked_ && pluginAction_) {
+        pluginsAsked_ = true;
+        pluginAction_("", "refresh");
+    }
+    refreshPluginView(false);
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
 void MinerGUI::setPlugins(std::vector<PluginEntry> list, const std::string& serverNote) {
     pluginList_ = std::move(list);
     pluginServerNote_ = serverNote;
@@ -23745,16 +24125,18 @@ void MinerGUI::setPlugins(std::vector<PluginEntry> list, const std::string& serv
         pluginShown_.clear();
         pluginScroll_ = 0;
     }
-    if (pluginsVisible_) {
+    if (pluginsVisible_ || pluginPage_) {
         refreshPluginView(false);
-        if (plugins_) InvalidateRect(plugins_, nullptr, FALSE);
+        if (plugins_ && pluginsVisible_) InvalidateRect(plugins_, nullptr, FALSE);
     }
+    railRepaint();   // the rail lists them
 }
 
 void MinerGUI::pluginChanged(const std::string& id) {
-    if (!pluginsVisible_ || id != pluginShown_) return;
+    if (!(pluginsVisible_ || pluginPage_) || id != pluginShown_) return;
     refreshPluginView(false);
-    if (plugins_) InvalidateRect(plugins_, nullptr, FALSE);
+    if (plugins_ && pluginsVisible_) InvalidateRect(plugins_, nullptr, FALSE);
+    if (pluginPage_ && hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
 void MinerGUI::setPluginNote(const std::string& id, const std::string& note) {
@@ -23777,6 +24159,7 @@ void MinerGUI::pluginStateForShot(const std::string& id, const std::vector<std::
     state.typed = typed;
     if (pluginShown_ == id) refreshPluginView(false);
     if (plugins_) InvalidateRect(plugins_, nullptr, TRUE);
+    if (pluginPage_ && hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
 // What the window shows anew: the list, or the plugin's own draw. A click
@@ -24289,6 +24672,20 @@ void MinerGUI::paintPlugins(HDC hdc) {
         prepareGraphics(g);
         Gdiplus::SolidBrush bg(COL_BG);
         g.FillRectangle(&bg, 0, 0, cw, ch);
+        paintPluginView(g, cw, ch, false);
+    }
+    BitBlt(hdc, 0, 0, cw, ch, memDC, 0, 0, SRCCOPY);
+    SelectObject(memDC, oldBitmap);
+    DeleteObject(memBitmap);
+    DeleteDC(memDC);
+}
+
+void MinerGUI::paintPluginView(Gdiplus::Graphics& g, int cw, int ch, bool page) {
+    // the pointer as the pieces know it: the window's own, or the main
+    // window's over its page (its pixels the page's, onPaint)
+    const POINT keptHover = hoverPlugins_;
+    if (page) hoverPlugins_ = hoverMain_;
+    {
         pluginHits_.clear();
 
         Gdiplus::Font markFont(&markFamily(), scaleF(21), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
@@ -24305,9 +24702,21 @@ void MinerGUI::paintPlugins(HDC hdc) {
         const float right = (float)cw - M;
 
         // the title: the plugin's own, or the list's; a way back to the list
-        // at the right while a plugin is open
+        // at the right while a plugin is open. On the main window's page
+        // the title lies under the window's header, and the rail is the
+        // way back.
         float titleRight = right;
-        if (!pluginShown_.empty()) {
+        float top = scaleF(68);
+        float footY = (float)ch - scaleF(38);
+        if (page) {
+            Gdiplus::Font pageFont(&markFamily(), scaleF(17), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+            g.DrawString(toW(pluginCurrent_.title).c_str(), -1, &pageFont,
+                         Gdiplus::RectF(M, scaleF(56), right - M, scaleF(26)), &oneLine, &textBrush);
+            g.DrawString(toW(pluginCurrent_.subtitle).c_str(), -1, &subFont,
+                         Gdiplus::RectF(M + scaleF(1), scaleF(82), right - M, scaleF(16)), &oneLine, &dimBrush);
+            top = scaleF(110);
+            footY = (float)ch - scaleF(32);
+        } else if (!pluginShown_.empty()) {
             const wchar_t* back = L"All plugins";
             Gdiplus::RectF w;
             g.MeasureString(back, -1, &buttonFont, Gdiplus::PointF(0, 0), &w);
@@ -24316,17 +24725,17 @@ void MinerGUI::paintPlugins(HDC hdc) {
             pluginHits_.push_back({box, 7, "", 0});
             titleRight = box.X - scaleF(12);
         }
-        g.FillRectangle(&accentBrush, M, (float)scale(18), scaleF(8), scaleF(8));
-        g.DrawString(toW(pluginCurrent_.title).c_str(), -1, &markFont,
-                     Gdiplus::RectF(M + scaleF(14), (float)scale(6), titleRight - M - scaleF(14), scaleF(30)), &oneLine,
-                     &textBrush);
-        g.DrawString(toW(pluginCurrent_.subtitle).c_str(), -1, &subFont,
-                     Gdiplus::RectF(M + scaleF(15), (float)scale(36), titleRight - M - scaleF(15), scaleF(16)), &oneLine,
-                     &dimBrush);
+        if (!page) {
+            g.FillRectangle(&accentBrush, M, (float)scale(18), scaleF(8), scaleF(8));
+            g.DrawString(toW(pluginCurrent_.title).c_str(), -1, &markFont,
+                         Gdiplus::RectF(M + scaleF(14), (float)scale(6), titleRight - M - scaleF(14), scaleF(30)),
+                         &oneLine, &textBrush);
+            g.DrawString(toW(pluginCurrent_.subtitle).c_str(), -1, &subFont,
+                         Gdiplus::RectF(M + scaleF(15), (float)scale(36), titleRight - M - scaleF(15), scaleF(16)),
+                         &oneLine, &dimBrush);
+        }
 
         // the pieces, in a pane that scrolls
-        const float top = scaleF(68);
-        const float footY = (float)ch - scaleF(38);
         const float viewH = footY - scaleF(8) - top;
         std::vector<float> cardEnds;
         const float contentH = paintPluginPieces(g, pluginCurrent_.items, cw, 0.0f, false, cardEnds);
@@ -24381,10 +24790,7 @@ void MinerGUI::paintPlugins(HDC hdc) {
         g.DrawString(foot.c_str(), -1, &footFont, Gdiplus::RectF(M, footY + scaleF(8), right - M, scaleF(18)), &oneLine,
                      footBrush ? footBrush : &redBrush);
     }
-    BitBlt(hdc, 0, 0, cw, ch, memDC, 0, 0, SRCCOPY);
-    SelectObject(memDC, oldBitmap);
-    DeleteObject(memBitmap);
-    DeleteDC(memDC);
+    hoverPlugins_ = keptHover;
 }
 
 void MinerGUI::endPluginTyping(bool keep) {
@@ -24401,7 +24807,8 @@ void MinerGUI::endPluginTyping(bool keep) {
     if (number && keep) refreshPluginView(true);
 }
 
-void MinerGUI::pluginClicked(const PluginHit& hit) {
+void MinerGUI::pluginClicked(const PluginHit& hit, HWND host) {
+    const bool page = host == hwnd_;
     if (hit.kind == 7) {
         openPlugin("");
         return;
@@ -24413,7 +24820,8 @@ void MinerGUI::pluginClicked(const PluginHit& hit) {
         const std::string action = hit.id.substr(0, colon);
         const std::string id = colon == std::string::npos ? std::string() : hit.id.substr(colon + 1);
         if (action == "open") {
-            openPlugin(id);
+            if (page) showPluginPage(id);
+            else openPlugin(id);
             return;
         }
         if (action == "remove") {
@@ -24450,17 +24858,104 @@ void MinerGUI::pluginClicked(const PluginHit& hit) {
             pluginTyping_ = hit.id;
             pluginTypingNumber_ = true;
             pluginNumber_.clear();
-            if (plugins_) SetFocus(plugins_);
+            if (host) SetFocus(host);
             return;
         case 6:
             pluginTyping_ = hit.id;
             pluginTypingNumber_ = false;
-            if (plugins_) SetFocus(plugins_);
+            if (host) SetFocus(host);
             return;
         default:
             return;
     }
     refreshPluginView(true);
+}
+
+// a click anywhere takes the keys from the field that had them - a
+// counter keeps the figure typed into it
+void MinerGUI::pluginPress(HWND host, float px, float py) {
+    const std::string typing = pluginTyping_;
+    for (const auto& h : pluginHits_) {
+        if (!h.rect.Contains(px, py)) continue;
+        if (!(h.id == typing && (h.kind == 5 || h.kind == 6))) endPluginTyping(true);
+        const PluginHit hit = h;   // the list is drawn anew under it
+        pluginClicked(hit, host);
+        InvalidateRect(host, nullptr, FALSE);
+        return;
+    }
+    if (!typing.empty()) {
+        endPluginTyping(true);
+        InvalidateRect(host, nullptr, FALSE);
+    }
+}
+
+bool MinerGUI::pluginChar(HWND host, wchar_t c) {
+    if (pluginTyping_.empty() || pluginShown_.empty()) return false;
+    if (pluginTypingNumber_) {
+        if (c == VK_BACK) {
+            if (!pluginNumber_.empty()) pluginNumber_.pop_back();
+        } else if (c == VK_RETURN) {
+            endPluginTyping(true);
+        } else if (c >= L'0' && c <= L'9' && pluginNumber_.size() < 6) {
+            pluginNumber_ += c;
+        }
+        InvalidateRect(host, nullptr, FALSE);
+        return true;
+    }
+    std::string& typed = pluginUi_[pluginShown_].typed[pluginTyping_];
+    std::wstring words = toW(typed);
+    if (c == VK_BACK) {
+        if (!words.empty()) words.pop_back();
+    } else if (c == VK_RETURN) {
+        endPluginTyping(false);
+        InvalidateRect(host, nullptr, FALSE);
+        return true;
+    } else if (c >= L' ' && words.size() < 40) {
+        words += c;
+    } else {
+        return true;
+    }
+    typed = fromW(words);
+    pluginScroll_ = 0;
+    refreshPluginView(false);
+    InvalidateRect(host, nullptr, FALSE);
+    return true;
+}
+
+bool MinerGUI::pluginKey(HWND host, WPARAM key) {
+    if (key == VK_ESCAPE) {
+        // Esc lets go of the field first, then empties a search, then
+        // closes the window of their own (a page stays)
+        if (!pluginTyping_.empty()) {
+            const bool search = !pluginTypingNumber_;
+            const std::string id = pluginTyping_;
+            endPluginTyping(false);
+            if (search && !pluginShown_.empty()) {
+                pluginUi_[pluginShown_].typed[id].clear();
+                refreshPluginView(false);
+            }
+            InvalidateRect(host, nullptr, FALSE);
+            return true;
+        }
+        if (host != plugins_) return false;
+        togglePlugins();
+        return true;
+    }
+    if (!pluginTyping_.empty()) return false;
+    if (key == VK_DOWN || key == VK_UP) {
+        pluginScroll_ = (std::max)(0.0f, pluginScroll_ + (key == VK_DOWN ? 1.0f : -1.0f) * scaleF(56));
+    } else if (key == VK_NEXT || key == VK_PRIOR) {
+        RECT rc;
+        GetClientRect(host, &rc);
+        const float page = (float)rc.bottom - scaleF(140);
+        pluginScroll_ = (std::max)(0.0f, pluginScroll_ + (key == VK_NEXT ? page : -page));
+    } else if (key == VK_HOME) {
+        pluginScroll_ = 0;
+    } else {
+        return false;
+    }
+    InvalidateRect(host, nullptr, FALSE);
+    return true;
 }
 
 LRESULT MinerGUI::handlePluginsMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -24486,97 +24981,14 @@ LRESULT MinerGUI::handlePluginsMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
             InvalidateRect(hwnd, nullptr, FALSE);
             return 0;
         }
-        case WM_LBUTTONDOWN: {
-            const float px = (float)(short)LOWORD(lParam);
-            const float py = (float)(short)HIWORD(lParam);
-            // a click anywhere takes the keys from the field that had them -
-            // a counter keeps the figure typed into it
-            const std::string typing = pluginTyping_;
-            for (const auto& h : pluginHits_) {
-                if (!h.rect.Contains(px, py)) continue;
-                if (!(h.id == typing && (h.kind == 5 || h.kind == 6))) endPluginTyping(true);
-                const PluginHit hit = h;   // the list is drawn anew under it
-                pluginClicked(hit);
-                InvalidateRect(hwnd, nullptr, FALSE);
-                return 0;
-            }
-            if (!typing.empty()) {
-                endPluginTyping(true);
-                InvalidateRect(hwnd, nullptr, FALSE);
-            }
+        case WM_LBUTTONDOWN:
+            pluginPress(hwnd, (float)(short)LOWORD(lParam), (float)(short)HIWORD(lParam));
             return 0;
-        }
-        case WM_CHAR: {
-            if (pluginTyping_.empty() || pluginShown_.empty()) break;
-            const wchar_t c = (wchar_t)wParam;
-            if (pluginTypingNumber_) {
-                if (c == VK_BACK) {
-                    if (!pluginNumber_.empty()) pluginNumber_.pop_back();
-                } else if (c == VK_RETURN) {
-                    endPluginTyping(true);
-                } else if (c >= L'0' && c <= L'9' && pluginNumber_.size() < 6) {
-                    pluginNumber_ += c;
-                }
-                InvalidateRect(hwnd, nullptr, FALSE);
-                return 0;
-            }
-            std::string& typed = pluginUi_[pluginShown_].typed[pluginTyping_];
-            std::wstring words = toW(typed);
-            if (c == VK_BACK) {
-                if (!words.empty()) words.pop_back();
-            } else if (c == VK_RETURN) {
-                endPluginTyping(false);
-                InvalidateRect(hwnd, nullptr, FALSE);
-                return 0;
-            } else if (c >= L' ' && words.size() < 40) {
-                words += c;
-            } else {
-                return 0;
-            }
-            typed = fromW(words);
-            pluginScroll_ = 0;
-            refreshPluginView(false);
-            InvalidateRect(hwnd, nullptr, FALSE);
-            return 0;
-        }
+        case WM_CHAR:
+            if (pluginChar(hwnd, (wchar_t)wParam)) return 0;
+            break;
         case WM_KEYDOWN:
-            if (wParam == VK_ESCAPE) {
-                // Esc lets go of the field first, then empties a search,
-                // then closes
-                if (!pluginTyping_.empty()) {
-                    const bool search = !pluginTypingNumber_;
-                    const std::string id = pluginTyping_;
-                    endPluginTyping(false);
-                    if (search && !pluginShown_.empty()) {
-                        pluginUi_[pluginShown_].typed[id].clear();
-                        refreshPluginView(false);
-                    }
-                    InvalidateRect(hwnd, nullptr, FALSE);
-                    return 0;
-                }
-                togglePlugins();
-                return 0;
-            }
-            if (pluginTyping_.empty()) {
-                if (wParam == VK_DOWN || wParam == VK_UP) {
-                    pluginScroll_ = (std::max)(0.0f, pluginScroll_ + (wParam == VK_DOWN ? 1.0f : -1.0f) * scaleF(56));
-                    InvalidateRect(hwnd, nullptr, FALSE);
-                    return 0;
-                }
-                if (wParam == VK_NEXT || wParam == VK_PRIOR) {
-                    RECT rc;
-                    GetClientRect(hwnd, &rc);
-                    const float page = (float)rc.bottom - scaleF(140);
-                    pluginScroll_ = (std::max)(0.0f, pluginScroll_ + (wParam == VK_NEXT ? page : -page));
-                    InvalidateRect(hwnd, nullptr, FALSE);
-                    return 0;
-                }
-                if (wParam == VK_HOME) {
-                    pluginScroll_ = 0;
-                    InvalidateRect(hwnd, nullptr, FALSE);
-                    return 0;
-                }
-            }
+            if (pluginKey(hwnd, wParam)) return 0;
             break;
         case WM_CLOSE:
             togglePlugins();

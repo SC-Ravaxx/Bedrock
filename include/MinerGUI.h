@@ -223,6 +223,16 @@ public:
     void togglePlugins();
     // The window opened on a plugin; "" the list
     void openPlugin(const std::string& id);
+    // ...or, as the rail has it, a page of the main window
+    void showPluginPage(const std::string& id);
+
+    // ---- the rail: the full window's pages and tools, down its left ----
+    // Scan, Datarunner, Plugins and each plugin are pages of the main window;
+    // the others open their windows. Not in the overlay, nor in a phone's
+    // picture of the window.
+    enum class RailItem { Scan, Datarunner, Refinery, Finder, Blueprints, Notes, Plugin, Plugins, Settings };
+    // ...a click on one, for a picture (`id`: the plugin's)
+    void railPickForShot(RailItem item, const std::string& id = "") { railPick(item, id); }
     void paintPluginsTo(HDC hdc);
     // ...a plugin's window for a picture: cards open, a tab and chip
     // picked, a search typed - nothing saved
@@ -1047,7 +1057,34 @@ private:
     // The full window as onPaint draws it, into any Graphics: onPaint's, or
     // a picture of it for a phone
     void paintWindowBody(Gdiplus::Graphics& g, int cw, int ch);
-    void drawHeader(Gdiplus::Graphics& g, int clientW);
+    // `stripOnly`: the wordmark's row, without the place and ship under it
+    void drawHeader(Gdiplus::Graphics& g, int clientW, bool stripOnly = false);
+
+    // The rail (RailItem), drawn in the window's own pixels left of the page
+    static constexpr int RAIL_W = 72;
+    struct RailHit {
+        Gdiplus::RectF rect;
+        RailItem item;
+        std::string id;   // a plugin's
+    };
+    std::vector<RailHit> railHits_;
+    bool pluginPage_ = false;      // the plugins' page, or one plugin's, is up (pluginShown_)
+    bool phonePainting_ = false;   // the window drawn for a phone: as it was, without the rail
+    // The window on screen, not the overlay nor a phone's picture: the rail
+    // is up, the header holds Live, Keys, Overlay and the ?, and the action
+    // row is gone
+    bool railShown() const { return !overlayMode_ && !phonePainting_; }
+    int railWidth() const { return railShown() ? scale(RAIL_W) : 0; }
+    // ...so what was under the action row sits higher by the row
+    int scanShift() const { return railShown() ? scale(LY_SIGCARD - LY_CONTROLS) : 0; }
+    bool pluginPageUp() const { return pluginPage_ && railShown(); }
+    void drawRail(Gdiplus::Graphics& g, int rw, int ch);
+    void railPick(RailItem item, const std::string& id);
+    void toScanPage();   // a plugin's page left for the scan, typing let go
+    void railRepaint();  // a tool's window opened or shut: the rail shows it
+    // A card drawn by the parent cannot cover a child window: the buttons
+    // go under it (`on`) and come back as layoutControls has them
+    void buttonsUnderCard(bool on);
     void drawSignatureCard(Gdiplus::Graphics& g, int clientW);
     int  drawResults(Gdiplus::Graphics& g, int clientW, int yPos);
     int  drawDetailCard(Gdiplus::Graphics& g, int clientW, int yPos);
@@ -1213,7 +1250,9 @@ private:
         HWND button;
         RECT rect;
     };
-    std::vector<ButtonPlace> buttonPlaces(bool overlay, int cw, int ch, float zoom) const;
+    // `rail`: the header beside the rail, without the gear, the jigsaw piece
+    // and the action row
+    std::vector<ButtonPlace> buttonPlaces(bool overlay, int cw, int ch, float zoom, bool rail = false) const;
 
     // Control handles
     // The system comes from Game.log, so there are no system buttons; the
@@ -1377,7 +1416,8 @@ private:
     Gdiplus::RectF datarunnerHit_;            // the foot's way in
     std::map<std::string, std::unique_ptr<Gdiplus::Bitmap>> drSnippets_;
     int datarunnerWaiting() const;            // pictures still to be sent or let go
-    void showDatarunner(bool on);
+    // `evenEmpty`: the rail's page, which opens with no picture waiting too
+    void showDatarunner(bool on, bool evenEmpty = false);
     void drawDatarunnerCard(Gdiplus::Graphics& g, int cw, int ch);
     void pressDatarunner(const DrHit& hit, HWND owner);
     bool datarunnerChar(wchar_t c);           // a key typed while the card is up
@@ -1594,13 +1634,22 @@ private:
     bool createPlugins();
     void placePlugins();
     void paintPlugins(HDC hdc);
+    // The list or a plugin, `cw` by `ch`: the window of their own, or the
+    // main window's page (`page`), under its header
+    void paintPluginView(Gdiplus::Graphics& g, int cw, int ch, bool page);
     // The pieces from `top` down: measured, or drawn with the card ends the
     // measuring found; the height they take
     float paintPluginPieces(Gdiplus::Graphics& g, const std::vector<Plugins::UiItem>& items, int cw, float top,
                             bool draw, std::vector<float>& cardEnds, float stopBelow = 1e9f);
     std::vector<Plugins::UiItem> pluginListPieces();
     void refreshPluginView(bool twice);
-    void pluginClicked(const PluginHit& hit);
+    // A click, a letter, a key on the list or a plugin, in `host` - the
+    // window of their own or the main window. A letter or a key: true
+    // where it was theirs.
+    void pluginPress(HWND host, float x, float y);
+    bool pluginChar(HWND host, wchar_t c);
+    bool pluginKey(HWND host, WPARAM key);
+    void pluginClicked(const PluginHit& hit, HWND host);
     void endPluginTyping(bool keep);
     bool pluginNoteShowing() const;
     static LRESULT CALLBACK PluginsProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);

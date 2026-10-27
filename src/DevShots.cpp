@@ -573,6 +573,18 @@ int runScreenshots(const std::string& dir) {
         pump();
         // ...and the header, with the jigsaw piece beside the gear
         shoot(gui.windowHandle(), "plugins_header.png");
+        // ...and the list and Wikelo as pages of the main window, as the
+        // rail opens them
+        using Rail = SCMiner::MinerGUI::RailItem;
+        gui.railPickForShot(Rail::Plugins);
+        pump();
+        shoot(gui.windowHandle(), "main_page_plugins.png");
+        gui.pluginStateForShot("wikelo", {"t:TheCollector_GreyHeavyCombatArmour"}, {}, {});
+        gui.railPickForShot(Rail::Plugin, "wikelo");
+        pump();
+        shoot(gui.windowHandle(), "main_page_wikelo.png");
+        gui.railPickForShot(Rail::Scan);
+        pump();
         return 0;
     }
     pump();
@@ -1536,6 +1548,10 @@ int runScreenshots(const std::string& dir) {
         gui.setDatarunner(stateOf(waiting, false));
         pump();
         shoot(gui.windowHandle(), "main_datarunner_waiting.png");
+        // ...its page, as the rail opens it
+        gui.railPickForShot(SCMiner::MinerGUI::RailItem::Datarunner);
+        pump();
+        shoot(gui.windowHandle(), "main_page_datarunner.png");
         gui.openDatarunnerForShot(0);
         pump();
         shoot(gui.windowHandle(), "datarunner_ready.png");
@@ -1593,6 +1609,12 @@ int runScreenshots(const std::string& dir) {
                      SWP_NOMOVE | SWP_NOZORDER);
         gui.openDatarunnerForShot(-1);
         gui.setDatarunner(SCMiner::MinerGUI::DatarunnerState());
+        pump();
+        // ...and the rail's page with no picture waiting
+        gui.railPickForShot(SCMiner::MinerGUI::RailItem::Datarunner);
+        pump();
+        shoot(gui.windowHandle(), "main_page_datarunner_empty.png");
+        gui.railPickForShot(SCMiner::MinerGUI::RailItem::Scan);
         pump();
     }
     // The news window, painted straight into the bitmap like the other
