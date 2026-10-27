@@ -6841,17 +6841,22 @@ int MinerGUI::drawResults(Gdiplus::Graphics& g, int cw, int yPos) {
         return (int)std::lround(bottom) + scale(10);
     }
 
+    // Why the folded rows are out - the place, the system or open space -
+    // each said once on the line they fold into; a row opened under it
+    // says its own only where they differ
+    std::wstring why;
+    bool oneWhy = true;
+    for (const AnalysisResult* r : away) {
+        const std::wstring one = outOfScopeWords(*r);
+        if (why.find(one) != std::wstring::npos) continue;
+        oneWhy = why.empty();
+        why += (why.empty() ? L"" : L"  \u00B7  ") + one;
+    }
     const float radius = scaleF(R_CONTROL);
     for (const Item& item : items) {
         if (!item.result) {
-            // The line they fold into: how many, and why they are out - the
-            // place, the system or open space, each said once
+            // The line they fold into: how many, and why
             const Gdiplus::RectF& line = item.rect;
-            std::wstring why;
-            for (const AnalysisResult* r : away) {
-                const std::wstring one = outOfScopeWords(*r);
-                if (why.find(one) == std::wstring::npos) why += (why.empty() ? L"" : L"  \u00B7  ") + one;
-            }
             const std::wstring words = std::to_wstring(away.size()) + L" more, " + why;
             const bool hot = isHot(hoverMain_, line);
             Gdiplus::SolidBrush foldBrush(hot ? COL_TEXT : COL_TEXT_DIM);
@@ -6969,7 +6974,7 @@ int MinerGUI::drawResults(Gdiplus::Graphics& g, int cw, int yPos) {
         std::wstringstream info;
         info << formatNumber(result.expectedSignature);
         info << (result.difference < 1.0 ? L"  \u00B7  exact" : L"  \u00B7  \u0394" + std::to_wstring((int)result.difference));
-        if (dimmed) info << L"  \u00B7  " << outOfScopeNote(result);
+        if (dimmed && !oneWhy) info << L"  \u00B7  " << outOfScopeNote(result);
         Gdiplus::SolidBrush infoBrush(dimmed ? COL_TEXT_FAINT : COL_TEXT_DIM);
         g.DrawString(info.str().c_str(), -1, &infoFont, Gdiplus::PointF(textX, ry + scaleF(24)), &infoBrush);
         if (!rarityPill && result.category == SignalCategory::ShipMining && result.rarity != Rarity::None) {
