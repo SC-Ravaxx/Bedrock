@@ -67,6 +67,7 @@ constexpr int HOTKEY_SNAPSHOT = 2;
 #define ID_BTN_ABOUT       1020
 #define ID_BTN_ORE_ROWS    1021
 #define ID_BTN_SETTINGS    1022
+#define ID_BTN_PLUGINS     1023
 constexpr int ORE_ROWS_BUTTON_W = 40;   // the overlay's Rows/Line switch
 #define ID_EDIT_NOTE       1030
 #define ID_EDIT_NOTE_NAME  1031
@@ -428,6 +429,21 @@ void drawGear(Gdiplus::Graphics& g, float cx, float cy, float radius, const Gdip
     path.CloseFigure();
     const float hole = radius * 0.34f;
     path.AddEllipse(cx - hole, cy - hole, 2 * hole, 2 * hole);
+    Gdiplus::SolidBrush brush(ink);
+    g.FillPath(&brush, &path);
+}
+
+// A piece of a jigsaw, for the header's button: a square with a knob on its
+// top and one on its right. Drawn rather than a glyph, like the gear.
+void drawPuzzle(Gdiplus::Graphics& g, float cx, float cy, float size, const Gdiplus::Color& ink) {
+    const float s = size;
+    const float k = s * 0.44f;
+    const float x = cx - s * 0.56f, y = cy - s * 0.42f;
+    Gdiplus::GraphicsPath path;
+    path.SetFillMode(Gdiplus::FillModeWinding);
+    path.AddRectangle(Gdiplus::RectF(x, y, s, s));
+    path.AddEllipse(x + s / 2.0f - k / 2.0f, y - k * 0.72f, k, k);
+    path.AddEllipse(x + s - k * 0.28f, y + s / 2.0f - k / 2.0f, k, k);
     Gdiplus::SolidBrush brush(ink);
     g.FillPath(&brush, &path);
 }
@@ -1082,6 +1098,17 @@ bool MinerGUI::initialize(HINSTANCE hInstance) {
         return false;
     }
 
+    // ...the plugins'...
+    UnregisterClassW(L"BedrockPlugins", hInstance_);
+    WNDCLASSEXW plc = wc;
+    plc.lpfnWndProc = PluginsProc;
+    plc.lpszClassName = L"BedrockPlugins";
+    plc.hbrBackground = CreateSolidBrush(CR_BG);
+    if (!RegisterClassExW(&plc)) {
+        std::cerr << "[GUI] RegisterClassEx (plugins) failed! Error: " << GetLastError() << std::endl;
+        return false;
+    }
+
     // ...and the settings'
     UnregisterClassW(L"BedrockSettings", hInstance_);
     WNDCLASSEXW stc = wc;
@@ -1203,6 +1230,11 @@ void MinerGUI::createControls() {
     btnSettings_ = CreateWindowW(L"BUTTON", L"Settings", btnStyle,
         0, 0, 10, 10, hwnd_, (HMENU)ID_BTN_SETTINGS, hInstance_, nullptr);
 
+    // ...and beside the gear a piece of a jigsaw, for the plugins - drawn
+    // the same way
+    btnPlugins_ = CreateWindowW(L"BUTTON", L"Plugins", btnStyle,
+        0, 0, 10, 10, hwnd_, (HMENU)ID_BTN_PLUGINS, hInstance_, nullptr);
+
     // The action row holds the things to look something up in; LIVE is in
     // the header.
     btnRefinery_ = CreateWindowW(L"BUTTON", L"Refinery", btnStyle,
@@ -1234,7 +1266,7 @@ void MinerGUI::layoutControls() {
     };
 
     // Controls that only exist in the full window
-    HWND fullOnly[] = {btnPlan_, btnCraft_, btnNotes_, btnKeys_, btnRefinery_, btnAbout_, btnSettings_};
+    HWND fullOnly[] = {btnPlan_, btnCraft_, btnNotes_, btnKeys_, btnRefinery_, btnAbout_, btnSettings_, btnPlugins_};
 
     if (overlayMode_) {
         for (HWND h : fullOnly) ShowWindow(h, SW_HIDE);
@@ -1261,7 +1293,7 @@ void MinerGUI::layoutControls() {
     // too - as does the Datarunner's card
     if (uexWelcome_.step || datarunnerOpen_) {
         for (HWND b : {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_, btnOverlay_, btnRefinery_, btnAbout_,
-                       btnSettings_}) {
+                       btnSettings_, btnPlugins_}) {
             if (b) ShowWindow(b, SW_HIDE);
         }
     }
@@ -1290,14 +1322,16 @@ std::vector<MinerGUI::ButtonPlace> MinerGUI::buttonPlaces(bool overlay, int cw, 
     const int M = scale(MARGIN);
     const int gap = scale(8);
 
-    // The header row, right to left: ?, the gear, OVERLAY, KEYS, LIVE. LIVE
-    // sits with them because it is a switch, not a place to look something
-    // up, and the ? is last because it is the one nobody needs twice - the
-    // gear, the settings, next to it for the same reason.
+    // The header row, right to left: ?, the gear, the jigsaw piece,
+    // OVERLAY, KEYS, LIVE. LIVE sits with them because it is a switch, not a
+    // place to look something up, and the ? is last because it is the one
+    // nobody needs twice - the gear, the settings, next to it for the same
+    // reason, and the plugins beside the settings.
     const int qW = scale(24);
     put(btnAbout_, cw - M - qW, scale(14), qW, scale(24));
     put(btnSettings_, cw - M - qW - scale(4) - qW, scale(14), qW, scale(24));
-    const int headRight = cw - M - 2 * qW - scale(8);
+    put(btnPlugins_, cw - M - 3 * qW - scale(8), scale(14), qW, scale(24));
+    const int headRight = cw - M - 3 * qW - scale(12);
     put(btnOverlay_, headRight - scale(78), scale(14), scale(78), scale(24));
     put(btnKeys_, headRight - scale(78) - scale(52), scale(14), scale(48), scale(24));
     put(btnLiveMode_, headRight - scale(78) - scale(52) - scale(66), scale(14), scale(62), scale(24));
@@ -2662,6 +2696,9 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             else if (wmId == ID_BTN_SETTINGS) {
                 toggleSettings();
             }
+            else if (wmId == ID_BTN_PLUGINS) {
+                togglePlugins();
+            }
             else if (wmId == ID_BTN_KEYS) {
                 showKeys(!keysOpen_);
             }
@@ -3132,6 +3169,17 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                     return 0;
                 }
                 showDatarunner(true);
+                return 0;
+            }
+            if (pluginNoteHit_.Width > 0 && pluginNoteHit_.Contains(px, py)) {
+                if (phoneTapping_) {
+                    phoneSay(PHONE_WORKS_ON_PC);
+                    return 0;
+                }
+                const std::string id = pluginNoteId_;
+                pluginNote_.clear();
+                openPlugin(id);
+                InvalidateRect(hwnd, nullptr, FALSE);
                 return 0;
             }
             if (updateHit_.Width > 0 && updateHit_.Contains(px, py)) {
@@ -13596,7 +13644,7 @@ void MinerGUI::showAbout(bool on) {
     // Same as the keys card: a card drawn by the parent cannot cover a child
     // window, so the buttons take turns with it.
     HWND buttons[] = {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_,
-                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_};
+                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_, btnPlugins_};
     for (HWND b : buttons) {
         if (b) ShowWindow(b, on ? SW_HIDE : SW_SHOW);
     }
@@ -13729,7 +13777,7 @@ void MinerGUI::showWhatsNew(bool on) {
     // Same trade as the ? card: a card drawn by the parent cannot cover a
     // child window, so the buttons take turns with it.
     HWND buttons[] = {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_,
-                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_};
+                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_, btnPlugins_};
     for (HWND b : buttons) {
         if (b) ShowWindow(b, on ? SW_HIDE : SW_SHOW);
     }
@@ -14454,7 +14502,7 @@ void MinerGUI::showBackup(bool on) {
     // by the parent cannot cover a child window, so the action row steps
     // aside while it is up.
     HWND buttons[] = {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_,
-                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_};
+                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_, btnPlugins_};
     for (HWND b : buttons) {
         if (b) ShowWindow(b, on ? SW_HIDE : SW_SHOW);
     }
@@ -14469,7 +14517,7 @@ void MinerGUI::showKeys(bool on) {
     // drawn by the parent cannot cover a child window, so the card and the
     // buttons take turns.
     HWND buttons[] = {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_,
-                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_};
+                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_, btnPlugins_};
     for (HWND b : buttons) {
         if (b) ShowWindow(b, on ? SW_HIDE : SW_SHOW);
     }
@@ -14504,6 +14552,7 @@ void MinerGUI::drawFooter(Gdiplus::Graphics& g, int cw, int ch) {
     std::wstring leftText = L"Backup / restore data";
     Gdiplus::SolidBrush* leftBrush = &dimBrush;
     bool leftClickable = true;
+    bool pluginNoteNow = false;
     const bool updateWaiting = updateWorthShowing();
     // ...after an update, the Datarunner's pictures waiting to be checked
     const int screenshots = updateWaiting ? 0 : datarunnerWaiting();
@@ -14538,6 +14587,10 @@ void MinerGUI::drawFooter(Gdiplus::Graphics& g, int cw, int ch) {
         // a terminal in use, being read without Print Screen
         leftText = L"Reading the terminal  \u00B7  Hold the list still for a moment";
         leftClickable = false;
+    } else if (pluginNoteShowing() && !backupOpen_) {
+        // a plugin's word, for a minute: a click opens the plugin
+        leftText = toW(pluginNote_);
+        pluginNoteNow = true;
     } else if (backupOpen_) {
         leftBrush = &textBrush;
     }
@@ -14584,6 +14637,7 @@ void MinerGUI::drawFooter(Gdiplus::Graphics& g, int cw, int ch) {
     backupHit_ = Gdiplus::RectF(0, 0, 0, 0);
     updateHit_ = Gdiplus::RectF(0, 0, 0, 0);
     datarunnerHit_ = Gdiplus::RectF(0, 0, 0, 0);
+    pluginNoteHit_ = Gdiplus::RectF(0, 0, 0, 0);
     {
         Gdiplus::RectF box(M, y - scaleF(3), leftW.Width + scaleF(18), scaleF(20));
         if (leftClickable) {
@@ -14592,10 +14646,13 @@ void MinerGUI::drawFooter(Gdiplus::Graphics& g, int cw, int ch) {
             // for the player; the backup is an ordinary one, and the chosen
             // kind while its card is up
             const ButtonKind kind = updateWaiting || screenshots > 0 ? ButtonKind::Primary
-                                    : backupOpen_                    ? ButtonKind::Selected
+                                    : backupOpen_ || pluginNoteNow   ? ButtonKind::Selected
                                                                      : ButtonKind::Secondary;
             drawButton(g, box, leftText.c_str(), strongFont, kind, isHot(hoverMain_, box), scaleF(R_CONTROL));
-            (screenshots > 0 ? datarunnerHit_ : updateWaiting ? updateHit_ : backupHit_) = box;
+            (screenshots > 0  ? datarunnerHit_
+             : updateWaiting  ? updateHit_
+             : pluginNoteNow  ? pluginNoteHit_
+                              : backupHit_) = box;
         } else {
             // Nothing to press: a line, not a button
             g.DrawString(leftText.c_str(), -1, &strongFont, Gdiplus::PointF(M, y), leftBrush);
@@ -15345,8 +15402,9 @@ void MinerGUI::paintOwnerButton(Gdiplus::Graphics& g, const DRAWITEMSTRUCT* dis,
     else GetWindowTextW(dis->hwndItem, label, 31);
     // the overlay's switch says the way it is, whatever its text was last set to
     if (id == ID_BTN_ORE_ROWS) wcscpy_s(label, overlayOreRows_ ? L"Rows" : L"Line");
-    // ...and the gear's name is for a screen reader: the gear says it here
-    if (id == ID_BTN_SETTINGS) label[0] = L'\0';
+    // ...and the gear's name is for a screen reader: the gear says it here,
+    // and the jigsaw piece the plugins'
+    if (id == ID_BTN_SETTINGS || id == ID_BTN_PLUGINS) label[0] = L'\0';
     Gdiplus::Font font(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     const Gdiplus::RectF face(0.5f, 0.5f, w - 1.0f, h - 1.0f);
     const float radius = scaleF(R_CONTROL);
@@ -15367,6 +15425,11 @@ void MinerGUI::paintOwnerButton(Gdiplus::Graphics& g, const DRAWITEMSTRUCT* dis,
     if (id == ID_BTN_SETTINGS) {
         const Gdiplus::Color ink = settingsVisible_ ? COL_ACCENT : (pressed ? COL_TEXT : tint(COL_TEXT, 215));
         drawGear(g, w / 2.0f, h / 2.0f, scaleF(7.0f), ink);
+        return;
+    }
+    if (id == ID_BTN_PLUGINS) {
+        const Gdiplus::Color ink = pluginsVisible_ ? COL_ACCENT : (pressed ? COL_TEXT : tint(COL_TEXT, 215));
+        drawPuzzle(g, w / 2.0f, h / 2.0f, scaleF(10.0f), ink);
         return;
     }
     // The work orders that are done, waiting at their refinery: a green
@@ -15775,7 +15838,7 @@ void MinerGUI::showUexWelcome(int step) {
     // a card drawn by the parent cannot cover a child window: the buttons
     // take turns with it, as with the other cards
     HWND buttons[] = {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_,
-                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_};
+                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_, btnPlugins_};
     for (HWND b : buttons) {
         if (b) ShowWindow(b, step ? SW_HIDE : SW_SHOW);
     }
@@ -16090,7 +16153,7 @@ void MinerGUI::showDatarunner(bool on) {
     // a card drawn by the parent cannot cover a child window: the buttons
     // take turns with it, as with the other cards
     HWND buttons[] = {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_,
-                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_};
+                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_, btnPlugins_};
     for (HWND b : buttons) {
         if (b) ShowWindow(b, on ? SW_HIDE : SW_SHOW);
     }
@@ -23565,6 +23628,950 @@ LRESULT MinerGUI::handleSettingsMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
             break;
         case WM_CLOSE:
             if (settingsVisible_) toggleSettings();
+            return 0;
+    }
+    return DefWindowProcW(hwnd, uMsg, wParam, lParam);
+}
+
+
+// ---------------------------------------------------------------------------
+// Plugins (PluginHost.h): a window of their own. With no plugin open it
+// lists them - those installed and those the server offers - and with one
+// open it is that plugin's: the pieces it draws (Plugins::UiItem), laid out
+// top to bottom in the app's own look. The list is made of the same pieces,
+// so one routine draws both.
+// ---------------------------------------------------------------------------
+
+LRESULT CALLBACK MinerGUI::PluginsProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    if (g_guiInstance) return g_guiInstance->handlePluginsMessage(hwnd, uMsg, wParam, lParam);
+    return DefWindowProcW(hwnd, uMsg, wParam, lParam);
+}
+
+bool MinerGUI::createPlugins() {
+    if (plugins_) return true;
+    RECT desired = {0, 0, scale(PLUGINS_WIDTH), scale(PLUGINS_HEIGHT)};
+    const DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN;
+    AdjustWindowRectExForDpi(&desired, style, FALSE, 0, dpi_);
+    plugins_ = CreateWindowExW(0, L"BedrockPlugins", L"Bedrock \u00B7 Plugins", style, CW_USEDEFAULT, CW_USEDEFAULT,
+                               desired.right - desired.left, desired.bottom - desired.top, hwnd_, nullptr, hInstance_,
+                               nullptr);
+    if (!plugins_) {
+        std::cerr << "[GUI] plugins window failed: " << GetLastError() << std::endl;
+        return false;
+    }
+    BOOL darkMode = TRUE;
+    DwmSetWindowAttribute(plugins_, 20 /*DWMWA_USE_IMMERSIVE_DARK_MODE*/, &darkMode, sizeof(darkMode));
+    placePlugins();
+    return true;
+}
+
+void MinerGUI::placePlugins() {
+    if (headless_) {
+        SetWindowPos(plugins_, HWND_BOTTOM, -32000, -29000, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+        return;
+    }
+    // To the right of the main window, like the Blueprints, or to its left
+    // where the screen ends
+    RECT main, mine;
+    GetWindowRect(hwnd_, &main);
+    GetWindowRect(plugins_, &mine);
+    const int w = mine.right - mine.left, h = mine.bottom - mine.top;
+    MONITORINFO mi = {};
+    mi.cbSize = sizeof(mi);
+    GetMonitorInfo(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST), &mi);
+    int x = main.right + scale(8);
+    if (x + w > mi.rcWork.right) x = (std::max)((int)mi.rcWork.left, (int)main.left - w - scale(8));
+    int y = main.top;
+    if (y + h > mi.rcWork.bottom) y = (std::max)((int)mi.rcWork.top, (int)mi.rcWork.bottom - h);
+    SetWindowPos(plugins_, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+void MinerGUI::togglePlugins() {
+    if (!plugins_ && !createPlugins()) return;
+    pluginsVisible_ = !pluginsVisible_;
+    if (pluginsVisible_) {
+        // the server's list, once per start: what it offers changes seldom
+        if (!pluginsAsked_ && pluginAction_) {
+            pluginsAsked_ = true;
+            pluginAction_("", "refresh");
+        }
+        refreshPluginView(false);
+        placePlugins();
+        ShowWindow(plugins_, headless_ ? SW_SHOWNOACTIVATE : SW_SHOW);
+        InvalidateRect(plugins_, nullptr, TRUE);
+    } else {
+        endPluginTyping(false);
+        ShowWindow(plugins_, SW_HIDE);
+    }
+    if (btnPlugins_) InvalidateRect(btnPlugins_, nullptr, FALSE);   // the piece, amber while it is open
+}
+
+void MinerGUI::openPlugin(const std::string& id) {
+    endPluginTyping(false);
+    pluginShown_ = id;
+    pluginScroll_ = 0;
+    if (!pluginsVisible_) {
+        togglePlugins();
+    } else {
+        refreshPluginView(false);
+        if (plugins_) {
+            if (!headless_) SetForegroundWindow(plugins_);
+            InvalidateRect(plugins_, nullptr, TRUE);
+        }
+    }
+}
+
+void MinerGUI::setPlugins(std::vector<PluginEntry> list, const std::string& serverNote) {
+    pluginList_ = std::move(list);
+    pluginServerNote_ = serverNote;
+    // a plugin open that is gone: back to the list
+    if (!pluginShown_.empty() &&
+        std::none_of(pluginList_.begin(), pluginList_.end(),
+                     [&](const PluginEntry& e) { return e.id == pluginShown_ && e.installed; })) {
+        pluginShown_.clear();
+        pluginScroll_ = 0;
+    }
+    if (pluginsVisible_) {
+        refreshPluginView(false);
+        if (plugins_) InvalidateRect(plugins_, nullptr, FALSE);
+    }
+}
+
+void MinerGUI::pluginChanged(const std::string& id) {
+    if (!pluginsVisible_ || id != pluginShown_) return;
+    refreshPluginView(false);
+    if (plugins_) InvalidateRect(plugins_, nullptr, FALSE);
+}
+
+void MinerGUI::setPluginNote(const std::string& id, const std::string& note) {
+    pluginNote_ = note;
+    pluginNoteId_ = id;
+    pluginNoteAt_ = std::chrono::steady_clock::now();
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+bool MinerGUI::pluginNoteShowing() const {
+    return !pluginNote_.empty() && std::chrono::steady_clock::now() - pluginNoteAt_ < std::chrono::seconds(60);
+}
+
+void MinerGUI::pluginStateForShot(const std::string& id, const std::vector<std::string>& open,
+                                  const std::map<std::string, int>& picks,
+                                  const std::map<std::string, std::string>& typed) {
+    Plugins::UiState& state = pluginUi_[id];
+    state.open = std::set<std::string>(open.begin(), open.end());
+    state.picks = picks;
+    state.typed = typed;
+    if (pluginShown_ == id) refreshPluginView(false);
+    if (plugins_) InvalidateRect(plugins_, nullptr, TRUE);
+}
+
+// What the window shows anew: the list, or the plugin's own draw. A click
+// is answered by the draw it happens in - the part of the window above the
+// button is drawn before the plugin hears of it - so after one, the plugin
+// draws a second time, and that is what shows.
+void MinerGUI::refreshPluginView(bool twice) {
+    if (pluginShown_.empty()) {
+        pluginCurrent_.title = "Plugins";
+        int installed = 0, offered = 0;
+        for (const auto& e : pluginList_) {
+            if (e.installed) installed++;
+            else if (!e.offered.empty()) offered++;
+        }
+        pluginCurrent_.subtitle = (installed ? std::to_string(installed) + " installed" : std::string("None installed")) +
+                                  "  \u00B7  " +
+                                  (offered ? std::to_string(offered) + " more available" : std::string("None more available"));
+        pluginCurrent_.items = pluginListPieces();
+        return;
+    }
+    if (!pluginView_) return;
+    Plugins::UiState& state = pluginUi_[pluginShown_];
+    pluginCurrent_ = pluginView_(pluginShown_, state);
+    if (twice) pluginCurrent_ = pluginView_(pluginShown_, state);
+}
+
+// The list, as pieces: a card for each plugin installed, then those the
+// server has that are not
+std::vector<Plugins::UiItem> MinerGUI::pluginListPieces() {
+    using Plugins::UiItem;
+    std::vector<UiItem> out;
+    auto text = [&](const std::string& t, UiItem::Tone tone = UiItem::Tone::Plain) {
+        UiItem i;
+        i.kind = UiItem::Kind::Text;
+        i.text = t;
+        i.tone = tone;
+        out.push_back(i);
+    };
+    auto heading = [&](const std::string& t) {
+        UiItem i;
+        i.kind = UiItem::Kind::Heading;
+        i.text = t;
+        out.push_back(i);
+    };
+    const bool armedFresh = std::chrono::steady_clock::now() - pluginRemoveAt_ < std::chrono::seconds(5);
+
+    heading("INSTALLED");
+    bool any = false;
+    for (const auto& e : pluginList_) {
+        if (!e.installed) continue;
+        any = true;
+        UiItem card;
+        card.kind = UiItem::Kind::Card;
+        card.id = "p:" + e.id;
+        card.text = e.name;
+        card.value = e.version + (e.description.empty() ? std::string() : "  \u00B7  " + e.description);
+        card.open = true;
+        const bool newer = !e.offered.empty() && Plugins::olderVersion(e.version, e.offered);
+        if (!e.problem.empty()) {
+            card.chip = e.problem.substr(0, e.problem.find(" - "));
+            card.tone = UiItem::Tone::Bad;
+        } else if (!e.error.empty()) {
+            card.chip = "STOPPED";
+            card.tone = UiItem::Tone::Bad;
+        } else if (e.historyAll > 0) {
+            card.chip = "READING LOGS";
+            card.tone = UiItem::Tone::Warn;
+        } else if (newer) {
+            card.chip = "UPDATE " + e.offered;
+            card.tone = UiItem::Tone::Warn;
+        } else {
+            card.chip = "RUNNING";
+            card.tone = UiItem::Tone::Good;
+        }
+        out.push_back(card);
+        if (!e.problem.empty()) {
+            const size_t dash = e.problem.find(" - ");
+            text(dash == std::string::npos ? e.problem : e.problem.substr(dash + 3), UiItem::Tone::Bad);
+        } else if (!e.error.empty()) {
+            text("Stopped by an error - " + e.error, UiItem::Tone::Bad);
+        } else if (e.historyAll > 0) {
+            UiItem bar;
+            bar.kind = UiItem::Kind::Progress;
+            bar.fraction = (double)e.historyDone / (double)e.historyAll;
+            bar.text = "Reading older game logs  \u00B7  " + std::to_string(e.historyDone) + " of " +
+                       std::to_string(e.historyAll);
+            out.push_back(bar);
+        }
+        UiItem buttons;
+        buttons.kind = UiItem::Kind::Buttons;
+        auto button = [&](const std::string& id, const std::string& label, const std::string& kind) {
+            buttons.optionIds.push_back(id);
+            buttons.options.push_back(label);
+            buttons.kinds.push_back(kind);
+        };
+        if (e.running) button("open:" + e.id, "Open", "primary");
+        if (e.busy) {
+            button("", "Installing...", "plain");
+        } else if (newer && (e.offeredNeeds.empty() || !Plugins::olderVersion(BEDROCK_VERSION, e.offeredNeeds))) {
+            button("install:" + e.id, "Update to " + e.offered, e.running ? "plain" : "primary");
+        }
+        if (!e.running && e.problem.empty()) button("restart:" + e.id, "Start again", "plain");
+        const bool armed = pluginRemoveArmed_ == e.id && armedFresh;
+        button("remove:" + e.id, armed ? "Click again to remove" : "Remove", "danger");
+        out.push_back(buttons);
+        UiItem end;
+        end.kind = UiItem::Kind::CardEnd;
+        out.push_back(end);
+    }
+    if (!any) text("No plugins installed yet - Install one below", UiItem::Tone::Dim);
+
+    heading("AVAILABLE");
+    bool offeredAny = false;
+    for (const auto& e : pluginList_) {
+        if (e.installed || e.offered.empty()) continue;
+        offeredAny = true;
+        UiItem card;
+        card.kind = UiItem::Kind::Card;
+        card.id = "o:" + e.id;
+        card.text = e.name;
+        card.value = e.offered + (e.offeredText.empty() ? std::string() : "  \u00B7  " + e.offeredText);
+        card.open = true;
+        const bool tooNew = !e.offeredNeeds.empty() && Plugins::olderVersion(BEDROCK_VERSION, e.offeredNeeds);
+        if (tooNew) {
+            card.chip = "NEEDS BEDROCK " + e.offeredNeeds;
+            card.tone = UiItem::Tone::Warn;
+        }
+        out.push_back(card);
+        UiItem buttons;
+        buttons.kind = UiItem::Kind::Buttons;
+        if (e.busy) {
+            buttons.optionIds.push_back("");
+            buttons.options.push_back("Installing...");
+            buttons.kinds.push_back("plain");
+        } else if (!tooNew) {
+            buttons.optionIds.push_back("install:" + e.id);
+            buttons.options.push_back("Install");
+            buttons.kinds.push_back("primary");
+        } else {
+            text("Update Bedrock to install it", UiItem::Tone::Dim);
+        }
+        if (!buttons.options.empty()) out.push_back(buttons);
+        UiItem end;
+        end.kind = UiItem::Kind::CardEnd;
+        out.push_back(end);
+    }
+    if (!pluginServerNote_.empty()) {
+        text(pluginServerNote_, UiItem::Tone::Dim);
+    } else if (!offeredAny) {
+        text("No other plugins available", UiItem::Tone::Dim);
+    }
+    UiItem again;
+    again.kind = UiItem::Kind::Buttons;
+    again.optionIds.push_back("refresh");
+    again.options.push_back("Check again");
+    again.kinds.push_back("plain");
+    out.push_back(again);
+    UiItem gap;
+    gap.kind = UiItem::Kind::Gap;
+    out.push_back(gap);
+    text("Plugins come from Ravaxx alone. Bedrock checks each one's signature before it runs it, and a plugin "
+         "reads nothing but the game's log and its own data.",
+         UiItem::Tone::Dim);
+    return out;
+}
+
+float MinerGUI::paintPluginPieces(Gdiplus::Graphics& g, const std::vector<Plugins::UiItem>& items, int cw, float top,
+                                  bool draw, std::vector<float>& cardEnds, float stopBelow) {
+    using Plugins::UiItem;
+    Gdiplus::Font nameFont(&markFamily(), scaleF(14), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font headFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font subFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font bodyFont(&textFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font chipFont(&markFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font buttonFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font numFont(&numeralFamily(), scaleF(13), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::SolidBrush textBrush(COL_TEXT), dimBrush(COL_TEXT_DIM), faintBrush(COL_TEXT_FAINT);
+    Gdiplus::StringFormat centre;
+    centre.SetAlignment(Gdiplus::StringAlignmentCenter);
+    centre.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    centre.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    Gdiplus::StringFormat oneLine;
+    oneLine.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+    Gdiplus::StringFormat rightLine;
+    rightLine.SetAlignment(Gdiplus::StringAlignmentFar);
+    rightLine.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    rightLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    rightLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+
+    const float M = (float)scale(MARGIN);
+    const float right = (float)cw - M;
+    const float padX = scaleF(14);
+    const float left = M + padX, edge = right - padX;
+    // a colour for a tone, `plain` where it has none
+    auto toneColour = [&](UiItem::Tone t, const Gdiplus::Color& plain) {
+        switch (t) {
+            case UiItem::Tone::Good: return COL_GREEN;
+            case UiItem::Tone::Warn: return COL_YELLOW;
+            case UiItem::Tone::Bad: return COL_RED;
+            case UiItem::Tone::Dim: return COL_TEXT_FAINT;
+            default: return plain;
+        }
+    };
+    auto width = [&](const std::wstring& t, const Gdiplus::Font& f) {
+        Gdiplus::RectF w;
+        g.MeasureString(t.c_str(), -1, &f, Gdiplus::PointF(0, 0), &w);
+        return w.Width;
+    };
+    auto hit = [&](const Gdiplus::RectF& r, int kind, const std::string& id, int value) {
+        if (draw) pluginHits_.push_back({r, kind, id, value});
+    };
+    float y = top;
+    size_t card = 0;          // the cards met so far
+    bool inOpen = false;      // inside an open card
+    auto closeCard = [&]() {
+        if (!inOpen) return;
+        y += scaleF(8);
+        if (!draw) {
+            if (cardEnds.size() < card) cardEnds.resize(card, y);
+            cardEnds[card - 1] = y;
+        }
+        y += scaleF(12);
+        inOpen = false;
+    };
+    for (size_t n = 0; n < items.size(); n++) {
+        const UiItem& it = items[n];
+        // what lies below the pane is not drawn: the measuring knows its height
+        if (draw && y > stopBelow) break;
+        switch (it.kind) {
+            case UiItem::Kind::Heading: {
+                closeCard();
+                if (y > top) y += scaleF(10);
+                if (draw) {
+                    const std::wstring t = toW(it.text);
+                    g.DrawString(t.c_str(), -1, &headFont, Gdiplus::PointF(left, y), &faintBrush);
+                    hairline(g, M, y + scaleF(17), right);
+                }
+                y += scaleF(28);
+                break;
+            }
+            case UiItem::Kind::Text: {
+                const std::wstring t = toW(it.text);
+                Gdiplus::RectF box(left, y, edge - left, scaleF(2000)), measured;
+                g.MeasureString(t.c_str(), -1, &bodyFont, box, nullptr, &measured);
+                if (draw) {
+                    Gdiplus::SolidBrush ink(toneColour(it.tone, COL_TEXT_DIM));
+                    g.DrawString(t.c_str(), -1, &bodyFont, box, nullptr, &ink);
+                }
+                y += measured.Height + scaleF(6);
+                break;
+            }
+            case UiItem::Kind::Tabs:
+            case UiItem::Kind::Chips: {
+                const bool tabs = it.kind == UiItem::Kind::Tabs;
+                const Gdiplus::Font& font = tabs ? buttonFont : chipFont;
+                const float h = scaleF(tabs ? 28 : 22);
+                float x = left;
+                for (size_t k = 0; k < it.options.size(); k++) {
+                    const std::wstring label = toW(it.options[k]);
+                    const float w = width(label, font) + scaleF(tabs ? 28 : 20);
+                    if (x > left && x + w > edge) {
+                        x = left;
+                        y += h + scaleF(6);
+                    }
+                    const Gdiplus::RectF box(x, y, w, h);
+                    if (draw) {
+                        const bool hot = isHot(hoverPlugins_, box);
+                        if ((int)k + 1 == it.picked) {
+                            drawButton(g, box, label.c_str(), font, ButtonKind::Selected, hot,
+                                       tabs ? scaleF(R_CONTROL) : h / 2.0f);
+                        } else {
+                            fillRoundRect(g, box, tabs ? scaleF(R_CONTROL) : h / 2.0f, hot ? COL_HOVER : COL_CARD_HI);
+                            g.DrawString(label.c_str(), -1, &font, box, &centre, hot ? &textBrush : &dimBrush);
+                        }
+                    }
+                    hit(box, 1, it.id, (int)k + 1);
+                    x += w + scaleF(6);
+                }
+                y += h + scaleF(tabs ? 14 : 10);
+                break;
+            }
+            case UiItem::Kind::Search: {
+                const float h = scaleF(26);
+                const Gdiplus::RectF box(left, y, (std::min)(scaleF(340), edge - left), h);
+                const bool typing = pluginTyping_ == it.id && !pluginTypingNumber_;
+                if (draw) {
+                    const float round = h / 2.0f;
+                    fillRoundRect(g, box, round, typing ? COL_CARD_HI : COL_CARD);
+                    if (typing) {
+                        const float ring = scaleF(2);
+                        strokeRoundRect(g, Gdiplus::RectF(box.X - ring, box.Y - ring, box.Width + 2 * ring, box.Height + 2 * ring),
+                                        round + ring, tint(COL_ACCENT, 46), ring);
+                        strokeRoundRect(g, box, round, tint(COL_ACCENT, 210));
+                    } else {
+                        strokeRoundRect(g, box, round, isHot(hoverPlugins_, box) ? tint(COL_TEXT, 40) : COL_BORDER);
+                    }
+                    {
+                        Gdiplus::Pen lens(typing ? COL_ACCENT : COL_TEXT_FAINT, scaleF(1.4f));
+                        lens.SetStartCap(Gdiplus::LineCapRound);
+                        lens.SetEndCap(Gdiplus::LineCapRound);
+                        const float r = scaleF(3.8f);
+                        const float lx = box.X + scaleF(14), ly = box.Y + h / 2.0f - scaleF(1);
+                        g.DrawEllipse(&lens, lx - r, ly - r, 2 * r, 2 * r);
+                        const float rim = r * 0.72f;
+                        g.DrawLine(&lens, lx + rim, ly + rim, lx + rim + scaleF(3), ly + rim + scaleF(3));
+                    }
+                    const Gdiplus::RectF typed(box.X + scaleF(24), box.Y, box.Width - scaleF(34), box.Height);
+                    const std::wstring words = toW(it.text);
+                    if (words.empty() && !typing) {
+                        g.DrawString(toW(it.value).c_str(), -1, &subFont, typed, &oneLine, &faintBrush);
+                    } else {
+                        g.DrawString(words.c_str(), -1, &subFont, typed, &oneLine, &textBrush);
+                    }
+                    if (typing) {
+                        float end = typed.X + scaleF(2);
+                        if (!words.empty()) {
+                            Gdiplus::StringFormat measure;
+                            measure.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap |
+                                                   Gdiplus::StringFormatFlagsMeasureTrailingSpaces);
+                            Gdiplus::RectF w;
+                            g.MeasureString(words.c_str(), -1, &subFont, Gdiplus::RectF(0, 0, 4000, h), &measure, &w);
+                            end = (std::min)(typed.X + w.Width, typed.GetRight());
+                        }
+                        Gdiplus::Pen caret(COL_ACCENT, scaleF(1.2f));
+                        g.DrawLine(&caret, end, box.Y + scaleF(5), end, box.GetBottom() - scaleF(5));
+                    }
+                }
+                hit(box, 6, it.id, 0);
+                y += h + scaleF(12);
+                break;
+            }
+            case UiItem::Kind::Card: {
+                closeCard();
+                card++;
+                const float headH = scaleF(46);
+                const bool open = it.open;
+                const Gdiplus::RectF head(M, y - scaleF(4), right - M, headH);
+                if (draw) {
+                    if (open) {
+                        const float bottom = card <= cardEnds.size() ? cardEnds[card - 1] : y + headH;
+                        const Gdiplus::RectF band(M, y - scaleF(4), right - M, bottom - (y - scaleF(4)));
+                        dropShadow(g, band, scaleF(R_CARD), scaleF(10));
+                        fillRoundRect(g, band, scaleF(R_CARD), COL_CARD);
+                        cardLight(g, band, scaleF(R_CARD), scaleF(44));
+                        strokeRoundRect(g, band, scaleF(R_CARD), pluginShown_.empty() ? COL_BORDER : tint(COL_ACCENT, 150));
+                    } else if (isHot(hoverPlugins_, head)) {
+                        fillRoundRect(g, head, scaleF(R_CONTROL), COL_CARD);
+                    }
+                    // the chip at the right, then the title and the line under
+                    // it in what is left
+                    float chipLeft = edge;
+                    if (!it.chip.empty()) {
+                        const std::wstring c = toW(it.chip);
+                        const float cw2 = width(c, chipFont) + scaleF(18);
+                        const Gdiplus::RectF pill(edge - cw2, y + scaleF(5), cw2, scaleF(20));
+                        const Gdiplus::Color colour = toneColour(it.tone, COL_ACCENT);
+                        fillRoundRect(g, pill, pill.Height / 2.0f, tint(colour, 36));
+                        Gdiplus::SolidBrush ink(colour);
+                        g.DrawString(c.c_str(), -1, &chipFont, pill, &centre, &ink);
+                        chipLeft = pill.X - scaleF(12);
+                    }
+                    const std::wstring title = toW(it.text), sub = toW(it.value);
+                    g.DrawString(title.c_str(), -1, &nameFont, Gdiplus::RectF(left, y, chipLeft - left, scaleF(22)),
+                                 &oneLine, open ? &textBrush : &textBrush);
+                    if (!sub.empty()) {
+                        g.DrawString(sub.c_str(), -1, &subFont, Gdiplus::RectF(left, y + scaleF(21), chipLeft - left, scaleF(16)),
+                                     &oneLine, &dimBrush);
+                    }
+                    // a fold mark at the left edge, where a plugin's card opens and shuts
+                    if (!pluginShown_.empty()) {
+                        Gdiplus::Pen mark(open ? COL_ACCENT : COL_TEXT_FAINT, scaleF(1.4f));
+                        mark.SetStartCap(Gdiplus::LineCapRound);
+                        mark.SetEndCap(Gdiplus::LineCapRound);
+                        const float cx = M + scaleF(6), cy = y + scaleF(11);
+                        if (open) {
+                            g.DrawLine(&mark, cx - scaleF(3), cy - scaleF(1.5f), cx, cy + scaleF(1.5f));
+                            g.DrawLine(&mark, cx, cy + scaleF(1.5f), cx + scaleF(3), cy - scaleF(1.5f));
+                        } else {
+                            g.DrawLine(&mark, cx - scaleF(1.5f), cy - scaleF(3), cx + scaleF(1.5f), cy);
+                            g.DrawLine(&mark, cx + scaleF(1.5f), cy, cx - scaleF(1.5f), cy + scaleF(3));
+                        }
+                    }
+                }
+                if (!pluginShown_.empty()) hit(head, 2, it.id, 0);
+                y += headH;
+                if (open) {
+                    inOpen = true;
+                } else {
+                    y += scaleF(4);
+                }
+                break;
+            }
+            case UiItem::Kind::CardEnd:
+                closeCard();
+                break;
+            case UiItem::Kind::Row: {
+                const float h = scaleF(20);
+                if (draw) {
+                    const std::wstring label = toW(it.text), value = toW(it.value);
+                    const float vw = (std::min)(width(value, bodyFont) + scaleF(4), (edge - left) * 0.6f);
+                    g.DrawString(label.c_str(), -1, &bodyFont, Gdiplus::RectF(left, y, edge - left - vw - scaleF(10), h),
+                                 &oneLine, &dimBrush);
+                    Gdiplus::SolidBrush ink(toneColour(it.tone, COL_TEXT));
+                    g.DrawString(value.c_str(), -1, &bodyFont, Gdiplus::RectF(edge - vw, y, vw, h), &rightLine, &ink);
+                }
+                y += h;
+                break;
+            }
+            case UiItem::Kind::Counter: {
+                const float h = scaleF(26);
+                const float bw = scaleF(26), vw = scaleF(64);
+                const Gdiplus::RectF plus(edge - bw, y, bw, h);
+                const Gdiplus::RectF value(plus.X - scaleF(4) - vw, y, vw, h);
+                const Gdiplus::RectF minus(value.X - scaleF(4) - bw, y, bw, h);
+                const bool typing = pluginTyping_ == it.id && pluginTypingNumber_;
+                if (draw) {
+                    Gdiplus::SolidBrush ink(toneColour(it.tone, COL_TEXT));
+                    g.DrawString(toW(it.text).c_str(), -1, &bodyFont,
+                                 Gdiplus::RectF(left, y, minus.X - left - scaleF(10), h), &oneLine,
+                                 it.tone == UiItem::Tone::Plain ? &textBrush : &ink);
+                    drawButton(g, minus, L"\u2212", buttonFont, ButtonKind::Secondary, isHot(hoverPlugins_, minus),
+                               scaleF(R_CONTROL));
+                    drawButton(g, plus, L"+", buttonFont, ButtonKind::Secondary, isHot(hoverPlugins_, plus),
+                               scaleF(R_CONTROL));
+                    fillRoundRect(g, value, scaleF(R_CONTROL), typing ? COL_CARD_HI : COL_BG);
+                    strokeRoundRect(g, value, scaleF(R_CONTROL),
+                                    typing ? tint(COL_ACCENT, 210)
+                                           : isHot(hoverPlugins_, value) ? tint(COL_TEXT, 40) : COL_BORDER);
+                    const std::wstring figure = typing ? pluginNumber_ : toW(it.value);
+                    Gdiplus::SolidBrush figureInk(typing ? COL_ACCENT : toneColour(it.tone, COL_TEXT));
+                    g.DrawString(figure.c_str(), -1, &numFont, value, &centre, &figureInk);
+                }
+                hit(minus, 4, it.id, -1);
+                hit(plus, 4, it.id, 1);
+                hit(value, 5, it.id, 0);
+                y += h + scaleF(4);
+                break;
+            }
+            case UiItem::Kind::Buttons: {
+                if (it.options.empty()) break;
+                const float h = scaleF(30);
+                y += scaleF(4);
+                float x = left;
+                for (size_t k = 0; k < it.options.size(); k++) {
+                    const std::wstring label = toW(it.options[k]);
+                    const float w = (std::max)(scaleF(96), width(label, buttonFont) + scaleF(32));
+                    if (x > left && x + w > edge) {
+                        x = left;
+                        y += h + scaleF(6);
+                    }
+                    const Gdiplus::RectF box(x, y, w, h);
+                    const std::string& kind = k < it.kinds.size() ? it.kinds[k] : std::string();
+                    const std::string& id = k < it.optionIds.size() ? it.optionIds[k] : std::string();
+                    const ButtonKind look = kind == "primary" ? ButtonKind::Primary
+                                            : kind == "danger" ? ButtonKind::Danger
+                                                               : ButtonKind::Secondary;
+                    if (draw) drawButton(g, box, label.c_str(), buttonFont, look, !id.empty() && isHot(hoverPlugins_, box),
+                                         scaleF(R_CONTROL));
+                    if (!id.empty()) hit(box, 3, id, 0);
+                    x += w + scaleF(8);
+                }
+                y += h + scaleF(8);
+                break;
+            }
+            case UiItem::Kind::Progress: {
+                if (draw) {
+                    if (!it.text.empty()) {
+                        g.DrawString(toW(it.text).c_str(), -1, &subFont, Gdiplus::RectF(left, y, edge - left, scaleF(16)),
+                                     &oneLine, &dimBrush);
+                    }
+                    const Gdiplus::RectF track(left, y + scaleF(19), edge - left, scaleF(6));
+                    fillRoundRect(g, track, track.Height / 2.0f, COL_CARD_HI);
+                    if (it.fraction > 0) {
+                        const Gdiplus::RectF done(track.X, track.Y, (std::max)(track.Height, (float)(track.Width * it.fraction)),
+                                                  track.Height);
+                        fillRoundRect(g, done, track.Height / 2.0f, toneColour(it.tone, COL_ACCENT));
+                    }
+                }
+                y += scaleF(32);
+                break;
+            }
+            case UiItem::Kind::Gap:
+                y += scaleF(10);
+                break;
+        }
+    }
+    closeCard();
+    return y - top;
+}
+
+bool MinerGUI::copyText(const std::string& text) {
+    // lines as Windows has them on the clipboard
+    std::wstring w;
+    for (wchar_t c : toW(text)) {
+        if (c == L'\n') w += L'\r';
+        if (c != L'\r') w += c;
+    }
+    return putOnClipboard(plugins_ ? plugins_ : hwnd_, w);
+}
+
+void MinerGUI::paintPluginsTo(HDC hdc) {
+    if (plugins_) paintPlugins(hdc);
+}
+
+void MinerGUI::paintPlugins(HDC hdc) {
+    RECT rc;
+    GetClientRect(plugins_, &rc);
+    const int cw = rc.right, ch = rc.bottom;
+    HDC memDC = CreateCompatibleDC(hdc);
+    HBITMAP memBitmap = CreateCompatibleBitmap(hdc, cw, ch);
+    HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, memBitmap);
+    {
+        Gdiplus::Graphics g(memDC);
+        prepareGraphics(g);
+        Gdiplus::SolidBrush bg(COL_BG);
+        g.FillRectangle(&bg, 0, 0, cw, ch);
+        pluginHits_.clear();
+
+        Gdiplus::Font markFont(&markFamily(), scaleF(21), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font subFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font footFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font buttonFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::SolidBrush textBrush(COL_TEXT), dimBrush(COL_TEXT_DIM), faintBrush(COL_TEXT_FAINT);
+        Gdiplus::SolidBrush accentBrush(COL_ACCENT);
+        Gdiplus::StringFormat oneLine;
+        oneLine.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+        oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+        oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+        const float M = (float)scale(MARGIN);
+        const float right = (float)cw - M;
+
+        // the title: the plugin's own, or the list's; a way back to the list
+        // at the right while a plugin is open
+        float titleRight = right;
+        if (!pluginShown_.empty()) {
+            const wchar_t* back = L"All plugins";
+            Gdiplus::RectF w;
+            g.MeasureString(back, -1, &buttonFont, Gdiplus::PointF(0, 0), &w);
+            const Gdiplus::RectF box(right - w.Width - scaleF(28), scaleF(14), w.Width + scaleF(28), scaleF(28));
+            drawButton(g, box, back, buttonFont, ButtonKind::Secondary, isHot(hoverPlugins_, box), scaleF(R_CONTROL));
+            pluginHits_.push_back({box, 7, "", 0});
+            titleRight = box.X - scaleF(12);
+        }
+        g.FillRectangle(&accentBrush, M, (float)scale(18), scaleF(8), scaleF(8));
+        g.DrawString(toW(pluginCurrent_.title).c_str(), -1, &markFont,
+                     Gdiplus::RectF(M + scaleF(14), (float)scale(6), titleRight - M - scaleF(14), scaleF(30)), &oneLine,
+                     &textBrush);
+        g.DrawString(toW(pluginCurrent_.subtitle).c_str(), -1, &subFont,
+                     Gdiplus::RectF(M + scaleF(15), (float)scale(36), titleRight - M - scaleF(15), scaleF(16)), &oneLine,
+                     &dimBrush);
+
+        // the pieces, in a pane that scrolls
+        const float top = scaleF(68);
+        const float footY = (float)ch - scaleF(38);
+        const float viewH = footY - scaleF(8) - top;
+        std::vector<float> cardEnds;
+        const float contentH = paintPluginPieces(g, pluginCurrent_.items, cw, 0.0f, false, cardEnds);
+        pluginScroll_ = std::clamp(pluginScroll_, 0.0f, (std::max)(0.0f, contentH - viewH));
+        for (float& e : cardEnds) e += top - pluginScroll_;
+        {
+            const Gdiplus::GraphicsState kept = g.Save();
+            g.SetClip(Gdiplus::RectF(0, top - scaleF(6), (float)cw, viewH + scaleF(10)));
+            paintPluginPieces(g, pluginCurrent_.items, cw, top - pluginScroll_, true, cardEnds, top + viewH + scaleF(10));
+            g.Restore(kept);
+        }
+        // what is under the pane's edges cannot be clicked
+        pluginHits_.erase(std::remove_if(pluginHits_.begin(), pluginHits_.end(),
+                                         [&](const PluginHit& h) {
+                                             return h.kind != 7 && (h.rect.GetBottom() < top || h.rect.Y > top + viewH);
+                                         }),
+                          pluginHits_.end());
+        // a bar at the right where there is more than the pane holds
+        if (contentH > viewH + 1.0f) {
+            const float trackH = viewH;
+            const float barH = (std::max)(scaleF(30), trackH * viewH / contentH);
+            const float barY = top + (trackH - barH) * (pluginScroll_ / (contentH - viewH));
+            fillRoundRect(g, Gdiplus::RectF(right + scaleF(5), barY, scaleF(4), barH), scaleF(2), tint(COL_TEXT, 50));
+        }
+
+        // the foot: what the plugin last said, or why it stopped, or how far
+        // its older logs are read
+        hairline(g, M, footY, right);
+        std::wstring foot;
+        Gdiplus::SolidBrush* footBrush = &faintBrush;
+        if (!pluginShown_.empty()) {
+            for (const auto& e : pluginList_) {
+                if (e.id != pluginShown_) continue;
+                if (!e.error.empty()) {
+                    foot = L"STOPPED - " + toW(e.error);
+                    footBrush = nullptr;
+                } else if (e.historyAll > 0) {
+                    foot = L"Reading older game logs  \u00B7  " + std::to_wstring(e.historyDone) + L" of " +
+                           std::to_wstring(e.historyAll);
+                    footBrush = &dimBrush;
+                } else if (pluginNoteShowing() && pluginNoteId_ == e.id) {
+                    foot = toW(pluginNote_);
+                    footBrush = &accentBrush;
+                } else {
+                    foot = toW(e.name + " " + e.version + "  \u00B7  Plugin by Ravaxx");
+                }
+            }
+        } else {
+            foot = L"Plugins run inside Bedrock and stop with it";
+        }
+        Gdiplus::SolidBrush redBrush(COL_RED);
+        g.DrawString(foot.c_str(), -1, &footFont, Gdiplus::RectF(M, footY + scaleF(8), right - M, scaleF(18)), &oneLine,
+                     footBrush ? footBrush : &redBrush);
+    }
+    BitBlt(hdc, 0, 0, cw, ch, memDC, 0, 0, SRCCOPY);
+    SelectObject(memDC, oldBitmap);
+    DeleteObject(memBitmap);
+    DeleteDC(memDC);
+}
+
+void MinerGUI::endPluginTyping(bool keep) {
+    if (pluginTyping_.empty()) return;
+    if (pluginTypingNumber_ && keep && !pluginShown_.empty()) {
+        // the figure typed goes to the plugin with its next draw
+        const std::string figures = fromW(pluginNumber_);
+        if (!figures.empty()) pluginUi_[pluginShown_].numbers[pluginTyping_] = std::atoi(figures.c_str());
+    }
+    const bool number = pluginTypingNumber_;
+    pluginTyping_.clear();
+    pluginTypingNumber_ = false;
+    pluginNumber_.clear();
+    if (number && keep) refreshPluginView(true);
+}
+
+void MinerGUI::pluginClicked(const PluginHit& hit) {
+    if (hit.kind == 7) {
+        openPlugin("");
+        return;
+    }
+    if (pluginShown_.empty()) {
+        // the list: Bedrock's own buttons
+        if (hit.kind != 3) return;
+        const size_t colon = hit.id.find(':');
+        const std::string action = hit.id.substr(0, colon);
+        const std::string id = colon == std::string::npos ? std::string() : hit.id.substr(colon + 1);
+        if (action == "open") {
+            openPlugin(id);
+            return;
+        }
+        if (action == "remove") {
+            const auto now = std::chrono::steady_clock::now();
+            if (pluginRemoveArmed_ != id || now - pluginRemoveAt_ > std::chrono::seconds(5)) {
+                pluginRemoveArmed_ = id;
+                pluginRemoveAt_ = now;
+                refreshPluginView(false);
+                return;
+            }
+            pluginRemoveArmed_.clear();
+        }
+        if (pluginAction_) pluginAction_(id, action);
+        refreshPluginView(false);
+        return;
+    }
+    Plugins::UiState& state = pluginUi_[pluginShown_];
+    switch (hit.kind) {
+        case 1:
+            state.picks[hit.id] = hit.value;
+            pluginScroll_ = 0;
+            break;
+        case 2:
+            if (!state.open.erase(hit.id)) state.open.insert(hit.id);
+            state.clicked = hit.id;
+            break;
+        case 3:
+            state.clicked = hit.id;
+            break;
+        case 4:
+            state.clicked = hit.id + (hit.value < 0 ? ":-" : ":+");
+            break;
+        case 5:
+            pluginTyping_ = hit.id;
+            pluginTypingNumber_ = true;
+            pluginNumber_.clear();
+            if (plugins_) SetFocus(plugins_);
+            return;
+        case 6:
+            pluginTyping_ = hit.id;
+            pluginTypingNumber_ = false;
+            if (plugins_) SetFocus(plugins_);
+            return;
+        default:
+            return;
+    }
+    refreshPluginView(true);
+}
+
+LRESULT MinerGUI::handlePluginsMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    switch (uMsg) {
+        case WM_PAINT: {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(hwnd, &ps);
+            paintPlugins(hdc);
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+        case WM_ERASEBKGND:
+            return 1;
+        case WM_MOUSEMOVE:
+            trackHover(hwnd, hoverPlugins_, lParam);
+            return 0;
+        case WM_MOUSELEAVE:
+            clearHover(hwnd, hoverPlugins_);
+            return 0;
+        case WM_MOUSEWHEEL: {
+            const int notches = GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
+            pluginScroll_ = (std::max)(0.0f, pluginScroll_ - (float)notches * scaleF(56));
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
+        }
+        case WM_LBUTTONDOWN: {
+            const float px = (float)(short)LOWORD(lParam);
+            const float py = (float)(short)HIWORD(lParam);
+            // a click anywhere takes the keys from the field that had them -
+            // a counter keeps the figure typed into it
+            const std::string typing = pluginTyping_;
+            for (const auto& h : pluginHits_) {
+                if (!h.rect.Contains(px, py)) continue;
+                if (!(h.id == typing && (h.kind == 5 || h.kind == 6))) endPluginTyping(true);
+                const PluginHit hit = h;   // the list is drawn anew under it
+                pluginClicked(hit);
+                InvalidateRect(hwnd, nullptr, FALSE);
+                return 0;
+            }
+            if (!typing.empty()) {
+                endPluginTyping(true);
+                InvalidateRect(hwnd, nullptr, FALSE);
+            }
+            return 0;
+        }
+        case WM_CHAR: {
+            if (pluginTyping_.empty() || pluginShown_.empty()) break;
+            const wchar_t c = (wchar_t)wParam;
+            if (pluginTypingNumber_) {
+                if (c == VK_BACK) {
+                    if (!pluginNumber_.empty()) pluginNumber_.pop_back();
+                } else if (c == VK_RETURN) {
+                    endPluginTyping(true);
+                } else if (c >= L'0' && c <= L'9' && pluginNumber_.size() < 6) {
+                    pluginNumber_ += c;
+                }
+                InvalidateRect(hwnd, nullptr, FALSE);
+                return 0;
+            }
+            std::string& typed = pluginUi_[pluginShown_].typed[pluginTyping_];
+            std::wstring words = toW(typed);
+            if (c == VK_BACK) {
+                if (!words.empty()) words.pop_back();
+            } else if (c == VK_RETURN) {
+                endPluginTyping(false);
+                InvalidateRect(hwnd, nullptr, FALSE);
+                return 0;
+            } else if (c >= L' ' && words.size() < 40) {
+                words += c;
+            } else {
+                return 0;
+            }
+            typed = fromW(words);
+            pluginScroll_ = 0;
+            refreshPluginView(false);
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
+        }
+        case WM_KEYDOWN:
+            if (wParam == VK_ESCAPE) {
+                // Esc lets go of the field first, then empties a search,
+                // then closes
+                if (!pluginTyping_.empty()) {
+                    const bool search = !pluginTypingNumber_;
+                    const std::string id = pluginTyping_;
+                    endPluginTyping(false);
+                    if (search && !pluginShown_.empty()) {
+                        pluginUi_[pluginShown_].typed[id].clear();
+                        refreshPluginView(false);
+                    }
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                    return 0;
+                }
+                togglePlugins();
+                return 0;
+            }
+            if (pluginTyping_.empty()) {
+                if (wParam == VK_DOWN || wParam == VK_UP) {
+                    pluginScroll_ = (std::max)(0.0f, pluginScroll_ + (wParam == VK_DOWN ? 1.0f : -1.0f) * scaleF(56));
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                    return 0;
+                }
+                if (wParam == VK_NEXT || wParam == VK_PRIOR) {
+                    RECT rc;
+                    GetClientRect(hwnd, &rc);
+                    const float page = (float)rc.bottom - scaleF(140);
+                    pluginScroll_ = (std::max)(0.0f, pluginScroll_ + (wParam == VK_NEXT ? page : -page));
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                    return 0;
+                }
+                if (wParam == VK_HOME) {
+                    pluginScroll_ = 0;
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                    return 0;
+                }
+            }
+            break;
+        case WM_CLOSE:
+            togglePlugins();
             return 0;
     }
     return DefWindowProcW(hwnd, uMsg, wParam, lParam);

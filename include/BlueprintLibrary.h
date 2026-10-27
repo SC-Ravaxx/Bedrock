@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
@@ -152,6 +153,9 @@ public:
     // One step of work: the next unread backup, or whatever Game.log has
     // grown by. True when the library changed.
     bool poll();
+    // Every line of the live log as it is read, the other channel's not -
+    // for the plugins (PluginHost.h)
+    void setLiveSink(std::function<void(std::string_view)> sink) { liveSink_ = std::move(sink); }
     bool historyPending() const { return !backlog_.empty(); }
     int historyRead() const { return historyRead_; }
 
@@ -265,6 +269,7 @@ private:
     void saveRankSettings();
     std::string channelFile(const char* base) const;   // "my_ranks.txt" -> "my_ranks_PTU.txt" on the PTU
     TradeBook trades_;
+    std::function<void(std::string_view)> liveSink_;
     // The game's old logs are read once more for them: a library saved by an
     // older version passed those lines by
     bool tradesRead_ = false;

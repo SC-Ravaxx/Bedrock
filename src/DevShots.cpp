@@ -19,6 +19,8 @@
 #include "UexMarket.h"
 #include "Datarunner.h"
 #include "TextLineReader.h"
+#include "PluginHost.h"
+#include "resource.h"
 #include <ctime>
 #include <memory>
 
@@ -399,6 +401,7 @@ int runScreenshots(const std::string& dir) {
         else if (direct && target == gui.shotHandle()) gui.paintShotTo(mem);
         else if (direct && target == gui.newsHandle()) gui.paintNewsTo(mem);
         else if (direct && target == gui.settingsHandle()) gui.paintSettingsTo(mem);
+        else if (direct && target == gui.pluginsWindow()) gui.paintPluginsTo(mem);
         else if (direct) gui.paintPlannerTo(mem);
         else {
 #ifdef _WIN32
@@ -479,6 +482,99 @@ int runScreenshots(const std::string& dir) {
                   << " ms" << std::endl;
     };
 
+
+    // The Plugins window, alone: BEDROCK_SHOT_PLUGINS names a folder of
+    // plugins (the plugins' own repository), copied into the run's data folder
+    // and run there with a state of the run's own - Wikelo with things in
+    // stock, a trade or two done, one accepted. Nothing else is shot.
+    if (const char* from = DEV_ENV("BEDROCK_SHOT_PLUGINS")) {
+        namespace P = SCMiner::Plugins;
+        std::filesystem::remove_all(data / "plugins", ec);
+        std::filesystem::create_directories(data / "plugins", ec);
+        for (const auto& entry : std::filesystem::directory_iterator(from, ec)) {
+            if (!std::filesystem::exists(entry.path() / "plugin.json")) continue;   // the repository's tools and all
+            std::filesystem::copy(entry.path(), data / "plugins" / entry.path().filename(),
+                                  std::filesystem::copy_options::recursive, ec);
+            if (ec) std::cout << "plugin not copied: " << ec.message() << std::endl;
+        }
+        std::filesystem::remove_all(data / "plugin_data", ec);
+        const long long now = (long long)std::time(nullptr) * 1000;
+        const long long hour = 3600LL * 1000, day = 24 * hour;
+        {
+            std::filesystem::create_directories(data / "plugin_data", ec);
+            std::ofstream out(data / "plugin_data" / "wikelo.json", std::ios::binary);
+            out << "{\"since\":" << now - 30 * day << ",\"session\":" << now - 2 * hour
+                << ",\"inv\":{\"Monolith Armor Legs\":1,\"Monolith Armor Arms\":1,\"Monolith Armor Core\":1,"
+                   "\"Monolith Helmet\":1,\"Vanduul Metal\":6,\"Saldynium (Ore)\":25,\"Carinite (Pure)\":2,"
+                   "\"Antium Core\":1,\"Antium Helmet\":1,\"Antium Legs\":1,\"Antium Arms\":1,\"Wikelo Favor\":3,"
+                   "\"Vendetta HMG\":1,\"ASD Secure Drive\":4,\"Zenith Laser Sniper Rifle\":1}"
+                << ",\"done\":{\"TheCollector_apar_hmg\":{\"n\":1,\"last\":" << now - 8 * day
+                << "},\"TheCollector_Favours_CouncilScrip\":{\"n\":3,\"last\":" << now - 8 * day
+                << "},\"TheCollector_Intro\":{\"n\":1,\"last\":" << now - 120 * day << "}}"
+                << ",\"missions\":{\"a3087271-8cb9-4af0-8519-d02f49806953\":{\"trade\":\"TheCollector_GreyHeavyCombatArmour\","
+                   "\"title\":\"Monolith Armor Very Smooth\",\"accepted\":" << now - 90 * 60 * 1000 << ",\"seen\":" << now - 2 * hour
+                << ",\"parts\":{\"dropoff_0\":{\"name\":\"Monolith Armor Legs\",\"need\":1,\"handed\":" << now - 40 * 60 * 1000
+                << "},\"dropoff_1\":{\"name\":\"Monolith Armor Arms\",\"need\":1,\"handed\":" << now - 40 * 60 * 1000
+                << "},\"dropoff_2\":{\"name\":\"Monolith Armor Core\",\"need\":1},\"dropoff_3\":{\"name\":\"Monolith Helmet\","
+                   "\"need\":1},\"dropoff_4\":{\"name\":\"Monolith Backpack\",\"need\":1},\"dropoff_5\":{\"name\":\"Vanduul Metal\","
+                   "\"need\":10},\"dropoff_6\":{\"name\":\"Saldynium (Ore)\",\"need\":25}}},"
+                   "\"4abc0769-bf25-4d0a-820b-148de0bb3f56\":{\"trade\":\"TheCollector_apar_hmg\",\"title\":\"Too Much Gun\","
+                   "\"accepted\":" << now - 8 * day - hour << ",\"ended\":\"complete\",\"endedAt\":" << now - 8 * day
+                << ",\"parts\":{}}}}";
+        }
+        P::Host host(data / "plugins", data / "plugin_data", BEDROCK_VERSION, P::trustedKeys(), true);
+        host.load();
+        gui.setPluginCallbacks(
+            [&](const std::string& id, P::UiState& state) {
+                SCMiner::MinerGUI::PluginView view;
+                P::Plugin* p = host.plugin(id);
+                if (!p) return view;
+                view.items = host.draw(id, state);
+                view.title = p->title();
+                view.subtitle = p->subtitle();
+                return view;
+            },
+            [](const std::string&, const std::string&) {});
+        std::vector<SCMiner::MinerGUI::PluginEntry> list;
+        for (const auto& info : host.found()) {
+            SCMiner::MinerGUI::PluginEntry e;
+            e.id = info.id;
+            e.name = info.name;
+            e.version = info.version;
+            e.description = info.description;
+            e.installed = true;
+            e.problem = info.problem;
+            const P::Plugin* p = host.plugin(info.id);
+            e.running = p && p->running();
+            if (p && !e.running && info.problem.empty()) e.error = p->error();
+            e.offered = info.version;
+            list.push_back(e);
+            std::cout << "plugin " << info.id << ": " << (e.running ? "running" : e.problem + e.error) << std::endl;
+        }
+        gui.setPlugins(list, "");
+        gui.openPlugin("");
+        pump();
+        if (gui.pluginsWindow()) shoot(gui.pluginsWindow(), "plugins_list.png", true);
+        gui.pluginStateForShot("wikelo", {"t:TheCollector_GreyHeavyCombatArmour"}, {}, {});
+        gui.openPlugin("wikelo");
+        pump();
+        if (gui.pluginsWindow()) shoot(gui.pluginsWindow(), "plugin_wikelo_trades.png", true);
+        gui.pluginStateForShot("wikelo", {}, {{"filter", 1}}, {{"find", "antium"}});
+        pump();
+        if (gui.pluginsWindow()) shoot(gui.pluginsWindow(), "plugin_wikelo_search.png", true);
+        gui.pluginStateForShot("wikelo", {}, {{"tab", 2}, {"items", 1}}, {});
+        pump();
+        if (gui.pluginsWindow()) shoot(gui.pluginsWindow(), "plugin_wikelo_inventory.png", true);
+        gui.pluginStateForShot("wikelo", {"m:" + std::to_string(now - 90 * 60 * 1000) + ":TheCollector_GreyHeavyCombatArmour"},
+                               {{"tab", 3}}, {});
+        pump();
+        if (gui.pluginsWindow()) shoot(gui.pluginsWindow(), "plugin_wikelo_log.png", true);
+        gui.togglePlugins();
+        pump();
+        // ...and the header, with the jigsaw piece beside the gear
+        shoot(gui.windowHandle(), "plugins_header.png");
+        return 0;
+    }
     pump();
     {
         wchar_t title[128] = {};

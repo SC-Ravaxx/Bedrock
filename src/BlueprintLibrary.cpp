@@ -767,7 +767,10 @@ int BlueprintLibrary::readFile(const std::filesystem::path& path, std::uintmax_t
         const std::string_view text(data.data() + pos, nl - pos);
         added += feedLine(text, scan);
         // (the log being written: where the player is, and what they trade there)
-        if (!whole && !foreign(scan)) trades_.live(text);
+        if (!whole && !foreign(scan)) {
+            trades_.live(text);
+            if (liveSink_) liveSink_(text);
+        }
         if (nl - pos > 21 && data[pos] == '<' && data[pos + 11] == 'T') stamped = pos;
         pos = nl + 1;
     }

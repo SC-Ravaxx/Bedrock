@@ -28,6 +28,7 @@
 #include "PanelShapes.h"
 #include "PhoneServer.h"
 #include "Plugins.h"
+#include "PluginHost.h"
 #include "RefineryData.h"
 #include "RefiningData.h"
 #include "ScanPanel.h"
@@ -6097,6 +6098,123 @@ end
         allPassed &= check(reloaded && looped && hogged && failed && refused,
                            "a plugin stops alone: after " + std::to_string(static_cast<int>(loopMs)) +
                                " ms of a loop, past 64 MB, at an error - and one not signed does not start");
+        std::filesystem::remove_all(root, ec);
+
+        // ---- what the server offers, and packages ----
+        {
+            std::vector<P::Offer> offers;
+            std::string why;
+            const bool read = P::readIndex(
+                R"({"plugins":[{"id":"wikelo","name":"Wikelo","version":"1.0.0","bedrock":"2.8.0","description":"d",)"
+                R"("url":"wikelo-1.0.0.bplugin"},{"id":"Bad Id","version":"1","url":"x"},{"id":"nourl","version":"1"}]})",
+                offers, why);
+            const std::string index = "https://the-forsaken.org/bedrock/plugins/index.json";
+            allPassed &= check(read && offers.size() == 1 && offers[0].id == "wikelo" && offers[0].needs == "2.8.0" &&
+                                   P::packageUrl(index, offers[0].url) ==
+                                       "https://the-forsaken.org/bedrock/plugins/wikelo-1.0.0.bplugin" &&
+                                   P::packageUrl(index, "https://example.org/p.bplugin") == "https://example.org/p.bplugin" &&
+                                   P::packageUrl(index, "http://example.org/p.bplugin").empty() &&
+                                   P::packageUrl(index, "/p.bplugin").empty() &&
+                                   P::indexUrlBeside("https://the-forsaken.org/bedrock/bedrock-latest.txt") == index &&
+                                   P::indexUrlBeside("").empty() && !P::readIndex("{\"plugins\": 5}", offers, why),
+                               "the server's list of plugins: plain ids with a version and a package, the package "
+                               "beside the list or at an https address of its own");
+        }
+        {
+            const std::filesystem::path src = root / "src" / "probe2";
+            write(src / "plugin.json", "{\"id\":\"probe2\",\"name\":\"Probe two\",\"version\":\"1.0\"}");
+            write(src / "main.lua", "title = \"PROBE\\226\\128\\148TWO\"\nfunction draw(ui) ui.text(\"x\\ty\\r\\n\") end\n");
+            write(src / "data" / "things.json", "{\"a\": \"\\u00e9\\u00df\"}\r\n");
+            std::string why;
+            const std::string package = P::pack(src, seed, why);
+            const std::filesystem::path installed = root / "installed";
+            std::string id;
+            const bool in = !package.empty() && P::unpack(package, installed, keys, false, id, why);
+            std::ifstream original(src / "main.lua", std::ios::binary), copied(installed / "probe2" / "main.lua", std::ios::binary);
+            const std::string a((std::istreambuf_iterator<char>(original)), std::istreambuf_iterator<char>());
+            const std::string b((std::istreambuf_iterator<char>(copied)), std::istreambuf_iterator<char>());
+            original.close();
+            copied.close();
+            const std::vector<P::Info> there = P::discover(installed, keys, false, "2.7.0");
+            // ...a second time, a new version over the old one
+            write(src / "plugin.json", "{\"id\":\"probe2\",\"name\":\"Probe two\",\"version\":\"1.1\"}");
+            const std::string newer = P::pack(src, seed, why);
+            const bool over = P::unpack(newer, installed, keys, false, id, why);
+            const std::vector<P::Info> after = P::discover(installed, keys, false, "2.7.0");
+            int leftOver = 0;
+            for (const auto& e : std::filesystem::directory_iterator(installed, ec)) leftOver += e.path().filename().string()[0] == '.';
+            // ...and what does not go in
+            std::string tampered = newer;
+            const size_t at = tampered.find("PROBE");
+            if (at != std::string::npos) tampered[at] = 'Q';
+            std::string bad1, bad2, bad3, bad4;
+            const bool notTampered = !P::unpack(tampered, root / "t1", keys, false, id, bad1);
+            const bool notOther = !P::unpack(newer, root / "t2", {P::publicKeyOf(otherSeed)}, false, id, bad2);
+            std::string sneaky = newer;
+            const size_t name = sneaky.find("\"data/things.json\"");
+            if (name != std::string::npos) sneaky.replace(name, 18, "\"../evil.json\"");
+            const bool notOutside = !P::unpack(sneaky, root / "t3", keys, true, id, bad3) &&
+                                    !std::filesystem::exists(root / "evil.json");
+            write(src / "tool.exe", "MZ");
+            const bool notPacked = P::pack(src, seed, bad4).empty();
+            allPassed &= check(in && id == "probe2" && a == b && there.size() == 1 && there[0].trusted &&
+                                   there[0].problem.empty() && over && after.size() == 1 && after[0].version == "1.1" &&
+                                   after[0].trusted && leftOver == 0 && notTampered && notOther && notOutside && notPacked,
+                               "a package: packed and signed, unpacked byte for byte and replacing the version before; "
+                               "one changed, signed by another key, reaching out of its folder or holding a program "
+                               "does not go in (" + bad1 + "; " + bad2 + "; " + bad3 + "; " + bad4 + ")");
+        }
+        {
+            // the older logs once, oldest first, and the live log's lines
+            // held back until they are read
+            const std::filesystem::path game = root / "game", plugins = root / "hosted", state = root / "hoststate";
+            write(game / "logbackups" / "a.log", "<2026-10-01T10:00:00.000Z> MARK A1\n<2026-10-01T10:00:01.000Z> other\n"
+                                                 "<2026-10-01T10:00:02.000Z> MARK A2\r\n");
+            write(game / "logbackups" / "b.log", "<2026-10-02T10:00:00.000Z> MARK B1\n  MARK notaline\n");
+            const auto now = std::filesystem::file_time_type::clock::now();
+            std::filesystem::last_write_time(game / "logbackups" / "a.log", now - std::chrono::hours(48), ec);
+            std::filesystem::last_write_time(game / "logbackups" / "b.log", now - std::chrono::hours(24), ec);
+            write(plugins / "rec" / "plugin.json", "{\"id\":\"rec\",\"name\":\"Rec\",\"version\":\"1\"}");
+            write(plugins / "rec" / "main.lua",
+                  "local got = {}\n"
+                  "bedrock.watch('MARK', function(line, old) got[#got + 1] = (old and 'o:' or 'l:') .. line:match('MARK (%w+)') ..\n"
+                  "  ':' .. tostring(bedrock.time(line) % 60000) end, true)\n"
+                  "function draw(ui) ui.text(table.concat(got, ',')) end\n");
+            auto seen = [&](P::Host& host) {
+                P::UiState st;
+                const auto items = host.draw("rec", st);
+                return items.empty() ? std::string("?") : items[0].text;
+            };
+            std::string first, second, third;
+            int all = 0;
+            {
+                P::Host host(plugins, state, "2.7.0", keys, true);
+                host.setGameFolder(game);
+                host.load();
+                host.liveLine("<2026-10-03T10:00:00.000Z> MARK L1");
+                host.readingHistory("rec", nullptr, &all);
+                for (int i = 0; i < 10 && host.readingHistory("rec"); i++) host.tick(50);
+                first = seen(host);
+            }
+            {
+                // started again: what was read stays read; a new backup is read
+                write(game / "logbackups" / "c.log", "<2026-10-04T10:00:00.000Z> MARK C1\n");
+                P::Host host(plugins, state, "2.7.0", keys, true);
+                host.setGameFolder(game);
+                host.load();
+                for (int i = 0; i < 10 && host.readingHistory("rec"); i++) host.tick(50);
+                host.liveLine("<2026-10-04T11:00:00.000Z> MARK L2");
+                second = seen(host);
+                std::string why;
+                const bool gone = host.remove("rec", why) && host.found().empty() && !std::filesystem::exists(plugins / "rec");
+                third = gone ? "gone" : why;
+            }
+            allPassed &= check(all == 2 && first == "o:A1:0,o:A2:2000,o:B1:0,l:L1:0" && second == "o:C1:0,l:L2:0" &&
+                                   third == "gone",
+                               "the older logs are read once, oldest first and before the live log's lines; a plugin "
+                               "started again reads the backups new since; a plugin removed is gone (" + first + " / " +
+                                   second + ")");
+        }
         std::filesystem::remove_all(root, ec);
     }
 

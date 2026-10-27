@@ -2,6 +2,7 @@
 
 #include "MiniJson.h"
 #include "PluginKeys.h"
+#include "Reputation.h"
 
 // Lua is compiled as C++ here (third_party/lua/LICENSE.txt): no extern "C"
 #include "../third_party/lua/lauxlib.h"
@@ -15,6 +16,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -90,8 +92,10 @@ std::string pathText(const std::filesystem::path& p) {
     return std::string(u.begin(), u.end());
 }
 
+}  // namespace
+
 // "2.10.1" against "2.9.0": the parts as numbers, from the left
-bool versionBelow(const std::string& version, const std::string& needed) {
+bool olderVersion(const std::string& version, const std::string& needed) {
     auto parts = [](const std::string& v) {
         std::vector<int> out;
         int n = 0;
@@ -124,6 +128,8 @@ bool plainName(const std::string& name, size_t longest) {
     return std::all_of(name.begin(), name.end(),
                        [](char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-'; });
 }
+
+namespace {
 
 // ---- JSON and Lua, both ways -----------------------------------------------
 
@@ -277,6 +283,13 @@ bool toJson(lua_State* L, int index, std::string& out, int depth, std::string& w
 
 }  // namespace
 
+std::string jsonText(std::string_view text) {
+    std::string out;
+    out.reserve(text.size() + 2);
+    quoted(out, text.data(), text.size());
+    return out;
+}
+
 // ---- keys and signatures -----------------------------------------------------
 
 Key testSeed() {
@@ -355,6 +368,7 @@ std::vector<Info> discover(const std::filesystem::path& root, const std::vector<
     std::error_code ec;
     for (const auto& entry : std::filesystem::directory_iterator(root, ec)) {
         if (!entry.is_directory(ec)) continue;
+        if (pathText(entry.path().filename()).rfind('.', 0) == 0) continue;
         Info info;
         info.folder = entry.path();
         info.id = pathText(entry.path().filename());
@@ -379,7 +393,7 @@ std::vector<Info> discover(const std::filesystem::path& root, const std::vector<
         if (!info.trusted && !acceptUnsigned) {
             info.problem = signature.empty() ? "NOT SIGNED - Bedrock runs plugins by Ravaxx only"
                                              : "FILES CHANGED - It is not as signed. Install it again";
-        } else if (!info.needs.empty() && versionBelow(bedrockVersion, info.needs)) {
+        } else if (!info.needs.empty() && olderVersion(bedrockVersion, info.needs)) {
             info.problem = "NEEDS BEDROCK " + info.needs + " - Update Bedrock to run it";
         }
         found.push_back(info);
@@ -485,13 +499,61 @@ struct Api {
         return 1;
     }
 
+    // "<2026-10-19T15:42:02.986Z> ..." - the stamp a log line starts with,
+    // as Unix milliseconds
+    static int time(lua_State* L) {
+        size_t n = 0;
+        const char* s = luaL_checklstring(L, 1, &n);
+        std::string text(s, (std::min)(n, size_t(40)));
+        if (!text.empty() && text[0] == '<') text.erase(0, 1);
+        const long long seconds = Reputation::epochOf(text);
+        if (seconds < 0) {
+            lua_pushnil(L);
+            return 1;
+        }
+        long long ms = 0;
+        if (text.size() >= 23 && text[19] == '.' && std::isdigit((unsigned char)text[20]) &&
+            std::isdigit((unsigned char)text[21]) && std::isdigit((unsigned char)text[22])) {
+            ms = (text[20] - '0') * 100 + (text[21] - '0') * 10 + (text[22] - '0');
+        }
+        lua_pushinteger(L, static_cast<lua_Integer>(seconds * 1000 + ms));
+        return 1;
+    }
+
+    // Unix milliseconds in the player's own time, the way Bedrock writes a day
+    static int date(lua_State* L) {
+        const std::time_t t = static_cast<std::time_t>(luaL_checkinteger(L, 1) / 1000);
+        std::tm local{};
+#ifdef _WIN32
+        if (localtime_s(&local, &t) != 0) return luaL_error(L, "bedrock.date: no such time");
+#else
+        if (!localtime_r(&t, &local)) return luaL_error(L, "bedrock.date: no such time");
+#endif
+        static const char* const MONTHS[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+        char text[32];
+        std::snprintf(text, sizeof text, "%d %s %02d:%02d", local.tm_mday, MONTHS[local.tm_mon % 12], local.tm_hour,
+                      local.tm_min);
+        lua_pushstring(L, text);
+        return 1;
+    }
+
     static int note(lua_State* L) {
         of(L)->note_ = luaL_checkstring(L, 1);
         return 0;
     }
 
+    static int copy(lua_State* L) {
+        Plugin* p = of(L);
+        if (!p->drawing_) return luaL_error(L, "bedrock.copy: from a click in the window only");
+        size_t n = 0;
+        const char* s = luaL_checklstring(L, 1, &n);
+        p->copy_.assign(s, (std::min)(n, size_t(64) << 10));
+        return 0;
+    }
+
     static int redraw(lua_State* L) {
-        of(L)->redraw_ = true;
+        of(L)->changed_ = true;
         return 0;
     }
 
@@ -784,9 +846,10 @@ bool Plugin::start() {
 
     lua_newtable(lua_);
     lua_setfield(lua_, LUA_REGISTRYINDEX, "bedrock.modules");
-    const luaL_Reg bedrock[] = {{"data", &Api::data},   {"load", &Api::load},   {"save", &Api::save},
-                                {"watch", &Api::watch}, {"now", &Api::now},     {"note", &Api::note},
-                                {"redraw", &Api::redraw}, {"require", &Api::require}, {nullptr, nullptr}};
+    const luaL_Reg bedrock[] = {{"data", &Api::data},     {"load", &Api::load},       {"save", &Api::save},
+                                {"watch", &Api::watch},   {"now", &Api::now},         {"time", &Api::time},
+                                {"note", &Api::note},     {"redraw", &Api::redraw},   {"require", &Api::require},
+                                {"copy", &Api::copy},     {"date", &Api::date},       {nullptr, nullptr}};
     luaL_newlib(lua_, bedrock);
     lua_pushstring(lua_, info_.id.c_str());
     lua_setfield(lua_, -2, "id");
@@ -820,6 +883,14 @@ std::string Plugin::title() const {
     return t;
 }
 
+std::string Plugin::subtitle() const {
+    if (!lua_) return {};
+    lua_getglobal(lua_, "subtitle");
+    std::string t = lua_isstring(lua_, -1) ? lua_tostring(lua_, -1) : std::string();
+    lua_pop(lua_, 1);
+    return t;
+}
+
 bool Plugin::wants(std::string_view line, bool old) const {
     for (const Watch& w : watches_) {
         if ((!old || w.old) && line.find(w.text) != std::string_view::npos) return true;
@@ -827,14 +898,28 @@ bool Plugin::wants(std::string_view line, bool old) const {
     return false;
 }
 
+std::vector<std::string> Plugin::oldWatches() const {
+    std::vector<std::string> texts;
+    for (const Watch& w : watches_) {
+        if (w.old && std::find(texts.begin(), texts.end(), w.text) == texts.end()) texts.push_back(w.text);
+    }
+    return texts;
+}
+
 void Plugin::logLine(std::string_view line, bool old) {
+    // (the line without the carriage return a log written on Windows ends in)
+    while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.remove_suffix(1);
     for (size_t i = 0; lua_ && i < watches_.size(); i++) {
         const Watch& w = watches_[i];
         if ((old && !w.old) || line.find(w.text) == std::string_view::npos) continue;
         lua_rawgeti(lua_, LUA_REGISTRYINDEX, w.function);
         lua_pushlstring(lua_, line.data(), line.size());
         lua_pushboolean(lua_, old);
-        if (!call(2, 0, CALL_MS)) return;
+        if (!call(2, 0, CALL_MS)) {
+            changed_ = true;   // stopped: its window says so
+            return;
+        }
+        changed_ = true;
     }
 }
 
@@ -865,10 +950,16 @@ std::string Plugin::takeNote() {
     return n;
 }
 
-bool Plugin::takeRedraw() {
-    const bool r = redraw_;
-    redraw_ = false;
-    return r;
+std::string Plugin::takeCopy() {
+    std::string c;
+    c.swap(copy_);
+    return c;
+}
+
+bool Plugin::takeChanged() {
+    const bool c = changed_;
+    changed_ = false;
+    return c;
 }
 
 }  // namespace Plugins

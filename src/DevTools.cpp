@@ -17,6 +17,7 @@
 #include "RefineryData.h"
 #include "RefiningData.h"
 #include "Updater.h"
+#include "PluginHost.h"
 #include "resource.h"
 
 #include <opencv2/opencv.hpp>
@@ -843,4 +844,175 @@ int runDatarunner(const std::vector<std::string>& files) {
               << " read whole, " << sure << " with level, stock and price sure; "
               << (pictures ? (int)std::lround(ms / pictures) : 0) << " ms a picture" << std::endl;
     return 0;
+}
+
+
+// ---- plugins ----------------------------------------------------------------
+
+namespace {
+
+void printPieces(const std::vector<SCMiner::Plugins::UiItem>& items) {
+    using SCMiner::Plugins::UiItem;
+    static const char* const TONES[] = {"", " (good)", " (warn)", " (bad)", " (dim)"};
+    int depth = 0;
+    for (const UiItem& it : items) {
+        const std::string pad(depth * 4, ' ');
+        const char* tone = TONES[static_cast<int>(it.tone)];
+        switch (it.kind) {
+            case UiItem::Kind::Heading: std::cout << pad << "== " << it.text << "\n"; break;
+            case UiItem::Kind::Text: std::cout << pad << it.text << tone << "\n"; break;
+            case UiItem::Kind::Tabs:
+            case UiItem::Kind::Chips: {
+                std::cout << pad << (it.kind == UiItem::Kind::Tabs ? "TABS" : "CHIPS") << " " << it.id << ":";
+                for (size_t k = 0; k < it.options.size(); k++) {
+                    std::cout << ((int)k + 1 == it.picked ? " [" : " ") << it.options[k]
+                              << ((int)k + 1 == it.picked ? "]" : "");
+                }
+                std::cout << "\n";
+                break;
+            }
+            case UiItem::Kind::Search: std::cout << pad << "SEARCH " << it.id << ": '" << it.text << "' (" << it.value << ")\n"; break;
+            case UiItem::Kind::Card:
+                std::cout << pad << (it.open ? "v " : "> ") << it.text << "  |  " << it.value
+                          << (it.chip.empty() ? "" : "  |  " + it.chip) << tone << "\n";
+                break;
+            case UiItem::Kind::CardEnd: break;
+            case UiItem::Kind::Row: std::cout << pad << "  " << it.text << " .... " << it.value << tone << "\n"; break;
+            case UiItem::Kind::Counter: std::cout << pad << "  " << it.text << "  [- " << it.value << " +]" << tone << "\n"; break;
+            case UiItem::Kind::Buttons:
+                std::cout << pad << "  ";
+                for (size_t k = 0; k < it.options.size(); k++) std::cout << "<" << it.options[k] << "> ";
+                std::cout << "\n";
+                break;
+            case UiItem::Kind::Progress: std::cout << pad << "  [" << (int)(it.fraction * 100) << " %] " << it.text << "\n"; break;
+            case UiItem::Kind::Gap: break;
+        }
+        if (it.kind == UiItem::Kind::Card && it.open) depth = 1;
+        if (it.kind == UiItem::Kind::CardEnd) depth = 0;
+    }
+}
+
+}  // namespace
+
+int runPluginCheck(const std::string& folder, const std::string& gameFolder, const std::string& stateFolder) {
+    namespace P = SCMiner::Plugins;
+    std::error_code ec;
+    const std::filesystem::path root = std::filesystem::path(folder).parent_path();
+    std::filesystem::path state = stateFolder.empty() ? std::filesystem::temp_directory_path() / "bedrock_plugin_check"
+                                                      : std::filesystem::path(stateFolder);
+    if (stateFolder.empty()) std::filesystem::remove_all(state, ec);
+    P::Host host(root.empty() ? std::filesystem::path(".") : root, state, BEDROCK_VERSION, P::trustedKeys(), true);
+    host.load();
+    const std::string id = std::filesystem::path(folder).filename().string();
+    P::Plugin* plugin = host.plugin(id);
+    if (!plugin) {
+        std::cout << "No plugin in " << folder << std::endl;
+        return 1;
+    }
+    std::cout << id << " " << plugin->info().version << (plugin->info().trusted ? ", signed" : ", not signed")
+              << (plugin->running() ? ", running" : ", stopped: " + plugin->error()) << std::endl;
+    if (!plugin->running()) return 1;
+    // the older logs, all of them, then the live one
+    const auto t0 = std::chrono::steady_clock::now();
+    host.setGameFolder(gameFolder);
+    int done = 0, all = 0;
+    host.readingHistory(id, &done, &all);
+    const int logs = all;
+    while (host.readingHistory(id, &done, &all)) host.tick(1000);
+    const double historyMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    {
+        std::ifstream in(std::filesystem::path(gameFolder) / "Game.log", std::ios::binary);
+        std::string line;
+        int lines = 0;
+        while (std::getline(in, line)) {
+            host.liveLine(line);
+            lines++;
+        }
+        std::cout << logs << " older logs read in " << (int)historyMs << " ms, " << lines << " lines of Game.log"
+                  << std::endl;
+    }
+    if (!plugin->running()) {
+        std::cout << "Stopped: " << plugin->error() << std::endl;
+        return 1;
+    }
+    std::string noteId, note;
+    while (host.takeNote(noteId, note)) std::cout << "NOTE " << note << std::endl;
+    // every tab, every card open: the cards a draw shows are opened and it
+    // draws again, until nothing new opens
+    P::UiState ui;
+    std::vector<P::UiItem> first = host.draw(id, ui);
+    std::vector<std::string> tabs;
+    for (const auto& it : first) {
+        if (it.kind == P::UiItem::Kind::Tabs) {
+            for (size_t k = 0; k < it.options.size(); k++) tabs.push_back(it.id + "\t" + std::to_string(k + 1));
+        }
+    }
+    if (tabs.empty()) tabs.push_back("");
+    for (const std::string& tab : tabs) {
+        P::UiState view;
+        if (!tab.empty()) view.picks[tab.substr(0, tab.find('\t'))] = std::atoi(tab.substr(tab.find('\t') + 1).c_str());
+        std::vector<P::UiItem> items;
+        for (int round = 0; round < 3; round++) {
+            items = host.draw(id, view);
+            size_t before = view.open.size();
+            for (const auto& it : items) {
+                if (it.kind == P::UiItem::Kind::Card) view.open.insert(it.id);
+            }
+            if (view.open.size() == before) break;
+        }
+        const auto t1 = std::chrono::steady_clock::now();
+        items = host.draw(id, view);
+        const double drawMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t1).count();
+        std::cout << "\n---- " << (tab.empty() ? std::string("the window") : "tab " + tab.substr(tab.find('\t') + 1))
+                  << ", " << items.size() << " pieces, drawn in " << (int)(drawMs * 1000) / 1000.0 << " ms ----\n";
+        std::cout << "TITLE " << plugin->title() << "  |  " << plugin->subtitle() << "\n";
+        printPieces(items);
+    }
+    std::cout << "\nState kept in " << state.string() << std::endl;
+    return plugin->running() ? 0 : 1;
+}
+
+int runPackPlugin(const std::string& folder, const std::string& out) {
+    namespace P = SCMiner::Plugins;
+    P::Key seed = P::testSeed();
+    bool own = false;
+    if (const char* hex = std::getenv("BEDROCK_PLUGIN_SEED")) {
+        const std::string text(hex);
+        if (text.size() != 64) {
+            std::cout << "BEDROCK_PLUGIN_SEED is no key - 64 hex figures" << std::endl;
+            return 1;
+        }
+        for (size_t i = 0; i < 32; i++) seed[i] = (unsigned char)std::strtoul(text.substr(2 * i, 2).c_str(), nullptr, 16);
+        own = true;
+    }
+    std::string why;
+    const std::string package = P::pack(folder, seed, why);
+    if (package.empty()) {
+        std::cout << "Not packed: " << why << std::endl;
+        return 1;
+    }
+    std::ofstream file(out, std::ios::binary | std::ios::trunc);
+    file.write(package.data(), (std::streamsize)package.size());
+    if (!file.good()) {
+        std::cout << "Could not write " << out << std::endl;
+        return 1;
+    }
+    const P::Key pub = P::publicKeyOf(seed);
+    std::string hexKey;
+    for (unsigned char c : pub) {
+        char two[3];
+        std::snprintf(two, sizeof two, "%02x", c);
+        hexKey += two;
+    }
+    std::cout << out << ": " << package.size() << " bytes, signed with " << (own ? "the key given" : "THE TEST KEY")
+              << " (public " << hexKey << ")" << std::endl;
+    // ...and unpacked again into a folder of its own, as Bedrock would
+    const std::filesystem::path tryRoot = std::filesystem::temp_directory_path() / "bedrock_pack_check";
+    std::error_code ec;
+    std::filesystem::remove_all(tryRoot, ec);
+    std::string id;
+    const bool back = P::unpack(package, tryRoot, {pub}, false, id, why);
+    std::cout << (back ? "Unpacks and checks out as " + id : "DOES NOT UNPACK: " + why) << std::endl;
+    std::filesystem::remove_all(tryRoot, ec);
+    return back ? 0 : 1;
 }

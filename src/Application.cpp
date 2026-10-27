@@ -917,7 +917,16 @@ void Application::runWithGUI(HINSTANCE hInstance) {
         gameTextsDue_ = true;
         gameTextsDueAt_ = std::chrono::steady_clock::now() + std::chrono::seconds(3);
         settingsHeld_ = true;
+        // ...and the plugins, from what the backup put back
+        if (plugins_) {
+            plugins_->load();
+            for (const auto& info : plugins_->found()) plugins_->restart(info.id);
+            pushPlugins();
+        }
     });
+
+    // The plugins: found, started, and handed the window
+    setUpPlugins();
 
     // Ctrl+Alt+K, system-wide: keep the last few minutes of recording -
     // only while recording is on at all; otherwise the key stays free
@@ -1090,6 +1099,8 @@ void Application::runWithGUI(HINSTANCE hInstance) {
 
         // The blueprint library follows the game's log
         pollLibrary();
+        // ...and the plugins with it: their older logs a while each round
+        servicePlugins();
         // ...the Datarunner the game's ScreenShots folder, more often, and the
         // commodity terminal in use
         if (watchScreenshots()) pushDatarunner();
@@ -4481,6 +4492,239 @@ void Application::keepRefineryNotes(const std::vector<std::string>& lines) {
 
 void Application::pushRefineryOrders() {
     if (gui_) gui_->setRefineryOrders(refineryOrders_.sorted());
+}
+
+// ---------------------------------------------------------------------------
+// Plugins (PluginHost.h): found in the data folder and started once the
+// window is up, fed the live log through the library's reading of it and
+// the older logs a while every round, and put in from the server's list
+// when the player asks for one in the Plugins window.
+// ---------------------------------------------------------------------------
+void Application::setUpPlugins() {
+    const std::filesystem::path data = AppPaths::data();
+#ifdef BEDROCK_DEV_TOOLS
+    const bool acceptUnsigned = true;    // a developer runs his own as he writes them
+#else
+    const bool acceptUnsigned = false;
+#endif
+    plugins_ = std::make_unique<Plugins::Host>(data / "plugins", data / "plugin_data", BEDROCK_VERSION,
+                                               Plugins::trustedKeys(), acceptUnsigned);
+    if (!library_.gameLog().empty()) plugins_->setGameFolder(library_.gameLog().parent_path());
+    plugins_->load();
+    library_.setLiveSink([this](std::string_view line) {
+        if (plugins_) plugins_->liveLine(line);
+    });
+    pluginIndexUrl_ = Plugins::indexUrlBeside(updateUrl_.empty() ? std::string(BEDROCK_UPDATE_URL) : updateUrl_);
+#ifdef BEDROCK_DEV_TOOLS
+    // ...or a list of a developer's own, an address or a file
+    if (const char* own = std::getenv("SCMINER_PLUGIN_INDEX")) pluginIndexUrl_ = own;
+#endif
+    for (const auto& info : plugins_->found()) {
+        const Plugins::Plugin* p = plugins_->plugin(info.id);
+        std::cout << "[plugins] " << info.id << " " << info.version << ": "
+                  << (p && p->running() ? std::string("running") : info.problem.empty() && p ? p->error() : info.problem)
+                  << std::endl;
+    }
+    if (!gui_) return;
+    gui_->setPluginCallbacks(
+        [this](const std::string& id, Plugins::UiState& state) { return pluginView(id, state); },
+        [this](const std::string& id, const std::string& action) { pluginAction(id, action); });
+    pushPlugins();
+}
+
+MinerGUI::PluginView Application::pluginView(const std::string& id, Plugins::UiState& state) {
+    MinerGUI::PluginView view;
+    Plugins::Plugin* p = plugins_ ? plugins_->plugin(id) : nullptr;
+    if (!p) return view;
+    // the plugin stopped: why, and the way to start it again (the list of
+    // plugins hears of it with the next round - see servicePlugins)
+    if (state.clicked == "bedrock:restart") {
+        state.clicked.clear();
+        plugins_->restart(id);
+        p = plugins_->plugin(id);   // a new one
+        if (!p) return view;
+    }
+    if (p->running()) view.items = plugins_->draw(id, state);
+    // ...and what a click in it put on the clipboard
+    const std::string copied = p->takeCopy();
+    if (!copied.empty() && gui_) gui_->copyText(copied);
+    view.title = p->title();
+    view.subtitle = p->subtitle();
+    if (!p->running()) {
+        using Plugins::UiItem;
+        UiItem why;
+        why.kind = UiItem::Kind::Text;
+        why.tone = UiItem::Tone::Bad;
+        why.text = p->info().problem.empty() ? "STOPPED - " + p->error() : p->info().problem;
+        view.items = {why};
+        if (p->info().problem.empty()) {
+            UiItem again;
+            again.kind = UiItem::Kind::Buttons;
+            again.optionIds = {"bedrock:restart"};
+            again.options = {"Start again"};
+            again.kinds = {"primary"};
+            view.items.push_back(again);
+        }
+    }
+    return view;
+}
+
+void Application::pushPlugins() {
+    if (!plugins_ || !gui_) return;
+    std::vector<MinerGUI::PluginEntry> list;
+    for (const auto& info : plugins_->found()) {
+        MinerGUI::PluginEntry e;
+        e.id = info.id;
+        e.name = info.name;
+        e.version = info.version;
+        e.description = info.description;
+        e.installed = true;
+        e.problem = info.problem;
+        const Plugins::Plugin* p = plugins_->plugin(info.id);
+        e.running = p && p->running();
+        if (p && !e.running && info.problem.empty()) e.error = p->error();
+        int done = 0, all = 0;
+        if (plugins_->readingHistory(info.id, &done, &all)) {
+            e.historyDone = done;
+            e.historyAll = all;
+        }
+        list.push_back(e);
+    }
+    for (const auto& offer : pluginOffers_) {
+        auto at = std::find_if(list.begin(), list.end(), [&](const MinerGUI::PluginEntry& e) { return e.id == offer.id; });
+        if (at == list.end()) {
+            MinerGUI::PluginEntry e;
+            e.id = offer.id;
+            e.name = offer.name;
+            list.push_back(e);
+            at = list.end() - 1;
+        }
+        at->offered = offer.version;
+        at->offeredNeeds = offer.needs;
+        at->offeredText = offer.description;
+    }
+    for (auto& e : list) e.busy = (e.id == pluginBusy_);
+    gui_->setPlugins(std::move(list), pluginServerNote_);
+}
+
+void Application::fetchForPlugins(const std::string& id, const std::string& url) {
+    pluginBusy_ = id;
+    pluginJob_ = std::async(std::launch::async, [id, url]() {
+        PluginFetch f;
+        f.id = id;
+        if (url.rfind("https://", 0) == 0) {
+            f.ok = httpsGet(url, {}, f.body, f.why);
+            return f;
+        }
+#ifdef BEDROCK_DEV_TOOLS
+        // a developer's list on his own disk, and the plugins beside it
+        std::ifstream in(std::filesystem::path(url), std::ios::binary);
+        f.body.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        f.ok = !f.body.empty();
+        if (!f.ok) f.why = "the file cannot be read";
+#else
+        f.why = "no https address";
+#endif
+        return f;
+    });
+}
+
+void Application::pluginAction(const std::string& id, const std::string& action) {
+    if (!plugins_) return;
+    if (action == "refresh") {
+        if (pluginJob_.valid()) return;
+        if (pluginIndexUrl_.empty()) {
+            pluginServerNote_ = "This build has no plugin server to ask";
+            pushPlugins();
+            return;
+        }
+        pluginServerNote_ = "Asking the server for plugins...";
+        fetchForPlugins("", pluginIndexUrl_);
+    } else if (action == "install") {
+        if (pluginJob_.valid()) return;
+        const auto offer = std::find_if(pluginOffers_.begin(), pluginOffers_.end(),
+                                        [&](const Plugins::Offer& o) { return o.id == id; });
+        if (offer == pluginOffers_.end()) return;
+        const std::string url = Plugins::packageUrl(pluginIndexUrl_, offer->url);
+        if (url.empty()) return;
+        std::cout << "[plugins] fetching " << id << " " << offer->version << std::endl;
+        fetchForPlugins(id, url);
+    } else if (action == "remove") {
+        std::string why;
+        if (plugins_->remove(id, why)) {
+            std::cout << "[plugins] " << id << " removed" << std::endl;
+        } else {
+            pluginServerNote_ = "Could not remove it - " + why;
+        }
+    } else if (action == "restart") {
+        plugins_->restart(id);
+    }
+    pushPlugins();
+}
+
+void Application::servicePlugins() {
+    if (!plugins_) return;
+    if (!library_.gameLog().empty()) plugins_->setGameFolder(library_.gameLog().parent_path());
+    plugins_->tick(8);
+    const auto now = std::chrono::steady_clock::now();
+    // a plugin's window drawn anew when the plugin heard something - four
+    // times a second at most: while the older logs are read, it hears
+    // something every round
+    if (gui_ && now - pluginDrawnAt_ > std::chrono::milliseconds(250)) {
+        pluginDrawnAt_ = now;
+        for (const auto& info : plugins_->found()) {
+            if (plugins_->takeChanged(info.id)) gui_->pluginChanged(info.id);
+        }
+    }
+    if (gui_) {
+        std::string id, note;
+        while (plugins_->takeNote(id, note)) gui_->setPluginNote(id, note);
+    }
+    // The list anew when what it shows moved: how far the older logs are,
+    // and which plugins run - once a second at most
+    {
+        unsigned long long look = 0;
+        for (const auto& info : plugins_->found()) {
+            int done = 0, all = 0;
+            plugins_->readingHistory(info.id, &done, &all);
+            const Plugins::Plugin* p = plugins_->plugin(info.id);
+            look = look * 31u + (unsigned long long)done * 7u + (unsigned long long)all + (p && p->running() ? 1u : 0u);
+        }
+        if (look != pluginPushedLook_ && now - pluginPushedAt_ > std::chrono::seconds(1)) {
+            pluginPushedLook_ = look;
+            pluginPushedAt_ = now;
+            pushPlugins();
+        }
+    }
+    // ...and what the server sent
+    if (pluginJob_.valid() && pluginJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        const PluginFetch f = pluginJob_.get();
+        pluginBusy_.clear();
+        if (f.id.empty()) {
+            std::string why = f.why;
+            std::vector<Plugins::Offer> offers;
+            if (f.ok && Plugins::readIndex(f.body, offers, why)) {
+                pluginOffers_ = offers;
+                pluginServerNote_.clear();
+                std::cout << "[plugins] the server offers " << offers.size() << std::endl;
+            } else {
+                pluginServerNote_ = "The list of plugins could not be fetched - " + why;
+                std::cout << "[plugins] list: " << why << std::endl;
+            }
+        } else {
+            std::string id, why = f.why;
+            if (f.ok && Plugins::unpack(f.body, plugins_->root(), plugins_->keys(), plugins_->acceptsUnsigned(), id, why)) {
+                plugins_->load();
+                plugins_->restart(id);
+                pluginServerNote_.clear();
+                std::cout << "[plugins] " << id << " installed" << std::endl;
+            } else {
+                pluginServerNote_ = "It could not be installed - " + why;
+                std::cout << "[plugins] " << f.id << ": " << why << std::endl;
+            }
+        }
+        pushPlugins();
+    }
 }
 
 void Application::pollLibrary() {

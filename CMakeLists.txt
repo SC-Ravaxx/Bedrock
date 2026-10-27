@@ -253,6 +253,7 @@ set(CORE_SOURCES
     src/PhoneServer.cpp
     third_party/qrcodegen/qrcodegen.cpp
     src/Plugins.cpp
+    src/PluginHost.cpp
     ${PLUGIN_RUNTIME_SOURCES}
 )
 

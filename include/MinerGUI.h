@@ -27,6 +27,7 @@
 #include "UexPrices.h"
 #include "UexMarket.h"
 #include "NoteBook.h"
+#include "Plugins.h"
 #include "Reputation.h"
 
 #pragma comment(lib, "gdiplus.lib")
@@ -185,6 +186,51 @@ public:
     // levels, 8 the commodities, 9 the terminals) or a value being typed
     // (6 stock, 7 price) at `row`; closed with index -1
     void openDatarunnerForShot(int index, int kind = 0, int row = -1, const std::wstring& entry = L"");
+
+    // ---- Plugins (PluginHost.h): a window of their own ----
+    // A plugin as the window lists it: installed, offered by the server, or both
+    struct PluginEntry {
+        std::string id, name, version, description;
+        bool installed = false;
+        bool running = false;
+        std::string problem;        // why it cannot run, "NOT SIGNED - ..."; "" where it can
+        std::string error;          // what stopped it while it ran
+        std::string offered;        // the version the server has; "" none
+        std::string offeredNeeds;   // ...and the Bedrock that one needs
+        std::string offeredText;    // ...and what the server says of it
+        bool busy = false;          // being fetched and put in
+        int historyDone = 0, historyAll = 0;   // older logs read, of all; both 0 when done
+    };
+    // What the window shows of a plugin: its title, the line under it, its pieces
+    struct PluginView {
+        std::string title, subtitle;
+        std::vector<Plugins::UiItem> items;
+    };
+    using PluginViewCallback = std::function<PluginView(const std::string& id, Plugins::UiState& state)>;
+    // A plugin and what to do with it: "install", "remove", "restart", or
+    // "refresh" with no plugin - the server's list asked for again
+    using PluginActionCallback = std::function<void(const std::string& id, const std::string& action)>;
+    void setPluginCallbacks(PluginViewCallback view, PluginActionCallback action) {
+        pluginView_ = std::move(view);
+        pluginAction_ = std::move(action);
+    }
+    // The plugins, and what the server's list says ("" all well)
+    void setPlugins(std::vector<PluginEntry> list, const std::string& serverNote);
+    // A plugin's window drawn anew: something in it changed
+    void pluginChanged(const std::string& id);
+    // A plugin's line for the foot of the main window, for a minute
+    void setPluginNote(const std::string& id, const std::string& note);
+    void togglePlugins();
+    // The window opened on a plugin; "" the list
+    void openPlugin(const std::string& id);
+    void paintPluginsTo(HDC hdc);
+    // ...a plugin's window for a picture: cards open, a tab and chip
+    // picked, a search typed - nothing saved
+    void pluginStateForShot(const std::string& id, const std::vector<std::string>& open,
+                            const std::map<std::string, int>& picks, const std::map<std::string, std::string>& typed);
+    HWND pluginsWindow() const { return plugins_; }
+    // Text onto the clipboard, for a plugin; true where it went there
+    bool copyText(const std::string& text);
 
     // What the ship carries. Set once; the rock view can do nothing without it.
     void setLoadout(const MiningLoadout& fit) { loadout_ = fit; }
@@ -1510,6 +1556,55 @@ private:
     void paintGrindList(Gdiplus::Graphics& g, int cw, int ch);
     static LRESULT CALLBACK GrindProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
     LRESULT handleGrindMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+
+    // ---- the Plugins window ----
+    HWND plugins_ = nullptr;
+    HWND btnPlugins_ = nullptr;      // the header's jigsaw piece
+    bool pluginsVisible_ = false;
+    std::vector<PluginEntry> pluginList_;
+    std::string pluginServerNote_;
+    PluginViewCallback pluginView_;
+    PluginActionCallback pluginAction_;
+    std::string pluginShown_;                            // the plugin open; "" the list
+    std::map<std::string, Plugins::UiState> pluginUi_;   // each plugin's window, kept while Bedrock runs
+    PluginView pluginCurrent_;                           // what it drew last
+    // kind: 1 a tab or chip (value: which, 1 up), 2 a card's head, 3 a
+    // button, 4 a counter's - or + (value -1, 1), 5 a counter's figure,
+    // 6 a search field, 7 back to the list
+    struct PluginHit {
+        Gdiplus::RectF rect;
+        int kind;
+        std::string id;
+        int value;
+    };
+    std::vector<PluginHit> pluginHits_;
+    float pluginScroll_ = 0;
+    POINT hoverPlugins_ = {-1, -1};
+    std::string pluginTyping_;           // the search field or counter that has the keys; "" none
+    bool pluginTypingNumber_ = false;    // ...a counter
+    std::wstring pluginNumber_;          // its figures, as typed
+    std::string pluginRemoveArmed_;      // Remove asks once more: the plugin it was clicked for
+    std::chrono::steady_clock::time_point pluginRemoveAt_{};
+    std::string pluginNote_, pluginNoteId_;
+    std::chrono::steady_clock::time_point pluginNoteAt_{};
+    Gdiplus::RectF pluginNoteHit_{0, 0, 0, 0};
+    bool pluginsAsked_ = false;          // the server's list asked for since the start
+    static constexpr int PLUGINS_WIDTH = 760;
+    static constexpr int PLUGINS_HEIGHT = 860;
+    bool createPlugins();
+    void placePlugins();
+    void paintPlugins(HDC hdc);
+    // The pieces from `top` down: measured, or drawn with the card ends the
+    // measuring found; the height they take
+    float paintPluginPieces(Gdiplus::Graphics& g, const std::vector<Plugins::UiItem>& items, int cw, float top,
+                            bool draw, std::vector<float>& cardEnds, float stopBelow = 1e9f);
+    std::vector<Plugins::UiItem> pluginListPieces();
+    void refreshPluginView(bool twice);
+    void pluginClicked(const PluginHit& hit);
+    void endPluginTyping(bool keep);
+    bool pluginNoteShowing() const;
+    static LRESULT CALLBACK PluginsProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+    LRESULT handlePluginsMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
     static constexpr int GRIND_WIDTH = 900;
     static constexpr int GRIND_HEIGHT = 780;
 

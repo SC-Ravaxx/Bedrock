@@ -57,3 +57,17 @@ int runRefineryReplay(const std::string& dir, const std::string& station, long l
 // MARKET VALUE). A picture with no cards shows no commodity terminal.
 // (SCMINER_COMMODITY_TRACE: every line of text read)
 int runDatarunner(const std::vector<std::string>& files);
+
+// --plugin-check <plugin folder> <game folder> [state folder]: a plugin run
+// with no window - started (signed or not), fed the logbackups of the game
+// folder as older logs and its Game.log as the live one, then its window
+// printed as text: every tab, every card open. The state it saves goes to
+// the state folder, a fresh one in the temp folder where none is given.
+int runPluginCheck(const std::string& folder, const std::string& gameFolder, const std::string& stateFolder);
+
+// --pack-plugin <plugin folder> <package>: the folder packed and signed into
+// one file, for the server's list (PluginHost.h). The key is the seed in
+// BEDROCK_PLUGIN_SEED (64 hex figures), put there by whoever holds it - by
+// `op run`, so it never stands in a file or a command line; without it the
+// test key signs, and the package runs in a developer's build alone.
+int runPackPlugin(const std::string& folder, const std::string& out);

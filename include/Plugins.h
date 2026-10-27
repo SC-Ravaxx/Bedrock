@@ -15,12 +15,20 @@
 //   bedrock.save(t)              ...the table, kept in plugin_data\<id>.json
 //   bedrock.watch(text, f, old)  f(line, old) for every line of Game.log with
 //                                `text` in it - with `old` also the lines of
-//                                the older logs, read once at start
+//                                the older logs (logbackups), read once
 //   bedrock.now()                the time, Unix milliseconds
+//   bedrock.time(line)           ...and the time a log line was written, or nil
+//   bedrock.date(ms)             a time as the player reads it: "19 Oct 15:38"
 //   bedrock.note(text)           a line at the foot of Bedrock's window
+//   bedrock.copy(text)           ...text onto the clipboard, from a click
 //   bedrock.redraw()             its window drawn again
 //   bedrock.require(name)        its own <name>.lua
+//   title = "..."                its window's title
 //   function draw(ui) ... end    its window: see UiItem
+//
+// A table saved comes back as it went, but for one thing: the keys of a
+// table that is no list come back as text - t[5] as t["5"]. A plugin keeps
+// its maps keyed by text.
 #include <array>
 #include <chrono>
 #include <filesystem>
@@ -65,8 +73,16 @@ struct Info {
     std::string problem;                // "" where it can run; else why not, in the window's words
 };
 
+// Whether version a is older than b: "2.10.1" against "2.9.0", by numbers
+bool olderVersion(const std::string& a, const std::string& b);
+// A text as a JSON string, quotes and all
+std::string jsonText(std::string_view text);
+// A plugin's id or a data file's name: lower-case letters, figures, - and _
+bool plainName(const std::string& name, size_t longest);
+
 // Every plugin folder under `root`, its plugin.json read and its signature
-// checked; `acceptUnsigned` for a developer's own plugins
+// checked; `acceptUnsigned` for a developer's own plugins. Folders whose
+// name starts with a dot are Bedrock's own, half-installed ones.
 std::vector<Info> discover(const std::filesystem::path& root, const std::vector<Key>& keys, bool acceptUnsigned,
                            const std::string& bedrockVersion);
 
@@ -132,19 +148,25 @@ public:
     const Info& info() const { return info_; }
     const std::string& error() const { return error_; }
     std::string title() const;
+    std::string subtitle() const;   // the line under it: the plugin's `subtitle`, "" where none
 
     // A line of Game.log - `old`: of an older log, read at start
     void logLine(std::string_view line, bool old);
     // Whether any of its watches wants this line at all (cheap)
     bool wants(std::string_view line, bool old) const;
+    // What its watches look for in the older logs; empty where they want none
+    std::vector<std::string> oldWatches() const;
 
     // Its window: the pieces, the player's doings taken in; empty, and the
     // plugin stopped, where draw went wrong
     std::vector<UiItem> draw(UiState& state);
 
-    // What it asked for since: a line at the foot of the window, a new draw
+    // What came of it since: a line it wants at the foot of the window; and
+    // whether its window wants drawing anew - a watch of it ran, or it asked
     std::string takeNote();
-    bool takeRedraw();
+    bool takeChanged();
+    // Text it put on the clipboard while it drew; "" none
+    std::string takeCopy();
 
     // Limits: memory and time a call may take
     static constexpr size_t MEMORY_LIMIT = 64u << 20;
@@ -167,8 +189,8 @@ private:
     size_t used_ = 0;
     std::chrono::steady_clock::time_point deadline_{};
     std::vector<Watch> watches_;
-    std::string error_, note_;
-    bool redraw_ = false;
+    std::string error_, note_, copy_;
+    bool changed_ = false;
     // while draw runs: the window's state and the pieces so far
     UiState* drawing_ = nullptr;
     std::vector<UiItem>* items_ = nullptr;

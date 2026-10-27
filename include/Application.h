@@ -30,6 +30,7 @@
 #include "Datarunner.h"
 #include "RefineryShare.h"
 #include "UexMarket.h"
+#include "PluginHost.h"
 #include <memory>
 
 namespace SCMiner {
@@ -133,6 +134,27 @@ private:
     std::unique_ptr<MinerGUI> gui_;
     // What the player owns, off the game's log - see BlueprintLibrary
     BlueprintLibrary library_;
+
+    // ---- plugins (PluginHost.h) ----
+    std::unique_ptr<Plugins::Host> plugins_;
+    std::vector<Plugins::Offer> pluginOffers_;     // what the server's list has
+    std::string pluginServerNote_;                  // what the window says of that list; "" all well
+    std::string pluginIndexUrl_;                    // where the list is; "" nowhere
+    struct PluginFetch {
+        std::string id;      // the plugin fetched; "" the list
+        bool ok = false;
+        std::string body, why;
+    };
+    std::future<PluginFetch> pluginJob_;            // the list or a plugin, off the window's thread
+    std::string pluginBusy_;                        // the plugin being fetched; "" none
+    unsigned long long pluginPushedLook_ = ~0ull;   // what the list showed last, in one figure
+    std::chrono::steady_clock::time_point pluginPushedAt_{}, pluginDrawnAt_{};
+    void setUpPlugins();
+    void servicePlugins();
+    void pushPlugins();
+    void pluginAction(const std::string& id, const std::string& action);
+    void fetchForPlugins(const std::string& id, const std::string& url);
+    MinerGUI::PluginView pluginView(const std::string& id, Plugins::UiState& state);
     // Where the player is and what they fly, off the same Game.log - see
     // GameState. The log sets the system; a click by hand holds until the
     // log names another one.

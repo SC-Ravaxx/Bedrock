@@ -4305,6 +4305,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             setupConsole(true);
             return runRefineryShare(__argv[i + 1], __argv[i + 2]);
         }
+        else if (arg == "--plugin-check" && i + 2 < __argc) {
+            // --plugin-check <plugin folder> <game folder> [state folder]
+            setupConsole(true);
+            return runPluginCheck(__argv[i + 1], __argv[i + 2], i + 3 < __argc ? __argv[i + 3] : "");
+        }
+        else if (arg == "--pack-plugin" && i + 2 < __argc) {
+            // --pack-plugin <plugin folder> <package>
+            setupConsole(true);
+            return runPackPlugin(__argv[i + 1], __argv[i + 2]);
+        }
         else if (arg == "--datarunner" && i + 1 < __argc) {
             // --datarunner <pictures, or a folder>
             setupConsole(true);
