@@ -1406,6 +1406,13 @@ void MinerGUI::layoutControls() {
 
     // Controls that only exist in the full window
     HWND fullOnly[] = {btnPlan_, btnCraft_, btnNotes_, btnKeys_, btnRefinery_, btnAbout_, btnSettings_, btnPlugins_};
+    // A card drawn by the parent cannot cover a child window: under one,
+    // no button is up (buttonsUnderCard)
+    const bool underCard = uexWelcome_.step || datarunnerOpen_ || keysOpen_ || aboutOpen_ || backupOpen_ || whatsNewOpen_;
+    // LIVE and OVERLAY (FULL) are in both
+    for (HWND h : {btnLiveMode_, btnOverlay_}) {
+        if (h) ShowWindow(h, underCard ? SW_HIDE : SW_SHOW);
+    }
 
     if (overlayMode_) {
         for (HWND h : fullOnly) ShowWindow(h, SW_HIDE);
@@ -1436,8 +1443,8 @@ void MinerGUI::layoutControls() {
         }
     }
     // ...and the first start's UEX offer lies over all of them, the header's
-    // too - as does the Datarunner's card
-    if (uexWelcome_.step || datarunnerOpen_) {
+    // too - as do the Datarunner's card and the others
+    if (underCard) {
         for (HWND b : {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_, btnOverlay_, btnRefinery_, btnAbout_,
                        btnSettings_, btnPlugins_}) {
             if (b) ShowWindow(b, SW_HIDE);
@@ -3021,11 +3028,14 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                         if (!hit.rect.Contains((float)cx, (float)cy)) continue;
                         const RailHit picked = hit;   // (the rail is drawn anew under it)
                         railPick(picked.item, picked.id);
-                        break;
+                        return 0;
                     }
-                    return 0;
+                    // beside its items: a click beside everything on the
+                    // page, which takes a card or a list away as one does
+                    lParam = MAKELPARAM(-1, cy);
+                } else {
+                    lParam = MAKELPARAM(cx - rw, cy);
                 }
-                lParam = MAKELPARAM(cx - rw, cy);
             }
             // The first start's UEX offer before anything: its buttons, and a
             // click off it skips it
@@ -3774,9 +3784,11 @@ void MinerGUI::drawRail(Gdiplus::Graphics& g, int rw, int ch) {
 void MinerGUI::railPick(RailItem item, const std::string& id) {
     using R = RailItem;
     const bool datarunnerWasOpen = datarunnerOpen_;
-    // a card over the page goes, as a click beside it would take it
-    // away - and with the Datarunner's, its page
-    closeOtherSheets(pluginPage_);
+    const bool aPage = item == R::Scan || item == R::Datarunner || item == R::Plugins || item == R::Plugin;
+    // a card over the page goes, as a click beside it would take it away;
+    // the Datarunner's is a page, and goes for another page only
+    if (aPage) closeOtherSheets(pluginPage_);
+    else closeOtherSheets(datarunnerOpen_);
     switch (item) {
         case R::Scan:
             toScanPage();
@@ -3808,7 +3820,6 @@ void MinerGUI::railPick(RailItem item, const std::string& id) {
             break;
     }
     // the page has the keys: a search typed into, the arrows scrolling
-    const bool aPage = item == R::Scan || item == R::Datarunner || item == R::Plugins || item == R::Plugin;
     if (aPage && hwnd_ && !headless_) SetFocus(hwnd_);
     if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
 }
@@ -24714,7 +24725,7 @@ void MinerGUI::paintPluginView(Gdiplus::Graphics& g, int cw, int ch, bool page) 
                          Gdiplus::RectF(M, scaleF(56), right - M, scaleF(26)), &oneLine, &textBrush);
             g.DrawString(toW(pluginCurrent_.subtitle).c_str(), -1, &subFont,
                          Gdiplus::RectF(M + scaleF(1), scaleF(82), right - M, scaleF(16)), &oneLine, &dimBrush);
-            top = scaleF(110);
+            top = scaleF(114);
             footY = (float)ch - scaleF(32);
         } else if (!pluginShown_.empty()) {
             const wchar_t* back = L"All plugins";
