@@ -27,6 +27,7 @@
 #include "OCREngine.h"
 #include "PanelShapes.h"
 #include "PhoneServer.h"
+#include "Plugins.h"
 #include "RefineryData.h"
 #include "RefiningData.h"
 #include "ScanPanel.h"
@@ -5933,6 +5934,171 @@ int runSelfTest() {
         allPassed &= check(monotonic, "Tone curve never darkens as light increases");
     }
 #endif  // _WIN32: the HDR path is Desktop Duplication, which has no Linux side
+
+    // ---- Plugins: signed folders of Lua, run apart ----
+    {
+        namespace P = SCMiner::Plugins;
+        const std::filesystem::path root = std::filesystem::temp_directory_path() / "bedrock_selftest_plugins";
+        std::error_code ec;
+        std::filesystem::remove_all(root, ec);
+        auto write = [](const std::filesystem::path& file, const std::string& text) {
+            std::filesystem::create_directories(file.parent_path());
+            std::ofstream out(file, std::ios::binary | std::ios::trunc);
+            out << text;
+        };
+        const std::string probeLua = R"LUA(
+title = "PROBE"
+local sandbox = io == nil and os == nil and load == nil and dofile == nil and loadfile == nil
+    and require == nil and package == nil and debug == nil and string.dump == nil
+local data = bedrock.data("things")
+local saved = bedrock.load()
+local count, old = 0, 0
+bedrock.watch("TheCollector", function(line, isOld)
+  if isOld then old = old + 1 else count = count + 1 end
+  if line:find("LOOP") then while true do end end
+  if line:find("HOG") then local t = {} for i = 1, 1e7 do t[i] = string.rep("x", 1000) .. i end end
+  if line:find("FAIL") then error("on purpose") end
+end, true)
+local n = saved and saved.n or 0
+function draw(ui)
+  ui.heading("PROBE")
+  ui.text(sandbox and "sandbox" or "open")
+  ui.text(data.trades[1].wants[1].name .. " " .. data.trades[1].wants[1].amount)
+  ui.text("count " .. count .. " old " .. old)
+  ui.text("saved " .. n)
+  local tab = ui.tabs("tabs", {"ONE", "TWO"}, 1)
+  ui.text("tab " .. tab)
+  if ui.card("c1", "CARD", {chip = "READY", tone = "good"}) then
+    ui.row("left", "right", "bad")
+    ui.close()
+  end
+  local v = ui.counter("k", "Carinite", n)
+  if v ~= n then n = v; bedrock.save({n = n, list = {1, 2, 3}, name = "x\"y"}) end
+  local b = ui.buttons({{"go", "GO", "primary"}, {"stop", "STOP", "danger"}})
+  if b then ui.text("clicked " .. b) end
+end
+)LUA";
+        auto plugin = [&](const std::string& id, const std::string& needs) {
+            write(root / id / "plugin.json",
+                  "{\"id\":\"" + id + "\",\"name\":\"Probe\",\"version\":\"1.0\",\"bedrock\":\"" + needs + "\"}");
+            write(root / id / "main.lua", probeLua);
+            write(root / id / "data" / "things.json",
+                  "{\"trades\":[{\"id\":\"a\",\"wants\":[{\"name\":\"Carinite\",\"amount\":10}]}]}");
+        };
+        const P::Key seed = P::testSeed();
+        const std::vector<P::Key> keys = {P::publicKeyOf(seed)};
+        auto sign = [&](const std::string& id) { write(root / id / "plugin.sig", P::signatureOf(P::manifestOf(root / id), seed)); };
+        plugin("probe", "2.0");
+        sign("probe");
+        plugin("loose", "");
+        plugin("newer", "9.0");
+        sign("newer");
+        plugin("tampered", "");
+        sign("tampered");
+        write(root / "tampered" / "main.lua", probeLua + "\n-- one line more\n");
+        write(root / "broken" / "plugin.json", "{\"id\": not json");
+        // a signature: the manifest by the key, nothing else
+        const std::string manifest = P::manifestOf(root / "probe");
+        P::Key otherSeed = seed;
+        otherSeed[0] ^= 1;
+        const std::string signature = P::signatureOf(manifest, seed);
+        const bool signs = manifest.find("  main.lua\n") != std::string::npos &&
+                           manifest.find("  data/things.json\n") != std::string::npos &&
+                           manifest.find("plugin.sig") == std::string::npos && signature.size() == 128 &&
+                           P::signedBy(manifest, signature, keys) &&
+                           !P::signedBy(manifest, signature, {P::publicKeyOf(otherSeed)}) &&
+                           !P::signedBy(manifest + "x", signature, keys) && !P::signedBy(manifest, "", keys) &&
+                           !P::signedBy(manifest, std::string(128, 'g'), keys);
+        allPassed &= check(signs, "a plugin's manifest: every file but plugin.sig by its SHA-512; Ed25519 over it "
+                                  "passes with the signing key alone, and for that manifest alone");
+        const std::vector<P::Info> found = P::discover(root, keys, false, "2.7.0");
+        auto info = [&](const std::string& id) {
+            for (const P::Info& i : found) {
+                if (i.id == id) return i;
+            }
+            return P::Info();
+        };
+        const bool findings = found.size() == 5 && info("probe").trusted && info("probe").problem.empty() &&
+                              info("probe").name == "Probe" && info("probe").needs == "2.0" &&
+                              info("loose").problem.rfind("NOT SIGNED", 0) == 0 &&
+                              info("newer").trusted && info("newer").problem.rfind("NEEDS BEDROCK 9.0", 0) == 0 &&
+                              info("tampered").problem.rfind("FILES CHANGED", 0) == 0 &&
+                              info("broken").problem.rfind("BROKEN", 0) == 0 &&
+                              P::discover(root, keys, true, "2.7.0")[1].id == "loose" &&
+                              P::discover(root, keys, true, "2.7.0")[1].problem.empty();
+        allPassed &= check(findings, "plugin folders: signed runs; unsigned, changed after signing, broken or for a "
+                                     "newer Bedrock does not - a developer may run his own unsigned");
+        // running: the language without the world, its data, its state,
+        // the log lines it watches, its window and what the player did in it
+        P::Plugin probe(info("probe"), root / "state" / "probe.json");
+        const bool started = probe.start() && probe.running() && probe.title() == "PROBE";
+        P::UiState state;
+        auto texts = [](const std::vector<P::UiItem>& items) {
+            std::string all;
+            for (const P::UiItem& item : items) {
+                if (item.kind == P::UiItem::Kind::Text) all += item.text + "|";
+            }
+            return all;
+        };
+        const std::vector<P::UiItem> first = probe.draw(state);
+        probe.logLine("<x> TheCollector old", true);
+        probe.logLine("<x> TheCollector new", false);
+        probe.logLine("<x> nothing of it", false);
+        const bool wanted = probe.wants("a TheCollector b", false) && !probe.wants("a b", false);
+        state.picks["tabs"] = 2;
+        state.open.insert("c1");
+        state.clicked = "k:+";
+        const std::vector<P::UiItem> second = probe.draw(state);
+        state.clicked = "go";
+        const std::vector<P::UiItem> third = probe.draw(state);
+        const std::vector<P::UiItem> fourth = probe.draw(state);
+        std::ifstream savedFile(root / "state" / "probe.json", std::ios::binary);
+        const std::string saved((std::istreambuf_iterator<char>(savedFile)), std::istreambuf_iterator<char>());
+        savedFile.close();
+        bool rowInCard = false;
+        for (size_t i = 0; i + 2 < second.size(); i++) {
+            rowInCard |= second[i].kind == P::UiItem::Kind::Card && second[i].open && second[i].chip == "READY" &&
+                         second[i].tone == P::UiItem::Tone::Good && second[i + 1].kind == P::UiItem::Kind::Row &&
+                         second[i + 1].value == "right" && second[i + 2].kind == P::UiItem::Kind::CardEnd;
+        }
+        bool counted = false;
+        for (const P::UiItem& item : second) counted |= item.kind == P::UiItem::Kind::Counter && item.value == "1";
+        const bool runs = started && first.size() == 10 && first[0].kind == P::UiItem::Kind::Heading &&
+                          texts(first) == "sandbox|Carinite 10|count 0 old 0|saved 0|tab 1|" && wanted &&
+                          texts(second) == "sandbox|Carinite 10|count 1 old 1|saved 0|tab 2|" && rowInCard && counted &&
+                          texts(third).find("saved 1|") != std::string::npos &&
+                          texts(third).find("clicked go|") != std::string::npos &&
+                          texts(fourth).find("clicked") == std::string::npos && state.clicked.empty() &&
+                          saved.find("\"n\":1") != std::string::npos && saved.find("[1,2,3]") != std::string::npos &&
+                          saved.find("\"x\\\"y\"") != std::string::npos;
+        allPassed &= check(runs, "a plugin runs: no io, os, load or bytecode; its data and saved state; the log "
+                                 "lines it watches, old and new; its window with tabs, cards, counters and buttons, "
+                                 "a click counting once");
+        // ...and stops alone: a loop that never ends, memory without end,
+        // an error; saved state read again on the next start
+        P::Plugin again(info("probe"), root / "state" / "probe.json");
+        again.start();
+        const bool reloaded = texts(again.draw(state)).find("saved 1|") != std::string::npos;
+        const auto t0 = std::chrono::steady_clock::now();
+        again.logLine("TheCollector LOOP", false);
+        const double loopMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        const bool looped = !again.running() && again.error().find("took too long") != std::string::npos && loopMs < 2000 &&
+                            again.draw(state).empty();
+        P::Plugin hog(info("probe"), root / "state" / "probe.json");
+        hog.start();
+        hog.logLine("TheCollector HOG", false);
+        const bool hogged = !hog.running() && hog.error().find("64 MB") != std::string::npos;
+        P::Plugin failing(info("probe"), root / "state" / "probe.json");
+        failing.start();
+        failing.logLine("TheCollector FAIL", false);
+        const bool failed = !failing.running() && failing.error().find("on purpose") != std::string::npos;
+        P::Plugin loose(info("loose"), root / "state" / "loose.json");
+        const bool refused = !loose.start() && loose.error().rfind("NOT SIGNED", 0) == 0;
+        allPassed &= check(reloaded && looped && hogged && failed && refused,
+                           "a plugin stops alone: after " + std::to_string(static_cast<int>(loopMs)) +
+                               " ms of a loop, past 64 MB, at an error - and one not signed does not start");
+        std::filesystem::remove_all(root, ec);
+    }
 
     std::cout << "\n=== Self-test " << (allPassed ? "PASSED" : "FAILED") << " ===\n" << std::endl;
     return allPassed ? 0 : 1;

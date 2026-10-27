@@ -179,6 +179,45 @@ if(NOT WIN32)
 endif()
 
 # --------------------------------------------------------------------------
+# What plugins run in: Lua, and Monocypher to check a plugin's signature
+# (third_party/*/LICENSE.txt). Both are compiled as C++ - Lua then raises a
+# plugin's error as a C++ exception, which unwinds Bedrock's own code on the
+# way out; Monocypher is written to compile as either.
+# --------------------------------------------------------------------------
+set(PLUGIN_RUNTIME_SOURCES
+    third_party/lua/lapi.c
+    third_party/lua/lauxlib.c
+    third_party/lua/lbaselib.c
+    third_party/lua/lcode.c
+    third_party/lua/lcorolib.c
+    third_party/lua/lctype.c
+    third_party/lua/ldebug.c
+    third_party/lua/ldo.c
+    third_party/lua/ldump.c
+    third_party/lua/lfunc.c
+    third_party/lua/lgc.c
+    third_party/lua/llex.c
+    third_party/lua/lmathlib.c
+    third_party/lua/lmem.c
+    third_party/lua/lobject.c
+    third_party/lua/lopcodes.c
+    third_party/lua/lparser.c
+    third_party/lua/lstate.c
+    third_party/lua/lstring.c
+    third_party/lua/lstrlib.c
+    third_party/lua/ltable.c
+    third_party/lua/ltablib.c
+    third_party/lua/ltm.c
+    third_party/lua/lundump.c
+    third_party/lua/lutf8lib.c
+    third_party/lua/lvm.c
+    third_party/lua/lzio.c
+    third_party/monocypher/monocypher.c
+    third_party/monocypher/monocypher-ed25519.c
+)
+set_source_files_properties(${PLUGIN_RUNTIME_SOURCES} PROPERTIES LANGUAGE CXX)
+
+# --------------------------------------------------------------------------
 # The core: everything that describes the game and reads it, with no window
 # system under it. It builds on both platforms from the same sources.
 # --------------------------------------------------------------------------
@@ -213,6 +252,8 @@ set(CORE_SOURCES
     src/ColourScheme.cpp
     src/PhoneServer.cpp
     third_party/qrcodegen/qrcodegen.cpp
+    src/Plugins.cpp
+    ${PLUGIN_RUNTIME_SOURCES}
 )
 
 # Source files
