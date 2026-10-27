@@ -3709,9 +3709,9 @@ void MinerGUI::paintWindowBody(Gdiplus::Graphics& g, int cw, int ch) {
 
 // ---- the rail ---------------------------------------------------------------
 // Down the full window's left, a step darker than the window: the pages -
-// the scan, the Datarunner, each plugin and the plugins' list - and the
-// tools that have windows of their own, lit while those are open, the
-// settings at the foot. A count where the window has one: the Datarunner's
+// the scan, each plugin and the plugins' list - and the tools that have
+// windows of their own, lit while those are open; the settings and the
+// Datarunner at the foot. A count where the window has one: the Datarunner's
 // pictures waiting, the Refinery's work orders done.
 void MinerGUI::drawRail(Gdiplus::Graphics& g, int rw, int ch) {
     railHits_.clear();
@@ -3731,7 +3731,7 @@ void MinerGUI::drawRail(Gdiplus::Graphics& g, int rw, int ch) {
 
     const float itemW = 60 * s, itemH = 52 * s, gap = 2 * s;
     const float x = ((float)rw - itemW) / 2.0f;
-    const float settingsY = (float)ch - 12 * s - itemH;
+    const float footY = (float)ch - 12 * s - 2 * itemH - gap;   // the settings, the Datarunner under them
     float y = 12 * s;
     const bool page = !pluginPage_;   // the scan's page, or the Datarunner's over it
     const auto item = [&](R kind, const std::wstring& label, const std::string& id, bool active, int count,
@@ -3760,7 +3760,6 @@ void MinerGUI::drawRail(Gdiplus::Graphics& g, int rw, int ch) {
     };
 
     item(R::Scan, L"Scan", "", page && !datarunnerOpen_, 0, COL_ACCENT);
-    item(R::Datarunner, L"Datarunner", "", page && datarunnerOpen_, datarunnerWaiting(), COL_ACCENT);
     item(R::Refinery, L"Refinery", "", refineryVisible_, refineryDoneCount(), COL_GREEN);
     item(R::Finder, L"Ore Finder", "", plannerVisible_, 0, COL_ACCENT);
     item(R::Blueprints, L"Blueprints", "", craftingVisible_, 0, COL_ACCENT);
@@ -3773,14 +3772,15 @@ void MinerGUI::drawRail(Gdiplus::Graphics& g, int rw, int ch) {
     for (const auto& e : pluginList_) {
         if (!e.installed || !e.problem.empty()) continue;
         // (as many as leave room for the list's own above the settings)
-        if (y + 2 * itemH + gap > settingsY - gap) break;
+        if (y + 2 * itemH + gap > footY - gap) break;
         item(R::Plugin, toW(e.name.empty() ? e.id : e.name), e.id, pluginPage_ && pluginShown_ == e.id, 0,
              COL_ACCENT);
     }
     item(R::Plugins, L"Plugins", "", pluginPage_ && pluginShown_.empty(), 0, COL_ACCENT);
 
-    y = (std::max)(y, settingsY);
+    y = (std::max)(y, footY);
     item(R::Settings, L"Settings", "", settingsVisible_, 0, COL_ACCENT);
+    item(R::Datarunner, L"Datarunner", "", page && datarunnerOpen_, datarunnerWaiting(), COL_ACCENT);
 }
 
 void MinerGUI::railPick(RailItem item, const std::string& id) {
