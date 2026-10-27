@@ -1632,6 +1632,11 @@ int runSelfTest() {
                                             "Data:  [2 | unitAmount[62]]", resource, sizes) &&
             at == 1791755321127LL && SCMiner::TradeBook::millisOf("noon") == -1 &&
             D::boxesUexTakes("8,16,24,32") && !D::boxesUexTakes("1,3,64") && !D::boxesUexTakes("");
+        // ...and a terminal in use: the last line of one, whatever it lists
+        const bool used = book.terminalUsedMs() == SCMiner::TradeBook::millisOf("2026-10-11T21:55:00.000") &&
+                          book.terminalUsedShop() == "SCShop_Trdpst_Warehouse_OTLW_Int_A" &&
+                          SCMiner::TradeBook().terminalUsedMs() == 0;
+        allPassed &= check(used, "a commodity terminal in use, from the game's log: the time and the shop of its last line");
         allPassed &= check(fills, "a terminal's list filling, from the game's log: its shop, the place, the box sizes of "
                                   "what it sells - the one filled last before a picture, within half an hour");
         const bool resources = SCMiner::TradeBook::resourceIs("ShipAmmoSize4", "Ship Ammunition - Size 4") &&
@@ -1798,6 +1803,60 @@ int runSelfTest() {
         allPassed &= check(sendable, "Send waits for every value sure, a terminal, a list and a date UEX takes; a row "
                                      "another picture of the same moment carried is left out, and the same commodity "
                                      "waits UEX's five minutes - over a restart too");
+        // Bedrock's own looks at a terminal in use: two that agree on their
+        // complete rows make a picture, with the rows no picture of that
+        // shop's same list from the last half hour has - a row the player
+        // took out counts as had, an opened card's and a half-read one are
+        // no rows for it
+        {
+            auto whole = [](const char* read, int level, int stock, int price) {
+                D::Row row;
+                row.read = read;
+                row.level = level;
+                row.stock = stock;
+                row.price = price;
+                row.levelSure = row.stockSure = row.priceSure = Certainty::Sure;
+                return row;
+            };
+            D::Shot look;
+            look.side = 1;
+            look.shop = "SCShop_Trdpst_Warehouse_OTLW_Int_A";
+            look.taken = now;
+            look.rows = {whole("Neon", 2, 23, 15449), whole("E'tam", 2, 5, 16295),
+                         whole("LifeCure Medsticks", 7, 1600, 574)};
+            const D::Shot again = look;
+            D::Shot moved = look;
+            moved.rows[1].stock = 4;
+            D::Shot sold = look;
+            sold.side = 2;
+            D::Row opened = whole("Carbon", 7, 24000, 1879);
+            opened.perUnit = true;
+            D::Row half = whole("Gold", 4, 300, -1);
+            half.priceSure = Certainty::Missing;
+            D::Shot rest = look;
+            rest.rows = {opened, half};
+            auto had = std::make_shared<D::Shot>(look);
+            had->rows = {whole("[NEON", 2, 23, 15449)};
+            auto out = std::make_shared<D::Shot>(*had);
+            out->rows = {whole("E'tam", 2, 5, 16295)};
+            out->rows[0].removed = true;
+            auto elsewhere = std::make_shared<D::Shot>(*had);
+            elsewhere->shop = "SCShop_Admin_lt_base_g";
+            elsewhere->rows = {whole("LifeCure Medsticks", 7, 1600, 574)};
+            auto older = std::make_shared<D::Shot>(*had);
+            older->taken = now - 3600;
+            older->rows = {whole("LifeCure Medsticks", 7, 1600, 574)};
+            const D::Shot fresh = D::newRowsOf(look, {had, out, elsewhere, older}, now - 1800);
+            const bool looks = !D::lookKey(look).empty() && D::lookKey(look) == D::lookKey(again) &&
+                               D::lookKey(moved) != D::lookKey(look) && D::lookKey(sold) != D::lookKey(look) &&
+                               D::lookKey(rest).empty() && D::newRowsOf(look, {}, now - 1800).rows.size() == 3 &&
+                               fresh.rows.size() == 1 && fresh.rows[0].read == "LifeCure Medsticks" &&
+                               fresh.shop == look.shop && fresh.taken == now && fresh.side == 1 &&
+                               D::newRowsOf(rest, {}, now - 1800).rows.empty() &&
+                               D::newRowsOf(sold, {had, out}, now - 1800).rows.size() == 3;
+            allPassed &= check(looks, "Bedrock's own looks at a terminal in use: two that agree make a picture, with the "
+                                      "complete rows no picture of that shop's list from the last half hour has");
+        }
         // A report UEX stopped at its second row, a duplicate: the first row
         // went, the second is on UEX from the player's report of the last
         // five minutes - both held as sent, so Send goes on with the third

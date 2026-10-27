@@ -45,6 +45,13 @@ long long writtenAt(const std::filesystem::path& file) {
     return (long long)std::chrono::duration_cast<std::chrono::seconds>(system.time_since_epoch()).count();
 }
 
+// A row read whole: a name, the level, the stock and a price per SCU
+bool complete(const Row& row) {
+    return !folded(row.read).empty() && row.level >= 1 && row.level <= 7 && row.stock >= 0 && row.price >= 0 &&
+           !row.perUnit && row.levelSure != Certainty::Missing && row.stockSure != Certainty::Missing &&
+           row.priceSure != Certainty::Missing;
+}
+
 }  // namespace
 
 std::filesystem::path screenshotsBeside(const std::filesystem::path& gameLog) {
@@ -141,6 +148,34 @@ Shot readPicture(const std::filesystem::path& file, TextLineReader& reader, cons
     shot.taken = writtenAt(file);
     shot.channel = channelOf(file.parent_path());
     return shot;
+}
+
+std::string lookKey(const Shot& look) {
+    std::string key;
+    for (const Row& row : look.rows) {
+        if (!complete(row)) continue;
+        key += folded(row.read) + ":" + std::to_string(row.level) + ":" + std::to_string(row.stock) + ":" +
+               std::to_string(row.price) + ";";
+    }
+    return key.empty() ? key : std::to_string(look.side) + "|" + key;
+}
+
+Shot newRowsOf(const Shot& look, const std::vector<std::shared_ptr<Shot>>& shots, long long since) {
+    Shot fresh = look;
+    fresh.rows.clear();
+    for (const Row& row : look.rows) {
+        if (!complete(row)) continue;
+        const std::string name = folded(row.read);
+        bool seen = false;
+        for (const auto& shot : shots) {
+            if (!shot || shot->side != look.side || shot->shop != look.shop || shot->taken < since) continue;
+            for (const Row& other : shot->rows) {
+                if (folded(other.read) == name) seen = true;
+            }
+        }
+        if (!seen) fresh.rows.push_back(row);
+    }
+    return fresh;
 }
 
 bool blackPicture(const cv::Mat& bgr) {

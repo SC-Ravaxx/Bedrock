@@ -183,6 +183,16 @@ bool TradeBook::live(std::string_view text) {
     GameState::Event event;
     if (GameState::parse(text, &event)) where_.apply(event);
     if (text.find("Commodity") == std::string_view::npos) return false;
+    // a commodity terminal in use: any line of its own
+    if (text.find("CEntityComponentCommodityUIProvider") != std::string_view::npos ||
+        text.find("AddingCommodityBox") != std::string_view::npos) {
+        const long long at = millisOf(stampOf(text));
+        if (at > terminalUsedMs_) {
+            terminalUsedMs_ = at;
+            const std::string_view shop = fieldOf(text, "shopName");
+            if (!shop.empty()) terminalUsedShop_ = std::string(shop);
+        }
+    }
     std::string resource, sizes;
     if (parseBoxes(text, resource, sizes)) {
         // a terminal's list filling: its lines come at once, a new fill is

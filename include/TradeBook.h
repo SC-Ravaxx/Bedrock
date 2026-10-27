@@ -90,6 +90,12 @@ public:
     };
     // The last ones seen, the newest last
     const std::deque<TerminalFill>& terminalFills() const { return fills_; }
+    // A commodity terminal in use, as the live log has it: the time of the
+    // last line of one - its list filling, the player's boxes listed for a
+    // sale, a trade - in milliseconds since 1970, UTC, 0 none yet; and its
+    // shop's name. The Datarunner looks at the game while one is in use.
+    long long terminalUsedMs() const { return terminalUsedMs_; }
+    const std::string& terminalUsedShop() const { return terminalUsedShop_; }
     // The one filled last at or before `ms`, no longer than `within` ms
     // before it - the terminal a picture taken then shows; nullptr for none
     const TerminalFill* terminalAt(long long ms, long long within) const;
@@ -130,6 +136,8 @@ private:
     GameState where_;                      // the live log's
     std::deque<TerminalFill> fills_;
     static constexpr size_t FILLS_KEPT = 40;
+    long long terminalUsedMs_ = 0;
+    std::string terminalUsedShop_;
     std::filesystem::path file_;
     bool dirty_ = false;
     int changes_ = 0;

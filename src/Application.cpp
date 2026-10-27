@@ -1090,8 +1090,10 @@ void Application::runWithGUI(HINSTANCE hInstance) {
 
         // The blueprint library follows the game's log
         pollLibrary();
-        // ...the Datarunner the game's ScreenShots folder, more often
+        // ...the Datarunner the game's ScreenShots folder, more often, and the
+        // commodity terminal in use
         if (watchScreenshots()) pushDatarunner();
+        if (watchTerminal()) pushDatarunner();
         // ...and a refinery's terminal, at a station that has one
         lookForRefinery();
         handRefineryOrdersToUex();
@@ -5296,6 +5298,25 @@ void Application::uexAccountAction(int action, const std::string& text) {
     pushUexAccount();
 }
 
+// A picture of Bedrock's own for the player to open, as UEX gets it: in the
+// data folder's debug\uex_pictures, kept 30 days like the ones sent; "" where
+// it could not be written
+static std::filesystem::path keepPicture(const std::vector<unsigned char>& jpeg, const std::filesystem::path& folder,
+                                         const std::string& stem) {
+    if (jpeg.empty()) return {};
+    std::error_code ec;
+    std::filesystem::create_directories(folder, ec);
+    for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
+        if (entry.is_regular_file(ec) && secondsSinceWritten(entry.path()) > Datarunner::OLDEST_SECONDS) {
+            std::filesystem::remove(entry.path(), ec);
+        }
+    }
+    const std::filesystem::path shown = folder / (stem + "_bedrock.jpg");
+    std::ofstream out(shown, std::ios::binary | std::ios::trunc);
+    out.write(reinterpret_cast<const char*>(jpeg.data()), (std::streamsize)jpeg.size());
+    return out.good() ? shown : std::filesystem::path();
+}
+
 // UEX Datarunner: the game's ScreenShots folder, looked at every half second
 // while it is on (watchScreenshots, from the main loop). A picture written
 // since it was turned on, and since Bedrock started, is read off the UI
@@ -5426,26 +5447,126 @@ bool Application::watchScreenshots() {
         datarunnerToRead_.pop_front();
         TextLineReader* reader = datarunnerLines_.get();
         // where Bedrock's own picture is the one read, it is written for the
-        // player to open, as UEX would get it - kept 30 days like the ones sent
+        // player to open, as UEX would get it
         const std::filesystem::path pictures = AppPaths::data() / "debug" / "uex_pictures";
         datarunnerReadJob_ = std::async(std::launch::async, [file, own, reader, pictures]() {
             auto shot = std::make_shared<Datarunner::Shot>(Datarunner::readPicture(file, *reader, own));
-            if (shot->own && !shot->rows.empty() && !shot->jpeg.empty()) {
-                std::error_code ec;
-                std::filesystem::create_directories(pictures, ec);
-                for (const auto& entry : std::filesystem::directory_iterator(pictures, ec)) {
-                    if (entry.is_regular_file(ec) && secondsSinceWritten(entry.path()) > Datarunner::OLDEST_SECONDS) {
-                        std::filesystem::remove(entry.path(), ec);
-                    }
-                }
-                const std::filesystem::path shown = pictures / (file.stem().string() + "_bedrock.jpg");
-                std::ofstream out(shown, std::ios::binary | std::ios::trunc);
-                out.write(reinterpret_cast<const char*>(shot->jpeg.data()), (std::streamsize)shot->jpeg.size());
-                if (out.good()) shot->shown = shown;
-            }
+            if (shot->own && !shot->rows.empty()) shot->shown = keepPicture(shot->jpeg, pictures, file.stem().string());
             return shot;
         });
     }
+    return changed;
+}
+
+// The Datarunner at a commodity terminal without Print Screen. The game's
+// log has a line of the terminal's whenever it is opened, its list fills or
+// a trade is made (TradeBook::terminalUsedMs). From such a line on, Bedrock
+// looks at the game every two seconds or so - on foot, the game in view, not
+// at a rock, no scan running - and reads the look off the UI thread with a
+// reader of its own. Two looks in a row that show the same complete rows,
+// the screen standing still, make a picture for the player to check, with
+// the rows no picture of that shop's list from the last half hour has
+// (Datarunner::newRowsOf) - and no look offered before, whether it was sent,
+// closed or thrown away. Twenty seconds without a terminal in sight end
+// the looking until the log has a terminal's line again. Nothing goes
+// without Send. True where what the window shows changed.
+bool Application::watchTerminal() {
+    bool changed = false;
+    const auto now = std::chrono::steady_clock::now();
+    const bool on = datarunnerSince_ > 0 && !uexKey_.empty();
+    // a look read
+    if (terminalJob_.valid() && terminalJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        std::shared_ptr<Datarunner::Shot> look = terminalJob_.get();
+        const std::string key = look ? Datarunner::lookKey(*look) : std::string();
+        if (look && !look->rows.empty()) terminalSeen_ = now;
+        if (on && !key.empty() && key == terminalLastKey_ && (int)datarunnerShots_.size() < DATARUNNER_KEPT) {
+            const long long since = look->taken - 30 * 60;
+            terminalOffered_.erase(std::remove_if(terminalOffered_.begin(), terminalOffered_.end(),
+                                                  [since](const std::shared_ptr<Datarunner::Shot>& offered) {
+                                                      return offered->taken < since;
+                                                  }),
+                                   terminalOffered_.end());
+            std::vector<std::shared_ptr<Datarunner::Shot>> known = datarunnerShots_;
+            known.insert(known.end(), terminalOffered_.begin(), terminalOffered_.end());
+            auto fresh = std::make_shared<Datarunner::Shot>(Datarunner::newRowsOf(*look, known, since));
+            if (!fresh->rows.empty()) {
+                // ...remembered without its pictures
+                auto offered = std::make_shared<Datarunner::Shot>();
+                offered->shop = fresh->shop;
+                offered->side = fresh->side;
+                offered->taken = fresh->taken;
+                offered->rows = fresh->rows;
+                for (Datarunner::Row& row : offered->rows) row.snippet.release();
+                terminalOffered_.push_back(std::move(offered));
+                fresh->id = datarunnerNextId_++;
+                fresh->shown = keepPicture(fresh->jpeg, AppPaths::data() / "debug" / "uex_pictures",
+                                           "terminal_" + timeStamp("%Y%m%d_%H%M%S"));
+                std::cout << "\nUEX Datarunner: the terminal at " << (fresh->shop.empty() ? "?" : fresh->shop)
+                          << " - " << fresh->rows.size() << " new rows" << std::endl;
+                datarunnerShots_.push_back(std::move(fresh));
+                datarunnerNote_.clear();
+                changed = true;
+            }
+        }
+        terminalLastKey_ = key;
+    }
+    if (!on) {
+        terminalLooking_ = false;
+        terminalLastKey_.clear();
+        return changed;
+    }
+    // a terminal's line in the log since the looking began last, and lately
+    const long long used = library_.trades().terminalUsedMs();
+    const long long nowMs = (long long)std::time(nullptr) * 1000;
+    if (used > terminalStartedFor_ && nowMs - used < 2 * 60 * 1000) {
+        terminalStartedFor_ = used;
+        if (!terminalLooking_) {
+            terminalLooking_ = true;
+            terminalSeen_ = now;
+            terminalLastKey_.clear();
+        }
+    }
+    if (!terminalLooking_) return changed;
+    // ...until no terminal has been in sight for twenty seconds
+    if (now - terminalSeen_ > std::chrono::seconds(20)) {
+        terminalLooking_ = false;
+        terminalLastKey_.clear();
+        return changed;
+    }
+    if (terminalJob_.valid() || now - terminalLooked_ < std::chrono::seconds(2)) return changed;
+    // on foot, the game in view, not at a rock, no scan running
+    const HWND game = ScreenCapture::gameWindow();
+    if (!game || gameCovered(game) || gameState_.inSeat() || inScan_ ||
+        now - lastRockPanel_ < std::chrono::seconds(30)) {
+        return changed;
+    }
+    const auto viewport = ScreenCapture::gameViewport();
+    if (!viewport) return changed;
+    CaptureRegion whole;
+    whole.x = viewport->x;
+    whole.y = viewport->y;
+    whole.width = viewport->width;
+    whole.height = viewport->height;
+    whole.autoDetect = false;
+    const cv::Mat frame = screenCapture_.captureRegion(whole);
+    terminalLooked_ = now;
+    if (frame.empty()) return changed;
+    if (!terminalLines_) {
+        terminalLines_ = std::make_unique<TextLineReader>();
+        if (!terminalLines_->loadEmbedded()) std::cout << "\nUEX Datarunner: the line reader did not load" << std::endl;
+    }
+    TextLineReader* reader = terminalLines_.get();
+    const long long taken = (long long)std::time(nullptr);
+    const std::string channel = Datarunner::channelOf(Datarunner::screenshotsBeside(library_.gameLog()));
+    const std::string shop = library_.trades().terminalUsedShop();
+    terminalJob_ = std::async(std::launch::async, [frame, reader, taken, channel, shop]() {
+        auto look = std::make_shared<Datarunner::Shot>(Datarunner::readPicture(frame, *reader));
+        look->automatic = true;
+        look->taken = taken;
+        look->channel = channel;
+        look->shop = shop;
+        return look;
+    });
     return changed;
 }
 

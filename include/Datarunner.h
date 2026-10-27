@@ -21,6 +21,7 @@
 #include <opencv2/core.hpp>
 
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -87,6 +88,9 @@ struct Shot {
     bool own = false;
     bool black = false;
     std::filesystem::path shown;
+    // Bedrock's own look at a terminal in use, no Print Screen: no file of
+    // the game's, `shown` the picture (watchTerminal in Application)
+    bool automatic = false;
     long long taken = 0;            // when it was written, Unix seconds
     int width = 0, height = 0;
     std::string channel;            // "LIVE", "PTU"; "" not known
@@ -118,6 +122,19 @@ std::vector<unsigned char> pictureForUex(cv::Mat frame);
 Shot readPicture(const std::filesystem::path& file, TextLineReader& reader, const cv::Mat& own = cv::Mat());
 // ...the same, of a picture in hand (the self-test, the screenshots)
 Shot readPicture(const cv::Mat& bgr, TextLineReader& reader);
+// The Datarunner at a commodity terminal without Print Screen: Bedrock looks
+// at the game every few seconds while the log says a terminal is in use.
+// What a look shows - its list and its complete rows: a name, the level, the
+// stock and a price per SCU made out - to tell two looks that agree, the
+// screen standing still, from one taken while it moved; "" where no row is
+// complete.
+std::string lookKey(const Shot& look);
+// ...a look's complete rows that no picture of the same shop's same list has
+// from `since` on (Unix seconds), not one the player took out either: a
+// picture of its own for them. The rest of `look` as it is; no rows where
+// none is new.
+Shot newRowsOf(const Shot& look, const std::vector<std::shared_ptr<Shot>>& shots, long long since);
+
 // A picture with nothing on it, as Star Citizen saved its screenshots with
 // HDR on: nought throughout. A dark scene still has its lights and its HUD.
 bool blackPicture(const cv::Mat& bgr);

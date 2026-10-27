@@ -506,6 +506,18 @@ private:
     std::future<std::shared_ptr<Datarunner::Shot>> datarunnerReadJob_;   // (after the reader: it goes first)
     std::vector<std::shared_ptr<Datarunner::Shot>> datarunnerShots_;     // waiting for the player, oldest first
     int datarunnerNextId_ = 1;
+    // ...and at a commodity terminal without Print Screen (watchTerminal):
+    // looks at the game while the log says one is in use, read with a reader
+    // of their own
+    std::unique_ptr<TextLineReader> terminalLines_;
+    std::future<std::shared_ptr<Datarunner::Shot>> terminalJob_;   // (after the reader: it goes first)
+    std::chrono::steady_clock::time_point terminalLooked_{}, terminalSeen_{};
+    long long terminalStartedFor_ = 0;      // the log's terminal line the looking began with, ms
+    bool terminalLooking_ = false;
+    std::string terminalLastKey_;           // what the last look showed (Datarunner::lookKey)
+    // the rows the looks gave the player in the last half hour, whatever came
+    // of them - sent, closed or thrown away, they are not offered again
+    std::vector<std::shared_ptr<Datarunner::Shot>> terminalOffered_;
     std::vector<Datarunner::Sent> datarunnerSent_;          // what went, out of uex\reported.txt
     // UEX's game versions, LIVE and PTU - a report says which it is of
     std::string uexVersions_[2];
@@ -515,6 +527,7 @@ private:
     static constexpr int DATARUNNER_KEPT = 20;              // pictures waiting at most
     void serviceDatarunner();
     bool watchScreenshots();
+    bool watchTerminal();
     void pushDatarunner();
     void datarunnerAction(int action, int shot, int row, int value);
     void datarunnerAnswered(const UexSent& sent);

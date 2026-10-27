@@ -16399,7 +16399,8 @@ void MinerGUI::drawDatarunnerCard(Gdiplus::Graphics& g, int cw, int ch) {
         const float linkW = measure(link, headFont);
         g.DrawString(which.c_str(), -1, &headFont, Gdiplus::RectF(left, y, width - linkW - scaleF(12), scaleF(16)),
                      &oneLine, &dimBrush);
-        if (!shot.file.empty() && (!shot.own || !shot.shown.empty())) {
+        // the game's picture, or Bedrock's own where it was read instead
+        if (!shot.shown.empty() || (!shot.file.empty() && !shot.own)) {
             const Gdiplus::RectF at(left + width - linkW - scaleF(2), y, linkW + scaleF(2), scaleF(16));
             Gdiplus::SolidBrush linkBrush(isHot(hover, at) ? COL_ACCENT_HI : COL_ACCENT);
             g.DrawString(link.c_str(), -1, &headFont, at, &rightLine, &linkBrush);
