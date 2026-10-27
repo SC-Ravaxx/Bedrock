@@ -5368,8 +5368,14 @@ MinerGUI::RockVerdict MinerGUI::rockVerdict() const {
     std::swprintf(text, 256, L"Required power: %s | Available power: %s", formatNumber((int)needs).c_str(),
                   formatNumber((int)out.atRange).c_str());
     v.instruction = text;
-    if (heads < (int)heads_.size()) {
-        std::swprintf(text, 256, L"%d of %d lasers active - Remaining lasers would add power", heads, (int)heads_.size());
+    // only heads with a laser in them could add to it: an empty turret is no
+    // help, and is not counted
+    int fitted = 0;
+    for (const MiningLoadout& h : heads_) {
+        if (h.laser) fitted++;
+    }
+    if (heads < fitted) {
+        std::swprintf(text, 256, L"%d of %d lasers active - Remaining lasers would add power", heads, fitted);
         v.note = text;
     }
     return v;
