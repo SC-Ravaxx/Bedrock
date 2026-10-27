@@ -374,6 +374,11 @@ public:
     }
     void showShipPickerForShot(bool open) { setShipPickerOpen(open); }
     void showPlacePickerForShot(bool open) { setPlacePickerOpen(open); }
+    // The matches the place rules out, opened from the line they fold into
+    void matchesOpenForShot(bool open) {
+        matchesOpen_ = open;
+        if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+    }
     void setHeadForShot(int index, const MiningLoadout& fit) {
         if (index >= 0 && index < (int)heads_.size()) heads_[index] = fit;
         if (index == headShown_) loadout_ = fit;
@@ -995,13 +1000,13 @@ private:
     // drift apart and put the PLACE and SHIP headings inside the notice.
     static constexpr int NOTICE_H = 36;
     // How much further down everything below the header sits while the
-    // notice is still up: the notice itself, room for the headings that sit
-    // 12 above their fields, and a little air. The ship row has to be
-    // reachable from the first minute - a loadout is what the rock view runs
-    // on, and making it appear only after a successful read would mean
-    // nobody can set one up before they need it. So both are shown, and the
-    // rest of the window moves down until the notice retires.
-    int extraTop() const { return everRead_ ? 0 : scale(NOTICE_H + 22); }
+    // notice is still up: the notice itself and the air between it and the
+    // context card. The ship row has to be reachable from the first minute -
+    // a loadout is what the rock view runs on, and making it appear only
+    // after a successful read would mean nobody can set one up before they
+    // need it. So both are shown, and the rest of the window moves down
+    // until the notice retires.
+    int extraTop() const { return everRead_ ? 0 : scale(NOTICE_H + 10); }
     bool shipPickerOpen_ = false;
     Gdiplus::RectF shipField_{};        // the ship dropdown
     Gdiplus::RectF loadoutButton_{};    // ...and the button beside it
@@ -1018,6 +1023,10 @@ private:
     std::string selectedMineral_;
     struct ResultHit { Gdiplus::RectF rect; std::string name; };
     std::vector<ResultHit> resultHits_;   // the rows as last painted, for hit-testing
+    // The matches the place rules out fold into one line under the rest,
+    // which opens them; open or not is this session's alone
+    bool matchesOpen_ = false;
+    Gdiplus::RectF matchesFoldHit_{};     // that line, as last painted
 
     SystemChangedCallback systemChangedCallback_;
     LiveModeCallback liveModeCallback_;
@@ -1039,6 +1048,9 @@ private:
     bool resultsOutOfPlace_ = false;   // ...and it explains none of the matches
     // "not in NYX" or "not at Pyro II (Monox)": what a dimmed result is outside of
     std::wstring outOfScopeNote(const AnalysisResult& result) const;
+    // ...in the words of a line rather than a row's capitals: "not at Pyro
+    // II (Monox)", "not in Nyx", "not in open space"
+    std::wstring outOfScopeWords(const AnalysisResult& result) const;
     KeepRecordingCallback keepRecordingCallback_;
     SnapshotCallback snapshotCallback_;
 
@@ -1057,8 +1069,11 @@ private:
     // The full window as onPaint draws it, into any Graphics: onPaint's, or
     // a picture of it for a phone
     void paintWindowBody(Gdiplus::Graphics& g, int cw, int ch);
-    // `stripOnly`: the wordmark's row, without the place and ship under it
+    // `stripOnly`: the title's row alone, without the notice under it
     void drawHeader(Gdiplus::Graphics& g, int clientW, bool stripOnly = false);
+    // The scan page's first card: the place and the ship with the button to
+    // edit it, and the ores looked for
+    void drawContextCard(Gdiplus::Graphics& g, int clientW);
 
     // The rail (RailItem), drawn in the window's own pixels left of the page
     static constexpr int RAIL_W = 72;
@@ -1071,8 +1086,8 @@ private:
     bool pluginPage_ = false;      // the plugins' page, or one plugin's, is up (pluginShown_)
     bool phonePainting_ = false;   // the window drawn for a phone: as it was, without the rail
     // The window on screen, not the overlay nor a phone's picture: the rail
-    // is up, the header holds Live, Keys, Overlay and the ?, and the action
-    // row is gone
+    // is up with Bedrock's mark at its head, the header holds the page's
+    // title and Live, Keys, Overlay and the ?, and the action row is gone
     bool railShown() const { return !overlayMode_ && !phonePainting_; }
     int railWidth() const { return railShown() ? scale(RAIL_W) : 0; }
     // ...so what was under the action row sits higher by the row
@@ -1086,6 +1101,9 @@ private:
     // go under it (`on`) and come back as layoutControls has them
     void buttonsUnderCard(bool on);
     void drawSignatureCard(Gdiplus::Graphics& g, int clientW);
+    // A word or two in a pill at a card's top right, on its label's line
+    void cornerPill(Gdiplus::Graphics& g, const Gdiplus::RectF& card, const std::wstring& words,
+                    const Gdiplus::Color& ink);
     int  drawResults(Gdiplus::Graphics& g, int clientW, int yPos);
     int  drawDetailCard(Gdiplus::Graphics& g, int clientW, int yPos);
 
@@ -1817,7 +1835,9 @@ private:
     // deposits", "Hand minables"); a scan says "ROC Deposit" and "FPS
     // Minable". Watching for one has to use the name the scan will say.
     static std::string watchName(const std::string& shown);
-    void drawLookingField(Gdiplus::Graphics& g, int cw);
+    // The ores looked for as chips in a row at (x, y), `w` wide, and a +;
+    // the whole row opens the list
+    void drawLookingField(Gdiplus::Graphics& g, float x, float y, float w);
     void drawLookingPanel(Gdiplus::Graphics& g, int cw, int ch);
     bool cartOpen_ = false;          // the list, instead of the recipes
     // The two pickers over the shopping list - the station it is refined
@@ -2198,14 +2218,15 @@ private:
     static constexpr int MARGIN = 16;
     // The rows down the window, top to bottom, with the air between them
     // spelled out. Nothing here may end where the next thing begins: the
-    // notice strip ends at LY_NOTICE + 36, above the ore pick's heading.
-    static constexpr int LY_NOTICE = 72;        // the place/ship row, 26 tall -> 98; its headings at 60
-    static constexpr int LY_SYSTEM = 136;       // the ore pick, 28 tall -> 164; its heading at 118
-    static constexpr int LY_CONTROLS = 180;     // the action row, 28 tall -> 208
+    // notice stands where the context card does and pushes it down by
+    // extraTop().
+    static constexpr int LY_CONTEXT = 57;       // the context card: place, ship, ores
+    static constexpr int CONTEXT_H = 120;       // ...-> 177
+    static constexpr int LY_CONTROLS = 187;     // the action row (a phone's picture only), 28 tall -> 215
     // The aim box has no card: it is worked out from the game window, and a
     // box nobody can move needs no display.
-    static constexpr int LY_SIGCARD = 224;      // big signature readout card, 76 tall -> 300
-    static constexpr int LY_RESULTS = 310;      // matches list
+    static constexpr int LY_SIGCARD = 225;      // big signature readout card, 76 tall -> 301
+    static constexpr int LY_RESULTS = 311;      // matches list
 };
 
 } // namespace SCMiner

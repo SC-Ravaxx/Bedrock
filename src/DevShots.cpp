@@ -604,6 +604,13 @@ int runScreenshots(const std::string& dir) {
     pump();
 
     shoot(gui.windowHandle(), "main.png");
+    // ...and the three matches the place rules out, opened from the line
+    // they fold into
+    gui.matchesOpenForShot(true);
+    pump();
+    shoot(gui.windowHandle(), "main_matches_open.png");
+    gui.matchesOpenForShot(false);
+    pump();
     // 22,180 holds Hephaestanite, which the demo list is looking for: the
     // row blinks, and the blink is held on for the picture - in the compact
     // overlay too
