@@ -68,7 +68,6 @@ struct Row {
     cv::Rect card;                  // where it stands on the picture
     cv::Mat snippet;                // ...that piece of the picture, to show beside it
     bool removed = false;           // taken out by the player
-    bool ready() const;             // every value there and sure
 };
 
 // A picture and what came of it
@@ -84,6 +83,7 @@ struct Shot {
     int side = 0;
     bool sideSure = false;
     std::string shop, place;        // from the game's log, where it had them
+    bool matched = false;           // UEX's lists and the log have been asked (match)
     std::vector<std::pair<int, std::string>> terminals;   // UEX's terminals that fit: id, name
     int terminal = 0;               // the one: the only one that fits, or the player's pick
     std::vector<Row> rows;
@@ -111,12 +111,17 @@ Shot readPicture(const cv::Mat& bgr, TextLineReader& reader);
 // the terminal before one it did not -, Missing otherwise. Its id, 0 none.
 int matchCommodity(const std::string& read, const std::vector<std::pair<std::string, int>>& names,
                    const std::vector<int>& listed, std::string& name, Certainty& sure);
+// UEX's commodities nearest a name read off a terminal, the nearest first:
+// what the player picks from when it is not one of them
+std::vector<std::pair<std::string, int>> nearestCommodities(const std::string& read,
+                                                            const std::vector<std::pair<std::string, int>>& names,
+                                                            size_t count);
 // Everything about a picture that UEX's lists and the game's log can say:
 // each row's commodity, the terminal (the only one that fits, or the ones
-// to pick from), and the cargo box sizes the log listed for a row of the
-// BUY list - those alone, as the log lists no others. `fill` is the
-// terminal the log saw fill before the picture was taken; null where it saw
-// none.
+// to pick from), and the cargo box sizes the log listed for what the
+// terminal sells - they go with the BUY list only (reportBody). `fill` is
+// the terminal the log saw fill before the picture was taken; null where
+// it saw none.
 void match(Shot& shot, const UexDirectory& directory, const TradeBook::TerminalFill* fill);
 
 // What went to UEX, row by row - kept in uex\reported.txt with the refinery

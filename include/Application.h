@@ -27,6 +27,7 @@
 #include "FrameRecorder.h"
 #include "UexPrices.h"
 #include "UexReports.h"
+#include "Datarunner.h"
 #include "RefineryShare.h"
 #include "UexMarket.h"
 #include <memory>
@@ -407,12 +408,23 @@ private:
     struct UexPending {
         std::string key;                   // what makes it once-only
         UexRefineryJob job;
+        // ...or a Datarunner picture's report (shot > 0): ready to go, and
+        // the rows it carries
+        int shot = 0;
+        std::string body;
+        std::vector<Datarunner::Sent> rows;
     };
     struct UexSent {
         std::string key, note, user;
         bool keyTrouble = false;           // UEX turned the key away
         std::string accountTrouble;        // ...or the account behind it (UexReports::accountTrouble)
         bool answered = false;             // UEX answered at all - not sent, it says nothing of the account
+        // a Datarunner picture's report: what UEX said of it ("" taken), the
+        // ids it gave, the entry a duplicate stopped at
+        int shot = 0;
+        std::string said, duplicate;
+        std::vector<std::string> ids;
+        std::vector<Datarunner::Sent> rows;
     };
     long long uexReportSince_ = 0;
     bool uexOffered_ = false;              // uexoffered= : the first start's offer was made
@@ -458,6 +470,7 @@ private:
     static constexpr int UEX_MARKET_MINUTES = 10;
     static constexpr int UEX_MARKET_QUALITY = 900;
     static std::shared_ptr<UexDirectory> loadUexDirectory(const std::filesystem::path& folder);
+    void askUexDirectory();          // UEX's lists, asked for off the UI thread where they are not in yet
     cv::Mat grabGamePicture();
     void serviceUexReports();
     void readUexReported();
@@ -465,6 +478,41 @@ private:
     void pushUexAccount();
     void uexAccountAction(int action, const std::string& text);
     std::string currentSystem_;   // "" until Game.log names one - see MinerGUI
+
+    // UEX Datarunner (Datarunner.h), opt-in on its own: datarunner= in
+    // region_config.txt is 0, or the Unix second the player turned it on.
+    // While it is on and a key is in, the game's ScreenShots folder is
+    // looked at every two seconds; a picture written since it was turned on
+    // and since Bedrock started is read off the UI thread, and one that
+    // shows a commodity terminal waits on the main window for the player.
+    // Nothing goes but on their Send.
+    long long datarunnerSince_ = 0;
+    long long datarunnerFrom_ = 0;                          // pictures older than this are not read
+    std::filesystem::path datarunnerFolder_;                // the ScreenShots folder looked at
+    std::set<std::string> datarunnerKnown_;                 // its pictures dealt with, by name
+    struct DatarunnerGrowing {
+        std::uintmax_t size = 0;
+        std::chrono::steady_clock::time_point since{};
+    };
+    std::map<std::string, DatarunnerGrowing> datarunnerGrowing_;   // new ones, until the game has written them
+    std::deque<std::filesystem::path> datarunnerToRead_;
+    std::chrono::steady_clock::time_point datarunnerLooked_{}, datarunnerPushed_{};
+    std::unique_ptr<TextLineReader> datarunnerLines_;       // its own reader, used by one job at a time
+    std::future<std::shared_ptr<Datarunner::Shot>> datarunnerReadJob_;   // (after the reader: it goes first)
+    std::vector<std::shared_ptr<Datarunner::Shot>> datarunnerShots_;     // waiting for the player, oldest first
+    int datarunnerNextId_ = 1;
+    std::vector<Datarunner::Sent> datarunnerSent_;          // what went, out of uex\reported.txt
+    // UEX's game versions, LIVE and PTU - a report says which it is of
+    std::string uexVersions_[2];
+    std::future<std::pair<std::string, std::string>> uexVersionsJob_;
+    std::chrono::steady_clock::time_point uexVersionsAsked_{};
+    bool uexVersionsEver_ = false;
+    static constexpr int DATARUNNER_KEPT = 20;              // pictures waiting at most
+    void serviceDatarunner();
+    void pushDatarunner();
+    void datarunnerAction(int action, int shot, int row, int value);
+    void datarunnerAnswered(const UexSent& sent);
+    void keepSentPicture(const Datarunner::Shot& shot);
 
     std::atomic<bool> running_ = false;
     std::atomic<bool> scanRequested_ = false;

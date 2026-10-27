@@ -832,6 +832,9 @@ void Application::runWithGUI(HINSTANCE hInstance) {
     // window says of it
     uexKey_ = UexKey::load();
     gui_->setUexAccountCallback([this](int action, const std::string& text) { uexAccountAction(action, text); });
+    gui_->setDatarunnerCallback([this](int action, int shot, int row, int value) {
+        datarunnerAction(action, shot, row, value);
+    });
     pushUexAccount();
     gui_->setGameTextsCallback([this](bool on) { setGameTextsWanted(on); });
     gui_->setGameNamesCallback([this](bool on) { setGameNamesWanted(on); });
@@ -3678,6 +3681,8 @@ void Application::saveRegionConfig() {
         file << "uexreport=" << uexReportSince_ << std::endl;
         // ...and whether the first start's offer of it was made
         file << "uexoffered=" << (uexOffered_ ? 1 : 0) << std::endl;
+        // UEX Datarunner: 0, or when the player turned it on (on the UEX card)
+        file << "datarunner=" << datarunnerSince_ << std::endl;
         if (!updateUrl_.empty()) file << "updateurl=" << updateUrl_ << std::endl;
         // The viewport the aim point was picked in. The point was chosen by
         // eye against the HUD, and the HUD is laid out in the viewport, not on
@@ -3712,11 +3717,12 @@ void Application::loadRegionConfig() {
                     continue;
                 }
                 // a Unix second, past what an int holds in 2038
-                if (key == "uexreport") {
+                if (key == "uexreport" || key == "datarunner") {
+                    long long& since = key == "uexreport" ? uexReportSince_ : datarunnerSince_;
                     try {
-                        uexReportSince_ = std::stoll(line.substr(pos + 1));
+                        since = std::stoll(line.substr(pos + 1));
                     } catch (const std::exception&) {
-                        uexReportSince_ = 0;
+                        since = 0;
                     }
                     continue;
                 }
@@ -4521,6 +4527,7 @@ void Application::pollLibrary() {
     keepGameTextsFresh();
     serviceUex();
     serviceUexReports();
+    serviceDatarunner();
     serviceUexMarket();
     // The same log, read for where the player is and what they fly
     if (gameState_.gameLog() != library_.gameLog()) {
@@ -4966,6 +4973,16 @@ std::shared_ptr<UexDirectory> Application::loadUexDirectory(const std::filesyste
     return directory;
 }
 
+void Application::askUexDirectory() {
+    if (uexDirectory_ || uexDirectoryJob_.valid()) return;
+    const auto now = std::chrono::steady_clock::now();
+    if (uexDirectoryAsked_ && now - uexDirectoryTried_ <= std::chrono::minutes(UEX_RETRY_MINUTES)) return;
+    uexDirectoryAsked_ = true;
+    uexDirectoryTried_ = now;
+    const std::filesystem::path folder = AppPaths::data() / "uex";
+    uexDirectoryJob_ = std::async(std::launch::async, [folder]() { return loadUexDirectory(folder); });
+}
+
 void Application::readUexReported() {
     if (uexReportedRead_) return;
     uexReportedRead_ = true;
@@ -4973,7 +4990,11 @@ void Application::readUexReported() {
     std::string line;
     while (std::getline(in, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (!line.empty()) uexReported_.insert(line);
+        if (line.empty()) continue;
+        uexReported_.insert(line);
+        // a Datarunner report's rows: UEX's five minutes, over a restart
+        Datarunner::Sent sent;
+        if (Datarunner::readSentKey(line, sent)) datarunnerSent_.push_back(sent);
     }
 }
 
@@ -5043,6 +5064,14 @@ void Application::serviceUexReports() {
     const auto now = std::chrono::steady_clock::now();
     if (uexSendJob_.valid() && uexSendJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
         UexSent sent = uexSendJob_.get();
+        if (sent.shot > 0) {
+            if (sent.keyTrouble) uexKeyTrouble_ = true;
+            if (sent.answered) uexAccountTrouble_ = sent.accountTrouble;
+            if (!sent.user.empty()) uexUser_ = sent.user;
+            datarunnerAnswered(sent);
+            pushUexAccount();
+            return;
+        }
         if (sent.keyTrouble) {
             uexKeyTrouble_ = true;      // the same key again would only be turned away again
         } else if (!sent.key.empty()) {
@@ -5062,20 +5091,62 @@ void Application::serviceUexReports() {
         if (auto directory = uexDirectoryJob_.get()) uexDirectory_ = std::move(directory);
     }
     if (uexQueue_.empty() || uexSendJob_.valid()) return;
-    if (uexReportSince_ <= 0 || uexKey_.empty() || uexKeyTrouble_) {
-        uexQueue_.clear();
-        return;
-    }
-    if (!uexDirectory_) {
-        if (!uexDirectoryJob_.valid() &&
-            (!uexDirectoryAsked_ || now - uexDirectoryTried_ > std::chrono::minutes(UEX_RETRY_MINUTES))) {
-            uexDirectoryAsked_ = true;
-            uexDirectoryTried_ = now;
-            const std::filesystem::path folder = AppPaths::data() / "uex";
-            uexDirectoryJob_ = std::async(std::launch::async, [folder]() { return loadUexDirectory(folder); });
+    // What can no longer go: a refinery job once reporting is off, a
+    // Datarunner report once the Datarunner is off - and anything without a
+    // key UEX takes. A picture's report says so on its card.
+    for (auto it = uexQueue_.begin(); it != uexQueue_.end();) {
+        const bool off = uexKey_.empty() || uexKeyTrouble_ || (it->shot > 0 ? datarunnerSince_ <= 0 : uexReportSince_ <= 0);
+        if (!off) {
+            ++it;
+            continue;
         }
+        if (it->shot > 0) {
+            UexSent dropped;
+            dropped.shot = it->shot;
+            dropped.note = uexKeyTrouble_ ? "UEX did not accept this key" : "Datarunner off";
+            datarunnerAnswered(dropped);
+        }
+        it = uexQueue_.erase(it);
+    }
+    if (uexQueue_.empty()) return;
+    const std::string token = uexToken();
+    // A Datarunner picture's report: written when the player pressed Send
+    if (uexQueue_.front().shot > 0) {
+        UexPending item = std::move(uexQueue_.front());
+        uexQueue_.pop_front();
+        if (token.empty()) {
+            UexSent none;
+            none.shot = item.shot;
+            none.note = "This build has no UEX app token";
+            datarunnerAnswered(none);
+            return;
+        }
+        const std::string key = uexKey_;
+        const std::string url = std::string(UEX_API) + "data_submit/";
+        uexSendJob_ = std::async(std::launch::async, [url, token, key, item]() {
+            UexSent sent;
+            sent.shot = item.shot;
+            sent.rows = item.rows;
+            HttpAnswer answer;
+            const std::vector<std::string> headers = {"Authorization: Bearer " + token, "secret-key: " + key,
+                                                      "Content-Type: application/json"};
+            if (!httpsPost(url, headers, item.body, answer)) {
+                sent.note = "Not sent (" + answer.why + ")";
+                return sent;
+            }
+            sent.answered = true;
+            sent.said = UexReports::verdict(answer.status, answer.body, &sent.user);
+            sent.keyTrouble = UexReports::keyTrouble(answer.status, answer.body);
+            sent.accountTrouble = UexReports::accountTrouble(answer.status, answer.body);
+            sent.ids = UexReports::reportIds(answer.body);
+            sent.duplicate = UexReports::duplicateNamed(answer.body);
+            sent.note = sent.said;
+            return sent;
+        });
         return;
     }
+    askUexDirectory();
+    if (!uexDirectory_) return;
     UexPending item = std::move(uexQueue_.front());
     uexQueue_.pop_front();
     const UexDirectory& directory = *uexDirectory_;
@@ -5104,7 +5175,6 @@ void Application::serviceUexReports() {
         return;
     }
     const std::string body = UexReports::refineryJob(terminal, method, job.cost, (job.seconds + 59) / 60, items, production);
-    const std::string token = uexToken();
     if (token.empty()) {
         uexReportNote_ = "This build has no UEX app token - Reporting unavailable";
         uexReportNoteAt_ = (long long)std::time(nullptr);
@@ -5148,6 +5218,8 @@ void Application::pushUexAccount() {
     account.user = uexUser_;
     account.hasToken = !uexToken().empty();
     account.keyChanges = uexKeyChanges_;
+    account.datarunner = datarunnerSince_ > 0;
+    account.datarunnerSince = datarunnerSince_;
     gui_->setUexAccount(account);
 }
 
@@ -5177,6 +5249,7 @@ void Application::uexAccountAction(int action, const std::string& text) {
         uexKeyTrouble_ = false;
         uexAccountTrouble_.clear();
         uexReportSince_ = 0;
+        datarunnerSince_ = 0;
         uexQueue_.clear();
         saveRegionConfig();
         uexReportNote_ = "Key removed, reporting off";
@@ -5201,10 +5274,365 @@ void Application::uexAccountAction(int action, const std::string& text) {
         saveRegionConfig();
         pushUexAccount();
         return;
+    } else if (action == 6) {
+        // UEX Datarunner on: the pictures taken from now on are read
+        if (uexKey_.empty()) {
+            uexReportNote_ = "Paste your UEX secret key first";
+        } else {
+            datarunnerSince_ = now;
+            datarunnerFolder_.clear();   // looked at anew, what is there now left alone
+            saveRegionConfig();
+            uexReportNote_ = "Datarunner on";
+        }
+    } else if (action == 7) {
+        datarunnerSince_ = 0;
+        saveRegionConfig();
+        uexReportNote_ = "Datarunner off";
     }
     uexReportNoteAt_ = now;
     std::cout << "\nUEX reports: " << uexReportNote_ << std::endl;
     pushUexAccount();
+}
+
+// UEX Datarunner: the game's ScreenShots folder, looked at every two seconds
+// while it is on. A picture written since it was turned on, and since
+// Bedrock started, is read off the UI thread once the game has finished
+// writing it - its size the same for half a second -, and one of a commodity
+// terminal waits for the player on the main window. A picture of anything
+// else is left alone. UEX's lists and game versions are asked for while it
+// is on, and a picture is matched to them as soon as they are in.
+void Application::serviceDatarunner() {
+    const auto now = std::chrono::steady_clock::now();
+    bool changed = false;
+    // a picture read
+    if (datarunnerReadJob_.valid() && datarunnerReadJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        std::shared_ptr<Datarunner::Shot> shot = datarunnerReadJob_.get();
+        if (shot && !shot->rows.empty() && datarunnerSince_ > 0) {
+            shot->id = datarunnerNextId_++;
+            std::cout << "\nUEX Datarunner: " << shot->file.filename().string() << " - " << shot->rows.size()
+                      << " rows read" << std::endl;
+            datarunnerShots_.push_back(std::move(shot));
+            changed = true;
+        }
+    }
+    // UEX's game versions: which a picture is of
+    if (uexVersionsJob_.valid() && uexVersionsJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        const auto versions = uexVersionsJob_.get();
+        if (!versions.first.empty()) uexVersions_[0] = versions.first;
+        if (!versions.second.empty()) uexVersions_[1] = versions.second;
+        changed = true;
+    }
+    const bool on = datarunnerSince_ > 0 && !uexKey_.empty();
+    if (!on) {
+        datarunnerToRead_.clear();
+        datarunnerGrowing_.clear();
+        if (!datarunnerShots_.empty()) {
+            // turned off: nothing more goes, the pictures waiting with it
+            datarunnerShots_.clear();
+            changed = true;
+        }
+        if (changed) pushDatarunner();
+        return;
+    }
+    if (!uexVersionsJob_.valid() &&
+        (!uexVersionsEver_ || now - uexVersionsAsked_ > std::chrono::hours(uexVersions_[0].empty() ? 0 : 6) +
+                                                            std::chrono::minutes(UEX_RETRY_MINUTES))) {
+        uexVersionsEver_ = true;
+        uexVersionsAsked_ = now;
+        const std::filesystem::path folder = AppPaths::data() / "uex";
+        uexVersionsJob_ = std::async(std::launch::async, [folder]() {
+            std::error_code ec;
+            std::filesystem::create_directories(folder, ec);
+            std::string why;
+            const std::string body = uexListCached(folder / "game_versions.json", "game_versions", 6 * 3600, why);
+            JsonValue answer;
+            std::pair<std::string, std::string> versions;
+            if (!body.empty() && parseJson(body, answer, why)) {
+                if (const JsonValue* data = answer.find("data")) {
+                    versions.first = data->textOr("live");
+                    versions.second = data->textOr("ptu");
+                }
+            }
+            return versions;
+        });
+    }
+    // UEX's lists, and every picture matched to them and to the game's log
+    askUexDirectory();
+    if (uexDirectory_) {
+        readUexReported();
+        for (const auto& shot : datarunnerShots_) {
+            if (shot->matched) continue;
+            // the terminal the log saw fill last before the picture, within
+            // half an hour; else where the player is
+            const TradeBook::TerminalFill* fill =
+                library_.trades().terminalAt(shot->taken * 1000 + 999, 30ll * 60 * 1000);
+            TradeBook::TerminalFill here;
+            if (!fill) {
+                here.place = TradeBook::placeOf(gameState_);
+                if (!here.place.empty()) fill = &here;
+            }
+            Datarunner::match(*shot, *uexDirectory_, fill);
+            shot->matched = true;
+            changed = true;
+        }
+    }
+    // the folder
+    if (now - datarunnerLooked_ >= std::chrono::seconds(2)) {
+        datarunnerLooked_ = now;
+        const std::filesystem::path folder = Datarunner::screenshotsBeside(library_.gameLog());
+        if (folder != datarunnerFolder_) {
+            datarunnerFolder_ = folder;
+            datarunnerKnown_.clear();
+            datarunnerGrowing_.clear();
+            datarunnerToRead_.clear();
+            datarunnerFrom_ = (std::max)(datarunnerSince_, (long long)std::time(nullptr));
+        }
+        std::error_code ec;
+        if (!folder.empty() && std::filesystem::is_directory(folder, ec)) {
+            for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
+                if (!entry.is_regular_file(ec)) continue;
+                std::string ext = entry.path().extension().string();
+                for (char& c : ext) c = (char)std::tolower((unsigned char)c);
+                if (ext != ".jpg" && ext != ".jpeg" && ext != ".png") continue;
+                const std::string name = entry.path().filename().string();
+                if (datarunnerKnown_.count(name)) continue;
+                // one from before: never read
+                const auto written = entry.last_write_time(ec);
+                if (ec) continue;
+#ifdef _WIN32
+                const auto system = std::chrono::clock_cast<std::chrono::system_clock>(written);
+#else
+                const auto system = std::chrono::file_clock::to_sys(written);
+#endif
+                const long long at =
+                    (long long)std::chrono::duration_cast<std::chrono::seconds>(system.time_since_epoch()).count();
+                if (at < datarunnerFrom_) {
+                    datarunnerKnown_.insert(name);
+                    continue;
+                }
+                // a new one: read once its size has stood for half a second
+                const std::uintmax_t size = entry.file_size(ec);
+                if (ec || size == 0) continue;
+                auto growing = datarunnerGrowing_.find(name);
+                if (growing == datarunnerGrowing_.end() || growing->second.size != size) {
+                    datarunnerGrowing_[name] = {size, now};
+                    continue;
+                }
+                if (now - growing->second.since < std::chrono::milliseconds(500)) continue;
+                datarunnerGrowing_.erase(growing);
+                datarunnerKnown_.insert(name);
+                if ((int)datarunnerShots_.size() + (int)datarunnerToRead_.size() >= DATARUNNER_KEPT) {
+                    std::cout << "\nUEX Datarunner: " << name << " not read - " << DATARUNNER_KEPT
+                              << " pictures are waiting" << std::endl;
+                    continue;
+                }
+                datarunnerToRead_.push_back(entry.path());
+            }
+        }
+    }
+    // the next picture, read off the UI thread with a reader of its own
+    if (!datarunnerReadJob_.valid() && !datarunnerToRead_.empty()) {
+        if (!datarunnerLines_) {
+            datarunnerLines_ = std::make_unique<TextLineReader>();
+            if (!datarunnerLines_->loadEmbedded()) std::cout << "\nUEX Datarunner: the line reader did not load" << std::endl;
+        }
+        const std::filesystem::path file = datarunnerToRead_.front();
+        datarunnerToRead_.pop_front();
+        TextLineReader* reader = datarunnerLines_.get();
+        datarunnerReadJob_ = std::async(std::launch::async, [file, reader]() {
+            return std::make_shared<Datarunner::Shot>(Datarunner::readPicture(file, *reader));
+        });
+    }
+    // what stands in the way of Send changes with the clock: five minutes
+    // run out, a picture grows older than UEX takes
+    if (!datarunnerShots_.empty() && now - datarunnerPushed_ > std::chrono::seconds(10)) changed = true;
+    if (changed) pushDatarunner();
+}
+
+void Application::pushDatarunner() {
+    datarunnerPushed_ = std::chrono::steady_clock::now();
+    if (!gui_) return;
+    const long long now = (long long)std::time(nullptr);
+    MinerGUI::DatarunnerState state;
+    for (const auto& shot : datarunnerShots_) {
+        state.shots.push_back(shot);
+        std::string blocked;
+        if (!shot->matched) blocked = "Waiting for UEX's lists - The picture is checked once they are in";
+        else blocked = Datarunner::whyNotSend(*shot, datarunnerSent_, now);
+        const std::string& version = shot->channel == "PTU" ? uexVersions_[1] : uexVersions_[0];
+        if (blocked.empty() && version.empty()) blocked = "Game version not known yet - Waiting for UEX";
+        state.blocked.push_back(blocked);
+        std::vector<int> holds;
+        for (const Datarunner::Row& row : shot->rows) holds.push_back((int)Datarunner::holdOf(*shot, row, datarunnerSent_, now));
+        state.holds.push_back(holds);
+        state.versions.push_back(version);
+    }
+    if (uexDirectory_) {
+        state.commodities = std::make_shared<const std::vector<std::pair<std::string, int>>>(uexDirectory_->commodityNames());
+        state.terminals = std::make_shared<const std::vector<std::pair<int, std::string>>>(uexDirectory_->commodityTerminals());
+    }
+    state.signUp = uexAccountTrouble_ == "datarunner";
+    gui_->setDatarunner(state);
+}
+
+// What the player did on the Datarunner card (MinerGUI::DatarunnerCallback)
+void Application::datarunnerAction(int action, int shotId, int rowIndex, int value) {
+    auto it = std::find_if(datarunnerShots_.begin(), datarunnerShots_.end(),
+                           [&](const std::shared_ptr<Datarunner::Shot>& s) { return s->id == shotId; });
+    if (it == datarunnerShots_.end()) return;
+    Datarunner::Shot& shot = **it;
+    Datarunner::Row* row = rowIndex >= 0 && rowIndex < (int)shot.rows.size() ? &shot.rows[rowIndex] : nullptr;
+    const bool open = shot.state != Datarunner::Shot::State::Sending && shot.state != Datarunner::Shot::State::Sent;
+    const long long now = (long long)std::time(nullptr);
+    switch (action) {
+        case 1: {   // Send: one report, the rows as checked and the picture they were read off
+            readUexReported();
+            const std::string& version = shot.channel == "PTU" ? uexVersions_[1] : uexVersions_[0];
+            if (!open || !shot.matched || version.empty() || !Datarunner::whyNotSend(shot, datarunnerSent_, now).empty()) {
+                break;
+            }
+            const bool production = DEV_ENV("SCMINER_UEX_DRYRUN") == nullptr;
+            UexPending item;
+            item.shot = shot.id;
+            item.body = Datarunner::reportBody(shot, datarunnerSent_, now, version, production);
+            for (const Datarunner::Row* sending : Datarunner::rowsToSend(shot, datarunnerSent_, now)) {
+                Datarunner::Sent went;
+                went.terminal = shot.terminal;
+                went.side = shot.side;
+                went.commodity = sending->commodity;
+                went.taken = shot.taken;
+                item.rows.push_back(went);
+            }
+            shot.state = Datarunner::Shot::State::Sending;
+            shot.note.clear();
+            std::cout << "\nUEX Datarunner: " << shot.file.filename().string() << " - sending " << item.rows.size()
+                      << " rows to UEX" << (production ? "" : " (test report)") << std::endl;
+            uexQueue_.push_back(std::move(item));
+            break;
+        }
+        case 2:     // Discard, or Close once sent
+            if (shot.state == Datarunner::Shot::State::Sending) break;
+            datarunnerShots_.erase(it);
+            break;
+        case 3:     // a row taken out, or put back
+            if (row && open) row->removed = !row->removed;
+            break;
+        case 4:     // a row's values to check, checked against the picture
+            if (row && open) {
+                for (Certainty* sure : {&row->nameSure, &row->levelSure, &row->stockSure, &row->priceSure}) {
+                    if (*sure == Certainty::Check) *sure = Certainty::Sure;
+                }
+            }
+            break;
+        case 5:     // the level, picked from the game's words
+            if (row && open && value >= 1 && value <= 7) {
+                row->level = value;
+                row->levelSure = Certainty::Sure;
+            }
+            break;
+        case 6:     // the stock, typed
+            if (row && open && value >= 0) {
+                row->stock = value;
+                row->stockSure = Certainty::Sure;
+            }
+            break;
+        case 7:     // the price, typed - a SCU's: a cargo box's stays out
+            if (row && open && value >= 0 && !row->perUnit) {
+                row->price = value;
+                row->priceSure = Certainty::Sure;
+            }
+            break;
+        case 8:     // the commodity, picked from UEX's
+            if (row && open && uexDirectory_) {
+                for (const auto& [name, id] : uexDirectory_->commodityNames()) {
+                    if (id != value) continue;
+                    row->commodity = id;
+                    row->name = name;
+                    row->nameSure = Certainty::Sure;
+                }
+            }
+            break;
+        case 9:     // the terminal, picked
+            if (open && uexDirectory_ && !uexDirectory_->terminalName(value).empty()) shot.terminal = value;
+            break;
+        case 10:    // the list: BUY or SELL
+            if (open && (value == 1 || value == 2)) {
+                shot.side = value;
+                shot.sideSure = true;
+            }
+            break;
+        default:
+            break;
+    }
+    pushDatarunner();
+}
+
+// What came of a picture's report: on UEX, all of it or the rows before a
+// duplicate, or not at all - in UEX's words
+void Application::datarunnerAnswered(const UexSent& sent) {
+    const long long now = (long long)std::time(nullptr);
+    auto it = std::find_if(datarunnerShots_.begin(), datarunnerShots_.end(),
+                           [&](const std::shared_ptr<Datarunner::Shot>& s) { return s->id == sent.shot; });
+    Datarunner::Shot* shot = it == datarunnerShots_.end() ? nullptr : it->get();
+    // the rows UEX stored: all of them, or - turned down as a duplicate -
+    // the ones before the entry it names
+    std::vector<Datarunner::Sent> stored;
+    if (sent.answered && sent.said.empty()) {
+        stored = sent.rows;
+    } else if (sent.answered && !sent.duplicate.empty()) {
+        for (const Datarunner::Sent& row : sent.rows) {
+            std::string name;
+            if (uexDirectory_) {
+                for (const auto& [written, id] : uexDirectory_->commodityNames()) {
+                    if (id == row.commodity) name = written;
+                }
+            }
+            if (sent.duplicate == std::to_string(row.commodity) || sent.duplicate == name) break;
+            stored.push_back(row);
+        }
+    }
+    for (Datarunner::Sent row : stored) {
+        row.sent = now;
+        datarunnerSent_.push_back(row);
+        rememberUexReported(Datarunner::sentKey(row));
+    }
+    std::string line;
+    if (sent.answered && sent.said.empty()) {
+        line = "On UEX - " + std::to_string(stored.size()) + (stored.size() == 1 ? " row" : " rows");
+    } else {
+        line = sent.note.empty() ? std::string("Not sent") : sent.note;
+        if (!stored.empty()) line += " - " + std::to_string(stored.size()) + " rows before it are on UEX";
+    }
+    std::cout << "\nUEX Datarunner: " << (shot ? shot->file.filename().string() : std::string("a picture")) << " - "
+              << line << std::endl;
+    if (shot) {
+        shot->ids = sent.ids;
+        shot->note = sent.answered && sent.said.empty() ? std::string() : (sent.note.empty() ? "Not sent" : sent.note);
+        shot->state = sent.answered && sent.said.empty() ? Datarunner::Shot::State::Sent
+                      : !stored.empty()                  ? Datarunner::Shot::State::Partly
+                      : sent.answered                    ? Datarunner::Shot::State::Refused
+                                                         : Datarunner::Shot::State::Failed;
+        if (!stored.empty()) keepSentPicture(*shot);
+    }
+    pushDatarunner();
+}
+
+// The pictures that went to UEX, as they went, in the data folder's debug\uex_sent
+// - for the player to look back at what was sent - for 30 days
+void Application::keepSentPicture(const Datarunner::Shot& shot) {
+    if (shot.jpeg.empty()) return;
+    std::error_code ec;
+    const std::filesystem::path folder = AppPaths::data() / "debug" / "uex_sent";
+    std::filesystem::create_directories(folder, ec);
+    const long long now = (long long)std::time(nullptr);
+    for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
+        if (entry.is_regular_file(ec) && secondsSinceWritten(entry.path()) > Datarunner::OLDEST_SECONDS) {
+            std::filesystem::remove(entry.path(), ec);
+        }
+    }
+    const std::string name = std::to_string(now) + "_" + std::to_string(shot.terminal) + "_" + shot.file.stem().string() + ".jpg";
+    std::ofstream out(folder / name, std::ios::binary);
+    out.write((const char*)shot.jpeg.data(), (std::streamsize)shot.jpeg.size());
 }
 
 // A patch moves the game's text on, and Bedrock's file - which the game reads

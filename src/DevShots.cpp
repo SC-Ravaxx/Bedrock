@@ -17,6 +17,8 @@
 #include "CraftingData.h"
 #include "UexPrices.h"
 #include "UexMarket.h"
+#include "Datarunner.h"
+#include "TextLineReader.h"
 #include <ctime>
 #include <memory>
 
@@ -26,6 +28,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -189,6 +192,59 @@ static std::shared_ptr<const std::vector<SCMiner::UexListing>> shotListings(cons
     }
     std::sort(out->begin(), out->end(), [](const SCMiner::UexListing& a, const SCMiner::UexListing& b) { return a.price > b.price; });
     return out;
+}
+
+// A commodity terminal's rows for the Datarunner's card: a real picture's,
+// read as the app reads it, where SCMINER_DATARUNNER_SHOT names one (the
+// picture stays where it is and goes nowhere); else drawn here, a dark card
+// with the game's lines on it. Every value read, UEX's name beside it.
+static std::vector<SCMiner::Datarunner::Row> shotDatarunnerRows(const std::vector<std::pair<std::string, int>>& names) {
+    namespace D = SCMiner::Datarunner;
+    using SCMiner::Certainty;
+    std::vector<D::Row> rows;
+    if (const char* path = std::getenv("SCMINER_DATARUNNER_SHOT")) {
+        static SCMiner::TextLineReader reader;
+        static const bool loaded = reader.loadEmbedded();
+        if (loaded) rows = D::readPicture(std::filesystem::path(path), reader).rows;
+        std::cout << "  Datarunner rows from " << path << ": " << rows.size() << std::endl;
+    }
+    if (rows.empty()) {
+        struct Drawn { const char* name; int level; int stock; int price; };
+        static const Drawn DRAWN[] = {{"HEPHAESTANITE", 7, 1050, 4167}, {"IRON", 2, 4, 2850},
+                                      {"ALUMINUM", 4, 509, 3128},       {"ARGON", 7, 24000, 316},
+                                      {"SHIP AMMUNITION - SIZE 1", 7, 12000, 6868},
+                                      {"SHIP AMMUNITION - SIZE 2", 7, 12000, 7126},
+                                      {"SHIP AMMUNITION - SIZE 3", 7, 12000, 7384}};
+        for (const Drawn& d : DRAWN) {
+            cv::Mat card(68, 420, CV_8UC3, cv::Scalar(52, 40, 26));
+            cv::rectangle(card, cv::Rect(6, 8, 4, 52), cv::Scalar(70, 190, 230), cv::FILLED);
+            cv::putText(card, d.name, cv::Point(18, 28), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(235, 235, 235), 1, cv::LINE_AA);
+            cv::putText(card, SCMiner::commodityLevelWords(d.level), cv::Point(18, 52), cv::FONT_HERSHEY_SIMPLEX, 0.38,
+                        cv::Scalar(70, 190, 230), 1, cv::LINE_AA);
+            char line[48];
+            std::snprintf(line, sizeof(line), "%d SCU", d.stock);
+            cv::putText(card, line, cv::Point(300, 28), cv::FONT_HERSHEY_SIMPLEX, 0.45, cv::Scalar(235, 235, 235), 1, cv::LINE_AA);
+            std::snprintf(line, sizeof(line), "%d/SCU", d.price);
+            cv::putText(card, line, cv::Point(300, 52), cv::FONT_HERSHEY_SIMPLEX, 0.45, cv::Scalar(235, 235, 235), 1, cv::LINE_AA);
+            D::Row row;
+            row.read = d.name;
+            row.level = d.level;
+            row.stock = d.stock;
+            row.price = d.price;
+            row.snippet = card;
+            rows.push_back(row);
+        }
+    }
+    for (D::Row& row : rows) {
+        SCMiner::Certainty sure = Certainty::Missing;
+        row.commodity = D::matchCommodity(row.read, names, {}, row.name, sure);
+        row.nameSure = row.levelSure = row.stockSure = row.priceSure = Certainty::Sure;
+        if (row.commodity == 0) row.nameSure = Certainty::Missing;
+        if (row.level < 1) row.levelSure = Certainty::Missing;
+        if (row.stock < 0) row.stockSure = Certainty::Missing;
+        if (row.price < 0) row.priceSure = Certainty::Missing;
+    }
+    return rows;
 }
 
 // Photographs the windows into <dir>: main.png, overlay.png, planner.png.
@@ -1274,6 +1330,173 @@ int runScreenshots(const std::string& dir) {
         account.accountTrouble.clear();
         gui.openUexWelcomeForShot(0);
         gui.setUexAccount(SCMiner::MinerGUI::UexAccount());
+        pump();
+    }
+    // The UEX Datarunner: its part of the UEX card, off and then on; the
+    // foot of the main window with pictures waiting; and the card - a
+    // picture read whole, one with values to check and missing and a figure
+    // being typed, a terminal that is one of two with its list down, a
+    // commodity's list, a cargo box picked, sent, and turned down with the
+    // way to sign up; the narrowest window last
+    {
+        namespace D = SCMiner::Datarunner;
+        using SCMiner::Certainty;
+        const long long now = (long long)std::time(nullptr);
+        SCMiner::MinerGUI::UexAccount account;
+        account.hasToken = true;
+        account.keyEnd = "7f3a";
+        gui.setUexAccount(account);
+        gui.openUexWelcomeForShot(1);
+        pump();
+        shoot(gui.windowHandle(), "uex_datarunner_off.png");
+        account.datarunner = true;
+        account.datarunnerSince = now - 60;
+        account.note = "Datarunner on";
+        account.noteAt = now - 5;
+        gui.setUexAccount(account);
+        pump();
+        shoot(gui.windowHandle(), "uex_datarunner_on.png");
+        gui.openUexWelcomeForShot(0);
+        gui.setUexAccount(SCMiner::MinerGUI::UexAccount());
+        pump();
+
+        auto names = std::make_shared<std::vector<std::pair<std::string, int>>>(std::vector<std::pair<std::string, int>>{
+            {"Hephaestanite", 57}, {"Iron", 39}, {"Aluminum", 1}, {"Argon", 105}, {"Ship Ammunition - Size 1", 201},
+            {"Ship Ammunition - Size 2", 202}, {"Ship Ammunition - Size 3", 203}, {"Gold", 30}, {"Hydrogen", 33},
+            {"Hydrogen Fuel", 120}, {"Iodine", 35}, {"Titanium", 24}, {"Tin", 25}});
+        auto terminals = std::make_shared<std::vector<std::pair<int, std::string>>>(std::vector<std::pair<int, std::string>>{
+            {18, "CBD - Central Business District - Lorville"}, {51, "Admin - L19 Residences - Metro Center - Lorville"},
+            {252, "Admin - Pyro Gateway (Stanton)"}, {436, "Admin - Checkmate"}});
+        const std::vector<D::Row> read = shotDatarunnerRows(*names);
+        // ...and as the player completes them: a level the picture cut off
+        // at its foot, picked (only the picture with doubts keeps it missing)
+        std::vector<D::Row> rows = read;
+        for (D::Row& row : rows) {
+            if (row.level >= 1) continue;
+            row.level = 7;
+            row.levelSure = Certainty::Sure;
+        }
+        auto shotOf = [&](int id) {
+            auto shot = std::make_shared<D::Shot>();
+            shot->id = id;
+            shot->file = "ScreenShot_" + std::to_string(id) + ".jpg";
+            shot->taken = now - 120;
+            shot->width = 5120;
+            shot->height = 1440;
+            shot->channel = "LIVE";
+            shot->side = 1;
+            shot->sideSure = true;
+            shot->shop = "SCShop_Admin_lt_base_g";
+            shot->place = "Pyro Gateway (Stanton)";
+            shot->terminals = {{252, "Admin - Pyro Gateway (Stanton)"}};
+            shot->terminal = 252;
+            shot->rows = rows;
+            shot->matched = true;
+            return shot;
+        };
+        auto good = shotOf(1);
+        // read with doubts: a price and a level to check, a name UEX does
+        // not have, a stock not made out
+        auto doubts = shotOf(2);
+        doubts->rows = read;
+        if (doubts->rows.size() >= 5) {
+            doubts->rows[1].priceSure = Certainty::Check;
+            doubts->rows[2].levelSure = Certainty::Check;
+            doubts->rows[3].commodity = 0;
+            doubts->rows[3].read = "ARG0N1";
+            doubts->rows[3].nameSure = Certainty::Missing;
+            doubts->rows[4].stock = -1;
+            doubts->rows[4].stockSure = Certainty::Missing;
+            doubts->rows[0].removed = true;
+        }
+        // at a city with two terminals, neither picked
+        auto city = shotOf(3);
+        city->place = "Lorville";
+        city->shop = "SCShop_Admin_hur";
+        city->terminals = {{18, "CBD - Central Business District - Lorville"},
+                           {51, "Admin - L19 Residences - Metro Center - Lorville"}};
+        city->terminal = 0;
+        // a cargo box picked in the game: one box's price on the picture
+        auto box = shotOf(4);
+        if (!box->rows.empty()) {
+            box->rows[0].perUnit = true;
+            box->rows[0].price = 1879;
+            box->rows[0].priceSure = Certainty::Missing;
+        }
+        auto stateOf = [&](const std::vector<std::shared_ptr<D::Shot>>& shots, bool signUp) {
+            SCMiner::MinerGUI::DatarunnerState state;
+            for (const auto& shot : shots) {
+                state.shots.push_back(shot);
+                state.blocked.push_back(D::whyNotSend(*shot, {}, now));
+                state.holds.push_back(std::vector<int>(shot->rows.size(), 0));
+                state.versions.push_back("4.10.2");
+            }
+            state.commodities = names;
+            state.terminals = terminals;
+            state.signUp = signUp;
+            return state;
+        };
+        const std::vector<std::shared_ptr<D::Shot>> waiting = {good, doubts, city, box};
+        gui.setDatarunner(stateOf(waiting, false));
+        pump();
+        shoot(gui.windowHandle(), "main_datarunner_waiting.png");
+        gui.openDatarunnerForShot(0);
+        pump();
+        shoot(gui.windowHandle(), "datarunner_ready.png");
+        gui.openDatarunnerForShot(1);
+        pump();
+        shoot(gui.windowHandle(), "datarunner_check.png");
+        gui.openDatarunnerForShot(1, 7, 1, L"716");
+        pump();
+        shoot(gui.windowHandle(), "datarunner_typing.png");
+        gui.openDatarunnerForShot(1, 8, 3);
+        pump();
+        shoot(gui.windowHandle(), "datarunner_commodity_list.png");
+        gui.openDatarunnerForShot(1, 5, 2);
+        pump();
+        shoot(gui.windowHandle(), "datarunner_level_list.png");
+        gui.openDatarunnerForShot(2);
+        pump();
+        shoot(gui.windowHandle(), "datarunner_terminal.png");
+        gui.openDatarunnerForShot(2, 9, -1);
+        pump();
+        shoot(gui.windowHandle(), "datarunner_terminal_list.png");
+        gui.openDatarunnerForShot(3);
+        pump();
+        shoot(gui.windowHandle(), "datarunner_cargo_box.png");
+        // sent, then turned down - and an account UEX takes nothing from yet
+        auto sent = shotOf(5);
+        sent->state = D::Shot::State::Sent;
+        sent->ids = std::vector<std::string>(sent->rows.size(), "964307");
+        auto refused = shotOf(6);
+        refused->state = D::Shot::State::Refused;
+        refused->note = "Already reported in the last 5 minutes";
+        auto notRunner = shotOf(7);
+        notRunner->state = D::Shot::State::Refused;
+        notRunner->note = "UEX doesn't take reports from this account";
+        gui.setDatarunner(stateOf({sent, refused}, false));
+        gui.openDatarunnerForShot(0);
+        pump();
+        shoot(gui.windowHandle(), "datarunner_sent.png");
+        gui.openDatarunnerForShot(1);
+        pump();
+        shoot(gui.windowHandle(), "datarunner_refused.png");
+        gui.setDatarunner(stateOf({notRunner}, true));
+        gui.openDatarunnerForShot(0);
+        pump();
+        shoot(gui.windowHandle(), "datarunner_sign_up.png");
+        // the narrowest, shortest window: the rows scroll
+        gui.setDatarunner(stateOf(waiting, false));
+        RECT was = {};
+        GetWindowRect(gui.windowHandle(), &was);
+        SetWindowPos(gui.windowHandle(), nullptr, 0, 0, 1, 1, SWP_NOMOVE | SWP_NOZORDER);
+        gui.openDatarunnerForShot(1);
+        pump();
+        shoot(gui.windowHandle(), "datarunner_narrow.png");
+        SetWindowPos(gui.windowHandle(), nullptr, 0, 0, was.right - was.left, was.bottom - was.top,
+                     SWP_NOMOVE | SWP_NOZORDER);
+        gui.openDatarunnerForShot(-1);
+        gui.setDatarunner(SCMiner::MinerGUI::DatarunnerState());
         pump();
     }
     // The news window, painted straight into the bitmap like the other

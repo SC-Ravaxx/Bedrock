@@ -102,6 +102,9 @@ public:
     // "2026-09-28T11:37:34.512", a line's time, in milliseconds since 1970,
     // UTC; -1 for anything else
     static long long millisOf(const std::string& stamp);
+    // Where the log has the player, as UEX names it: a gateway with its
+    // system ("Pyro Gateway (Stanton)"), the system alone where it said no more
+    static std::string placeOf(const GameState& state);
     // A log that is over, all of it at once. Asked only of a log with a
     // request in it (hasRequest), since finding the place means reading
     // every line of it a second time.
@@ -130,7 +133,6 @@ private:
     std::filesystem::path file_;
     bool dirty_ = false;
     int changes_ = 0;
-    static std::string placeOf(const GameState& state);
 };
 
 }  // namespace SCMiner

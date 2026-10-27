@@ -78,12 +78,6 @@ bool boxesUexTakes(const std::string& sizes) {
     return true;
 }
 
-bool Row::ready() const {
-    return commodity > 0 && level >= 1 && level <= 7 && stock >= 0 && price >= 0 && !perUnit &&
-           nameSure == Certainty::Sure && levelSure == Certainty::Sure && stockSure == Certainty::Sure &&
-           priceSure == Certainty::Sure;
-}
-
 std::vector<unsigned char> pictureForUex(cv::Mat frame) {
     std::vector<unsigned char> jpeg;
     if (frame.empty()) return jpeg;
@@ -121,7 +115,7 @@ Shot readPicture(const cv::Mat& bgr, TextLineReader& reader) {
         row.card = card.card;
         // the card with a little of its ground around it, the level's bar
         // left of the name in it
-        const int margin = (std::max)(4, card.card.height / 5);
+        const int margin = (std::max)(3, card.card.height / 8);
         const cv::Rect piece = cv::Rect(card.card.x - 2 * margin, card.card.y - margin, card.card.width + 3 * margin,
                                         card.card.height + 2 * margin) &
                                cv::Rect(0, 0, bgr.cols, bgr.rows);
@@ -174,6 +168,35 @@ int matchCommodity(const std::string& read, const std::vector<std::pair<std::str
     return near.front().second;
 }
 
+std::vector<std::pair<std::string, int>> nearestCommodities(const std::string& read,
+                                                            const std::vector<std::pair<std::string, int>>& names,
+                                                            size_t count) {
+    // letters apart, the folded names compared; a name that begins with
+    // what was read comes first among equals
+    const std::string key = folded(read);
+    std::vector<std::pair<int, size_t>> ranked;
+    for (size_t i = 0; i < names.size(); i++) {
+        const std::string other = folded(names[i].first);
+        std::vector<int> row(other.size() + 1);
+        for (size_t j = 0; j <= other.size(); j++) row[j] = (int)j;
+        for (size_t a = 1; a <= key.size(); a++) {
+            int diagonal = row[0];
+            row[0] = (int)a;
+            for (size_t b = 1; b <= other.size(); b++) {
+                const int above = row[b];
+                row[b] = (std::min)({row[b] + 1, row[b - 1] + 1, diagonal + (key[a - 1] != other[b - 1] ? 1 : 0)});
+                diagonal = above;
+            }
+        }
+        const bool begins = !key.empty() && other.rfind(key, 0) == 0;
+        ranked.push_back({row[other.size()] * 2 - (begins ? 1 : 0), i});
+    }
+    std::stable_sort(ranked.begin(), ranked.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    std::vector<std::pair<std::string, int>> out;
+    for (size_t i = 0; i < ranked.size() && out.size() < count; i++) out.push_back(names[ranked[i].second]);
+    return out;
+}
+
 void match(Shot& shot, const UexDirectory& directory, const TradeBook::TerminalFill* fill) {
     // the terminal
     shot.terminals.clear();
@@ -209,7 +232,7 @@ void match(Shot& shot, const UexDirectory& directory, const TradeBook::TerminalF
         // the sizes of what the terminal sells, as the log listed them - all
         // of them sizes UEX takes, or none sent (UEX keeps what it has)
         row.boxes.clear();
-        if (shot.side != 1 || row.commodity == 0) continue;
+        if (row.commodity == 0) continue;
         for (const auto& [id, sizes] : boxes) {
             if (id == row.commodity && boxesUexTakes(sizes)) row.boxes = sizes;
         }
@@ -278,6 +301,11 @@ std::string whyNotSend(const Shot& shot, const std::vector<Sent>& sent, long lon
     if (shot.side != 1 && shot.side != 2) return "List not known - Select BUY or SELL, as the picture shows";
     const std::vector<const Row*> rows = rowsToSend(shot, sent, now);
     if (rows.empty()) return "Nothing to send - Every row is removed or already sent";
+    // a picked cargo box: the price on the picture is one box's, which UEX
+    // does not take - the row goes, or the picture is taken again
+    for (const Row* row : rows) {
+        if (row->perUnit) return "Cargo box selected in the game - Remove its row, or deselect it and take the picture again";
+    }
     int missing = 0, check = 0;
     long long wait = 0;
     for (const Row* row : rows) {

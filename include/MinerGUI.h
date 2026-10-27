@@ -23,6 +23,7 @@
 #include "RockContents.h"
 #include "RefineryOrders.h"
 #include "TradeBook.h"
+#include "Datarunner.h"
 #include "UexPrices.h"
 #include "UexMarket.h"
 #include "NoteBook.h"
@@ -140,11 +141,14 @@ public:
         std::string user;            // the name UEX answered with
         bool hasToken = false;       // the build carries Bedrock's app token: without it nothing is reported
         int keyChanges = 0;          // counts every key kept, so a card waiting for one sees it come
+        bool datarunner = false;     // the UEX Datarunner is on (Datarunner.h)
+        long long datarunnerSince = 0;
     };
     void setUexAccount(const UexAccount& account);
     // What was pressed: 1 a key pasted (the clipboard's text), 2 the key
     // forgotten, 3 agreed - reporting on, 4 declined or switched off, 5 the
-    // first start's offer made (whatever came of it)
+    // first start's offer made (whatever came of it), 6 the UEX Datarunner
+    // turned on, 7 turned off
     using UexAccountCallback = std::function<void(int action, const std::string& text)>;
     void setUexAccountCallback(UexAccountCallback callback) { onUexAccount_ = std::move(callback); }
     // At the first start, UEX offered over the main window, once it is free -
@@ -152,6 +156,33 @@ public:
     // tick)
     void offerUex() { uexOfferPending_ = true; }
     void tickUexOffer();
+    // UEX Datarunner (Datarunner.h): the pictures of a commodity terminal the
+    // player took with the game's Print Screen, waiting for them to be
+    // checked, and what came of those sent (Application::pushDatarunner).
+    // The foot of the main window says they are waiting; its card shows
+    // them one at a time.
+    struct DatarunnerState {
+        std::vector<std::shared_ptr<const Datarunner::Shot>> shots;   // oldest first
+        std::vector<std::string> blocked;          // per picture: what stands in the way of Send; "" nothing
+        std::vector<std::vector<int>> holds;       // per picture and row: Datarunner::Hold
+        std::vector<std::string> versions;         // per picture: the game version it is of; "" not known
+        // to pick from: UEX's commodities, and every commodity terminal
+        std::shared_ptr<const std::vector<std::pair<std::string, int>>> commodities;
+        std::shared_ptr<const std::vector<std::pair<int, std::string>>> terminals;
+        bool signUp = false;                       // UEX takes no reports from this account yet
+    };
+    void setDatarunner(const DatarunnerState& state);
+    // What the player did on the card, of the picture with that id: 1 Send,
+    // 2 Discard (Close, once sent), 3 a row removed or put back, 4 a row's
+    // values to check confirmed, 5 a row's level set (value 1..7), 6 its
+    // stock, 7 its price, 8 its commodity (value: UEX's id), 9 the terminal
+    // (value: UEX's id), 10 the list (value: 1 BUY, 2 SELL)
+    using DatarunnerCallback = std::function<void(int action, int shot, int row, int value)>;
+    void setDatarunnerCallback(DatarunnerCallback callback) { onDatarunner_ = std::move(callback); }
+    // The card for a screenshot: picture `index`, with a list dropped (5 the
+    // levels, 8 the commodities, 9 the terminals) or a value being typed
+    // (6 stock, 7 price) at `row`; closed with index -1
+    void openDatarunnerForShot(int index, int kind = 0, int row = -1, const std::wstring& entry = L"");
 
     // What the ship carries. Set once; the rock view can do nothing without it.
     void setLoadout(const MiningLoadout& fit) { loadout_ = fit; }
@@ -1280,6 +1311,33 @@ private:
     UexCardView uexCard_;            // over the Ore Finder
     UexCardView uexWelcome_;         // over the main window
     bool uexOfferPending_ = false;
+    // The UEX Datarunner's card over the main window: the picture shown, its
+    // rows scrolled, the value being typed or the list dropped, what can be
+    // pressed; the pieces of the pictures at the size they are drawn
+    DatarunnerState datarunner_;
+    DatarunnerCallback onDatarunner_;
+    bool datarunnerOpen_ = false;
+    int drIndex_ = 0;
+    float drScroll_ = 0;
+    int drEditRow_ = -1, drEditField_ = 0;   // 6 stock, 7 price
+    std::wstring drEntry_;
+    int drListKind_ = 0, drListRow_ = -1;    // 5 levels, 8 commodities, 9 terminals
+    std::wstring drFilter_;
+    struct DrHit { Gdiplus::RectF rect; int kind; int row; int value; };
+    std::vector<DrHit> drHits_;
+    Gdiplus::RectF drRect_, drRows_, drList_, drListAnchor_;
+    Gdiplus::RectF datarunnerHit_;            // the foot's way in
+    std::map<std::string, std::unique_ptr<Gdiplus::Bitmap>> drSnippets_;
+    int datarunnerWaiting() const;            // pictures still to be sent or let go
+    void showDatarunner(bool on);
+    void drawDatarunnerCard(Gdiplus::Graphics& g, int cw, int ch);
+    void pressDatarunner(const DrHit& hit, HWND owner);
+    bool datarunnerChar(wchar_t c);           // a key typed while the card is up
+    void datarunnerDo(int action, int row, int value);
+    void endDatarunnerEdit();
+    void commitDatarunnerEdit();
+    std::vector<std::pair<std::wstring, int>> datarunnerListEntries() const;
+    Gdiplus::Bitmap* datarunnerSnippet(const Datarunner::Shot& shot, size_t row, int w, int h);
     void drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& view, POINT hover);
     void pressUexCard(int action, UexCardView& view, HWND owner);
     void showUexWelcome(int step);   // ...and the main window's buttons, which take turns with it

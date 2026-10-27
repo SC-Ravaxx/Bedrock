@@ -1669,13 +1669,16 @@ int runSelfTest() {
             shot.rows[1].boxes == "1,2,4,8,16,24,32" && shot.rows[2].commodity == 151 && shot.rows[2].boxes.empty() &&
             shot.rows[3].commodity == 201 && shot.rows[3].nameSure == Certainty::Check &&
             shot.rows[4].commodity == 0 && shot.rows[4].nameSure == Certainty::Missing &&
-            shot.rows[5].commodity == 0 && selling.rows[0].commodity == 234 && selling.rows[0].boxes.empty() &&
+            shot.rows[5].commodity == 0 && selling.rows[0].commodity == 234 &&
+            D::nearestCommodities("GXLD", uex.commodityNames(), 2) ==
+                std::vector<std::pair<std::string, int>>{{"Gold", 30}, {"Gald", 31}} &&
+            D::nearestCommodities("SHIP AMMUNITION", uex.commodityNames(), 1).front().second == 204 &&
             lorville.terminal == 0 && lorville.terminals.size() == 2 &&
             D::matchCommodity("GXLD", uex.commodityNames(), {30}, named, how) == 30 && how == Certainty::Check &&
             D::matchCommodity("", uex.commodityNames(), {}, named, how) == 0 && how == Certainty::Missing;
         allPassed &= check(matched, "a Datarunner picture's rows matched to UEX: a name letter for letter sure, one with "
-                                    "a slip to check, the log's list first; box sizes for the BUY list only; both of "
-                                    "Lorville's terminals to pick from");
+                                    "a slip to check, the log's list first, the nearest names to pick from; box sizes "
+                                    "where UEX takes them all; both of Lorville's terminals to pick from");
 
         // what stands in the way of Send, and the five minutes - kept over a
         // restart in the record of what went
@@ -1739,7 +1742,7 @@ int runSelfTest() {
         const bool sendable =
             D::whyNotSend(checked, {}, now).empty() &&
             D::whyNotSend(ready, {}, now) == "1 value to check - Compare with the picture, then click Confirm" &&
-            D::whyNotSend(boxPrice, {}, now).rfind("Values missing", 0) == 0 &&
+            D::whyNotSend(boxPrice, {}, now).rfind("Cargo box selected in the game", 0) == 0 &&
             D::whyNotSend(noTerminal, {}, now).rfind("Terminal not known", 0) == 0 &&
             D::whyNotSend(old, {}, now).rfind("Picture older than 30 days", 0) == 0 &&
             D::whyNotSend(allGone, {}, now).rfind("Nothing to send", 0) == 0 &&

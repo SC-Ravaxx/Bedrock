@@ -432,7 +432,7 @@ written to the registry.
 
 What Bedrock sends
 ------------------
-Three network requests of its own, and two more only if you switch them on:
+Three network requests of its own, and three more only if you switch them on:
 
 - The update check: one small text file from the-forsaken.org, once at start
   and once an hour. It carries the version, whether it is the Windows or the
@@ -474,6 +474,22 @@ Three network requests of its own, and two more only if you switch them on:
   conversations and notifications on the UEX marketplace (every two minutes
   while the tab is open), so clicking a listing you've already messaged
   about opens that conversation.
+- UEX Datarunner (optional, off unless you switch it on in the UEX card, with
+  your account connected): Bedrock then looks for new pictures in the game's
+  ScreenShots folder. When you take one at a commodity terminal with the
+  game's Print Screen key, Bedrock reads the terminal's list off it on this
+  PC and shows each row beside its part of the picture. Nothing is sent
+  until you have checked the values and clicked Send. Then one report goes
+  to UEX under your account: the terminal, which of its lists the picture
+  shows (buy or sell), each commodity's price per SCU, stock and inventory
+  level, the cargo box sizes the game's log lists for it, the game version,
+  when the picture was taken, and the picture itself (at most 1080 pixels
+  high). Other datarunners on UEX can see your reports. UEX takes them from
+  registered datarunners only (uexcorp.space/data/signup). While it is on,
+  Bedrock also downloads UEX's list of game versions (every six hours).
+  Pictures that don't show a commodity terminal are left alone, and your
+  pictures are never changed or moved. A copy of each picture sent is kept
+  for 30 days in the debug\uex_sent folder of Bedrock's data folder.
 - The phone or tablet (off unless you switch it on in the settings): Bedrock
   then listens on your network, at port 47820, and hands the overlay and the
   window as pictures to a browser that has its address. The address holds a

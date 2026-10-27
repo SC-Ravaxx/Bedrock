@@ -32,6 +32,7 @@
 #include <map>
 #include <memory>
 #include <cstring>
+#include <cwctype>
 #include <cstdint>
 #include <vector>
 
@@ -1256,8 +1257,9 @@ void MinerGUI::layoutControls() {
             if (b) ShowWindow(b, SW_HIDE);
         }
     }
-    // ...and the first start's UEX offer lies over all of them, the header's too
-    if (uexWelcome_.step) {
+    // ...and the first start's UEX offer lies over all of them, the header's
+    // too - as does the Datarunner's card
+    if (uexWelcome_.step || datarunnerOpen_) {
         for (HWND b : {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_, btnOverlay_, btnRefinery_, btnAbout_,
                        btnSettings_}) {
             if (b) ShowWindow(b, SW_HIDE);
@@ -1321,6 +1323,8 @@ void MinerGUI::toggleOverlayMode() {
         showUexWelcome(0);
         uexOfferPending_ = true;
     }
+    // ...the Datarunner's card too: the foot of the full window leads back to it
+    if (datarunnerOpen_) showDatarunner(false);
     // Leaving the overlay: where it stands now is where it opens next time
     if (overlayMode_) keepOverlayPlace();
     overlayMode_ = !overlayMode_;
@@ -2216,7 +2220,7 @@ bool MinerGUI::processMessages() {
         //
         // Esc and Enter still arrive either way: the window procedure closes
         // the list and leaves the field on them.
-        const bool typingHere = (lookingOpen_ || (loadoutOpen_ && (craftedEditing_ || nameEditing_))) &&
+        const bool typingHere = (lookingOpen_ || datarunnerOpen_ || (loadoutOpen_ && (craftedEditing_ || nameEditing_))) &&
             msg.hwnd == hwnd_ &&
             (msg.message == WM_KEYDOWN || msg.message == WM_KEYUP ||
              msg.message == WM_CHAR || msg.message == WM_SYSKEYDOWN);
@@ -2680,6 +2684,12 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
         }
 
         case WM_CHAR: {
+            // The Datarunner's card: a figure typed into a value, letters
+            // narrowing a list, Esc letting go of either - or of the card
+            if (datarunnerOpen_) {
+                datarunnerChar((wchar_t)wParam);
+                return 0;
+            }
             // The loadout's title being typed over: what the player calls
             // this ship. Enter or Tab keeps it, Esc leaves the old name.
             if (loadoutOpen_ && nameEditing_) {
@@ -2749,6 +2759,11 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 scrollWhatsNew(-GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA * scaleF(56));
                 return 0;
             }
+            if (datarunnerOpen_) {
+                drScroll_ -= GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA * scaleF(48);
+                InvalidateRect(hwnd, nullptr, FALSE);
+                return 0;
+            }
             break;
 
         case WM_RBUTTONDOWN: {
@@ -2794,6 +2809,31 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                     return 0;
                 }
                 if (!uexWelcome_.rect.Contains(wx, wy)) closeUexWelcome();
+                return 0;
+            }
+            // The Datarunner's card: what lies on top first (a dropped list);
+            // a click beside a list or a figure being typed lets go of it
+            if (datarunnerOpen_) {
+                if (phoneTapping_) {
+                    phoneSay(PHONE_WORKS_ON_PC);
+                    return 0;
+                }
+                const float wx = (float)(short)LOWORD(lParam);
+                const float wy = (float)(short)HIWORD(lParam);
+                for (auto it = drHits_.rbegin(); it != drHits_.rend(); ++it) {
+                    if (!it->rect.Contains(wx, wy)) continue;
+                    const DrHit hit = *it;
+                    pressDatarunner(hit, hwnd);
+                    return 0;
+                }
+                if (drListKind_ != 0) {
+                    drListKind_ = 0;
+                    drListRow_ = -1;
+                    drFilter_.clear();
+                } else if (drEditRow_ >= 0) {
+                    commitDatarunnerEdit();
+                }
+                InvalidateRect(hwnd, nullptr, FALSE);
                 return 0;
             }
             // First of all the cards: it puts itself up, so whatever the
@@ -3086,6 +3126,14 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 else ShellExecuteW(hwnd, L"open", L"https://ko-fi.com/ravaxx", nullptr, nullptr, SW_SHOWNORMAL);
                 return 0;
             }
+            if (datarunnerHit_.Width > 0 && datarunnerHit_.Contains(px, py)) {
+                if (phoneTapping_) {
+                    phoneSay(PHONE_WORKS_ON_PC);
+                    return 0;
+                }
+                showDatarunner(true);
+                return 0;
+            }
             if (updateHit_.Width > 0 && updateHit_.Contains(px, py)) {
                 if (phoneTapping_) {
                     phoneSay(PHONE_WORKS_ON_PC);
@@ -3322,7 +3370,8 @@ void MinerGUI::paintWindowBody(Gdiplus::Graphics& g, int cw, int ch) {
     // goes to the glass, not to what it covers - and so a pointer
     // moving over a sheet leaves the page under it as it was, and its
     // blur comes out of the cache (frostMain_).
-    const bool sheet = keysOpen_ || aboutOpen_ || backupOpen_ || whatsNewOpen_ || loadoutOpen_ || uexWelcome_.step;
+    const bool sheet =
+        keysOpen_ || aboutOpen_ || backupOpen_ || whatsNewOpen_ || loadoutOpen_ || uexWelcome_.step || datarunnerOpen_;
     const bool lists = lookingOpen_ || shipPickerOpen_ || placePickerOpen_;
     if (sheet || lists) {
         Gdiplus::Bitmap base(cw, ch, PixelFormat32bppPARGB);
@@ -3369,6 +3418,7 @@ void MinerGUI::paintWindowBody(Gdiplus::Graphics& g, int cw, int ch) {
     if (whatsNewOpen_) drawWhatsNewCard(g, cw, ch);
     if (loadoutOpen_) drawLoadoutCard(g, cw, ch);
     if (uexWelcome_.step) drawUexCard(g, cw, ch, uexWelcome_, hoverMain_);
+    if (datarunnerOpen_) drawDatarunnerCard(g, cw, ch);
 }
 
 // ---- the scan view's own pieces --------------------------------------------
@@ -4285,6 +4335,7 @@ void MinerGUI::setShipPickerOpen(bool open) {
 }
 
 void MinerGUI::closeOtherSheets(const bool& opening) {
+    if (&opening != &datarunnerOpen_ && datarunnerOpen_) showDatarunner(false);
     if (&opening != &loadoutOpen_ && loadoutOpen_) showLoadout(false);
     if (&opening != &placePickerOpen_ && placePickerOpen_) setPlacePickerOpen(false);
     if (&opening != &shipPickerOpen_ && shipPickerOpen_) setShipPickerOpen(false);
@@ -14448,7 +14499,14 @@ void MinerGUI::drawFooter(Gdiplus::Graphics& g, int cw, int ch) {
     Gdiplus::SolidBrush* leftBrush = &dimBrush;
     bool leftClickable = true;
     const bool updateWaiting = updateWorthShowing();
-    if (updateWaiting) {
+    // ...after an update, the Datarunner's pictures waiting to be checked
+    const int screenshots = updateWaiting ? 0 : datarunnerWaiting();
+    if (screenshots > 0) {
+        leftBrush = &accentBrush;
+        leftText = std::to_wstring(screenshots) +
+                   (screenshots == 1 ? L" terminal screenshot to check" : L" terminal screenshots to check") +
+                   L"  \u00B7  Click to open";
+    } else if (updateWaiting) {
         leftBrush = &accentBrush;
         if (updateState_ == 3) {
             leftText = L"Bedrock " + toW(updateVersion_) + L" available  ·  Click to download";
@@ -14510,17 +14568,19 @@ void MinerGUI::drawFooter(Gdiplus::Graphics& g, int cw, int ch) {
     // part of it.
     backupHit_ = Gdiplus::RectF(0, 0, 0, 0);
     updateHit_ = Gdiplus::RectF(0, 0, 0, 0);
+    datarunnerHit_ = Gdiplus::RectF(0, 0, 0, 0);
     {
         Gdiplus::RectF box(M, y - scaleF(3), leftW.Width + scaleF(18), scaleF(20));
         if (leftClickable) {
             // An update waiting is the one thing on the window asking to be
-            // pressed, so it is the amber button; the backup is an ordinary
-            // one, and the chosen kind while its card is up
-            const ButtonKind kind = updateWaiting ? ButtonKind::Primary
-                                    : backupOpen_ ? ButtonKind::Selected
-                                                  : ButtonKind::Secondary;
+            // pressed, so it is the amber button - as are pictures waiting
+            // for the player; the backup is an ordinary one, and the chosen
+            // kind while its card is up
+            const ButtonKind kind = updateWaiting || screenshots > 0 ? ButtonKind::Primary
+                                    : backupOpen_                    ? ButtonKind::Selected
+                                                                     : ButtonKind::Secondary;
             drawButton(g, box, leftText.c_str(), strongFont, kind, isHot(hoverMain_, box), scaleF(R_CONTROL));
-            (updateWaiting ? updateHit_ : backupHit_) = box;
+            (screenshots > 0 ? datarunnerHit_ : updateWaiting ? updateHit_ : backupHit_) = box;
         } else {
             // Nothing to press: a line, not a button
             g.DrawString(leftText.c_str(), -1, &strongFont, Gdiplus::PointF(M, y), leftBrush);
@@ -15679,6 +15739,15 @@ void MinerGUI::pressUexCard(int action, UexCardView& view, HWND owner) {
             if (view.welcome) closeUexWelcome();
             else view.step = 1;
             break;
+        case 21:   // the UEX Datarunner on: pictures taken from now on are read
+            if (uexAccount_.hasToken && onUexAccount_) onUexAccount_(6, "");
+            break;
+        case 22:
+            if (onUexAccount_) onUexAccount_(7, "");
+            break;
+        case 23:   // UEX's page for becoming a datarunner
+            ShellExecuteW(owner, L"open", L"https://uexcorp.space/data/signup", nullptr, nullptr, SW_SHOWNORMAL);
+            break;
         default:
             break;
     }
@@ -15707,7 +15776,7 @@ void MinerGUI::closeUexWelcome() {
 void MinerGUI::tickUexOffer() {
     if (!uexOfferPending_ || headless_ || overlayMode_ || !hwnd_ || !IsWindowVisible(hwnd_)) return;
     if (keysOpen_ || aboutOpen_ || backupOpen_ || whatsNewOpen_ || loadoutOpen_ || newsVisible_ || lookingOpen_ ||
-        shipPickerOpen_ || placePickerOpen_) {
+        shipPickerOpen_ || placePickerOpen_ || datarunnerOpen_) {
         return;
     }
     uexOfferPending_ = false;
@@ -15805,6 +15874,30 @@ void MinerGUI::drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& vi
         g.MeasureString(w.text.c_str(), -1, w.font, Gdiplus::RectF(0, 0, width, scaleF(400)), nullptr, &room);
         wordsH += room.Height + w.after;
     }
+    // The UEX Datarunner, once a key is in: what it does, what a report
+    // carries, how a picture is taken - and its switch
+    std::vector<Words> runner;
+    if (view.step == 1 && keyed) {
+        runner.push_back({L"Report commodity terminal prices to UEX from your own screenshots. Bedrock reads each new "
+                          L"picture in the game's ScreenShots folder and shows every row with its part of the picture. "
+                          L"Nothing is sent until you have checked the values and clicked Send.",
+                          &textFont, &dimBrush, scaleF(6)});
+        runner.push_back({L"A report carries the values you checked, the picture and your UEX name, and other "
+                          L"datarunners can see it. UEX takes reports from registered datarunners only.",
+                          &textFont, &dimBrush, scaleF(6)});
+        runner.push_back({L"At a commodity terminal, select the terminal's own inventory, nothing picked, first row "
+                          L"fully visible, then press Print Screen.",
+                          &subFont, &faintBrush, scaleF(8)});
+    }
+    float runnerH = 0;
+    if (!runner.empty()) {
+        runnerH = scaleF(14) + scaleF(24) + scaleF(36);
+        for (const Words& w : runner) {
+            Gdiplus::RectF room;
+            g.MeasureString(w.text.c_str(), -1, w.font, Gdiplus::RectF(0, 0, width, scaleF(400)), nullptr, &room);
+            runnerH += room.Height + w.after;
+        }
+    }
     // what came of the last press or report, and what stands in the way
     std::wstring trouble;
     if (view.step != 1 && !account.hasToken) trouble = L"This build has no UEX app token. Reporting is unavailable.";
@@ -15813,6 +15906,8 @@ void MinerGUI::drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& vi
         trouble = L"UEX has blocked reports from this account.";
     } else if (view.step == 1 && account.on && account.accountTrouble == "unverified") {
         trouble = L"UEX needs this account verified with RSI first. You can do that on your UEX account page.";
+    } else if (view.step == 1 && keyed && account.datarunner && account.accountTrouble == "datarunner") {
+        trouble = L"UEX takes reports from registered datarunners only. Click Sign up on UEX, then send again.";
     }
     std::wstring news;
     if (!account.note.empty()) {
@@ -15841,8 +15936,8 @@ void MinerGUI::drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& vi
     const float buttonsH = scaleF(34);
     const float buttonW = scaleF(120);
     const float second = left + buttonW + scaleF(12);
-    const float cardH = scaleF(16) + scaleF(34) + wordsH + keyRowH + troubleH + (news.empty() ? 0.0f : lineH) +
-                        scaleF(8) + buttonsH + scaleF(16);
+    const float cardH = scaleF(16) + scaleF(34) + wordsH + keyRowH + runnerH + troubleH +
+                        (news.empty() ? 0.0f : lineH) + scaleF(8) + buttonsH + scaleF(16);
     const float cardY = (std::max)(scaleF(view.welcome ? 70 : 100), ((float)ch - cardH) / 2.0f - scaleF(40));
     view.rect = Gdiplus::RectF(cardX, cardY, cardW, cardH);
     refplanGlassPane(g, view.rect, scaleF(R_CARD), scaleF(18), COL_CARD);
@@ -15877,6 +15972,32 @@ void MinerGUI::drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& vi
         }
         y += keyRowH;
     }
+    if (!runner.empty()) {
+        hairline(g, left, y + scaleF(6), left + width);
+        y += scaleF(14);
+        const std::wstring heading = L"UEX DATARUNNER";
+        g.DrawString(heading.c_str(), -1, &btnFont, Gdiplus::PointF(left, y + scaleF(2)), &textBrush);
+        Gdiplus::RectF headRoom;
+        g.MeasureString(heading.c_str(), -1, &btnFont, Gdiplus::PointF(0, 0), &headRoom);
+        Gdiplus::SolidBrush stateBrush(account.datarunner ? COL_GREEN : COL_TEXT_FAINT);
+        g.DrawString(account.datarunner ? L"  \u00B7  ON" : L"  \u00B7  OFF", -1, &btnFont,
+                     Gdiplus::PointF(left + headRoom.Width, y + scaleF(2)), &stateBrush);
+        y += scaleF(24);
+        for (const Words& w : runner) {
+            Gdiplus::RectF room;
+            g.MeasureString(w.text.c_str(), -1, w.font, Gdiplus::RectF(0, 0, width, scaleF(400)), nullptr, &room);
+            g.DrawString(w.text.c_str(), -1, w.font, Gdiplus::RectF(left, y, width, room.Height + scaleF(2)), nullptr,
+                         w.brush);
+            y += room.Height + w.after;
+        }
+        if (account.datarunner) {
+            button(L"Turn off", left, buttonW, y, ButtonKind::Secondary, 22);
+        } else {
+            button(L"Turn on", left, buttonW, y, account.hasToken ? ButtonKind::Primary : ButtonKind::Ghost, 21);
+        }
+        button(L"Sign up on UEX", second, buttonW + scaleF(16), y, ButtonKind::Secondary, 23);
+        y += scaleF(36);
+    }
     if (!trouble.empty()) {
         g.DrawString(trouble.c_str(), -1, &subFont, Gdiplus::RectF(left, y, width, troubleH), nullptr, &redBrush);
         y += troubleH;
@@ -15900,6 +16021,683 @@ void MinerGUI::drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& vi
         button(view.welcome ? L"Done" : L"Close", second + scaleF(20), buttonW, y, ButtonKind::Ghost, 14);
     } else {
         button(view.welcome ? L"Skip" : L"Close", left, buttonW, y, ButtonKind::Secondary, 14);
+    }
+}
+
+// ---- UEX Datarunner ---------------------------------------------------------
+// The pictures of a commodity terminal the player took with the game's Print
+// Screen (Datarunner.h), one at a time on a card over the main window: each
+// row's piece of the picture over what was read off it - green as read,
+// yellow to check, red missing -, the terminal and the list, and Send once
+// nothing stands in the way. The card never opens by itself: the foot of
+// the window says pictures are waiting.
+
+int MinerGUI::datarunnerWaiting() const {
+    int waiting = 0;
+    for (const auto& shot : datarunner_.shots) {
+        if (shot->state != Datarunner::Shot::State::Sent && shot->state != Datarunner::Shot::State::Sending) waiting++;
+    }
+    return waiting;
+}
+
+void MinerGUI::setDatarunner(const DatarunnerState& state) {
+    const int shown = drIndex_ >= 0 && drIndex_ < (int)datarunner_.shots.size() ? datarunner_.shots[drIndex_]->id : 0;
+    datarunner_ = state;
+    int index = -1;
+    for (size_t i = 0; i < datarunner_.shots.size(); i++) {
+        if (datarunner_.shots[i]->id == shown) index = (int)i;
+    }
+    if (index >= 0) {
+        drIndex_ = index;
+    } else {
+        // the picture on the card went: the next one in its place
+        drIndex_ = (std::max)(0, (std::min)(drIndex_, (int)datarunner_.shots.size() - 1));
+        drScroll_ = 0;
+        endDatarunnerEdit();
+    }
+    // the pieces of pictures that are gone, let go
+    for (auto it = drSnippets_.begin(); it != drSnippets_.end();) {
+        const int id = std::atoi(it->first.c_str());
+        const bool kept = std::any_of(datarunner_.shots.begin(), datarunner_.shots.end(),
+                                      [&](const std::shared_ptr<const Datarunner::Shot>& s) { return s->id == id; });
+        it = kept ? std::next(it) : drSnippets_.erase(it);
+    }
+    if (datarunner_.shots.empty() && datarunnerOpen_) showDatarunner(false);
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void MinerGUI::showDatarunner(bool on) {
+    if (on && datarunner_.shots.empty()) return;
+    if (on) closeOtherSheets(datarunnerOpen_);
+    datarunnerOpen_ = on;
+    endDatarunnerEdit();
+    drScroll_ = 0;
+    // a card drawn by the parent cannot cover a child window: the buttons
+    // take turns with it, as with the other cards
+    HWND buttons[] = {btnLiveMode_, btnPlan_, btnCraft_, btnNotes_, btnKeys_,
+                      btnOverlay_, btnRefinery_, btnAbout_, btnSettings_};
+    for (HWND b : buttons) {
+        if (b) ShowWindow(b, on ? SW_HIDE : SW_SHOW);
+    }
+    if (!on && overlayMode_) layoutControls();
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, TRUE);
+}
+
+void MinerGUI::openDatarunnerForShot(int index, int kind, int row, const std::wstring& entry) {
+    if (index < 0 || index >= (int)datarunner_.shots.size()) {
+        showDatarunner(false);
+        return;
+    }
+    if (!datarunnerOpen_) showDatarunner(true);
+    drIndex_ = index;
+    endDatarunnerEdit();
+    if (kind == 6 || kind == 7) {
+        drEditRow_ = row;
+        drEditField_ = kind;
+        drEntry_ = entry;
+    } else if (kind == 5 || kind == 8 || kind == 9) {
+        drListKind_ = kind;
+        drListRow_ = row;
+        drFilter_ = entry;
+    }
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void MinerGUI::datarunnerDo(int action, int row, int value) {
+    if (drIndex_ < 0 || drIndex_ >= (int)datarunner_.shots.size() || !onDatarunner_) return;
+    // (the application answers with the pictures anew: nothing of the old
+    // ones is held across this)
+    onDatarunner_(action, datarunner_.shots[drIndex_]->id, row, value);
+}
+
+void MinerGUI::endDatarunnerEdit() {
+    drEditRow_ = -1;
+    drEditField_ = 0;
+    drEntry_.clear();
+    drListKind_ = 0;
+    drListRow_ = -1;
+    drFilter_.clear();
+}
+
+// A figure typed into a value: kept. Nothing typed keeps the value as it
+// stands - looked at and found right.
+void MinerGUI::commitDatarunnerEdit() {
+    if (drEditRow_ < 0 || drIndex_ < 0 || drIndex_ >= (int)datarunner_.shots.size()) {
+        endDatarunnerEdit();
+        return;
+    }
+    const Datarunner::Shot& shot = *datarunner_.shots[drIndex_];
+    const int row = drEditRow_, field = drEditField_;
+    const std::wstring entry = drEntry_;
+    endDatarunnerEdit();
+    if (row >= (int)shot.rows.size()) return;
+    long long value = field == 6 ? shot.rows[row].stock : shot.rows[row].price;
+    if (!entry.empty()) value = std::wcstoll(entry.c_str(), nullptr, 10);
+    if (value < 0 || value > 2000000000LL) return;
+    datarunnerDo(field, row, (int)value);
+}
+
+// What a dropped list offers: the game's words for the stock's level; UEX's
+// commodities nearest the name read, or those with the letters typed; the
+// terminals the picture can be of, or every one with the letters typed
+std::vector<std::pair<std::wstring, int>> MinerGUI::datarunnerListEntries() const {
+    std::vector<std::pair<std::wstring, int>> entries;
+    if (drIndex_ < 0 || drIndex_ >= (int)datarunner_.shots.size()) return entries;
+    const Datarunner::Shot& shot = *datarunner_.shots[drIndex_];
+    auto folded = [](const std::wstring& s) {
+        std::wstring out;
+        for (wchar_t c : s) {
+            if (std::iswalnum(c)) out += (wchar_t)std::towupper(c);
+        }
+        return out;
+    };
+    const std::wstring typed = folded(drFilter_);
+    constexpr size_t SHOWN = 8;
+    if (drListKind_ == 5) {
+        for (int level = 7; level >= 1; level--) entries.push_back({toW(commodityLevelWords(level)), level});
+    } else if (drListKind_ == 8 && datarunner_.commodities) {
+        if (typed.empty() && drListRow_ >= 0 && drListRow_ < (int)shot.rows.size()) {
+            for (const auto& [name, id] : Datarunner::nearestCommodities(shot.rows[drListRow_].read, *datarunner_.commodities, SHOWN)) {
+                entries.push_back({toW(name), id});
+            }
+        } else {
+            for (const auto& [name, id] : *datarunner_.commodities) {
+                if (entries.size() >= SHOWN) break;
+                if (folded(toW(name)).find(typed) != std::wstring::npos) entries.push_back({toW(name), id});
+            }
+        }
+    } else if (drListKind_ == 9) {
+        if (typed.empty() && !shot.terminals.empty()) {
+            for (const auto& [id, name] : shot.terminals) entries.push_back({toW(name), id});
+        } else if (datarunner_.terminals) {
+            for (const auto& [id, name] : *datarunner_.terminals) {
+                if (entries.size() >= SHOWN) break;
+                if (folded(toW(name)).find(typed) != std::wstring::npos) entries.push_back({toW(name), id});
+            }
+        }
+    }
+    return entries;
+}
+
+// A row's piece of the picture, at the size it is drawn: brought down with
+// OpenCV's area filter, as GDI+ and the Linux build's painter would blur it
+Gdiplus::Bitmap* MinerGUI::datarunnerSnippet(const Datarunner::Shot& shot, size_t row, int w, int h) {
+    if (row >= shot.rows.size() || shot.rows[row].snippet.empty() || w < 4 || h < 4) return nullptr;
+    const std::string key = std::to_string(shot.id) + ":" + std::to_string(row) + ":" + std::to_string(w) + "x" +
+                            std::to_string(h);
+    const auto found = drSnippets_.find(key);
+    if (found != drSnippets_.end()) return found->second.get();
+    if (drSnippets_.size() > 400) drSnippets_.clear();   // a window dragged through many sizes
+    cv::Mat sized, bgra;
+    cv::resize(shot.rows[row].snippet, sized, cv::Size(w, h), 0, 0, cv::INTER_AREA);
+    cv::cvtColor(sized, bgra, cv::COLOR_BGR2BGRA);   // opaque, so plain and premultiplied are one
+    auto picture = std::make_unique<Gdiplus::Bitmap>(w, h, PixelFormat32bppPARGB);
+    Gdiplus::Rect all(0, 0, w, h);
+    Gdiplus::BitmapData bits;
+    if (picture->LockBits(&all, Gdiplus::ImageLockModeWrite, PixelFormat32bppPARGB, &bits) != Gdiplus::Ok) return nullptr;
+    for (int y = 0; y < h; y++) {
+        std::memcpy(static_cast<BYTE*>(bits.Scan0) + (ptrdiff_t)y * bits.Stride, bgra.ptr(y), (size_t)w * 4);
+    }
+    picture->UnlockBits(&bits);
+    Gdiplus::Bitmap* kept = picture.get();
+    drSnippets_[key] = std::move(picture);
+    return kept;
+}
+
+bool MinerGUI::datarunnerChar(wchar_t c) {
+    if (drEditRow_ >= 0) {
+        if (c == VK_RETURN || c == VK_TAB) {
+            commitDatarunnerEdit();
+        } else if (c == VK_ESCAPE) {
+            endDatarunnerEdit();
+        } else if (c == VK_BACK) {
+            if (!drEntry_.empty()) drEntry_.pop_back();
+        } else if (c >= L'0' && c <= L'9' && drEntry_.size() < 9) {
+            drEntry_ += c;
+        }
+    } else if (drListKind_ != 0) {
+        if (c == VK_ESCAPE) {
+            endDatarunnerEdit();
+        } else if (c == VK_RETURN) {
+            // the first one offered
+            const auto entries = datarunnerListEntries();
+            const int kind = drListKind_, row = drListRow_;
+            endDatarunnerEdit();
+            if (!entries.empty()) datarunnerDo(kind == 5 ? 5 : kind == 8 ? 8 : 9, row, entries.front().second);
+        } else if (drListKind_ == 5 && c >= L'1' && c <= L'7') {
+            const int row = drListRow_;
+            endDatarunnerEdit();
+            datarunnerDo(5, row, c - L'0');
+        } else if (drListKind_ != 5 && c == VK_BACK) {
+            if (!drFilter_.empty()) drFilter_.pop_back();
+        } else if (drListKind_ != 5 && c >= L' ' && drFilter_.size() < 32) {
+            drFilter_ += c;
+        }
+    } else if (c == VK_ESCAPE) {
+        showDatarunner(false);
+    }
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+    return true;
+}
+
+void MinerGUI::pressDatarunner(const DrHit& hit, HWND owner) {
+    // a figure being typed is kept by a click anywhere else
+    if (drEditRow_ >= 0 && !((hit.kind == 9 || hit.kind == 10) && hit.row == drEditRow_)) commitDatarunnerEdit();
+    if (hit.kind != 14) {
+        drListKind_ = 0;
+        drListRow_ = -1;
+        drFilter_.clear();
+    }
+    const int count = (int)datarunner_.shots.size();
+    switch (hit.kind) {
+        case 1:   // Send
+            datarunnerDo(1, -1, 0);
+            break;
+        case 2:   // Discard, or Close once sent
+            datarunnerDo(2, -1, 0);
+            break;
+        case 3:   // Back
+            if (drIndex_ > 0) drIndex_--;
+            drScroll_ = 0;
+            endDatarunnerEdit();
+            break;
+        case 4:   // Next
+            if (drIndex_ + 1 < count) drIndex_++;
+            drScroll_ = 0;
+            endDatarunnerEdit();
+            break;
+        case 5:   // Remove, Restore
+            datarunnerDo(3, hit.row, 0);
+            break;
+        case 6:   // Confirm
+            datarunnerDo(4, hit.row, 0);
+            break;
+        case 7:   // the commodity: picked from UEX's
+            drListKind_ = 8;
+            drListRow_ = hit.row;
+            break;
+        case 8:   // the level: picked from the game's words
+            drListKind_ = 5;
+            drListRow_ = hit.row;
+            break;
+        case 9:   // the stock and the price: typed
+        case 10:
+            if (drEditRow_ != hit.row || drEditField_ != (hit.kind == 9 ? 6 : 7)) {
+                drEditRow_ = hit.row;
+                drEditField_ = hit.kind == 9 ? 6 : 7;
+                drEntry_.clear();
+            }
+            break;
+        case 11:  // the terminal: one of those it can be, or any
+            drListKind_ = 9;
+            drListRow_ = -1;
+            break;
+        case 12:  // BUY, SELL
+        case 13:
+            datarunnerDo(10, -1, hit.kind == 12 ? 1 : 2);
+            break;
+        case 14: {  // a list's entry
+            const int kind = drListKind_, row = drListRow_;
+            endDatarunnerEdit();
+            datarunnerDo(kind == 5 ? 5 : kind == 8 ? 8 : 9, row, hit.value);
+            break;
+        }
+        case 15:  // UEX's page for becoming a datarunner
+            ShellExecuteW(owner, L"open", L"https://uexcorp.space/data/signup", nullptr, nullptr, SW_SHOWNORMAL);
+            break;
+        case 16:  // the picture, whole, in the player's own viewer
+            if (drIndex_ >= 0 && drIndex_ < count && !datarunner_.shots[drIndex_]->file.empty()) {
+                ShellExecuteW(owner, L"open", datarunner_.shots[drIndex_]->file.wstring().c_str(), nullptr, nullptr,
+                              SW_SHOWNORMAL);
+            }
+            break;
+        default:
+            break;
+    }
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void MinerGUI::drawDatarunnerCard(Gdiplus::Graphics& g, int cw, int ch) {
+    drHits_.clear();
+    drRect_ = drRows_ = drList_ = Gdiplus::RectF();
+    if (datarunner_.shots.empty()) return;
+    if (drIndex_ < 0 || drIndex_ >= (int)datarunner_.shots.size()) drIndex_ = 0;
+    const Datarunner::Shot& shot = *datarunner_.shots[drIndex_];
+    const size_t index = (size_t)drIndex_;
+    const std::string blocked = index < datarunner_.blocked.size() ? datarunner_.blocked[index] : std::string();
+    const std::vector<int> noHolds;
+    const std::vector<int>& holds = index < datarunner_.holds.size() ? datarunner_.holds[index] : noHolds;
+    const std::string version = index < datarunner_.versions.size() ? datarunner_.versions[index] : std::string();
+    using State = Datarunner::Shot::State;
+    const bool open = shot.state != State::Sending && shot.state != State::Sent;
+    const long long now = (long long)std::time(nullptr);
+    const POINT hover = hoverMain_;
+
+    Gdiplus::Font markFont(&markFamily(), scaleF(17), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font headFont(&textFamily(), scaleF(9), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font textFont(&textFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font chipFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font btnFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font rowBtnFont(&markFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::SolidBrush textBrush(COL_TEXT), dimBrush(COL_TEXT_DIM), faintBrush(COL_TEXT_FAINT);
+    Gdiplus::SolidBrush greenBrush(COL_GREEN), yellowBrush(COL_YELLOW), redBrush(COL_RED);
+    Gdiplus::StringFormat oneLine;
+    oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+    oneLine.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    Gdiplus::StringFormat rightLine;
+    rightLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    rightLine.SetAlignment(Gdiplus::StringAlignmentFar);
+    rightLine.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+
+    // The whole window, but for a rim: the rows want the room
+    const float cardX = scaleF(8), cardY = scaleF(8);
+    const float cardW = (float)cw - 2 * cardX, cardH = (float)ch - 2 * cardY;
+    drRect_ = Gdiplus::RectF(cardX, cardY, cardW, cardH);
+    refplanGlassPane(g, drRect_, scaleF(R_CARD), scaleF(18), COL_CARD);
+    const float left = cardX + scaleF(14);
+    const float width = cardW - 2 * scaleF(14);
+    auto measure = [&](const std::wstring& text, const Gdiplus::Font& font) {
+        Gdiplus::RectF room;
+        g.MeasureString(text.c_str(), -1, &font, Gdiplus::PointF(0, 0), &room);
+        return room.Width;
+    };
+    auto button = [&](const wchar_t* label, float x, float top, float w, float h, const Gdiplus::Font& font,
+                      ButtonKind kind, int hitKind, int row) {
+        const Gdiplus::RectF box(x, top, w, h);
+        drawButton(g, box, label, font, kind, hitKind > 0 && isHot(hover, box), scaleF(R_CONTROL));
+        if (hitKind > 0) drHits_.push_back({box, hitKind, row, 0});
+        return box;
+    };
+
+    // The title, and the way out
+    float y = cardY + scaleF(12);
+    g.DrawString(L"UEX DATARUNNER", -1, &markFont, Gdiplus::PointF(left, y), &textBrush);
+    g.DrawString(L"Esc to close", -1, &headFont, Gdiplus::RectF(left, y, width, scaleF(24)), &rightLine, &faintBrush);
+    y += scaleF(32);
+
+    // Which picture, when it was taken, and the way to see it whole
+    {
+        std::wstring which = L"PICTURE " + std::to_wstring(drIndex_ + 1) + L" OF " +
+                             std::to_wstring(datarunner_.shots.size());
+        if (shot.taken > 0) which += L"  \u00B7  TAKEN " + upperWords(clockOf(shot.taken, now));
+        const std::wstring link = L"Open picture";
+        const float linkW = measure(link, headFont);
+        g.DrawString(which.c_str(), -1, &headFont, Gdiplus::RectF(left, y, width - linkW - scaleF(12), scaleF(16)),
+                     &oneLine, &dimBrush);
+        if (!shot.file.empty()) {
+            const Gdiplus::RectF at(left + width - linkW - scaleF(2), y, linkW + scaleF(2), scaleF(16));
+            Gdiplus::SolidBrush linkBrush(isHot(hover, at) ? COL_ACCENT_HI : COL_ACCENT);
+            g.DrawString(link.c_str(), -1, &headFont, at, &rightLine, &linkBrush);
+            drHits_.push_back({at, 16, -1, 0});
+        }
+        y += scaleF(22);
+    }
+
+    // The terminal, and the list it shows: BUY what it sells, SELL what it buys
+    {
+        const std::wstring label = L"TERMINAL";
+        const float labelW = measure(label, headFont) + scaleF(8);
+        const float sideW = scaleF(52);
+        g.DrawString(label.c_str(), -1, &headFont, Gdiplus::RectF(left, y, labelW, scaleF(24)), &oneLine, &faintBrush);
+        std::wstring name;
+        for (const auto& [id, written] : shot.terminals) {
+            if (id == shot.terminal) name = toW(written);
+        }
+        if (name.empty() && shot.terminal > 0 && datarunner_.terminals) {
+            for (const auto& [id, written] : *datarunner_.terminals) {
+                if (id == shot.terminal) name = toW(written);
+            }
+        }
+        const bool known = shot.terminal > 0;
+        if (!known) {
+            name = shot.terminals.size() > 1 ? L"Select terminal  \u00B7  " + std::to_wstring(shot.terminals.size()) +
+                                                   L" at this place"
+                                             : std::wstring(L"Select terminal");
+        }
+        const Gdiplus::RectF box(left + labelW, y, width - labelW - 2 * sideW - scaleF(12), scaleF(24));
+        drListAnchor_ = drListKind_ == 9 ? box : drListAnchor_;
+        const bool hot = open && isHot(hover, box);
+        const Gdiplus::Color tone = known ? COL_GREEN : COL_RED;
+        fillRoundRect(g, box, scaleF(R_CONTROL), drListKind_ == 9 ? COL_CARD_HI : tint(tone, 26));
+        strokeRoundRect(g, box, scaleF(R_CONTROL), drListKind_ == 9 ? COL_ACCENT : tint(tone, hot ? 255 : 170));
+        Gdiplus::SolidBrush ink(known ? COL_TEXT : COL_RED);
+        g.DrawString(name.c_str(), -1, &textFont,
+                     Gdiplus::RectF(box.X + scaleF(8), box.Y, box.Width - scaleF(14), box.Height), &oneLine, &ink);
+        if (open) drHits_.push_back({box, 11, -1, 0});
+        const float sideX = box.GetRight() + scaleF(12);
+        const ButtonKind buy = shot.side == 1 ? ButtonKind::Selected : ButtonKind::Secondary;
+        const ButtonKind sell = shot.side == 2 ? ButtonKind::Selected : ButtonKind::Secondary;
+        button(L"BUY", sideX, y, sideW, scaleF(24), rowBtnFont, buy, open ? 12 : 0, -1);
+        button(L"SELL", sideX + sideW, y, sideW, scaleF(24), rowBtnFont, sell, open ? 13 : 0, -1);
+        if (shot.side == 0) {
+            // neither made out: the pair framed as missing
+            strokeRoundRect(g, Gdiplus::RectF(sideX, y, 2 * sideW, scaleF(24)), scaleF(R_CONTROL), COL_RED);
+        }
+        y += scaleF(30);
+    }
+
+    // Where, and of which game
+    {
+        std::wstring where = L"PLACE  " + (shot.place.empty() ? std::wstring(L"NOT KNOWN") : upperWords(toW(shot.place)));
+        where += L"  \u00B7  GAME " + (version.empty() ? std::wstring(L"VERSION NOT KNOWN")
+                                                       : toW(version) + L" " + upperWords(toW(shot.channel)));
+        g.DrawString(where.c_str(), -1, &headFont, Gdiplus::RectF(left, y, width, scaleF(16)), &oneLine, &faintBrush);
+        y += scaleF(24);
+    }
+
+    // The columns the values stand in, under their names
+    const float gap = scaleF(4);
+    const float nameW = std::floor(width * 0.41f), levelW = std::floor(width * 0.26f);
+    const float stockW = std::floor(width * 0.15f);
+    const float priceW = width - nameW - levelW - stockW - 3 * gap;
+    const float colX[4] = {left, left + nameW + gap, left + nameW + levelW + 2 * gap,
+                           left + nameW + levelW + stockW + 3 * gap};
+    const float colW[4] = {nameW, levelW, stockW, priceW};
+    {
+        const wchar_t* heads[4] = {L"COMMODITY", L"INVENTORY", L"SCU", L"aUEC / SCU"};
+        for (int c = 0; c < 4; c++) {
+            g.DrawString(heads[c], -1, &headFont, Gdiplus::RectF(colX[c] + scaleF(6), y, colW[c], scaleF(14)), &oneLine,
+                         &faintBrush);
+        }
+        y += scaleF(18);
+    }
+
+    // The foot first: it decides how much room the rows have
+    int toSend = 0;
+    for (size_t i = 0; i < shot.rows.size(); i++) {
+        if (!shot.rows[i].removed && (i >= holds.size() || holds[i] != (int)Datarunner::Hold::Sent)) toSend++;
+    }
+    std::wstring status;
+    const Gdiplus::SolidBrush* statusBrush = &yellowBrush;
+    switch (shot.state) {
+        case State::Sending:
+            status = L"SENDING - Waiting for UEX";
+            statusBrush = &dimBrush;
+            break;
+        case State::Sent:
+            status = L"SENT - The report is on UEX";
+            if (!shot.ids.empty()) {
+                status += L"  \u00B7  " + std::to_wstring(shot.ids.size()) + (shot.ids.size() == 1 ? L" row" : L" rows");
+            }
+            statusBrush = &greenBrush;
+            break;
+        case State::Partly:
+            status = L"PARTLY SENT - " + toW(shot.note);
+            break;
+        case State::Refused:
+            status = L"NOT TAKEN - " + toW(shot.note);
+            statusBrush = &redBrush;
+            break;
+        case State::Failed:
+            status = L"NOT SENT - " + toW(shot.note);
+            statusBrush = &redBrush;
+            break;
+        default:
+            break;
+    }
+    if (open && blocked.empty() && (shot.state == State::Check || status.empty())) {
+        status = L"READY - Click Send to report " + std::to_wstring(toSend) + (toSend == 1 ? L" row" : L" rows") +
+                 L" to UEX";
+        statusBrush = &greenBrush;
+    } else if (open && !blocked.empty() && shot.state == State::Check) {
+        status = toW(blocked);
+    } else if (open && !blocked.empty()) {
+        status += L"  \u00B7  " + toW(blocked);
+    }
+    Gdiplus::RectF statusRoom;
+    g.MeasureString(status.c_str(), -1, &textFont, Gdiplus::RectF(0, 0, width, scaleF(200)), nullptr, &statusRoom);
+    const float statusH = (std::max)(scaleF(18), statusRoom.Height + scaleF(2));
+    const float signUpH = datarunner_.signUp ? scaleF(30) : 0.0f;
+    const float buttonsH = scaleF(30);
+    const float footY = cardY + cardH - scaleF(12) - buttonsH;
+    const float rowsBottom = footY - scaleF(10) - statusH - signUpH - scaleF(4);
+
+    // The rows: each its piece of the picture, and under it what was read
+    const float snipH = scaleF(54), chipH = scaleF(20);
+    const float rowH = snipH + scaleF(4) + chipH + scaleF(12);
+    const float sideW = scaleF(80);
+    drRows_ = Gdiplus::RectF(left, y, width, (std::max)(0.0f, rowsBottom - y));
+    const float total = rowH * (float)shot.rows.size();
+    const float scrollMost = (std::max)(0.0f, total - drRows_.Height);
+    drScroll_ = (std::max)(0.0f, (std::min)(drScroll_, scrollMost));
+    g.SetClip(Gdiplus::RectF(cardX, drRows_.Y, cardW, drRows_.Height));
+    for (size_t i = 0; i < shot.rows.size(); i++) {
+        const Datarunner::Row& row = shot.rows[i];
+        const float ry = drRows_.Y - drScroll_ + rowH * (float)i;
+        if (ry + rowH < drRows_.Y || ry > drRows_.GetBottom()) continue;
+        const int hold = i < holds.size() ? holds[i] : 0;
+        const bool already = hold == (int)Datarunner::Hold::Sent;
+        const bool gone = row.removed || already;
+        const bool editable = open && !gone;
+        // whole within the rows' room: what can be pressed
+        auto visible = [&](const Gdiplus::RectF& r) { return r.Y >= drRows_.Y - 0.5f && r.GetBottom() <= drRows_.GetBottom() + 0.5f; };
+        // the piece of the picture
+        float snipW = width - sideW - scaleF(10);
+        if (!row.snippet.empty()) snipW = (std::min)(snipW, snipH * (float)row.snippet.cols / (float)row.snippet.rows);
+        const Gdiplus::RectF snip(left, ry, std::floor(snipW), snipH);
+        if (Gdiplus::Bitmap* piece = datarunnerSnippet(shot, i, (int)snip.Width, (int)snip.Height)) {
+            g.DrawImage(piece, snip);
+        } else {
+            fillRoundRect(g, snip, scaleF(3), COL_CARD_HI);
+        }
+        strokeRoundRect(g, snip, scaleF(3), COL_BORDER);
+        if (gone) fillRoundRect(g, snip, scaleF(3), tint(COL_CARD, 170));
+        // beside it: Confirm what is to check, Remove (or Restore) the row
+        const float bx = left + width - sideW;
+        if (already) {
+            g.DrawString(L"ALREADY SENT", -1, &headFont, Gdiplus::RectF(bx, ry, sideW, scaleF(20)), &rightLine,
+                         &faintBrush);
+        } else if (open) {
+            bool toCheck = false;
+            for (Certainty sure : {row.nameSure, row.levelSure, row.stockSure, row.priceSure}) {
+                toCheck = toCheck || sure == Certainty::Check;
+            }
+            if (toCheck && !row.removed) {
+                const Gdiplus::RectF box(bx, ry, sideW, scaleF(20));
+                button(L"Confirm", box.X, box.Y, box.Width, box.Height, rowBtnFont, ButtonKind::Secondary,
+                       visible(box) ? 6 : 0, (int)i);
+            }
+            const Gdiplus::RectF box(bx, ry + scaleF(24), sideW, scaleF(20));
+            button(row.removed ? L"Restore" : L"Remove", box.X, box.Y, box.Width, box.Height, rowBtnFont,
+                   ButtonKind::Ghost, visible(box) ? 5 : 0, (int)i);
+        }
+        // the values, each in the colour of how sure it is
+        const float cy = ry + snipH + scaleF(4);
+        auto chip = [&](int column, std::wstring text, Certainty sure, int field, int hitKind) {
+            const Gdiplus::RectF box(colX[column], cy, colW[column], chipH);
+            const bool editing = (field == 6 || field == 7) && drEditRow_ == (int)i && drEditField_ == field;
+            const bool listed = (field == 5 || field == 8) && drListRow_ == (int)i && drListKind_ == field;
+            if (listed) drListAnchor_ = box;
+            const Gdiplus::Color tone = sure == Certainty::Sure ? COL_GREEN : sure == Certainty::Check ? COL_YELLOW : COL_RED;
+            const bool hot = editable && hitKind > 0 && isHot(hover, box);
+            fillRoundRect(g, box, scaleF(R_CONTROL), editing || listed ? COL_CARD_HI : tint(tone, gone ? 8 : 26));
+            strokeRoundRect(g, box, scaleF(R_CONTROL),
+                            editing || listed ? COL_ACCENT : gone ? COL_BORDER : tint(tone, hot ? 255 : 170));
+            Gdiplus::SolidBrush ink(gone ? COL_TEXT_FAINT : sure == Certainty::Sure ? COL_TEXT : tone);
+            if (editing) {
+                // the figure as typed, or the one there faint until a key is
+                Gdiplus::SolidBrush typed(COL_TEXT);
+                const std::wstring shown = drEntry_.empty() ? text : drEntry_;
+                const Gdiplus::RectF inside(box.X + scaleF(6), box.Y, box.Width - scaleF(10), box.Height);
+                g.DrawString(shown.c_str(), -1, &chipFont, inside, &oneLine, drEntry_.empty() ? &faintBrush : &typed);
+                const float caret = (std::min)(inside.GetRight() - scaleF(1), inside.X + measure(shown, chipFont));
+                Gdiplus::Pen caretPen(COL_ACCENT, scaleF(1.2f));
+                g.DrawLine(&caretPen, caret, box.Y + scaleF(4), caret, box.GetBottom() - scaleF(4));
+            } else {
+                g.DrawString(text.c_str(), -1, &chipFont,
+                             Gdiplus::RectF(box.X + scaleF(6), box.Y, box.Width - scaleF(10), box.Height), &oneLine, &ink);
+            }
+            if (editable && hitKind > 0 && visible(box)) drHits_.push_back({box, hitKind, (int)i, 0});
+        };
+        std::wstring name = row.commodity > 0 ? toW(row.name) : toW(row.read);
+        if (name.empty()) name = L"Select commodity";
+        chip(0, name, row.commodity > 0 ? row.nameSure : Certainty::Missing, 8, 7);
+        // the level in the game's words, without the INVENTORY its column
+        // says: MAX, VERY LOW, OUT OF STOCK
+        std::wstring level = L"Select level";
+        if (row.level >= 1 && row.level <= 7) {
+            level = toW(commodityLevelWords(row.level));
+            const std::wstring tail = L" INVENTORY";
+            if (level.size() > tail.size() && level.compare(level.size() - tail.size(), tail.size(), tail) == 0) {
+                level.erase(level.size() - tail.size());
+            }
+        }
+        chip(1, level, row.level >= 1 && row.level <= 7 ? row.levelSure : Certainty::Missing, 5, 8);
+        chip(2, row.stock >= 0 ? formatNumber(row.stock) : std::wstring(L"Type"),
+             row.stock >= 0 ? row.stockSure : Certainty::Missing, 6, 9);
+        if (row.perUnit) {
+            // a cargo box picked: the price is one box's, and cannot be had here
+            chip(3, L"PER BOX", Certainty::Missing, 0, 0);
+        } else {
+            chip(3, row.price >= 0 ? formatNumber(row.price) : std::wstring(L"Type"),
+                 row.price >= 0 ? row.priceSure : Certainty::Missing, 7, 10);
+        }
+    }
+    g.ResetClip();
+    if (scrollMost > 0) {
+        // how far down the rows are: a thin bar at the card's edge
+        const float barX = cardX + cardW - scaleF(8);
+        const float barH = (std::max)(scaleF(24), drRows_.Height * drRows_.Height / total);
+        const float barY = drRows_.Y + (drRows_.Height - barH) * (drScroll_ / scrollMost);
+        fillRoundRect(g, Gdiplus::RectF(barX, drRows_.Y, scaleF(3), drRows_.Height), scaleF(1.5f), tint(COL_BORDER, 120));
+        fillRoundRect(g, Gdiplus::RectF(barX, barY, scaleF(3), barH), scaleF(1.5f), COL_TEXT_FAINT);
+    }
+
+    // What stands in the way, or what came of it
+    float fy = rowsBottom + scaleF(6);
+    hairline(g, left, fy - scaleF(4), left + width);
+    if (datarunner_.signUp) {
+        const float signW = scaleF(124);
+        g.DrawString(L"UEX takes reports from registered datarunners only", -1, &textFont,
+                     Gdiplus::RectF(left, fy, width - signW - scaleF(8), scaleF(24)), &oneLine, &redBrush);
+        button(L"Sign up on UEX", left + width - signW, fy, signW, scaleF(24), rowBtnFont, ButtonKind::Secondary, 15, -1);
+        fy += signUpH;
+    }
+    g.DrawString(status.c_str(), -1, &textFont, Gdiplus::RectF(left, fy, width, statusH), nullptr, statusBrush);
+
+    // Send, Discard; Back and Next where there are more pictures
+    const float buttonW = scaleF(100);
+    if (shot.state == State::Sent) {
+        button(L"Close", left, footY, buttonW, buttonsH, btnFont, ButtonKind::Secondary, 2, -1);
+    } else {
+        const bool ready = open && blocked.empty();
+        button(L"Send", left, footY, buttonW, buttonsH, btnFont, ready ? ButtonKind::Primary : ButtonKind::Ghost,
+               ready ? 1 : 0, -1);
+        button(L"Discard", left + buttonW + scaleF(10), footY, buttonW, buttonsH, btnFont, ButtonKind::Secondary,
+               shot.state == State::Sending ? 0 : 2, -1);
+    }
+    if (datarunner_.shots.size() > 1) {
+        const float stepW = scaleF(64);
+        const bool later = drIndex_ + 1 < (int)datarunner_.shots.size();
+        button(L"Next", left + width - stepW, footY, stepW, buttonsH, btnFont, later ? ButtonKind::Secondary : ButtonKind::Ghost,
+               later ? 4 : 0, -1);
+        button(L"Back", left + width - 2 * stepW - scaleF(8), footY, stepW, buttonsH, btnFont,
+               drIndex_ > 0 ? ButtonKind::Secondary : ButtonKind::Ghost, drIndex_ > 0 ? 3 : 0, -1);
+    }
+
+    // A dropped list lies over everything: the levels, the commodities, the
+    // terminals - the last two with the letters typed to narrow them
+    if (drListKind_ != 0 && drListAnchor_.Width > 0) {
+        const auto entries = datarunnerListEntries();
+        const bool typed = drListKind_ != 5;
+        const float entryH = scaleF(22);
+        const float listW = (std::min)(width, (std::max)(drListAnchor_.Width, scaleF(260)));
+        const float listH = (typed ? entryH + scaleF(4) : 0.0f) + entryH * (float)(std::max)((size_t)1, entries.size()) +
+                            scaleF(8);
+        float lx = (std::min)(drListAnchor_.X, left + width - listW);
+        float ly = drListAnchor_.GetBottom() + scaleF(2);
+        if (ly + listH > cardY + cardH - scaleF(8)) ly = drListAnchor_.Y - scaleF(2) - listH;
+        drList_ = Gdiplus::RectF(lx, ly, listW, listH);
+        dropShadow(g, drList_, scaleF(R_CONTROL), scaleF(10));
+        fillRoundRect(g, drList_, scaleF(R_CONTROL), COL_CARD_HI);
+        strokeRoundRect(g, drList_, scaleF(R_CONTROL), COL_BORDER);
+        float ey = ly + scaleF(4);
+        if (typed) {
+            const std::wstring shown = drFilter_.empty() ? std::wstring(L"Type to filter") : drFilter_;
+            const Gdiplus::RectF field(lx + scaleF(8), ey, listW - scaleF(16), entryH);
+            g.DrawString(shown.c_str(), -1, &textFont, field, &oneLine, drFilter_.empty() ? &faintBrush : &textBrush);
+            if (!drFilter_.empty()) {
+                const float caret = (std::min)(field.GetRight(), field.X + measure(drFilter_, textFont));
+                Gdiplus::Pen caretPen(COL_ACCENT, scaleF(1.2f));
+                g.DrawLine(&caretPen, caret, field.Y + scaleF(5), caret, field.GetBottom() - scaleF(5));
+            }
+            hairline(g, lx + scaleF(6), ey + entryH + scaleF(1), lx + listW - scaleF(6));
+            ey += entryH + scaleF(4);
+        }
+        if (entries.empty()) {
+            g.DrawString(L"No match", -1, &textFont, Gdiplus::RectF(lx + scaleF(8), ey, listW - scaleF(16), entryH),
+                         &oneLine, &faintBrush);
+        }
+        for (const auto& [text, value] : entries) {
+            const Gdiplus::RectF entry(lx + scaleF(4), ey, listW - scaleF(8), entryH);
+            if (isHot(hover, entry)) fillRoundRect(g, entry, scaleF(4), COL_HOVER);
+            g.DrawString(text.c_str(), -1, &textFont,
+                         Gdiplus::RectF(entry.X + scaleF(4), entry.Y, entry.Width - scaleF(8), entry.Height), &oneLine,
+                         &textBrush);
+            drHits_.push_back({entry, 14, drListRow_, value});
+            ey += entryH;
+        }
     }
 }
 
@@ -21301,7 +22099,7 @@ bool MinerGUI::phoneShowsButton(HWND b, bool overlay) const {
     if (overlay) return b != btnOreRows_ || (rockInView_ && !rockContents_.parts.empty());
     // ...and as layoutControls has them: under the first start's UEX offer
     // none, under a panel not the four of the action row
-    if (uexWelcome_.step) return false;
+    if (uexWelcome_.step || datarunnerOpen_) return false;
     const bool underPanel = lookingOpen_ || loadoutOpen_ || shipPickerOpen_ || placePickerOpen_;
     return !(underPanel && (b == btnRefinery_ || b == btnPlan_ || b == btnCraft_ || b == btnNotes_));
 }

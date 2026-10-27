@@ -38,6 +38,11 @@ executable and start it. The app tells you when a newer version is out.
   game's own contract list.
 - **Refinery jobs to UEX (optional):** connect your UEX account and Bedrock
   adds the refinery jobs you start to it. Off unless you agree.
+- **UEX Datarunner (optional):** at a commodity terminal, take a picture with
+  the game's Print Screen key. Bedrock reads the terminal's list off it and
+  shows every row beside its part of the picture; you check the values, and
+  only your click on Send reports them to UEX, with that picture. Off unless
+  you switch it on.
 - **Colours:** the gear beside the ? sets the colours of every window and the
   overlay - Bedrock's own, a set for protanopia, deuteranopia or tritanopia,
   or your own - with a preview that also shows how each kind of colour
@@ -65,8 +70,9 @@ language file into the game folder, the way language packs do.
 Network: an update check (official builds only), UEX's public price lists
 while the Ore Finder is open, refinery workloads to and from Bedrock's server
 (official builds only; untick "Share refinery workloads" in the Refinery
-window to stop sending - what is sent is listed in `dist/README.txt`), and
-your refinery jobs to UEX only if you switch that on. The update check and
+window to stop sending - what is sent is listed in `dist/README.txt`), your
+refinery jobs to UEX only if you switch that on, and terminal prices to UEX
+only if you switch the UEX Datarunner on and click Send. The update check and
 the refinery workloads carry a random number made for the install
 (`install_id.txt`), so that installs are counted rather than addresses;
 `stats=0` in `region_config.txt` leaves it out.
