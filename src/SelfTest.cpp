@@ -5957,7 +5957,7 @@ local count, old = 0, 0
 bedrock.watch("TheCollector", function(line, isOld)
   if isOld then old = old + 1 else count = count + 1 end
   if line:find("LOOP") then while true do end end
-  if line:find("HOG") then local t = {} for i = 1, 1e7 do t[i] = string.rep("x", 1000) .. i end end
+  if line:find("HOG") then local t = {} for i = 1, 1e7 do t[i] = string.rep("x", 1048576) .. i end end
   if line:find("FAIL") then error("on purpose") end
 end, true)
 local n = saved and saved.n or 0
