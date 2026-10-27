@@ -1,0 +1,2334 @@
+{
+ "game": "4.10.2-LIVE",
+ "trades": [
+  {
+   "id": "TheCollector_OrbArm",
+   "title": "Armor with horn and string",
+   "description": "Hello, know many humans want saldynium for regen problem. Credits good, yes, but Wikelo can use that, kopion horn, and other things to make special armor.\n\nOnce done, you be very tough. Very scary.\n\nYou see items needed. Bring to and I make for you.\n\nBye.",
+   "wants": [
+    {
+     "name": "Carinite (Pure)",
+     "amount": 1
+    },
+    {
+     "name": "Antium Core",
+     "amount": 1
+    },
+    {
+     "name": "Antium Helmet",
+     "amount": 1
+    },
+    {
+     "name": "Antium Legs",
+     "amount": 1
+    },
+    {
+     "name": "Antium Arms",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Ana Arms Endro",
+     "amount": 1
+    },
+    {
+     "name": "Ana Legs Endro",
+     "amount": 1
+    },
+    {
+     "name": "Ana Core Endro",
+     "amount": 1
+    },
+    {
+     "name": "Ana Helmet Endro",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_OrbVolt_KopSkull",
+   "title": "Fun Kopion Skull Gun",
+   "description": "Hello. Can make fun change to gun if you want. Use kopion skin for pattern and little skull dangle. Very effective. Shoot much better.\n\nAll you need is bring me parts to and will make.\n\nBye.",
+   "wants": [
+    {
+     "name": "Carinite",
+     "amount": 10
+    },
+    {
+     "name": "Saldynium (Ore)",
+     "amount": 15
+    },
+    {
+     "name": "Parallax Energy Assault Rifle",
+     "amount": 1
+    },
+    {
+     "name": "Tundra Kopion Horn",
+     "amount": 20
+    },
+    {
+     "name": "Jaclium (Ore)",
+     "amount": 20
+    }
+   ],
+   "gives": [
+    {
+     "name": "Parallax \"Fun Kopion Skull\" Energy Assault Rifle",
+     "amount": 1
+    },
+    {
+     "name": "Parallax Rifle Battery (80 Cap)",
+     "amount": 20
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_OrbVolt_MiltSkull",
+   "title": "Fun Military Skull Gun",
+   "description": "Hello. Can do version of gun if you kopion soldier. Make material like soldier camouflage but with dead skull on front. Gun shoot better too.\n\nIf want, bring part to and will make.",
+   "wants": [
+    {
+     "name": "Carinite",
+     "amount": 10
+    },
+    {
+     "name": "Saldynium (Ore)",
+     "amount": 15
+    },
+    {
+     "name": "Parallax Energy Assault Rifle",
+     "amount": 1
+    },
+    {
+     "name": "Irradiated Valakkar Fang (Juvenile)",
+     "amount": 20
+    },
+    {
+     "name": "Jaclium (Ore)",
+     "amount": 20
+    }
+   ],
+   "gives": [
+    {
+     "name": "Parallax \"Fun Military Skull\" Energy Assault Rifle",
+     "amount": 1
+    },
+    {
+     "name": "Parallax Rifle Battery (80 Cap)",
+     "amount": 20
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_AO_IrrArm",
+   "title": "Make glowy armor",
+   "description": "Wikelo had exciting idea during brief work rest. Was thinking about the little glow worms in Pyro and saw armor get changed to look like.\n\nIf you get me parts, bring to and will make for you then you can glow too.\n\nBye.",
+   "wants": [
+    {
+     "name": "Antium Core",
+     "amount": 1
+    },
+    {
+     "name": "Antium Helmet",
+     "amount": 1
+    },
+    {
+     "name": "Antium Arms",
+     "amount": 1
+    },
+    {
+     "name": "Antium Legs",
+     "amount": 1
+    },
+    {
+     "name": "Irradiated Valakkar Pearl (Grade AAA)",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Bokto Core",
+     "amount": 1
+    },
+    {
+     "name": "Bokto Arms",
+     "amount": 1
+    },
+    {
+     "name": "Bokto Legs",
+     "amount": 1
+    },
+    {
+     "name": "Bokto Helmet",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_AO_VoltThwack",
+   "title": "Make VOLT shotgun angrier",
+   "description": "You feel like gun not angry enough? VOLT shotgun very powerful, very dangerous, but not scary? Bring to me. Can make very scary and angry.\n\nThey respect you then. Bring to and we make.\n\nBye.",
+   "wants": [
+    {
+     "name": "Irradiated Valakkar Fang (Adult)",
+     "amount": 10
+    },
+    {
+     "name": "Irradiated Valakkar Fang (Juvenile)",
+     "amount": 5
+    },
+    {
+     "name": "Prism Laser Shotgun",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Prism \"Irradiated\" Laser Shotgun",
+     "amount": 1
+    },
+    {
+     "name": "Prism Laser Shotgun Battery (20 cap)",
+     "amount": 20
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_AD_ZapZip",
+   "title": "Snow Snipe",
+   "description": "Want to shoot long away and stay hiding. But it snowing? Wikelo have gun for you.\n\nBring things. I give.\n\nBye.",
+   "wants": [
+    {
+     "name": "ASD Secure Drive",
+     "amount": 7
+    },
+    {
+     "name": "Zenith Laser Sniper Rifle",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Zenith \"Snow Camo\" Laser Sniper Rifle",
+     "amount": 1
+    },
+    {
+     "name": "Zenith Laser Sniper Rifle Battery (22 Cap)",
+     "amount": 20
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_AD_Hush",
+   "title": "Hide Snow Suit",
+   "description": "You want be hidden. Wikelo understand. Not ask questions why. But what do when you in snow? Wikelo have suit for that.\n\nWelcome.",
+   "wants": [
+    {
+     "name": "ASD Secure Drive",
+     "amount": 4
+    },
+    {
+     "name": "Geist Armor Arms ASD Edition",
+     "amount": 1
+    },
+    {
+     "name": "Geist Armor Core ASD Edition",
+     "amount": 1
+    },
+    {
+     "name": "Geist Armor Helmet ASD Edition",
+     "amount": 1
+    },
+    {
+     "name": "Geist Armor Legs ASD Edition",
+     "amount": 1
+    },
+    {
+     "name": "Geist Backpack ASD Edition",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Geist Armor Arms Snow Camo",
+     "amount": 1
+    },
+    {
+     "name": "Geist Armor Core Snow Camo",
+     "amount": 1
+    },
+    {
+     "name": "Geist Armor Helmet Snow Camo",
+     "amount": 1
+    },
+    {
+     "name": "Geist Armor Legs Snow Camo",
+     "amount": 1
+    },
+    {
+     "name": "Geist Backpack Snow Camo",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Nov_Molten",
+   "title": "Do Lava Suit",
+   "description": "If you have armor, Wikelo can make it look warm. Good look for useful armor. Bring me things and will do.",
+   "wants": [
+    {
+     "name": "Carinite",
+     "amount": 30
+    },
+    {
+     "name": "RCMBNT-PWL-1",
+     "amount": 4
+    },
+    {
+     "name": "RCMBNT-PWL-2",
+     "amount": 4
+    },
+    {
+     "name": "RCMBNT-PWL-3",
+     "amount": 4
+    },
+    {
+     "name": "Strata Arms",
+     "amount": 1
+    },
+    {
+     "name": "Strata Legs",
+     "amount": 1
+    },
+    {
+     "name": "Strata Helmet",
+     "amount": 1
+    },
+    {
+     "name": "Strata Backpack",
+     "amount": 1
+    },
+    {
+     "name": "Strata Core",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Strata Core Heatwave",
+     "amount": 1
+    },
+    {
+     "name": "Strata Arms Heatwave",
+     "amount": 1
+    },
+    {
+     "name": "Strata Legs Heatwave",
+     "amount": 1
+    },
+    {
+     "name": "Strata Helmet Heatwave",
+     "amount": 1
+    },
+    {
+     "name": "Strata Backpack Heatwave",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Nov_HeavyUtil",
+   "title": "Shiny Builder Suit",
+   "description": "You need utility suit. Good for work. If you like, Wikelo can make shinier. Look real good. See what Wikelo need and bring.",
+   "wants": [
+    {
+     "name": "Corbel Core Mire",
+     "amount": 1
+    },
+    {
+     "name": "Corbel Arms Mire",
+     "amount": 1
+    },
+    {
+     "name": "Corbel Legs Mire",
+     "amount": 1
+    },
+    {
+     "name": "Novikov Backpack Mire",
+     "amount": 1
+    },
+    {
+     "name": "ASD Secure Drive",
+     "amount": 10
+    },
+    {
+     "name": "RCMBNT-RGL-1",
+     "amount": 3
+    },
+    {
+     "name": "RCMBNT-RGL-2",
+     "amount": 3
+    },
+    {
+     "name": "RCMBNT-RGL-3",
+     "amount": 3
+    },
+    {
+     "name": "Corbel Helmet Mire",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Corbel Helmet Crush",
+     "amount": 1
+    },
+    {
+     "name": "Corbel Core Crush",
+     "amount": 1
+    },
+    {
+     "name": "Corbel Arms Crush",
+     "amount": 1
+    },
+    {
+     "name": "Corbel Legs Crush",
+     "amount": 1
+    },
+    {
+     "name": "Novikov Backpack Crush",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_SlimyLMG",
+   "title": "Yormandi Gun",
+   "description": "This gun has picture of amazing creature on side. Use it and it make you big and strong like Yormandi. Spit lightning. Bring my items and then you get it. Bye.",
+   "wants": [
+    {
+     "name": "Yormandi Eye",
+     "amount": 6
+    },
+    {
+     "name": "Yormandi Tongue",
+     "amount": 3
+    },
+    {
+     "name": "Fresnel Energy LMG",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Fresnel \"Yormandi\" Energy LMG",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Battle",
+   "title": "Test Armor",
+   "description": "Bring me armor and other things and I give you special test armor. First version. Very special. Bring and I give. Bye.",
+   "wants": [
+    {
+     "name": "Yormandi Eye",
+     "amount": 14
+    },
+    {
+     "name": "Yormandi Tongue",
+     "amount": 7
+    },
+    {
+     "name": "Palatino Helmet",
+     "amount": 1
+    },
+    {
+     "name": "Palatino Arms",
+     "amount": 1
+    },
+    {
+     "name": "Palatino Legs",
+     "amount": 1
+    },
+    {
+     "name": "Palatino Core",
+     "amount": 1
+    },
+    {
+     "name": "Palatino Backpack",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Palatino Helmet Mark I",
+     "amount": 1
+    },
+    {
+     "name": "Palatino Arms Mark I",
+     "amount": 1
+    },
+    {
+     "name": "Palatino Legs Mark I",
+     "amount": 1
+    },
+    {
+     "name": "Palatino Core Mark I",
+     "amount": 1
+    },
+    {
+     "name": "Palatino Backpack Mark I",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_SpikeyArmor",
+   "title": "Armor with Vanduul",
+   "description": "Vanduul have strange ways. I never talk to them, old souli used to, but not Wikelo. Anyway, though not friendly, they make interesting thing. If you like, Wikelo can make you look more like.\n\nBring things. Will do.\n\nBye.",
+   "wants": [
+    {
+     "name": "Vanduul Plating",
+     "amount": 15
+    },
+    {
+     "name": "Vanduul Metal",
+     "amount": 15
+    },
+    {
+     "name": "Testudo Legs Turfwar",
+     "amount": 1
+    },
+    {
+     "name": "Testudo Helmet Turfwar",
+     "amount": 1
+    },
+    {
+     "name": "Testudo Core Turfwar",
+     "amount": 1
+    },
+    {
+     "name": "Testudo Arms Turfwar",
+     "amount": 1
+    },
+    {
+     "name": "Testudo Backpack Turfwar",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Testudo Helmet Clanguard",
+     "amount": 1
+    },
+    {
+     "name": "Testudo Arms Clanguard",
+     "amount": 1
+    },
+    {
+     "name": "Testudo Core Clanguard",
+     "amount": 1
+    },
+    {
+     "name": "Testudo Legs Clanguard",
+     "amount": 1
+    },
+    {
+     "name": "Testudo Backpack Clanguard",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_BigBooma",
+   "title": "Curious Weapon",
+   "description": "Wikelo find very strange but functional weapon while wandering through your systems. It very simple but very effective. If you bring me things, I show you what I do to it.\n\nVery fun.",
+   "wants": [
+    {
+     "name": "Vanduul Plating",
+     "amount": 2
+    },
+    {
+     "name": "Vanduul Metal",
+     "amount": 2
+    },
+    {
+     "name": "Boomtube Rocket Launcher",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Boomtube \"Clanguard\" Rocket Launcher",
+     "amount": 1
+    },
+    {
+     "name": "Boomtube Rocket",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_NonePistol",
+   "title": "Hot Shot",
+   "description": "You need a good weapon, yes? Have one for you. Small but powerful. Like an extra spicy balalu pepper. Wikelo make this pistol look extra spicy too. You bring things I need and I do a trade.\n\nBye.",
+   "wants": [
+    {
+     "name": "Carinite",
+     "amount": 20
+    },
+    {
+     "name": "Bluemoon Fungus",
+     "amount": 20
+    },
+    {
+     "name": "Tripledown Pistol",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Tripledown \"Heatwave\" Pistol",
+     "amount": 1
+    },
+    {
+     "name": "Tripledown Pistol Magazine (12 Cap)",
+     "amount": 20
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_GeminiShotgun",
+   "title": "Red Fight Shotgun",
+   "description": "Shooting can be messy. Red Human Blood everywhere. Not a problem with this shotgun. Splashes blends right in! I give it to you if you give me everything I want on list. Good trade.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 3
+    },
+    {
+     "name": "Sadaryx",
+     "amount": 10
+    },
+    {
+     "name": "R97 Shotgun",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "R97 \"Crimson Camo\" Shotgun",
+     "amount": 1
+    },
+    {
+     "name": "R97 Shotgun Magazine (18 cap)",
+     "amount": 20
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_RedHunterArmour",
+   "title": "Red Fight Armor",
+   "description": "Wikelo hear that Humans think red is the color of passion and anger. This armor good for both. You give me items on list and this red armor is yours.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 3
+    },
+    {
+     "name": "Sadaryx",
+     "amount": 10
+    },
+    {
+     "name": "Monde Helmet",
+     "amount": 1
+    },
+    {
+     "name": "Monde Core",
+     "amount": 1
+    },
+    {
+     "name": "Monde Arms",
+     "amount": 1
+    },
+    {
+     "name": "Monde Legs",
+     "amount": 1
+    },
+    {
+     "name": "Warden Backpack Monde",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Monde Helmet Crimson Camo",
+     "amount": 1
+    },
+    {
+     "name": "Monde Core Crimson Camo",
+     "amount": 1
+    },
+    {
+     "name": "Monde Arms Crimson Camo",
+     "amount": 1
+    },
+    {
+     "name": "Monde Legs Crimson Camo",
+     "amount": 1
+    },
+    {
+     "name": "Warden Backpack Crimson Camo",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_vglFlightsuit",
+   "title": "Suit Up Take Off",
+   "description": "Ships have big windows. Everyone can see you flying. You should look the best. Wikelo has very good flight suit for you. Do trade, bring me what I need and Wikelo give suit. Give blueprint as well if you do not have.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 1
+    },
+    {
+     "name": "Tailwind Flight Suit",
+     "amount": 1
+    },
+    {
+     "name": "Tailwind Flight Helmet",
+     "amount": 1
+    },
+    {
+     "name": "Expired Quantanium Fuel Canister",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Tailwind Flight Suit Dominion Camo",
+     "amount": 1
+    },
+    {
+     "name": "Tailwind Flight Helmet Dominion Camo",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_NoneAssultRifle",
+   "title": "Your Best Shot",
+   "description": "This rifle is very good at shooting, but could have nicer design. Wikelo fix. Looks very nice now. Give to you for trade. Bring me things, I give you rifle. Even give you blueprint if you need.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 1
+    },
+    {
+     "name": "Killshot Rifle",
+     "amount": 1
+    },
+    {
+     "name": "Expired Quantanium Fuel Canister",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Killshot \"Dominion Camo\" Rifle",
+     "amount": 1
+    },
+    {
+     "name": "Killshot Rifle Magazine (45 Cap)",
+     "amount": 20
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_apar_hmg",
+   "title": "Too Much Gun",
+   "description": "This gun is very big and very loud. Wikelo love it. Made it extra bright so that everyone can see how special this gun is. I think you will like this so bring me trade.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 1
+    },
+    {
+     "name": "Vendetta HMG",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Vendetta \"Snow Camo\" HMG",
+     "amount": 1
+    },
+    {
+     "name": "Vendetta HMG Magazine (1000 Cap)",
+     "amount": 20
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_SuperHeavyCombat",
+   "title": "Heavy and Bright",
+   "description": "This armor is big, yes! Protect you real good. Wikelo make it extra bright so everyone can see how good your armor is. If you bring the things I need, I trade for it.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 1
+    },
+    {
+     "name": "BUL-H4 Helmet",
+     "amount": 1
+    },
+    {
+     "name": "BUL-H4 Armor",
+     "amount": 1
+    },
+    {
+     "name": "H4-PBF Ammo Carrier",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "BUL-H4 Helmet Snow Camo",
+     "amount": 1
+    },
+    {
+     "name": "BUL-H4 Armor Snow Camo",
+     "amount": 1
+    },
+    {
+     "name": "H4-PBF Ammo Carrier Snow Camo",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_GMNI_LMG",
+   "title": "Big Style LMG",
+   "description": "Warriors should feel strong, yes? What makes you feel more very strong than looking amazing? Wikelo will make your gun look like different gun. Bring me item on list and I give to you. Bye.",
+   "wants": [
+    {
+     "name": "F55 LMG",
+     "amount": 1
+    },
+    {
+     "name": "Vanduul Metal",
+     "amount": 5
+    },
+    {
+     "name": "Jaclium (Ore)",
+     "amount": 20
+    }
+   ],
+   "gives": [
+    {
+     "name": "F55 \"Shadowflux\" LMG",
+     "amount": 1
+    },
+    {
+     "name": "F55 LMG Magazine (150 cap)",
+     "amount": 20
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_GreyHeavyCombatArmour",
+   "title": "Monolith Armor Very Smooth",
+   "description": "When fight, you want armor that solid. Keep gun from helpful organ you need to live, yes, but should be impressive too. Wikelo make version of Monolith armor that do both.\n\nYou want? Bring me things I need for new project and I will give. Show you how to make too. More happy.",
+   "wants": [
+    {
+     "name": "Monolith Armor Legs",
+     "amount": 1
+    },
+    {
+     "name": "Monolith Armor Arms",
+     "amount": 1
+    },
+    {
+     "name": "Monolith Armor Core",
+     "amount": 1
+    },
+    {
+     "name": "Monolith Helmet",
+     "amount": 1
+    },
+    {
+     "name": "Monolith Backpack",
+     "amount": 1
+    },
+    {
+     "name": "Vanduul Metal",
+     "amount": 10
+    },
+    {
+     "name": "Saldynium (Ore)",
+     "amount": 25
+    }
+   ],
+   "gives": [
+    {
+     "name": "Monolith Armor Legs Shadowflux",
+     "amount": 1
+    },
+    {
+     "name": "Monolith Armor Core Shadowflux",
+     "amount": 1
+    },
+    {
+     "name": "Monolith Backpack Shadowflux",
+     "amount": 1
+    },
+    {
+     "name": "Monolith Armor Arms Shadowflux",
+     "amount": 1
+    },
+    {
+     "name": "Monolith Helmet Shadowflux",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Intro",
+   "title": "Wikelo Arrive to System",
+   "description": "Hello, I am Wikelo. Recent addition to your system and very excited to be here. Spent many time here in UEE and happy to spent more.\n\nHave place where I make things from other things.\n\nNeed person to bring me useful things to finish project I work on. You have list. Get, please. I am at .\n\nWill give you item for your help.\n\nAlso, when done, if you want to do more. Have many things can make in my humble shop. Come, look at pretty poster and then decide what you want me to make.\n\nBye.",
+   "wants": [
+    {
+     "name": "Vestal Water",
+     "amount": 1
+    },
+    {
+     "name": "Tundra Kopion Horn",
+     "amount": 3
+    }
+   ],
+   "gives": []
+  },
+  {
+   "id": "TheCollector_FoodOrder",
+   "title": "Very Hungry",
+   "description": "You humans keep Wikelo very busy. Work more than when I at old souli. But Wikelo very hungry now and can't get food.\n\nPlease help. Bring food and drink to Wikelo Emporium at .\n\nVery appreciate your help. Will give thing in return.\n\nBye.",
+   "wants": [
+    {
+     "name": "Berry Blend Smoothie",
+     "amount": 1
+    },
+    {
+     "name": "Ermer Family Farms Fat Free Ice Cream",
+     "amount": 1
+    }
+   ],
+   "gives": [],
+   "after": [
+    "TheCollector_Intro"
+   ]
+  },
+  {
+   "id": "TheCollector_Favours_IrradiatedPearls",
+   "title": "Trade Worm Parts for Favors?",
+   "description": "Have new way to get favors from Wikelo. Hear much about worm things in radiation storms. Made up of many interesting parts that Wikelo find use for.\n\nIf you bring parts to , will trade for favor.\n\nBye.",
+   "wants": [
+    {
+     "name": "Irradiated Valakkar Pearl (Grade AA)",
+     "amount": 12
+    }
+   ],
+   "gives": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 1
+    }
+   ],
+   "after": [
+    "TheCollector_Intro"
+   ]
+  },
+  {
+   "id": "TheCollector_Favours_MercScrip",
+   "title": "Trade Merc Scrip for Favors?",
+   "description": "Wikelo has another way to get favors if you interested.\n\nYour Mercenary souli has scrip metal, used like favors, but made of very interesting metal that Wikelo need for new project.\n\nIf you bring scrips to , will trade for favor.\n\nBye.",
+   "wants": [
+    {
+     "name": "MG Scrip",
+     "amount": 50
+    }
+   ],
+   "gives": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 1
+    }
+   ],
+   "after": [
+    "TheCollector_Intro"
+   ]
+  },
+  {
+   "id": "TheCollector_Favours_CouncilScrip",
+   "title": "Trade Council Scrip for Favors?",
+   "description": "If you want other way to get favors from Wikelo, have thing for you. Wikelo have need for scrip given out by Council group. Wikelo not part of thief souli, but has business from time to time.\n\nIf you bring scrips to , will trade for favor.\n\nBye.",
+   "wants": [
+    {
+     "name": "Council Scrip",
+     "amount": 50
+    }
+   ],
+   "gives": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 1
+    }
+   ],
+   "after": [
+    "TheCollector_Intro"
+   ]
+  },
+  {
+   "id": "TheCollector_Favours_Caranite",
+   "title": "Turn Things to Favor",
+   "description": "Maybe Wikelo not have something you want made (that strange, but okay). Old souli would give out favors, very good way to prove that you do work for me. Collect enough and trade when I have something you want.\n\nBring things to and will trade for favor.\n\nBye.",
+   "wants": [
+    {
+     "name": "Carinite",
+     "amount": 50
+    }
+   ],
+   "gives": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 1
+    }
+   ],
+   "after": [
+    "TheCollector_Intro"
+   ]
+  },
+  {
+   "id": "TheCollector_Favours_PolarisParts",
+   "title": "Want Polaris? Need something special.",
+   "description": "Wikelo need large amounts of quantainium and is willing to give you nice Polaris in exchange but also know many humans not have much space, so you trade as you go. Wikelo will you Polaris bits if you want trade quantainium. Work like favors. Help Wikelo remember how much you give.\n\nBring quantainium to and will trade for bits.\n\nBye.",
+   "wants": [
+    {
+     "name": "Quantainium",
+     "amount": 24,
+     "unit": "SCU"
+    }
+   ],
+   "gives": [
+    {
+     "name": "Polaris Bit",
+     "amount": 1
+    }
+   ],
+   "after": [
+    "TheCollector_Intro"
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Small_Fortune",
+   "title": "Fortune ship for you",
+   "description": "Hello, practicing on making ship fly better. Xi'an help human make ship. Fly good. Salvage good. But Wikelo can make better if you want. Bring things and will do. Bye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 3
+    },
+    {
+     "name": "Carinite (Pure)",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "MISC Fortune Wikelo Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Ground_Nox",
+   "title": "Noxy Mod",
+   "description": "Wikelo know many Xi'an. Talk slow but very interesting if you have patience. This is very fast little thing to get you across planet. Wikelo made a few tweaks to make it zippier. If you want, Wikelo will make for you. Bye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 4
+    }
+   ],
+   "gives": [
+    {
+     "name": "Aopoa Nox Wikelo Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Small_Intrepid",
+   "title": "Upgrade Intrepid",
+   "description": "If you are looking for Intrepid ship that more intrepid. Wikelo can help. Bring things and you will get special touches on ship by Wikelo and pretty new coat to it. Bye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 3
+    },
+    {
+     "name": "Government Cartography Agency Medal (Pristine)",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Crusader Intrepid Wikelo Work Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Ground_Pulse",
+   "title": "Pulse Plus",
+   "description": "Wikelo really like this little Human ship. Pulse feel very fast. Can have many configuration to make Pulse go faster. If you want, can give you configurated Pulse that I like. Have list of what I want for job. Bye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 4
+    }
+   ],
+   "gives": [
+    {
+     "name": "Mirai Pulse Wikelo Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Ground_Ursa_Medical",
+   "title": "Make a Ursa Mod",
+   "description": "Wikelo branching into ships too. Took a look at Ursa and improved. Bring parts for me and I will make for you. Explore planet better. Go do.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 4
+    },
+    {
+     "name": "Saldynium (Ore)",
+     "amount": 20
+    },
+    {
+     "name": "Jaclium (Ore)",
+     "amount": 20
+    }
+   ],
+   "gives": [
+    {
+     "name": "RSI Ursa Medivac Wikelo Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Medium_GuardianQI",
+   "title": "Guardian take down ship",
+   "description": "Insect ship again. This one help take down other ship but if you want it to take down better. Can make. See list and tell Wikelo. Bye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 25
+    },
+    {
+     "name": "Irradiated Valakkar Pearl (Grade AA)",
+     "amount": 15
+    },
+    {
+     "name": "DCHS-05 Orbital Positioning Comp-Board",
+     "amount": 15
+    },
+    {
+     "name": "UEE 6th Platoon Medal (Pristine)",
+     "amount": 2
+    }
+   ],
+   "gives": [
+    {
+     "name": "Mirai Guardian QI Wikelo Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Medium_Firebird",
+   "title": "Firebird Mod",
+   "description": "Been digging into Aegis Sabre ship. Firebird is very bomb-y. Good build but could make some fun change to it. If you want, I can do. Have a look and tell me. Bye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 15
+    },
+    {
+     "name": "DCHS-05 Orbital Positioning Comp-Board",
+     "amount": 4
+    },
+    {
+     "name": "Ace Interceptor Helmet",
+     "amount": 3
+    },
+    {
+     "name": "Government Cartography Agency Medal (Pristine)",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Aegis Sabre Firebird Wikelo War Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Medium_Scorpius",
+   "title": "Build a Mod Scorpius",
+   "description": "Don't know what the name mean, but ship is very fast, very good in fight. With tweak, can better. You see list of what Wikelo need, go get and I make. Bye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 15
+    },
+    {
+     "name": "DCHS-05 Orbital Positioning Comp-Board",
+     "amount": 4
+    },
+    {
+     "name": "Tevarin War Service Marker (Pristine)",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "RSI Scorpius Wikelo Sneak Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Medium_F7_MK2",
+   "title": "Wikelo Navy F7",
+   "description": "Know how much you Humans like Navy so Wikelo have one now. If you want Wikelo version of F7 mk2, bring me things and you are in. Very funny. Bye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 16
+    },
+    {
+     "name": "DCHS-05 Orbital Positioning Comp-Board",
+     "amount": 3
+    },
+    {
+     "name": "Ace Interceptor Helmet",
+     "amount": 5
+    },
+    {
+     "name": "Government Cartography Agency Medal (Pristine)",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Anvil F7 Hornet Mk Wikelo",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Medium_ZeusES",
+   "title": "Zeus Special",
+   "description": "Wikelo can make new version of Zeus ship. I know it important ship to Human. Not sure why, but yes, very useful ship. Anyway, can upgrade and make a little prettier. What I need listed, if you want, bring. Bye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 10
+    },
+    {
+     "name": "UEE 6th Platoon Medal (Pristine)",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "RSI Zeus Mk II ES Wikelo Work Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Medium_ZeusCL",
+   "title": "Zeus Cargo Special",
+   "description": "Wikelo can make new version of cargo Zeus ship. If you want, bring what needed, then you can have ship. Fair. Bye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 20
+    },
+    {
+     "name": "Carinite",
+     "amount": 15
+    },
+    {
+     "name": "Ace Interceptor Helmet",
+     "amount": 10
+    },
+    {
+     "name": "Carinite (Pure)",
+     "amount": 2
+    }
+   ],
+   "gives": [
+    {
+     "name": "RSI Zeus Mk II CL",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Medium_Peregrine",
+   "title": "Peregrine Wikelo Mod",
+   "description": "Wikelo not want to race but can still make fast ship faster. If you want, bring me things, and go faster.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 4
+    },
+    {
+     "name": "DCHS-05 Orbital Positioning Comp-Board",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Aegis Sabre Peregrine Wikelo Speedy Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Medium_Spirit_C1",
+   "title": "Spirit Cargo mod",
+   "description": "Wikelo love useful cargo ship. Spirit is very useful. If you want one, can make for you. Just bring me things and I will do. Bye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 8
+    },
+    {
+     "name": "Tevarin War Service Marker (Pristine)",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Crusader C1 Spirit Wikelo Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Large_F8C_Milt",
+   "title": "F8 War Mod",
+   "description": "Can make you custom of F8 that take good fighting ship and make a better fighting ship. Bring things and I will make. Bye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 40
+    },
+    {
+     "name": "Carinite (Pure)",
+     "amount": 4
+    },
+    {
+     "name": "Irradiated Valakkar Pearl (Grade AAA)",
+     "amount": 4
+    },
+    {
+     "name": "Tevarin War Service Marker (Pristine)",
+     "amount": 4
+    }
+   ],
+   "gives": [
+    {
+     "name": "Anvil F8C Lightning Wikelo War Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Large_F8C_Stealth",
+   "title": "Sneaky Stabber",
+   "description": "Have the pieces to build useful ship for people who like to sneak then fight. Take F8C ship and make even better. Have put what Wikelo will need to build for you. Now you decide. Bye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 40
+    },
+    {
+     "name": "DCHS-05 Orbital Positioning Comp-Board",
+     "amount": 15
+    },
+    {
+     "name": "Carinite (Pure)",
+     "amount": 3
+    },
+    {
+     "name": "Irradiated Valakkar Pearl (Grade AAA)",
+     "amount": 3
+    }
+   ],
+   "gives": [
+    {
+     "name": "Anvil F8C Lightning Wikelo Sneak Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Large_Starlancer_max",
+   "title": "More than a Max",
+   "description": "If you want to move many things. Hercules ship, very good for that. Wikelo even know souli back in Protectorate that started to use. Very big. Wikelo can give you similar version if you get what Wikelo need. Look at list and tell me.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 30
+    },
+    {
+     "name": "Ace Interceptor Helmet",
+     "amount": 10
+    },
+    {
+     "name": "Carinite (Pure)",
+     "amount": 3
+    },
+    {
+     "name": "Irradiated Valakkar Pearl (Grade AAA)",
+     "amount": 3
+    }
+   ],
+   "gives": [
+    {
+     "name": "MISC Starlancer MAX Wikelo Work Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Large_Connie_Tau",
+   "title": "Want Taurus ship",
+   "description": "Wikelo came across plans to build Constellation Taurus ship. Nice ship, but Wikelo make a little better. Prettier too. If you want, bring stuff.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 30
+    },
+    {
+     "name": "Carinite (Pure)",
+     "amount": 3
+    },
+    {
+     "name": "Irradiated Valakkar Pearl (Grade AAA)",
+     "amount": 3
+    },
+    {
+     "name": "Government Cartography Agency Medal (Pristine)",
+     "amount": 3
+    }
+   ],
+   "gives": [
+    {
+     "name": "RSI Constellation Mk IV Taurus Wikelo War Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Ground_ATLS_IKTI",
+   "title": "Make ATLS shoot",
+   "description": "Hello. Know you human like strange metal suit. How about metal suit with ikti? Sorry, ikti is Banu word, you call it 'gun.'\n\nIf want, bring things I say and I will make for you. Gun will shoot. Cause many damage.\n\nBye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 2
+    },
+    {
+     "name": "Irradiated Valakkar Fang (Apex)",
+     "amount": 5
+    },
+    {
+     "name": "Argo ATLS",
+     "amount": 1
+    },
+    {
+     "name": "NN-13 Cannon",
+     "amount": 2
+    }
+   ],
+   "gives": [
+    {
+     "name": "Argo ATLS IKTI",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Ground_ATLS_IKTI_GEO",
+   "title": "Make jumpy ATLS shoot",
+   "description": "Find very fun piece to add to big human suit that let you jump very high. Now you shoot and jump. Exciting.\n\nIf you want, bring me these to . Will make.\n\nWikelo",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 1
+    },
+    {
+     "name": "Argo ATLS",
+     "amount": 1
+    },
+    {
+     "name": "NN-13 Cannon",
+     "amount": 2
+    },
+    {
+     "name": "Irradiated Valakkar Fang (Apex)",
+     "amount": 5
+    }
+   ],
+   "gives": [
+    {
+     "name": "Argo ATLS GEO IKTI",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Polaris",
+   "title": "Now make Polaris. Short Time Deal.",
+   "description": "Wikelo recently get many blueprints in trade with human who not very smart. Now can make very big ship.\n\nNot cheap and need many pieces but will make. If you want, go quick, this cost much to Wikelo so won't be able to do for long but I like new Human system so I want to thank you all for welcome.\n\nBring to if want.\n\nBye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 50
+    },
+    {
+     "name": "Polaris Bit",
+     "amount": 15
+    },
+    {
+     "name": "DCHS-05 Orbital Positioning Comp-Board",
+     "amount": 10
+    },
+    {
+     "name": "Carinite",
+     "amount": 20
+    },
+    {
+     "name": "Irradiated Valakkar Fang (Apex)",
+     "amount": 20
+    },
+    {
+     "name": "MG Scrip",
+     "amount": 20
+    },
+    {
+     "name": "Ace Interceptor Helmet",
+     "amount": 15
+    },
+    {
+     "name": "Irradiated Valakkar Pearl (Grade AAA)",
+     "amount": 15
+    },
+    {
+     "name": "UEE 6th Platoon Medal (Pristine)",
+     "amount": 15
+    },
+    {
+     "name": "Carinite (Pure)",
+     "amount": 15
+    },
+    {
+     "name": "ASD Secure Drive",
+     "amount": 15
+    },
+    {
+     "name": "RCMBNT-PWL-1",
+     "amount": 1
+    },
+    {
+     "name": "RCMBNT-PWL-2",
+     "amount": 1
+    },
+    {
+     "name": "RCMBNT-PWL-3",
+     "amount": 1
+    },
+    {
+     "name": "RCMBNT-RGL-1",
+     "amount": 1
+    },
+    {
+     "name": "RCMBNT-RGL-2",
+     "amount": 1
+    },
+    {
+     "name": "RCMBNT-RGL-3",
+     "amount": 1
+    },
+    {
+     "name": "RCMBNT-XTL-1",
+     "amount": 1
+    },
+    {
+     "name": "RCMBNT-XTL-2",
+     "amount": 1
+    },
+    {
+     "name": "RCMBNT-XTL-3",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "RSI Polaris Wikelo Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheColllector_Vehicle_Ground_ATLS_RedNBlue",
+   "title": "ATLS Cool Metal Color",
+   "description": "Wikelo give deep red and green colors to make ATLS legs look like they cooling from heat. Very pretty.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 1
+    },
+    {
+     "name": "Carinite (Pure)",
+     "amount": 1
+    },
+    {
+     "name": "Argo ATLS",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "ATLS Cool Metal Color",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheColllector_Vehicle_Ground_ATLS_WhiteNGreen",
+   "title": "ATLS Snowland Color",
+   "description": "Wikelo travel to one Human planet and find very cold, but very pretty. This remind of that.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 1
+    },
+    {
+     "name": "Irradiated Valakkar Pearl (Grade AAA)",
+     "amount": 1
+    },
+    {
+     "name": "Argo ATLS",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "ATLS Snowland Color",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheColllector_Vehicle_Ground_ATLS_OrangeNGrey",
+   "title": "ATLS Orange Line",
+   "description": "Many Human work place have orange color there. Must mean work to you. This suit does work. Make sense.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 1
+    },
+    {
+     "name": "Argo ATLS",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "ATLS Orange Line",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Medium_Terrapin_Medic",
+   "title": "What is Terrapin?",
+   "description": "Wikelo not know this Human word but ship is very useful when things go danger. If you want, can give new version of it. Maybe more useful?\n\nYou fly and tell. Bye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 15
+    },
+    {
+     "name": "ASD Secure Drive",
+     "amount": 10
+    },
+    {
+     "name": "Tevarin War Service Marker (Pristine)",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Anvil Terrapin Medic Wikelo Savior Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Small_Drake_Golem",
+   "title": "Golem Rocks",
+   "description": "Universe need resources so Wikelo always respect people who dig. Good profession. If you starting and want boost to Golem ship. I can do.\n\nBring.\n\nI make.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 2
+    },
+    {
+     "name": "ASD Secure Drive",
+     "amount": 15
+    }
+   ],
+   "gives": [
+    {
+     "name": "Drake Golem Wikelo Work Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Large_Starlancer_TAC",
+   "title": "New Move Big Starlancer Ship",
+   "description": "If you like big space to move things, Wikelo can do useful and wonder things to MISC ship for you. Bring me pieces and I will give you version even better than what Xi'an can do.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 50
+    },
+    {
+     "name": "Ace Interceptor Helmet",
+     "amount": 15
+    },
+    {
+     "name": "ASD Secure Drive",
+     "amount": 30
+    },
+    {
+     "name": "Irradiated Valakkar Pearl (Grade AAA)",
+     "amount": 3
+    },
+    {
+     "name": "Tevarin War Service Marker (Pristine)",
+     "amount": 3
+    },
+    {
+     "name": "DCHS-05 Orbital Positioning Comp-Board",
+     "amount": 3
+    },
+    {
+     "name": "Carinite (Pure)",
+     "amount": 3
+    }
+   ],
+   "gives": [
+    {
+     "name": "MISC Starlancer TAC Wikelo War Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Large_Crusader_A2",
+   "title": "Starlifter A2 War Mod",
+   "description": "Bring Wikelo the things and I make you A2 Starlifter that fights better. Does war so good make you call it A1! Bye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 50
+    },
+    {
+     "name": "Polaris Bit",
+     "amount": 20
+    },
+    {
+     "name": "MG Scrip",
+     "amount": 20
+    },
+    {
+     "name": "ASD Secure Drive",
+     "amount": 6
+    },
+    {
+     "name": "Irradiated Valakkar Pearl (Grade AAA)",
+     "amount": 6
+    },
+    {
+     "name": "Tevarin War Service Marker (Pristine)",
+     "amount": 6
+    },
+    {
+     "name": "DCHS-05 Orbital Positioning Comp-Board",
+     "amount": 6
+    },
+    {
+     "name": "Carinite (Pure)",
+     "amount": 6
+    }
+   ],
+   "gives": [
+    {
+     "name": "Crusader A2 Hercules Starlifter Wikelo War Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Medium_Starfighter_Ion",
+   "title": "Sneaky Starfighter Ion",
+   "description": "Starfighter Ion good ship, but it could be more sneak, yes? Surprise your not friends when you shoot them. I help with this for you. I need the right items and then I can give to you. Bring to me. Bye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 10
+    },
+    {
+     "name": "Yormandi Eye",
+     "amount": 10
+    },
+    {
+     "name": "Ace Interceptor Helmet",
+     "amount": 5
+    },
+    {
+     "name": "Tevarin War Service Marker (Pristine)",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Crusader Ares Star Fighter Ion Wikelo Sneak Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Medium_Starfighter_Inferno",
+   "title": "Starfighter Inferno Special",
+   "description": "Starfighter Inferno good ship, but what if you want it to be better ship at fighting? Wikelo knows just what to do. You bring me the items and I make it for you. Bye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 10
+    },
+    {
+     "name": "Yormandi Tongue",
+     "amount": 5
+    },
+    {
+     "name": "Ace Interceptor Helmet",
+     "amount": 5
+    },
+    {
+     "name": "UEE 6th Platoon Medal (Pristine)",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Crusader Ares Star Fighter Inferno Wikelo War Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Large_Prowler_Utility",
+   "title": "Prowler More Utility",
+   "description": "Wikelo work hard. You work hard. Prowler Utility work hard. But you bring me right items, I make it work more hard, then you work less hard. Bye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 40
+    },
+    {
+     "name": "Yormandi Tongue",
+     "amount": 10
+    },
+    {
+     "name": "Yormandi Eye",
+     "amount": 20
+    },
+    {
+     "name": "Irradiated Valakkar Pearl (Grade AAA)",
+     "amount": 3
+    },
+    {
+     "name": "Carinite (Pure)",
+     "amount": 3
+    }
+   ],
+   "gives": [
+    {
+     "name": "Esperia Prowler Utility Wikelo Work Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Medium_Guardian",
+   "title": "Guardian Fight Mod",
+   "description": "This ship look like insect in the Protectorate. Fun look. Painful sting. Wikelo can make custom version for you if you want. Make enemies sting. Bye.",
+   "wants": [
+    {
+     "name": "Irradiated Valakkar Pearl (Grade AA)",
+     "amount": 15
+    },
+    {
+     "name": "Ace Interceptor Helmet",
+     "amount": 10
+    },
+    {
+     "name": "Tevarin War Service Marker (Pristine)",
+     "amount": 1
+    },
+    {
+     "name": "Wikelo Favor",
+     "amount": 20
+    }
+   ],
+   "gives": [
+    {
+     "name": "Mirai Guardian Wikelo War Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Medium_GuardianMX",
+   "title": "Guardian WiK-X",
+   "description": "You Humans enjoy strange letter combinations. It very funny. Guardian ship very useful but if you want even more useful, bring me things. I give you better ship. Look better. Act better.\n\nThank you. Bye.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 25
+    },
+    {
+     "name": "Vanduul Plating",
+     "amount": 30
+    },
+    {
+     "name": "Vanduul Metal",
+     "amount": 30
+    },
+    {
+     "name": "Ace Interceptor Helmet",
+     "amount": 15
+    },
+    {
+     "name": "Large Artifact Fragment (Pristine)",
+     "amount": 2
+    }
+   ],
+   "gives": [
+    {
+     "name": "Mirai Guardian MX Wikelo War Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Small_RSI_Meteor",
+   "title": "RSI Meteor Mod",
+   "description": "Meteor big. It heavy. Have many guns. But Wikelo figure out way to make even better. You have things I will take to do.\n\nThat is all.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 10
+    },
+    {
+     "name": "Vanduul Plating",
+     "amount": 10
+    },
+    {
+     "name": "Vanduul Metal",
+     "amount": 10
+    },
+    {
+     "name": "Ace Interceptor Helmet",
+     "amount": 5
+    },
+    {
+     "name": "Large Artifact Fragment (Pristine)",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "RSI Meteor Wikelo Sneak Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Small_MISC_Prospector",
+   "title": "Prospects Look Good",
+   "description": "Wikelo loves rocks. Wants to help you get more better rocks. Made this Prospector more better for that tough job. Trade items and you can have.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 6
+    },
+    {
+     "name": "Carinite",
+     "amount": 20
+    },
+    {
+     "name": "Saldynium (Ore)",
+     "amount": 30
+    },
+    {
+     "name": "Jaclium (Ore)",
+     "amount": 40
+    },
+    {
+     "name": "Carinite (Pure)",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "MISC Prospector Wikelo Work Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Small_ARGO_Raft",
+   "title": "Ready for RAFT?",
+   "description": "RAFT is very useful. Wikelo take it and make it very very useful. Do work and make you happy. You want? Bring items to Wikelo for trade.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 8
+    },
+    {
+     "name": "Irradiated Valakkar Fang (Adult)",
+     "amount": 10
+    },
+    {
+     "name": "Irradiated Valakkar Fang (Juvenile)",
+     "amount": 20
+    },
+    {
+     "name": "Irradiated Kopion Horn",
+     "amount": 5
+    },
+    {
+     "name": "Irradiated Valakkar Pearl (Grade AAA)",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Argo RAFT Wikelo Work Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Large_Anvil_Asgard",
+   "title": "Asgard Fight Mod",
+   "description": "Wikelo mod Asgard and so that it fights more. You in a fight, this mod is what you want. Plus, good deal on the trade. Just bring items here and I give you the ship.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 50
+    },
+    {
+     "name": "RCMBNT-PWL-1",
+     "amount": 5
+    },
+    {
+     "name": "RCMBNT-PWL-2",
+     "amount": 5
+    },
+    {
+     "name": "RCMBNT-PWL-3",
+     "amount": 5
+    },
+    {
+     "name": "RCMBNT-RGL-1",
+     "amount": 5
+    },
+    {
+     "name": "RCMBNT-RGL-2",
+     "amount": 5
+    },
+    {
+     "name": "RCMBNT-RGL-3",
+     "amount": 5
+    },
+    {
+     "name": "RCMBNT-XTL-1",
+     "amount": 5
+    },
+    {
+     "name": "RCMBNT-XTL-2",
+     "amount": 5
+    },
+    {
+     "name": "RCMBNT-XTL-3",
+     "amount": 5
+    },
+    {
+     "name": "ASD Secure Drive",
+     "amount": 3
+    }
+   ],
+   "gives": [
+    {
+     "name": "Anvil Asgard Wikelo War Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Small_Kruger_Wolf",
+   "title": "Where Wolf? Here Wolf",
+   "description": "If you want to be quiet and surprise people, this is the Wolf you want. Wikelo mod it to be extra stealth. Trade you for it when you bring me the items I want.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 10
+    },
+    {
+     "name": "Vanduul Plating",
+     "amount": 10
+    },
+    {
+     "name": "Vanduul Metal",
+     "amount": 10
+    },
+    {
+     "name": "Large Artifact Fragment (Pristine)",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Kruger L-21 Wolf Wikelo Sneak Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Small_Kruger_Wolf_Unique",
+   "title": "Most Special Wolf",
+   "description": "You have been good trade partner for Wikelo. Offer you this very special Wolf mod. Make trade even better - Bring me what I want and I give you the special Wolf AND Antium Armor AND a VOLT LMG. Very good deal for my very good customer.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 5
+    }
+   ],
+   "gives": [
+    {
+     "name": "Antium Helmet Midnight Sun",
+     "amount": 1
+    },
+    {
+     "name": "Antium Core Midnight Sun",
+     "amount": 1
+    },
+    {
+     "name": "Antium Arms Midnight Sun",
+     "amount": 1
+    },
+    {
+     "name": "Antium Legs Midnight Sun",
+     "amount": 1
+    },
+    {
+     "name": "Fresnel \"Deepwater\" Energy LMG",
+     "amount": 1
+    },
+    {
+     "name": "Kruger L-21 Wolf Wikelo War Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Super_Idris",
+   "title": "Special Idris For Killing",
+   "description": "Since Wikelo has done good business with you, make you this very special trade. Idris is a powerful ship perfect for big important person like you. Wikelo has even done mod to make it more dangerous! Bring me a few items and the ship is yours.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 50
+    },
+    {
+     "name": "Polaris Bit",
+     "amount": 50
+    },
+    {
+     "name": "DCHS-05 Orbital Positioning Comp-Board",
+     "amount": 50
+    },
+    {
+     "name": "Carinite",
+     "amount": 50
+    },
+    {
+     "name": "Irradiated Valakkar Fang (Apex)",
+     "amount": 50
+    },
+    {
+     "name": "MG Scrip",
+     "amount": 50
+    },
+    {
+     "name": "Ace Interceptor Helmet",
+     "amount": 50
+    },
+    {
+     "name": "Irradiated Valakkar Pearl (Grade AAA)",
+     "amount": 30
+    },
+    {
+     "name": "UEE 6th Platoon Medal (Pristine)",
+     "amount": 30
+    },
+    {
+     "name": "Carinite (Pure)",
+     "amount": 30
+    },
+    {
+     "name": "ASD Secure Drive",
+     "amount": 30
+    },
+    {
+     "name": "RCMBNT-PWL-1",
+     "amount": 5
+    },
+    {
+     "name": "RCMBNT-PWL-2",
+     "amount": 5
+    },
+    {
+     "name": "RCMBNT-PWL-3",
+     "amount": 5
+    },
+    {
+     "name": "RCMBNT-RGL-1",
+     "amount": 5
+    },
+    {
+     "name": "RCMBNT-RGL-2",
+     "amount": 5
+    },
+    {
+     "name": "RCMBNT-RGL-3",
+     "amount": 5
+    },
+    {
+     "name": "RCMBNT-XTL-1",
+     "amount": 5
+    },
+    {
+     "name": "RCMBNT-XTL-2",
+     "amount": 5
+    },
+    {
+     "name": "RCMBNT-XTL-3",
+     "amount": 5
+    }
+   ],
+   "gives": [
+    {
+     "name": "Aegis Idris-P Wikelo War Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_Apollo_Triage",
+   "title": "Red Fight Apollo",
+   "description": "Apollo very good ship. Would be much better if ship was red. Wikelo make all things possible. You trade for what I want and we have a deal.",
+   "wants": [
+    {
+     "name": "Wikelo Favor",
+     "amount": 30
+    },
+    {
+     "name": "Savrilium",
+     "amount": 48,
+     "unit": "SCU"
+    }
+   ],
+   "gives": [
+    {
+     "name": "RSI Apollo Triage Wikelo Sneak Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_L22_Wolf",
+   "title": "Extra Special Wolf",
+   "description": "Wikelo very excited. Have idea for new material. But making it is most tricky. Very complicated. Need help fabricating a test sample. I give you blueprint, you make, bring to me, and I will trade. Give you extra special L-22 Wolf. Very powerful, very wolf.",
+   "wants": [
+    {
+     "name": "Metamaterial Test #146",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Kruger L-22 Alpha Wolf Wikelo War Special",
+     "amount": 1
+    }
+   ]
+  },
+  {
+   "id": "TheCollector_Vehicle_DrakeClipper",
+   "title": "Clipper Fight Now",
+   "description": "Clipper does a bunch of things good, but Wikelo think what if it did more fight? Then it still do all things, but now do one thing better. Good yes? I give you blueprint, you make my new metamaterial, bring to me, and I will trade.",
+   "wants": [
+    {
+     "name": "Metamaterial Test #152",
+     "amount": 1
+    }
+   ],
+   "gives": [
+    {
+     "name": "Drake Clipper Wikelo War Special",
+     "amount": 1
+    }
+   ]
+  }
+ ]
+}

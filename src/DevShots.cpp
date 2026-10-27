@@ -484,7 +484,7 @@ int runScreenshots(const std::string& dir) {
 
 
     // The Plugins window, alone: BEDROCK_SHOT_PLUGINS names a folder of
-    // plugins (the plugins' own repository), copied into the run's data folder
+    // plugins (the repository's plugins\), copied into the run's data folder
     // and run there with a state of the run's own - Wikelo with things in
     // stock, a trade or two done, one accepted. Nothing else is shot.
     if (const char* from = DEV_ENV("BEDROCK_SHOT_PLUGINS")) {
