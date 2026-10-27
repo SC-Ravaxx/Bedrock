@@ -18489,7 +18489,7 @@ void MinerGUI::drawGrindWarning(Gdiplus::Graphics& g, int cw, int ch) {
             L"Bedrock determines owned blueprints from the game log, which only "
             L"covers a limited period. On a fresh installation it knows less "
             L"than you do, and this window may list blueprints already in your "
-            L"inventory. \u23CE  \u23CE Mark the ones you own: open Blueprints and mark "
+            L"inventory.\n\nMark the ones you own: open Blueprints and mark "
             L"them as owned. Each one added makes this list more accurate.";
         Gdiplus::RectF box(left - scaleF(2), y, right - left + scaleF(4), card.GetBottom() - scaleF(72) - y);
         g.DrawString(blurb.c_str(), -1, &textFont, box, nullptr, &dimBrush);
@@ -23320,7 +23320,7 @@ void MinerGUI::paintSettings(HDC hdc) {
                 // off: where the code will be
                 const Gdiplus::RectF where(qx, py, qw, qw);
                 strokeRoundRect(g, where, scaleF(R_CONTROL), COL_BORDER);
-                g.DrawString(L"When switched on, the code to scan \u23CE with the phone appears here.", -1, &noteFont, where, &centred,
+                g.DrawString(L"When switched on, the code to scan\nwith the phone appears here.", -1, &noteFont, where, &centred,
                              &faintBrush);
             }
 #ifdef _WIN32
