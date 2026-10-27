@@ -136,6 +136,21 @@ Gdiplus::Color COL_FROST_TINT(70, 6, 7, 9);      // over the blurred window
 constexpr float R_CARD = 12.0f;
 constexpr float R_CONTROL = 8.0f;
 
+// Type sizes, in unscaled pixels: one for each part a text plays. TITLE and
+// STRONG are set in markFamily (Segoe UI Semibold), LABEL in textFamily bold
+// and capitals, figures in numeralFamily (Bahnschrift) at the size of the part
+// they play, HERO in lightNumeralFamily. The overlay keeps its own sizes (textF).
+namespace Type {
+constexpr float HERO = 46.0f;    // the signature scanned, a rock's mass: the page's one big figure
+constexpr float TITLE = 22.0f;   // a page's or a window's title
+constexpr float NUMBER = 15.0f;  // a figure that is the point of its row: a share, an amount, a price
+constexpr float STRONG = 13.0f;  // a row's title, a name
+constexpr float BODY = 12.0f;    // running text, fields, buttons (buttons in Semibold)
+constexpr float SMALL = 11.0f;   // second lines, meta, hints, footers
+constexpr float LABEL = 10.0f;   // a section's label: bold, capitals, dim
+constexpr float MICRO = 9.0f;    // badges, a chart's ticks
+}  // namespace Type
+
 COLORREF CR_BG = RGB(15, 16, 19);
 COLORREF CR_EDIT_BG = RGB(34, 37, 43);
 // The note is written on the darkest surface there is: it is the one
@@ -604,7 +619,7 @@ void drawRailIcon(Gdiplus::Graphics& g, MinerGUI::RailItem item, float x, float 
 void railBadge(Gdiplus::Graphics& g, float right, float top, int count, const Gdiplus::Color& face, float s) {
     const std::wstring n = std::to_wstring(count);
     Gdiplus::GraphicsPath numeral;
-    numeral.AddString(n.c_str(), -1, &numeralFamily(), Gdiplus::FontStyleBold, 10.0f * s, Gdiplus::PointF(0, 0),
+    numeral.AddString(n.c_str(), -1, &numeralFamily(), Gdiplus::FontStyleBold, Type::MICRO * s, Gdiplus::PointF(0, 0),
                       nullptr);
     Gdiplus::RectF outline;
     numeral.GetBounds(&outline);
@@ -3763,8 +3778,8 @@ void MinerGUI::drawRail(Gdiplus::Graphics& g, int rw, int ch) {
     Gdiplus::SolidBrush railBrush(COL_RAIL);
     g.FillRectangle(&railBrush, 0.0f, 0.0f, (float)rw, (float)ch);
 
-    Gdiplus::Font labelFont(&markFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font letterFont(&markFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font labelFont(&markFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font letterFont(&markFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::StringFormat centred;
     centred.SetAlignment(Gdiplus::StringAlignmentCenter);
     centred.SetLineAlignment(Gdiplus::StringAlignmentCenter);
@@ -3937,8 +3952,8 @@ static void mainscanDropList(Gdiplus::Graphics& g, const Gdiplus::RectF& r, floa
 }
 
 void MinerGUI::drawHeader(Gdiplus::Graphics& g, int cw, bool stripOnly) {
-    Gdiplus::Font markFont(&markFamily(), scaleF(21), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font subFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font markFont(&markFamily(), scaleF(Type::TITLE), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font subFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
 
     Gdiplus::SolidBrush textBrush(COL_TEXT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
@@ -3979,8 +3994,8 @@ void MinerGUI::drawHeader(Gdiplus::Graphics& g, int cw, bool stripOnly) {
         // The page's name, and under it what it is about: the game and the
         // ship on the scan page, a plugin's own line on its page. Bedrock's
         // amber square stands at the head of the rail.
-        Gdiplus::Font titleFont(&markFamily(), scaleF(22), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-        Gdiplus::Font metaFont(&textFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font titleFont(&markFamily(), scaleF(Type::TITLE), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font metaFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
         // their first strokes on the margin, where the buttons' last ends
         // (GDI+ keeps a sixth of the em clear before a string)
         const float x = M - scaleF(5), metaX = M - scaleF(3);
@@ -4002,7 +4017,7 @@ void MinerGUI::drawHeader(Gdiplus::Graphics& g, int cw, bool stripOnly) {
             // "by Ravaxx" beside the name, in the quiet ink: whose app this is
             Gdiplus::RectF markW;
             g.MeasureString(L"Bedrock", -1, &markFont, Gdiplus::PointF(0, 0), &markW);
-            Gdiplus::Font byFont(&textFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+            Gdiplus::Font byFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
             g.DrawString(L"by Ravaxx", -1, &byFont,
                          Gdiplus::PointF(M + scaleF(16) + markW.Width, (float)scale(20)), &dimBrush);
         }
@@ -4044,9 +4059,9 @@ void MinerGUI::drawHeader(Gdiplus::Graphics& g, int cw, bool stripOnly) {
     // warm wash, an amber mark with the one thing to do beside it, and where
     // in the game's menus it is done.
     if (!everRead_) {
-        Gdiplus::Font noteBold(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-        Gdiplus::Font noteFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-        Gdiplus::Font markGlyph(&textFamily(), scaleF(11), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+        Gdiplus::Font noteBold(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font noteFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font markGlyph(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
         const float top = (float)scale(LY_CONTEXT);
         const float h = (float)scale(NOTICE_H);
         const Gdiplus::RectF notice(M - scaleF(6), top, (float)cw - 2 * M + scaleF(12), h);
@@ -4064,7 +4079,7 @@ void MinerGUI::drawHeader(Gdiplus::Graphics& g, int cw, bool stripOnly) {
         g.DrawString(L"Star Citizen must run in Borderless Window mode", -1, &noteBold,
                      Gdiplus::PointF(words, top + scaleF(3)), &accentBrush);
         g.DrawString(L"Set in Options \u203A Graphics \u203A Window Mode - Capture stays black in Fullscreen", -1,
-                     &noteFont, Gdiplus::PointF(words, top + scaleF(19)), &dimBrush);
+                     &noteFont, Gdiplus::PointF(words, top + scaleF(18)), &dimBrush);
     }
 }
 
@@ -4072,8 +4087,8 @@ void MinerGUI::drawHeader(Gdiplus::Graphics& g, int cw, bool stripOnly) {
 // they are, what they fly and what is bolted to it, then the ores they are
 // after. Each field drops its list as before.
 void MinerGUI::drawContextCard(Gdiplus::Graphics& g, int cw) {
-    Gdiplus::Font labelFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font fieldFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font labelFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font fieldFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
     Gdiplus::SolidBrush textBrush(COL_TEXT);
     Gdiplus::SolidBrush handBrush(COL_ACCENT);
@@ -4137,7 +4152,7 @@ void MinerGUI::drawContextCard(Gdiplus::Graphics& g, int cw) {
     // A new ship is added at the foot of the list and opens the same card.
     // With no ship yet there is nothing to open, so the button is drawn as an
     // outline in the quiet ink rather than one that can be pressed.
-    Gdiplus::Font buttonFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font buttonFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     loadoutButton_ = Gdiplus::RectF(shipX + shipW + scaleF(6), fieldY, buttonW, h);
     if (ship_) {
         drawButton(g, loadoutButton_, L"Edit ship", buttonFont, ButtonKind::Secondary, isHot(hoverMain_, loadoutButton_),
@@ -4160,8 +4175,8 @@ void MinerGUI::drawContextCard(Gdiplus::Graphics& g, int cw) {
 // same way for as long as the order runs - then a + that opens the list. The
 // whole row opens it, as the field did.
 void MinerGUI::drawLookingField(Gdiplus::Graphics& g, float x, float y, float w) {
-    Gdiplus::Font chipFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font rowFont(&textFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font chipFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font rowFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
     Gdiplus::SolidBrush textBrush(COL_TEXT);
@@ -4266,9 +4281,9 @@ void MinerGUI::drawLookingField(Gdiplus::Graphics& g, float x, float y, float w)
 // ...and the list it drops: a line to type in, then every ore a scan can
 // name, ticked or not, in two columns.
 void MinerGUI::drawLookingPanel(Gdiplus::Graphics& g, int cw, int ch) {
-    Gdiplus::Font smallFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font rowFont(&textFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font subFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font smallFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font rowFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font subFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
     Gdiplus::SolidBrush textBrush(COL_TEXT);
@@ -4386,7 +4401,7 @@ void MinerGUI::drawLookingPanel(Gdiplus::Graphics& g, int cw, int ch) {
     if (!lookingFor_.empty()) {
         // red, like the ticks it throws away - and a neutral face would be
         // the list's own fill, which left a label floating on nothing
-        Gdiplus::Font buttonFont(&markFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font buttonFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
         Gdiplus::RectF clear(panel.X + panel.Width - pad - scaleF(76), footY, scaleF(76), scaleF(20));
         drawButton(g, clear, L"Clear all", buttonFont, ButtonKind::Danger, isHot(hoverMain_, clear),
                    scaleF(R_CONTROL));
@@ -4395,9 +4410,9 @@ void MinerGUI::drawLookingPanel(Gdiplus::Graphics& g, int cw, int ch) {
 }
 
 void MinerGUI::drawSignatureCard(Gdiplus::Graphics& g, int cw) {
-    Gdiplus::Font labelFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font valueFont(&lightNumeralFamily(), scaleF(46), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font hintFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font labelFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font valueFont(&lightNumeralFamily(), scaleF(Type::HERO), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font hintFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
 
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
     Gdiplus::SolidBrush accentBrush(COL_ACCENT);
@@ -4432,7 +4447,7 @@ void MinerGUI::drawSignatureCard(Gdiplus::Graphics& g, int cw) {
 // signature was read, the ore a rock is
 void MinerGUI::cornerPill(Gdiplus::Graphics& g, const Gdiplus::RectF& card, const std::wstring& words,
                           const Gdiplus::Color& ink) {
-    Gdiplus::Font pillFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font pillFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
     Gdiplus::RectF measured;
     g.MeasureString(words.c_str(), -1, &pillFont, Gdiplus::PointF(0, 0), &measured);
     const float pillW = measured.Width + scaleF(12);
@@ -4991,11 +5006,11 @@ static std::wstring moduleEffect(const MiningModule& m) {
 }
 
 void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
-    Gdiplus::Font titleFont(&markFamily(), scaleF(19), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font labelFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font rowFont(&textFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font noteFont(&textFamily(), scaleF(9), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font closeFont(&textFamily(), scaleF(15), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font titleFont(&markFamily(), scaleF(Type::TITLE), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font labelFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font rowFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font noteFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font closeFont(&textFamily(), scaleF(Type::NUMBER), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
 
     Gdiplus::SolidBrush textBrush(COL_TEXT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
@@ -5025,7 +5040,7 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
     loadoutHits_.push_back({close, 4, 0});
     // ...and beside it the way to be rid of this ship. Twice: the first
     // press only asks, and anything else pressed in between forgets it.
-    Gdiplus::Font removeFont(&markFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font removeFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     const wchar_t* removeText = removeArmed_ ? L"Click again to remove" : L"Remove";
     Gdiplus::RectF removeW;
     g.MeasureString(removeText, -1, &removeFont, Gdiplus::PointF(0, 0), &removeW);
@@ -5103,7 +5118,7 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
                          Gdiplus::PointF(tx + scaleF(12), y + scaleF(6)),
                          here ? &accentBrush : &dimBrush);
             if (l) {
-                g.DrawString(toW(l->name).c_str(), -1, &noteFont,
+                g.DrawString(laserShortName(*l).c_str(), -1, &noteFont,
                              Gdiplus::RectF(tx + scaleF(12), y + scaleF(21), tabW - scaleF(22),
                                             scaleF(14)),
                              &oneLine, here ? &textBrush : &faintBrush);
@@ -5174,11 +5189,21 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
                  Gdiplus::PointF(field.X + scaleF(12), y + scaleF(5)),
                  craftedEntry_.empty() && !craftedEditing_ ? &faintBrush : &textBrush);
     loadoutHits_.push_back({field, 3, 0});
-    g.DrawString(L"Second value shown on the item: \"Laser Power: +0.00 % → +28.84 %\"",
-                 -1, &noteFont, Gdiplus::PointF(left + scaleF(122), y + scaleF(1)), &dimBrush);
-    g.DrawString(L"Leave at 0 for a stock laser head", -1, &noteFont,
-                 Gdiplus::PointF(left + scaleF(122), y + scaleF(14)), &faintBrush);
-    y += scaleF(38);
+    // beside the field, on as many lines as the card's width leaves it
+    {
+        const wchar_t* second = L"Second value shown on the item: \"Laser Power: +0.00 % → +28.84 %\"";
+        const Gdiplus::RectF room(left + scaleF(122), y + scaleF(1), wide - scaleF(122), scaleF(60));
+        Gdiplus::StringFormat wrapped;
+        wrapped.SetTrimming(Gdiplus::StringTrimmingEllipsisWord);
+        Gdiplus::RectF used;
+        g.MeasureString(second, -1, &noteFont, room, &wrapped, &used);
+        g.DrawString(second, -1, &noteFont, Gdiplus::RectF(room.X, room.Y, room.Width, used.Height), &wrapped,
+                     &dimBrush);
+        const float leaveY = room.Y + used.Height;
+        g.DrawString(L"Leave at 0 for a stock laser head", -1, &noteFont, Gdiplus::PointF(room.X, leaveY),
+                     &faintBrush);
+        y = (std::max)(y + scaleF(38), leaveY + scaleF(23));
+    }
 
     // --- the modules it has room for
     const int slots = loadout_.laser ? loadout_.laser->slots : 0;
@@ -5327,9 +5352,9 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
 // points make its list 37 long: a system's list runs on in a column beside
 // it where the window has no room for it.
 void MinerGUI::drawPlacePicker(Gdiplus::Graphics& g, int cw, int ch) {
-    Gdiplus::Font headFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font rowFont(&textFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font noteFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font headFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font rowFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font noteFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush textBrush(COL_TEXT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
@@ -5414,7 +5439,7 @@ void MinerGUI::drawPlacePicker(Gdiplus::Graphics& g, int cw, int ch) {
             // the way back, while a place is set by hand: a plain button's face
             fillRoundRect(g, row, scaleF(R_CONTROL), isHot(hoverMain_, row) ? COL_HOVER : COL_CARD_HI);
         }
-        Gdiplus::Font leadFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font leadFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
         Gdiplus::StringFormat middle;
         middle.SetLineAlignment(Gdiplus::StringAlignmentCenter);
         middle.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
@@ -5426,7 +5451,9 @@ void MinerGUI::drawPlacePicker(Gdiplus::Graphics& g, int cw, int ch) {
             oneNote.SetLineAlignment(Gdiplus::StringAlignmentCenter);
             oneNote.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
             oneNote.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
-            const float noteX = left + scaleF(160);
+            Gdiplus::RectF leadW;
+            g.MeasureString(L"Follow game log", -1, &leadFont, Gdiplus::PointF(0, 0), &leadW);
+            const float noteX = left + scaleF(12) + leadW.Width + scaleF(20);
             g.DrawString(L"Accurate unless the log cannot identify the location", -1, &noteFont,
                          Gdiplus::RectF(noteX, y, left + wide - scaleF(12) - noteX, row.Height),
                          &oneNote, &faintBrush);
@@ -5510,10 +5537,10 @@ static std::wstring fitSummary(const MiningShip& ship, const std::vector<MiningL
 // its fit; "+ Prospector" adds another Prospector, picks it and opens its
 // card with the title ready to be typed over.
 void MinerGUI::drawShipPicker(Gdiplus::Graphics& g, int cw) {
-    Gdiplus::Font rowFont(&textFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font noteFont(&textFamily(), scaleF(9), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font labelFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font chipFont(&markFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font rowFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font noteFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font labelFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font chipFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush textBrush(COL_TEXT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
@@ -5523,7 +5550,7 @@ void MinerGUI::drawShipPicker(Gdiplus::Graphics& g, int cw) {
     oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
 
     shipHits_.clear();
-    const float rowH = scaleF(34);
+    const float rowH = scaleF(38);
     const float addH = scaleF(62);
     const float inset = scaleF(5);
     const float h = rowH * (float)fits_.size() + addH + 2 * inset;
@@ -5544,13 +5571,13 @@ void MinerGUI::drawShipPicker(Gdiplus::Graphics& g, int cw) {
             fillRoundRect(g, row, scaleF(R_CONTROL), COL_HOVER);
         }
         g.DrawString(toW(f.name).c_str(), -1, &rowFont,
-                     Gdiplus::RectF(row.X + scaleF(7), y + scaleF(4), row.Width - scaleF(14), scaleF(16)), &oneLine,
+                     Gdiplus::RectF(row.X + scaleF(7), y + scaleF(4), row.Width - scaleF(14), scaleF(17)), &oneLine,
                      chosen ? &accentBrush : &textBrush);
         // what it is and flies, so two of a kind can be told apart by more
         // than their names - the chosen one's heads live, as the card has them
         const std::wstring note = fitSummary(*f.ship, chosen ? heads_ : f.heads);
         g.DrawString(note.c_str(), -1, &noteFont,
-                     Gdiplus::RectF(row.X + scaleF(7), y + scaleF(19), row.Width - scaleF(14), scaleF(13)), &oneLine,
+                     Gdiplus::RectF(row.X + scaleF(7), y + scaleF(20), row.Width - scaleF(14), scaleF(15)), &oneLine,
                      chosen ? &dimBrush : &faintBrush);
         shipHits_.push_back({row, i});
         y += rowH;
@@ -6000,13 +6027,13 @@ MinerGUI::HeadState MinerGUI::headState(int head) const {
 }
 
 void MinerGUI::drawRockCard(Gdiplus::Graphics& g, int cw) {
-    Gdiplus::Font labelFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font valueFont(&lightNumeralFamily(), scaleF(46), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font smallFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font figureFont(&numeralFamily(), scaleF(13), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font pillFont(&textFamily(), scaleF(9), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font amountFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font unitFont(&textFamily(), scaleF(7.5f), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font labelFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font valueFont(&lightNumeralFamily(), scaleF(Type::HERO), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font smallFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font figureFont(&numeralFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font pillFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font amountFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font unitFont(&textFamily(), scaleF(Type::MICRO), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
 
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
@@ -6199,11 +6226,11 @@ void MinerGUI::drawRockCard(Gdiplus::Graphics& g, int cw) {
 // The verdict, the heads it was drawn from, and the laser power to set
 int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
     rockHeadHits_.clear();
-    Gdiplus::Font labelFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font headlineFont(&textFamily(), scaleF(15), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font rowFont(&textFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font smallFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font tagFont(&textFamily(), scaleF(8), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font labelFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font headlineFont(&textFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font rowFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font smallFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font tagFont(&textFamily(), scaleF(Type::MICRO), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
 
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
@@ -6289,8 +6316,9 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
     float ty = y + scaleF(12);
     g.DrawString(v.headline.c_str(), -1, &headlineFont, Gdiplus::PointF(inset, ty), &toneBrush);
     if (!v.who.empty() && !whoBelow) {
+        // on the headline's baseline
         g.DrawString((L"·  " + v.who).c_str(), -1, &rowFont,
-                     Gdiplus::RectF(inset + headW + scaleF(4), ty + scaleF(3),
+                     Gdiplus::RectF(inset + headW + scaleF(4), ty + fontAscent(headlineFont) - fontAscent(rowFont),
                                     (std::max)(scaleF(40), w - headW - scaleF(36)), scaleF(18)),
                      &oneLine, &textBrush);
     }
@@ -6516,9 +6544,9 @@ MinerGUI::Suggestion MinerGUI::headSuggestion() const {
 int MinerGUI::drawHeadSuggestion(Gdiplus::Graphics& g, float x, float w, float y) {
     const Suggestion s = headSuggestion();
     if (s.line.empty()) return (int)y;
-    Gdiplus::Font labelFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font rowFont(&textFamily(), scaleF(12), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font smallFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font labelFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font rowFont(&markFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font smallFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush greenBrush(COL_GREEN);
     Gdiplus::SolidBrush yellowBrush(COL_YELLOW);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
@@ -6647,11 +6675,11 @@ MinerGUI::GadgetWords MinerGUI::gadgetWords() const {
 }
 
 int MinerGUI::drawRockAdvice(Gdiplus::Graphics& g, int cw, int yPos) {
-    Gdiplus::Font labelFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font nameFont(&textFamily(), scaleF(14), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font rowFont(&textFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font smallFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font tagFont(&textFamily(), scaleF(8), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font labelFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font nameFont(&markFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font rowFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font smallFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font tagFont(&textFamily(), scaleF(Type::MICRO), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
 
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
@@ -6731,7 +6759,7 @@ int MinerGUI::drawRockAdvice(Gdiplus::Graphics& g, int cw, int yPos) {
     // six does not outweigh the answer it serves, or pass for the window's
     // own buttons at the top.
     rockGadgetHits_.clear();
-    Gdiplus::Font chipFont(&textFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font chipFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     const float colW = (w - scaleF(16)) / 3;
     float gx = M;
     for (int i = 0; i < MINING_GADGET_COUNT; i++) {
@@ -6755,13 +6783,13 @@ int MinerGUI::drawRockAdvice(Gdiplus::Graphics& g, int cw, int yPos) {
 }
 
 int MinerGUI::drawResults(Gdiplus::Graphics& g, int cw, int yPos) {
-    Gdiplus::Font headerFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font nameFont(&markFamily(), scaleF(14), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font infoFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font foldFont(&textFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font pctFont(&numeralFamily(), scaleF(15), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font badgeFont(&textFamily(), scaleF(8), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font pillFont(&textFamily(), scaleF(9), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font headerFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font nameFont(&markFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font infoFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font foldFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font pctFont(&numeralFamily(), scaleF(Type::NUMBER), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font badgeFont(&textFamily(), scaleF(Type::MICRO), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font pillFont(&textFamily(), scaleF(Type::MICRO), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
 
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
@@ -6997,10 +7025,10 @@ int MinerGUI::drawDetailCard(Gdiplus::Graphics& g, int cw, int yPos) {
 
     const AnalysisResult& top = currentResults_[0];
 
-    Gdiplus::Font headerFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font cellFont(&numeralFamily(), scaleF(13), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font cellSubFont(&numeralFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font infoFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font headerFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font cellFont(&numeralFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font cellSubFont(&numeralFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font infoFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
 
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
@@ -7146,10 +7174,10 @@ int MinerGUI::drawLocationCard(Gdiplus::Graphics& g, int cw, int yPos, int ch) {
     };
     std::stable_partition(rows.begin(), rows.end(), inSystem);
 
-    Gdiplus::Font headerFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font rowFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font subFont(&textFamily(), scaleF(9), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font pctFont(&numeralFamily(), scaleF(12), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font headerFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font rowFont(&markFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font subFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font pctFont(&numeralFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
     Gdiplus::SolidBrush textBrush(COL_TEXT);
@@ -9338,10 +9366,10 @@ bool MinerGUI::importNotesFrom(const std::filesystem::path& file) {
 // the things nobody can make again. See DataBackup for the format.
 
 void MinerGUI::drawBackupCard(Gdiplus::Graphics& g, int cw, int ch) {
-    Gdiplus::Font markFont(&markFamily(), scaleF(19), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font textFont(&textFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font subFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font btnFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font markFont(&markFamily(), scaleF(Type::TITLE), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font textFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font subFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font btnFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush textBrush(COL_TEXT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
@@ -14047,11 +14075,11 @@ LRESULT MinerGUI::handleCraftingMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
 // hand is doing at the time, not alphabetically: what to open, what the
 // scanner does, and what is worth knowing once a window is open.
 void MinerGUI::drawKeysCard(Gdiplus::Graphics& g, int cw, int ch) {
-    Gdiplus::Font markFont(&markFamily(), scaleF(19), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font groupFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font keyFont(&markFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font textFont(&textFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font subFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font markFont(&markFamily(), scaleF(Type::TITLE), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font groupFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font keyFont(&markFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font textFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font subFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush textBrush(COL_TEXT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
@@ -14185,11 +14213,11 @@ void MinerGUI::showAbout(bool on) {
 // Who to tell when it reads wrong, and where to put something if it earned it.
 // Two lines on it can be clicked; everything else closes it.
 void MinerGUI::drawAboutCard(Gdiplus::Graphics& g, int cw, int ch) {
-    Gdiplus::Font markFont(&markFamily(), scaleF(19), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font groupFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font linkFont(&markFamily(), scaleF(13), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font textFont(&textFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font subFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font markFont(&markFamily(), scaleF(Type::TITLE), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font groupFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font linkFont(&markFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font textFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font subFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush textBrush(COL_TEXT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
@@ -14313,12 +14341,12 @@ void MinerGUI::showWhatsNew(bool on) {
 // What changed since the version the player had, said once: the things a
 // player would otherwise have to notice by themselves, in plain words.
 void MinerGUI::drawWhatsNewCard(Gdiplus::Graphics& g, int cw, int ch) {
-    Gdiplus::Font markFont(&markFamily(), scaleF(19), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font groupFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font itemFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font versionFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font textFont(&textFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font subFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font markFont(&markFamily(), scaleF(Type::TITLE), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font groupFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font itemFont(&markFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font versionFont(&markFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font textFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font subFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush textBrush(COL_TEXT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
@@ -15051,8 +15079,8 @@ void MinerGUI::setUpdateStatus(int state, const std::string& version, const std:
 }
 
 void MinerGUI::drawFooter(Gdiplus::Graphics& g, int cw, int ch) {
-    Gdiplus::Font footerFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font strongFont(&markFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font footerFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font strongFont(&markFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
     Gdiplus::SolidBrush accentBrush(COL_ACCENT);
@@ -15920,7 +15948,7 @@ void MinerGUI::paintOwnerButton(Gdiplus::Graphics& g, const DRAWITEMSTRUCT* dis,
     // ...and the gear's name is for a screen reader: the gear says it here,
     // and the jigsaw piece the plugins'
     if (id == ID_BTN_SETTINGS || id == ID_BTN_PLUGINS) label[0] = L'\0';
-    Gdiplus::Font font(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font font(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     const Gdiplus::RectF face(0.5f, 0.5f, w - 1.0f, h - 1.0f);
     const float radius = scaleF(R_CONTROL);
     if (id == ID_BTN_LIVEMODE && liveModeActive_) {
@@ -15952,7 +15980,7 @@ void MinerGUI::paintOwnerButton(Gdiplus::Graphics& g, const DRAWITEMSTRUCT* dis,
     if (id == ID_BTN_REFINERY) {
         const int done = refineryDoneCount();
         if (done > 0) {
-            Gdiplus::Font badgeFont(&numeralFamily(), scaleF(11), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+            Gdiplus::Font badgeFont(&numeralFamily(), scaleF(Type::MICRO), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
             const std::wstring n = std::to_wstring(done);
             Gdiplus::RectF m;
             g.MeasureString(n.c_str(), -1, &badgeFont, Gdiplus::PointF(0, 0), &m);
@@ -15963,7 +15991,8 @@ void MinerGUI::paintOwnerButton(Gdiplus::Graphics& g, const DRAWITEMSTRUCT* dis,
             // the room the line keeps under it for descenders lifts it - a "2"
             // stands two pixels high in its circle.
             Gdiplus::GraphicsPath numeral;
-            numeral.AddString(n.c_str(), -1, &numeralFamily(), Gdiplus::FontStyleBold, scaleF(11), Gdiplus::PointF(0, 0),
+            numeral.AddString(n.c_str(), -1, &numeralFamily(), Gdiplus::FontStyleBold, scaleF(Type::MICRO),
+                              Gdiplus::PointF(0, 0),
                               nullptr);
             Gdiplus::RectF outline;
             numeral.GetBounds(&outline);
@@ -16384,10 +16413,10 @@ void MinerGUI::openUexWelcomeForShot(int step) {
 // kept without.
 void MinerGUI::drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& view, POINT hover) {
     view.hits.clear();
-    Gdiplus::Font markFont(&markFamily(), scaleF(19), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font textFont(&textFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font subFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font btnFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font markFont(&markFamily(), scaleF(Type::TITLE), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font textFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font subFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font btnFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush textBrush(COL_TEXT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
@@ -16523,21 +16552,40 @@ void MinerGUI::drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& vi
         g.MeasureString(trouble.c_str(), -1, &subFont, Gdiplus::RectF(0, 0, width, scaleF(200)), nullptr, &room);
         troubleH = (std::max)(lineH, room.Height + scaleF(4));
     }
+    // ...and so does the last word from UEX
+    float newsH = 0;
+    if (!news.empty()) {
+        Gdiplus::RectF room;
+        g.MeasureString(news.c_str(), -1, &subFont, Gdiplus::RectF(0, 0, width, scaleF(200)), nullptr, &room);
+        newsH = (std::max)(lineH, room.Height + scaleF(4));
+    }
     const float buttonsH = scaleF(34);
     const float buttonW = scaleF(120);
     const float second = left + buttonW + scaleF(12);
-    const float cardH = scaleF(16) + scaleF(34) + wordsH + keyRowH + runnerH + troubleH +
-                        (news.empty() ? 0.0f : lineH) + scaleF(8) + buttonsH + scaleF(16);
+    // The way out beside the title, or under it where the two do not fit
+    // on one line
+    const wchar_t* exitHint = view.welcome && view.step == 1 && !keyed ? L"Esc or click outside to skip"
+                                                                       : L"Esc or click outside to close";
+    Gdiplus::RectF titleW, exitW;
+    g.MeasureString(title.c_str(), -1, &markFont, Gdiplus::PointF(0, 0), &titleW);
+    g.MeasureString(exitHint, -1, &subFont, Gdiplus::PointF(0, 0), &exitW);
+    const bool exitBelow = titleW.Width + scaleF(12) + exitW.Width > width;
+    const float exitH = exitBelow ? scaleF(16) : 0.0f;
+    const float cardH = scaleF(16) + scaleF(34) + exitH + wordsH + keyRowH + runnerH + troubleH +
+                        newsH + scaleF(8) + buttonsH + scaleF(16);
     const float cardY = (std::max)(scaleF(view.welcome ? 70 : 100), ((float)ch - cardH) / 2.0f - scaleF(40));
     view.rect = Gdiplus::RectF(cardX, cardY, cardW, cardH);
     refplanGlassPane(g, view.rect, scaleF(R_CARD), scaleF(18), COL_CARD);
 
     float y = cardY + scaleF(16);
     g.DrawString(title.c_str(), -1, &markFont, Gdiplus::PointF(left, y), &textBrush);
-    g.DrawString(view.welcome && view.step == 1 && !keyed ? L"Esc or click outside to skip"
-                                                          : L"Esc or click outside to close",
-                 -1, &subFont, Gdiplus::RectF(left, y + scaleF(8), width, scaleF(16)), &rightAlign, &faintBrush);
-    y += scaleF(34);
+    if (exitBelow) {
+        g.DrawString(exitHint, -1, &subFont, Gdiplus::PointF(left, y + scaleF(30)), &faintBrush);
+    } else {
+        g.DrawString(exitHint, -1, &subFont, Gdiplus::RectF(left, y + scaleF(8), width, scaleF(16)), &rightAlign,
+                     &faintBrush);
+    }
+    y += scaleF(34) + exitH;
     for (const Words& w : words) {
         Gdiplus::RectF room;
         g.MeasureString(w.text.c_str(), -1, w.font, Gdiplus::RectF(0, 0, width, scaleF(400)), nullptr, &room);
@@ -16593,11 +16641,8 @@ void MinerGUI::drawUexCard(Gdiplus::Graphics& g, int cw, int ch, UexCardView& vi
         y += troubleH;
     }
     if (!news.empty()) {
-        Gdiplus::StringFormat oneLine;
-        oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
-        oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
-        g.DrawString(news.c_str(), -1, &subFont, Gdiplus::RectF(left, y, width, lineH), &oneLine, &dimBrush);
-        y += lineH;
+        g.DrawString(news.c_str(), -1, &subFont, Gdiplus::RectF(left, y, width, newsH), nullptr, &dimBrush);
+        y += newsH;
     }
     y += scaleF(8);
     if (view.step == 3) {
@@ -16914,8 +16959,8 @@ void MinerGUI::drawDatarunnerCard(Gdiplus::Graphics& g, int cw, int ch) {
     drRect_ = drRows_ = drList_ = Gdiplus::RectF();
     if (datarunner_.shots.empty()) {
         // the rail's page with no picture waiting: the card, saying so
-        Gdiplus::Font markFont(&markFamily(), scaleF(17), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-        Gdiplus::Font headFont(&textFamily(), scaleF(9), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+        Gdiplus::Font markFont(&markFamily(), scaleF(Type::TITLE), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font headFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
         Gdiplus::SolidBrush textBrush(COL_TEXT), dimBrush(COL_TEXT_DIM), faintBrush(COL_TEXT_FAINT);
         Gdiplus::StringFormat rightLine;
         rightLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
@@ -16945,12 +16990,12 @@ void MinerGUI::drawDatarunnerCard(Gdiplus::Graphics& g, int cw, int ch) {
     const long long now = (long long)std::time(nullptr);
     const POINT hover = hoverMain_;
 
-    Gdiplus::Font markFont(&markFamily(), scaleF(17), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font headFont(&textFamily(), scaleF(9), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font textFont(&textFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font chipFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font btnFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font rowBtnFont(&markFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font markFont(&markFamily(), scaleF(Type::TITLE), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font headFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font textFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font chipFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font btnFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font rowBtnFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush textBrush(COL_TEXT), dimBrush(COL_TEXT_DIM), faintBrush(COL_TEXT_FAINT);
     Gdiplus::SolidBrush greenBrush(COL_GREEN), yellowBrush(COL_YELLOW), redBrush(COL_RED);
     Gdiplus::StringFormat oneLine;
@@ -24496,13 +24541,13 @@ std::vector<Plugins::UiItem> MinerGUI::pluginListPieces() {
 float MinerGUI::paintPluginPieces(Gdiplus::Graphics& g, const std::vector<Plugins::UiItem>& items, int cw, float top,
                                   bool draw, std::vector<float>& cardEnds, float stopBelow) {
     using Plugins::UiItem;
-    Gdiplus::Font nameFont(&markFamily(), scaleF(14), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font headFont(&textFamily(), scaleF(10), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-    Gdiplus::Font subFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font bodyFont(&textFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font chipFont(&markFamily(), scaleF(11), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font buttonFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font numFont(&numeralFamily(), scaleF(13), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font nameFont(&markFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font headFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font subFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font bodyFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font chipFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font buttonFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font numFont(&numeralFamily(), scaleF(Type::NUMBER), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush textBrush(COL_TEXT), dimBrush(COL_TEXT_DIM), faintBrush(COL_TEXT_FAINT);
     Gdiplus::StringFormat centre;
     centre.SetAlignment(Gdiplus::StringAlignmentCenter);
@@ -24564,7 +24609,6 @@ float MinerGUI::paintPluginPieces(Gdiplus::Graphics& g, const std::vector<Plugin
                 if (draw) {
                     const std::wstring t = toW(it.text);
                     g.DrawString(t.c_str(), -1, &headFont, Gdiplus::PointF(left, y), &faintBrush);
-                    hairline(g, M, y + scaleF(17), right);
                 }
                 y += scaleF(28);
                 break;
@@ -24861,10 +24905,10 @@ void MinerGUI::paintPluginView(Gdiplus::Graphics& g, int cw, int ch, bool page) 
     {
         pluginHits_.clear();
 
-        Gdiplus::Font markFont(&markFamily(), scaleF(21), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-        Gdiplus::Font subFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-        Gdiplus::Font footFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-        Gdiplus::Font buttonFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font markFont(&markFamily(), scaleF(Type::TITLE), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font subFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font footFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::Font buttonFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
         Gdiplus::SolidBrush textBrush(COL_TEXT), dimBrush(COL_TEXT_DIM), faintBrush(COL_TEXT_FAINT);
         Gdiplus::SolidBrush accentBrush(COL_ACCENT);
         Gdiplus::StringFormat oneLine;
