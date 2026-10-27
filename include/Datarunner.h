@@ -144,9 +144,15 @@ Shot readPicture(const cv::Mat& bgr, TextLineReader& reader);
 Shot steadyRowsOf(const Shot& look, const Shot& before);
 // ...a look's complete rows that no picture of the same shop's same list has
 // from `since` on (Unix seconds), not one the player took out either: a
-// picture of its own for them. The rest of `look` as it is; no rows where
-// none is new.
+// picture of its own for them. Where both rows have UEX's commodity, it
+// decides - a name read another way, or its second line missed, is the same
+// commodity; else the names. A list not made out (side 0) may be either.
+// The rest of `look` as it is; no rows where none is new.
 Shot newRowsOf(const Shot& look, const std::vector<std::shared_ptr<Shot>>& shots, long long since);
+// The lists the player sent or put away while at a terminal, shop and side:
+// whether `shop`'s list on `side` is among them - one not made out (0)
+// where either of that shop's is
+bool listDone(const std::vector<std::pair<std::string, int>>& done, const std::string& shop, int side);
 
 // A picture with nothing on it, as Star Citizen saved its screenshots with
 // HDR on: nought throughout. A dark scene still has its lights and its HUD.

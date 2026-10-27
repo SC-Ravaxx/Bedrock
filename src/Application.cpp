@@ -5469,22 +5469,34 @@ bool Application::watchScreenshots() {
 // check - those of them no picture of that shop's list from the last half
 // hour has (Datarunner::newRowsOf), and no look offered before, whether it
 // was sent, closed or thrown away. Scrolling down the list with a pause
-// now and then gives a picture for each part. Twenty seconds without a
-// terminal in sight end the looking until the log has a terminal's line
-// again. Nothing goes without Send. True where what the window shows
-// changed.
+// now and then gives a picture for each part. A list the player has sent
+// or put away is read no more while he stays at the terminal. Twenty
+// seconds without a terminal in sight end the looking until the log has a
+// terminal's line again. Nothing goes without Send. True where what the
+// window shows changed.
 bool Application::watchTerminal() {
     bool changed = false;
     const auto now = std::chrono::steady_clock::now();
     const bool on = datarunnerSince_ > 0 && !uexKey_.empty();
-    const bool wasReading = terminalLooking_ && terminalLastLook_ != nullptr;
+    const bool wasReading = terminalReading();
     // a look read
     if (terminalJob_.valid() && terminalJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
         std::shared_ptr<Datarunner::Shot> look = terminalJob_.get();
         const bool sawTerminal = look && !look->rows.empty();
         if (sawTerminal) terminalSeen_ = now;
-        if (on && sawTerminal && terminalLastLook_ && (int)datarunnerShots_.size() < DATARUNNER_KEPT) {
-            const Datarunner::Shot steady = Datarunner::steadyRowsOf(*look, *terminalLastLook_);
+        if (on && sawTerminal && terminalLastLook_ && (int)datarunnerShots_.size() < DATARUNNER_KEPT &&
+            !Datarunner::listDone(terminalDone_, look->shop, look->side)) {
+            Datarunner::Shot steady = Datarunner::steadyRowsOf(*look, *terminalLastLook_);
+            if (!steady.rows.empty() && uexDirectory_) {
+                // UEX's commodity for each row: one read another way in
+                // another look is the same
+                Datarunner::Shot named = steady;
+                Datarunner::match(named, *uexDirectory_,
+                                  library_.trades().terminalAt(look->taken * 1000 + 999, 30ll * 60 * 1000));
+                for (size_t i = 0; i < steady.rows.size() && i < named.rows.size(); i++) {
+                    steady.rows[i].commodity = named.rows[i].commodity;
+                }
+            }
             if (!steady.rows.empty()) {
                 const long long since = look->taken - 30 * 60;
                 terminalOffered_.erase(std::remove_if(terminalOffered_.begin(), terminalOffered_.end(),
@@ -5553,12 +5565,13 @@ bool Application::watchTerminal() {
         }
     }
     auto reading = [&]() {
-        if (wasReading != (terminalLooking_ && terminalLastLook_ != nullptr)) changed = true;
+        if (wasReading != terminalReading()) changed = true;
         return changed;
     };
     if (!on) {
         terminalLooking_ = false;
         terminalLastLook_.reset();
+        terminalDone_.clear();
         return reading();
     }
     // a terminal's line in the log since the looking began last, and lately
@@ -5570,6 +5583,7 @@ bool Application::watchTerminal() {
             terminalLooking_ = true;
             terminalSeen_ = now;
             terminalLastLook_.reset();
+            terminalDone_.clear();
         }
     }
     if (!terminalLooking_) return reading();
@@ -5577,6 +5591,7 @@ bool Application::watchTerminal() {
     if (now - terminalSeen_ > std::chrono::seconds(20)) {
         terminalLooking_ = false;
         terminalLastLook_.reset();
+        terminalDone_.clear();
         return reading();
     }
     // one look after the other while a terminal is in sight
@@ -5618,6 +5633,12 @@ bool Application::watchTerminal() {
         return look;
     });
     return reading();
+}
+
+// A terminal in use being read: one in sight, its list not done with
+bool Application::terminalReading() const {
+    return terminalLooking_ && terminalLastLook_ &&
+           !Datarunner::listDone(terminalDone_, terminalLastLook_->shop, terminalLastLook_->side);
 }
 
 void Application::serviceDatarunner() {
@@ -5719,7 +5740,7 @@ void Application::pushDatarunner() {
     }
     state.signUp = uexAccountTrouble_ == "datarunner";
     state.note = datarunnerNote_;
-    state.reading = terminalLooking_ && terminalLastLook_ != nullptr;
+    state.reading = terminalReading();
     gui_->setDatarunner(state);
 }
 
@@ -5753,6 +5774,9 @@ void Application::datarunnerAction(int action, int shotId, int rowIndex, int val
             }
             shot.state = Datarunner::Shot::State::Sending;
             shot.note.clear();
+            // a list Bedrock read by itself: done with while the player is
+            // at the terminal
+            if (shot.automatic) terminalDone_.push_back({shot.shop, shot.side});
             std::cout << "\nUEX Datarunner: " << shot.file.filename().string() << " - sending " << item.rows.size()
                       << " rows to UEX" << (production ? "" : " (test report)") << std::endl;
             uexQueue_.push_back(std::move(item));
@@ -5760,6 +5784,7 @@ void Application::datarunnerAction(int action, int shotId, int rowIndex, int val
         }
         case 2:     // Discard, or Close once sent
             if (shot.state == Datarunner::Shot::State::Sending) break;
+            if (shot.automatic) terminalDone_.push_back({shot.shop, shot.side});
             datarunnerShots_.erase(it);
             break;
         case 3:     // a row taken out, or put back

@@ -1869,6 +1869,41 @@ int runSelfTest() {
                                       "picture, however the list moved - those no picture of that shop's list from the "
                                       "last half hour has");
         }
+        // ...UEX's commodity decides where both rows have one: a name read
+        // another way, or its second line missed, is the same; a list not
+        // made out may be either; a list sent or put away at the terminal is
+        // read no more there, one not made out with it
+        {
+            auto whole = [](const char* read, int commodity) {
+                D::Row row;
+                row.read = read;
+                row.commodity = commodity;
+                row.level = 7;
+                row.stock = 12000;
+                row.price = 8585;
+                row.levelSure = row.stockSure = row.priceSure = Certainty::Sure;
+                return row;
+            };
+            D::Shot look;
+            look.side = 1;
+            look.shop = "SCShop_Pyro_RestStop_Rund_Admin";
+            look.taken = now;
+            look.rows = {whole("Ship Noise", 209), whole("Quantum Fuel", 0), whole("Hydrogen Fuel", 104)};
+            auto sent = std::make_shared<D::Shot>(look);
+            sent->rows = {whole("Ship Noise Countermeasures", 209), whole("QuantumFuel", 87), whole("Hydrogen", 41)};
+            const D::Shot after = D::newRowsOf(look, {sent}, now - 1800);
+            D::Shot unknown = look;
+            unknown.side = 0;
+            const std::vector<std::pair<std::string, int>> done = {{"SCShop_Pyro_RestStop_Rund_Admin", 1}};
+            const bool byCommodity = after.rows.size() == 1 && after.rows[0].read == "Hydrogen Fuel" &&
+                                     D::newRowsOf(unknown, {sent}, now - 1800).rows.size() == 1 &&
+                                     D::listDone(done, look.shop, 1) && D::listDone(done, look.shop, 0) &&
+                                     !D::listDone(done, look.shop, 2) &&
+                                     !D::listDone(done, "SCShop_Admin_lt_base_g", 1) && !D::listDone({}, look.shop, 1);
+            allPassed &= check(byCommodity, "Bedrock's own looks: a row UEX's commodity of which was offered is not "
+                                            "offered again, read however; a list sent or put away at the terminal is "
+                                            "read no more there");
+        }
         // A report UEX stopped at its second row, a duplicate: the first row
         // went, the second is on UEX from the player's report of the last
         // five minutes - both held as sent, so Send goes on with the third

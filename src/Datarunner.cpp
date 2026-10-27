@@ -225,14 +225,25 @@ Shot newRowsOf(const Shot& look, const std::vector<std::shared_ptr<Shot>>& shots
         const std::string name = folded(row.read);
         bool seen = false;
         for (const auto& shot : shots) {
-            if (!shot || shot->side != look.side || shot->shop != look.shop || shot->taken < since) continue;
+            if (!shot || shot->shop != look.shop || shot->taken < since) continue;
+            if (shot->side != look.side && shot->side != 0 && look.side != 0) continue;
             for (const Row& other : shot->rows) {
-                if (folded(other.read) == name) seen = true;
+                if (row.commodity > 0 && other.commodity > 0 ? other.commodity == row.commodity
+                                                             : folded(other.read) == name) {
+                    seen = true;
+                }
             }
         }
         if (!seen) fresh.rows.push_back(row);
     }
     return fresh;
+}
+
+bool listDone(const std::vector<std::pair<std::string, int>>& done, const std::string& shop, int side) {
+    for (const auto& [doneShop, doneSide] : done) {
+        if (doneShop == shop && (doneSide == side || side == 0 || doneSide == 0)) return true;
+    }
+    return false;
 }
 
 bool blackPicture(const cv::Mat& bgr) {

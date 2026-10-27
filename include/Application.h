@@ -518,6 +518,9 @@ private:
     // the rows the looks gave the player in the last half hour, whatever came
     // of them - sent, closed or thrown away, they are not offered again
     std::vector<std::shared_ptr<Datarunner::Shot>> terminalOffered_;
+    // the lists the player sent or put away while at the terminal, shop and
+    // side: read no more until he has left it (Datarunner::listDone)
+    std::vector<std::pair<std::string, int>> terminalDone_;
     std::vector<Datarunner::Sent> datarunnerSent_;          // what went, out of uex\reported.txt
     // UEX's game versions, LIVE and PTU - a report says which it is of
     std::string uexVersions_[2];
@@ -528,6 +531,7 @@ private:
     void serviceDatarunner();
     bool watchScreenshots();
     bool watchTerminal();
+    bool terminalReading() const;
     void pushDatarunner();
     void datarunnerAction(int action, int shot, int row, int value);
     void datarunnerAnswered(const UexSent& sent);
