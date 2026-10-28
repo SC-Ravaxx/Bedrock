@@ -3779,7 +3779,6 @@ void MinerGUI::drawRail(Gdiplus::Graphics& g, int rw, int ch) {
     g.FillRectangle(&railBrush, 0.0f, 0.0f, (float)rw, (float)ch);
 
     Gdiplus::Font labelFont(&markFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font letterFont(&markFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::StringFormat centred;
     centred.SetAlignment(Gdiplus::StringAlignmentCenter);
     centred.SetLineAlignment(Gdiplus::StringAlignmentCenter);
@@ -3805,11 +3804,19 @@ void MinerGUI::drawRail(Gdiplus::Graphics& g, int rw, int ch) {
         const float iconX = box.X + (itemW - 20 * s) / 2.0f, iconY = box.Y + 8 * s;
         drawRailIcon(g, kind, iconX, iconY, s, ink);
         if (kind == R::Plugin && !label.empty()) {
-            // a plugin's first letter, in the square
-            Gdiplus::SolidBrush letterInk(ink);
+            // a plugin's first letter, centred in the square by its own
+            // outline (DrawString's box leaves a W a pixel and a half left)
             const std::wstring letter(1, (wchar_t)std::towupper(label[0]));
-            g.DrawString(letter.c_str(), -1, &letterFont,
-                         Gdiplus::RectF(iconX + 3 * s, iconY + 3 * s, 14 * s, 14 * s), &centred, &letterInk);
+            Gdiplus::GraphicsPath glyph;
+            glyph.AddString(letter.c_str(), -1, &markFamily(), Gdiplus::FontStyleRegular, scaleF(Type::LABEL),
+                            Gdiplus::PointF(0, 0), nullptr);
+            Gdiplus::RectF outline;
+            glyph.GetBounds(&outline);
+            Gdiplus::Matrix into;
+            into.Translate(iconX + 10 * s - outline.Width / 2 - outline.X, iconY + 10 * s - outline.Height / 2 - outline.Y);
+            glyph.Transform(&into);
+            Gdiplus::SolidBrush letterInk(ink);
+            g.FillPath(&letterInk, &glyph);
         }
         // the word under it, as wide as the rail: Datarunner is
         Gdiplus::SolidBrush words(active || hot ? COL_TEXT : COL_TEXT_DIM);
