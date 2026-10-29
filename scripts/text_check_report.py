@@ -8,6 +8,11 @@ in one file (Linux build, WSL):
 
     QT_QPA_PLATFORM=offscreen BEDROCK_TEXT_CHECK=1 ./bedrock --screenshot <dir> > shots.log 2>&1
 
+and once more with BEDROCK_SHOT_PLUGINS=<repo>/plugins for the plugin
+pictures. Texts that fit at 100 % can be cut at 125 %: BEDROCK_SHOT_SCALE=125
+with a screen as tall as 1440 px, so that the windows keep their size
+(QT_QPA_PLATFORM=offscreen:configfile=<json> naming one screen 5120x1440).
+
 The shim prints, at the end of each painting of a picture, a line
 "TEXTCHECK PASS WxH texts=N" and then what it found in that painting
 (TEXTCHECK CUT / CLIPPED / OVERLAP, see include/GdiplusShim.h). The shot run

@@ -625,8 +625,11 @@ public:
 //   OVERLAP  two texts that can be seen lie over each other
 // A text is no longer there to be seen where an opaque fill or picture
 // drawn after it covers it; a picture with texts of its own drawn one to
-// one brings them along (a page drawn first and the lists over it). It
-// only looks: the pictures are the same with it as without it.
+// one brings them along (a page drawn first and the lists over it). Where
+// the app lays texts out by MeasureString - one put right after a text it
+// measured, a box as wide as its text - Windows gives them the room GDI+
+// measures, and so does the check. It only looks: the pictures are the
+// same with it as without it.
 // scripts/text_check_report.py sorts the lines to the pictures.
 namespace textcheck {
 
