@@ -4448,6 +4448,58 @@ int runSelfTest() {
                                        std::to_string(other.metres) + ": " + look.note + ")");
             }
         }
+        // ...and the Golem's, with its long labels at 3216,543 at size
+        // 1.242: a green 33 m, the figure leaning 32 degrees down the arc
+        {
+            const cv::Mat gauge = testPicture("scanpanel/gauge_golem_33.png", L"SELFTEST_GAUGE_GOLEM");
+            allPassed &= check(!gauge.empty(), "the Golem's LASER RANGE picture is beside the build or inside the exe");
+            if (!gauge.empty()) {
+                cv::Mat screen(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+                gauge.copyTo(screen(cv::Rect(2156, 623, gauge.cols, gauge.rows)));
+                SCMiner::ScanPanel panel;
+                panel.labels = cv::Point(3216, 543);
+                panel.labelScale = 1.242;
+                panel.labelGlyph = 'H';
+                const SCMiner::LaserRangeLook look = SCMiner::readLaserRange(screen, panel);
+                // the labels 60 units lower put 33 m where some 10 m belongs
+                SCMiner::ScanPanel lower = panel;
+                lower.labels.y += 75;
+                const SCMiner::LaserRangeLook astray = SCMiner::readLaserRange(screen, lower);
+                allPassed &= check(look.metres == 33 && astray.metres == 0,
+                                   "...the Golem's green 33 m reads 33, and nothing 60 units off its place (got " +
+                                       std::to_string(look.metres) + ", " + std::to_string(astray.metres) + ": " +
+                                       look.note + ")");
+            }
+        }
+        // ...but a pale 78 on rock, whose 8 matches the 4's picture at 0.82
+        // and its own at 0.67, is not taken for 74 (labels at 3190,546 at
+        // size 1.217), nor a 118 whose 8 matches the 4's at 0.87, 0.10
+        // ahead of a 3, for 114 (labels at 3202,529 at the same size)
+        {
+            const cv::Mat gauge = testPicture("scanpanel/gauge_golem_78.png", L"SELFTEST_GAUGE_GOLEM_78");
+            const cv::Mat gauge118 = testPicture("scanpanel/gauge_golem_118.png", L"SELFTEST_GAUGE_GOLEM_118");
+            allPassed &= check(!gauge.empty() && !gauge118.empty(),
+                               "the Golem's pale 78 and 118 are beside the build or inside the exe");
+            if (!gauge.empty() && !gauge118.empty()) {
+                cv::Mat screen(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+                gauge.copyTo(screen(cv::Rect(2131, 679, gauge.cols, gauge.rows)));
+                SCMiner::ScanPanel panel;
+                panel.labels = cv::Point(3190, 546);
+                panel.labelScale = 1.217;
+                panel.labelGlyph = 'H';
+                const SCMiner::LaserRangeLook look = SCMiner::readLaserRange(screen, panel);
+                cv::Mat screen2(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+                gauge118.copyTo(screen2(cv::Rect(2130, 704, gauge118.cols, gauge118.rows)));
+                SCMiner::ScanPanel panel2 = panel;
+                panel2.labels = cv::Point(3202, 529);
+                const SCMiner::LaserRangeLook look2 = SCMiner::readLaserRange(screen2, panel2);
+                allPassed &= check((look.metres == 0 || look.metres == 78) &&
+                                       (look2.metres == 0 || look2.metres == 118),
+                                   "...and they read 78 and 118 or nothing, never 74 or 114 (got " +
+                                       std::to_string(look.metres) + ", " + std::to_string(look2.metres) + ": " +
+                                       look.note + "; " + look2.note + ")");
+            }
+        }
 
         // The shape reader, on a captured panel put back where it was on a
         // 5120 x 1440 screen: the labels found as a picture, the figures read

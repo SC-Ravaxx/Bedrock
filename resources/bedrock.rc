@@ -22,6 +22,9 @@ SELFTEST_LOADOUT RCDATA "../tests/scanpanel/loadout_prospector_1440.jpg"
 SELFTEST_GAUGE_PROSPECTOR RCDATA "../tests/scanpanel/gauge_prospector_27.png"
 SELFTEST_GAUGE_PROSPECTOR_43 RCDATA "../tests/scanpanel/gauge_prospector_43.png"
 SELFTEST_GAUGE_TURRET RCDATA "../tests/scanpanel/gauge_turret_16.png"
+SELFTEST_GAUGE_GOLEM RCDATA "../tests/scanpanel/gauge_golem_33.png"
+SELFTEST_GAUGE_GOLEM_78 RCDATA "../tests/scanpanel/gauge_golem_78.png"
+SELFTEST_GAUGE_GOLEM_118 RCDATA "../tests/scanpanel/gauge_golem_118.png"
 // ...and the three signature markers it reads: in a hand-out's folder they
 // are what checks the templates the exe carries rather than a ./glyphs folder
 SELFTEST_MARKER_LAMP RCDATA "../tests/lamp_marker_3170.png"

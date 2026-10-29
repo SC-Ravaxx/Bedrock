@@ -35,9 +35,16 @@ struct GaugeHud {
     double tiltLo, tiltHi;    // how far the figure stands turned, degrees
     // Where the triangle stands for a figure, and how far off that a reading
     // may be: the panel's labels are a long way off, and their place and
-    // size come with an error the gauge's place multiplies.
-    double (*offTrack)(const cv::Point2d& unitsFromLabels, int metres);
+    // size come with an error the gauge's place multiplies. Where the
+    // figure's lean tells the figure too, that is checked as well.
+    double (*offTrack)(const cv::Point2d& unitsFromLabels, int metres, double tilt);
     double tolerance;
+    double likeEnough;  // how like its picture a numeral must be to read
+    double fourLead;    // ...and how far ahead a 4 must be (0: as any other)
+    // How far a place is from where the triangle stands for any figure at
+    // all, to put by the blobs that stand nowhere near before any is read;
+    // null where every blob of the window is tried.
+    double (*fromTrack)(const cv::Point2d& unitsFromLabels);
 };
 
 // The Prospector: the triangle rides a circle about a point 717.7 units
@@ -49,7 +56,7 @@ struct GaugeHud {
 // and INSTABILITY: out, puts the same circle 21 units further left of the
 // labels (71 figures from 19 to 115 m off recordings of 29.10.2026, 1.5
 // degrees rms): either place will do.
-double prospectorOffTrack(const cv::Point2d& p, int metres) {
+double prospectorOffTrack(const cv::Point2d& p, int metres, double) {
     const double expected = (-17.9876 - std::sqrt((double)metres)) / 0.15297;
     double off = 1e9;
     for (const double centreX : {-717.7, -738.7}) {
@@ -64,7 +71,7 @@ double prospectorOffTrack(const cv::Point2d& p, int metres) {
 // at 100 m, and the square root of the metres grows evenly along it, 0.0707
 // a unit (87 figures read by eye over six sessions, 2.9 units rms along
 // it). The distance is in units along that line.
-double turretOffTrack(const cv::Point2d& p, int metres) {
+double turretOffTrack(const cv::Point2d& p, int metres, double) {
     const double dx = p.x + 854.0, dy = p.y + 39.0;
     const double along = -0.4223 * dx + 0.9065 * dy;
     const double across = -0.9065 * dx - 0.4223 * dy;
@@ -73,9 +80,67 @@ double turretOffTrack(const cv::Point2d& p, int metres) {
     return std::abs(along - expected);
 }
 
+// The Golem, with either of its label columns: the triangle runs down the
+// inside of the left arc, from 775 units left of the labels and 15 below
+// them at 1 m to 877 left and 307 below at 362 m, both quadratic in the
+// square root of the metres; and the figure leans with it, 50 degrees less
+// 3.25 a square root of a metre (121 figures from 10 to 362 m read by eye
+// over two sessions: 11 units rms off that place, 35 at most, and 1.4
+// degrees rms off that lean, 5.8 at most). The labels' size wavers here, so
+// the place is held loosely and the lean decides: a figure read short, or
+// the THRUST box's text, leans 13 degrees or more off. A lone numeral is
+// not taken - the 1 of a 10 m whose 0 went unread leans and stands close
+// enough to 1 m.
+cv::Point2d golemPlace(int metres) {
+    const double q = std::sqrt((double)metres);
+    return cv::Point2d(-758.24 - 17.74 * q + 0.605 * q * q, 3.04 + 12.19 * q + 0.2 * q * q);
+}
+
+double golemOffTrack(const cv::Point2d& p, int metres, double tilt) {
+    if (metres < 10) return 1e9;
+    if (std::abs(tilt - (50.05 - 3.25 * std::sqrt((double)metres))) > 8.0) return 1e9;
+    const cv::Point2d at = golemPlace(metres);
+    return std::hypot(p.x - at.x, p.y - at.y);
+}
+
+// The window also holds the THRUST and VEL boxes' text and the rock's
+// specks: a third of its triangle-like blobs stand within reach of the
+// track (199 of 636 in 282 frames), and only those are read.
+double golemFromTrack(const cv::Point2d& p) {
+    double best = 1e9;
+    for (int metres = 10; metres <= 999; metres++) {
+        const cv::Point2d at = golemPlace(metres);
+        best = std::min(best, std::hypot(p.x - at.x, p.y - at.y));
+    }
+    return best;
+}
+
+// A numeral reads when it is this like its picture and this far ahead of
+// the next likeliest; the figure ends at a cell that is like none of them or
+// holds little ink against the first. Anything between is a numeral not sure
+// which: in the first cell nothing is read, after it the figure read so far
+// stands only where the triangle's place rules out a longer one.
+constexpr double LIKE_ENOUGH = 0.80;
+constexpr double LEAD_ENOUGH = 0.06;
+constexpr double LIKE_NONE = 0.60;
+constexpr double MASS_NONE = 0.35;
+// The Golem's figures are drawn pale and soft on its canopy, and there an 8
+// whose loops fill in is likelier a 4 than an 8: a 78 matched the 4's
+// picture at 0.82 (the 8's at 0.67), a 118 at 0.87, both 0.09 and 0.10
+// ahead of a 3. So there a numeral must match at 0.85 and a 4 lead by 0.15
+// - the 36 4s read right lead by 0.22 to 0.39, and the figures read right
+// match at 0.82 to 0.97 (of 108 readings 8 fall away, the two wrong ones
+// among them).
+constexpr double LIKE_ENOUGH_GOLEM = 0.85;
+constexpr double FOUR_LEAD_GOLEM = 0.15;
+
 const GaugeHud HUDS[] = {
-    {"prospector", "LM", cv::Rect2d(-910, -170, 125, 155), 8.5, 0.0, 56.0, prospectorOffTrack, 5.0},
-    {"turret", "TW", cv::Rect2d(-905, -120, 115, 170), 7.0, 10.0, 46.0, turretOffTrack, 10.0},
+    {"prospector", "LM", cv::Rect2d(-910, -170, 125, 155), 8.5, 0.0, 56.0, prospectorOffTrack, 5.0, LIKE_ENOUGH, 0.0,
+     nullptr},
+    {"turret", "TW", cv::Rect2d(-905, -120, 115, 170), 7.0, 10.0, 46.0, turretOffTrack, 10.0, LIKE_ENOUGH, 0.0,
+     nullptr},
+    {"golem", "GH", cv::Rect2d(-1000, -100, 260, 420), 7.0, -16.0, 52.0, golemOffTrack, 40.0, LIKE_ENOUGH_GOLEM,
+     FOUR_LEAD_GOLEM, golemFromTrack},
 };
 
 const GaugeHud* hudOf(char glyph) {
@@ -284,16 +349,6 @@ Numeral numeralAt(const cv::Mat& strip, int i, double firstX) {
     return out;
 }
 
-// A numeral reads when it is this like its picture and this far ahead of
-// the next likeliest; the figure ends at a cell that is like none of them or
-// holds little ink against the first. Anything between is a numeral not sure
-// which: in the first cell nothing is read, after it the figure read so far
-// stands only where the triangle's place rules out a longer one.
-constexpr double LIKE_ENOUGH = 0.80;
-constexpr double LEAD_ENOUGH = 0.06;
-constexpr double LIKE_NONE = 0.60;
-constexpr double MASS_NONE = 0.35;
-
 }  // namespace
 
 LaserRangeLook readLaserRange(const cv::Mat& frame, const ScanPanel& panel) {
@@ -374,6 +429,10 @@ LaserRangeLook readLaserRange(const cv::Mat& frame, const ScanPanel& panel) {
         Candidate c;
         c.centre = cv::Point2d(window.x + centroids.at<double>(i, 0), window.y + centroids.at<double>(i, 1));
         c.off = std::abs(units - 30.0);
+        if (hud->fromTrack &&
+            hud->fromTrack(cv::Point2d((c.centre.x - panel.labels.x) / s, (c.centre.y - panel.labels.y) / s)) >
+                hud->tolerance)
+            continue;
         candidates.push_back(c);
     }
     if (candidates.empty()) {
@@ -401,7 +460,7 @@ LaserRangeLook readLaserRange(const cv::Mat& frame, const ScanPanel& panel) {
         for (int i = 0; i < 3; i++) {
             const Numeral& u = numerals[i];
             if (i > 0 && (u.likeness < LIKE_NONE || u.mass < MASS_NONE * numerals[0].mass)) break;
-            if (u.likeness < LIKE_ENOUGH || u.lead < LEAD_ENOUGH) {
+            if (u.likeness < hud->likeEnough || u.lead < LEAD_ENOUGH || (u.digit == 4 && u.lead < hud->fourLead)) {
                 unsure = true;
                 unsureAt = i;
                 break;
@@ -426,11 +485,11 @@ LaserRangeLook readLaserRange(const cv::Mat& frame, const ScanPanel& panel) {
         if (unsure && unsureAt > 0) {
             bool longer = false;
             for (int d = 0; d <= 9 && !longer; d++)
-                longer = hud->offTrack(fromLabels, metres * 10 + d) <= 2 * hud->tolerance;
+                longer = hud->offTrack(fromLabels, metres * 10 + d, tilt) <= 2 * hud->tolerance;
             if (longer) continue;
             tried += " short";
         }
-        const double off = hud->offTrack(fromLabels, metres);
+        const double off = hud->offTrack(fromLabels, metres, tilt);
         if (off > hud->tolerance) {
             char why[64];
             std::snprintf(why, sizeof(why), " %d m off its place by %.1f", metres, off);
