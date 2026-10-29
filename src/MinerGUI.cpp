@@ -6552,18 +6552,18 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
     g.DrawString(L"BREAK ANALYSIS", -1, &labelFont, Gdiplus::PointF(M, y), &faintBrush);
     y += scaleF(18);
 
-    // The instruction and the note go on to a second line where they are
-    // longer than the card is wide, and the head the answer names on a line
-    // of its own where it does not fit beside the headline
+    // The instruction and the note go on to more lines where they are longer
+    // than the card is wide - broken where their parts meet first, at
+    // Windows' widths ("...steady using Surge" over "One operator per laser
+    // required", fitLines) - and the head the answer names on a line of its
+    // own where it does not fit beside the headline
     const float textW = w - scaleF(28);
     Gdiplus::StringFormat wrapped;
-    wrapped.SetTrimming(Gdiplus::StringTrimmingEllipsisWord);
-    const auto linesOf = [&](const std::wstring& text, const Gdiplus::Font& font) {
-        if (text.empty()) return 0;
-        Gdiplus::RectF one, all;
-        g.MeasureString(L"Ag", -1, &font, Gdiplus::PointF(0, 0), &one);
-        g.MeasureString(text.c_str(), -1, &font, Gdiplus::RectF(0, 0, textW, scaleF(400)), &wrapped, &all);
-        return std::clamp((int)std::lround(all.Height / (std::max)(1.0f, one.Height)), 1, 2);
+    wrapped.SetTrimming(Gdiplus::StringTrimmingNone);
+    const Fitted instructionFit = fitLines(g, v.instruction, rowFont, textW);
+    const Fitted noteFit = fitLines(g, v.note, smallFont, textW);
+    const auto linesOf = [](const Fitted& fitted) {
+        return fitted.text.empty() ? 0 : 1 + (int)std::count(fitted.text.begin(), fitted.text.end(), L'\n');
     };
     float headW = 0, whoW = 0;
     {
@@ -6576,8 +6576,8 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
         }
     }
     const bool whoBelow = !v.who.empty() && headW + scaleF(4) + whoW > textW;
-    const int instructionLines = (std::max)(1, linesOf(v.instruction, rowFont));
-    const int noteLines = linesOf(v.note, smallFont);
+    const int instructionLines = (std::max)(1, linesOf(instructionFit));
+    const int noteLines = linesOf(noteFit);
     const bool hasNote = noteLines > 0;
     const float boxH = scaleF(12) + scaleF(24) + (whoBelow ? scaleF(18) : 0.0f) + scaleF(18) * instructionLines +
                        scaleF(16) * noteLines + scaleF(8);
@@ -6625,12 +6625,13 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
         g.DrawString(v.who.c_str(), -1, &rowFont, Gdiplus::RectF(inset, ty, textW, scaleF(18)), &oneLine, &textBrush);
         ty += scaleF(18);
     }
-    g.DrawString(v.instruction.c_str(), -1, &rowFont, Gdiplus::RectF(inset, ty, textW, scaleF(18) * instructionLines),
-                 &wrapped, v.kind == RockVerdict::WontHold ? &yellowBrush : &textBrush);
+    g.DrawString(instructionFit.text.c_str(), -1, &rowFont,
+                 Gdiplus::RectF(inset, ty, textW, scaleF(18) * instructionLines), &wrapped,
+                 v.kind == RockVerdict::WontHold ? &yellowBrush : &textBrush);
     ty += scaleF(18) * instructionLines;
     if (hasNote) {
-        g.DrawString(v.note.c_str(), -1, &smallFont, Gdiplus::RectF(inset, ty, textW, scaleF(16) * noteLines), &wrapped,
-                     &faintBrush);
+        g.DrawString(noteFit.text.c_str(), -1, &smallFont, Gdiplus::RectF(inset, ty, textW, scaleF(16) * noteLines),
+                     &wrapped, &faintBrush);
         ty += scaleF(16) * noteLines;
     }
     y += boxH + scaleF(14);
@@ -18484,7 +18485,13 @@ void MinerGUI::paintPlanner(HDC hdc) {
                         }
                         sideNote += rocks.size() == 1 ? L" rock" : L" rocks";
                     }
-                    if (sidePart) sideNote += L" \u2014 " + rockPartQuality(*sidePart) + L".";
+                    // (the quality in one piece, "Mostly 511 · 318–783": the
+                    // line breaks before it, not at its dot)
+                    if (sidePart) {
+                        std::wstring quality = rockPartQuality(*sidePart);
+                        std::replace(quality.begin(), quality.end(), L' ', L'\u00A0');
+                        sideNote += L" \u2014 " + quality + L".";
+                    }
                 }
             }
             const float partH = scaleF(20);
