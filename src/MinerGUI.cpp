@@ -17531,8 +17531,12 @@ void MinerGUI::drawDatarunnerCard(Gdiplus::Graphics& g, int cw, int ch) {
     {
         const wchar_t* heads[4] = {L"COMMODITY", L"INVENTORY", L"SCU", L"aUEC / SCU"};
         for (int c = 0; c < 4; c++) {
-            g.DrawString(heads[c], -1, &headFont, Gdiplus::RectF(colX[c] + scaleF(6), y, colW[c], scaleF(14)), &oneLine,
-                         &faintBrush);
+            // a name wider than its column (the price's, in the narrowest
+            // window) starts as much further left, at most at the column's
+            // edge, and stays whole
+            const float over = (std::min)(scaleF(6), (std::max)(0.0f, lineWidth(g, heads[c], headFont) - colW[c]));
+            g.DrawString(heads[c], -1, &headFont, Gdiplus::RectF(colX[c] + scaleF(6) - over, y, colW[c] + over, scaleF(14)),
+                         &oneLine, &faintBrush);
         }
         y += scaleF(18);
     }
@@ -17737,7 +17741,11 @@ void MinerGUI::drawDatarunnerCard(Gdiplus::Graphics& g, int cw, int ch) {
         const auto entries = datarunnerListEntries();
         const bool typed = drListKind_ != 5;
         const float entryH = scaleF(22);
-        const float listW = (std::min)(width, (std::max)(drListAnchor_.Width, scaleF(260)));
+        // as wide as its longest entry, within the card: a terminal's name
+        // is the place, the outpost and the planet
+        float widest = 0;
+        for (const auto& entry : entries) widest = (std::max)(widest, lineWidth(g, entry.first, textFont));
+        const float listW = (std::min)(width, (std::max)({drListAnchor_.Width, scaleF(260), widest + scaleF(16) + scaleF(4)}));
         const float listH = (typed ? entryH + scaleF(4) : 0.0f) + entryH * (float)(std::max)((size_t)1, entries.size()) +
                             scaleF(8);
         float lx = (std::min)(drListAnchor_.X, left + width - listW);
