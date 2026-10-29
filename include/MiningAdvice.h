@@ -54,6 +54,13 @@ struct MiningLoadout {
     // stock). The bonus multiplies after the modules; added to the modules'
     // per cents instead it fits ten Hofstede rocks worse (2.6 against 2.0
     // points rms) and the Helix II ones by 10 points.
+    //
+    // And on a Prospector's Helix I at +30.96 % with Focus III and Rieger-C3
+    // (6,065 W, 4,631 stock), 29.10.2026: 29,945 kg of iron at 0 % and
+    // 11-12 m charged slowly at 100 %, where the model asks 98.7 % and the
+    // stock head could not have held it (129 %). The mining HUD's FRACTURE
+    // PWR line leaves the bonus out - 119 on that Helix I, 125 on the
+    // Hofstede: the modules alone.
     float craftedPower = 0.0f;    // per cent, as the item shows it. 0 = stock.
 };
 
@@ -79,7 +86,10 @@ struct LaserOutput {
 // Two turret readings past a Hofstede-S2's 60 m say the line is near enough:
 // 14,721 kg of copper at 69 m stood at 51 % (line 51.5, no falloff 47.7) and
 // 2,380 kg of taranite at 86 m at 10 % (line 12.2, none 9.6). A square curve
-// fits them no better. One rock held at several distances would settle it.
+// fits them no better. On a Prospector's crafted Helix I, 2 m short of its
+// 45 m, 356 kg of ice stood in the optimal window at 20-24 % at 42.6-43.4 m
+// (line 14.7-22.0 %): that close to zeroRange, 0.4 m moves the figure by a
+// fifth. One rock held at several distances would settle it.
 inline float rangeFalloff(const MiningLaser& laser, float metres) {
     if (metres <= laser.fullRange) return 1.0f;
     if (metres >= laser.zeroRange) return 0.0f;
@@ -246,7 +256,7 @@ struct ThrottleAdvice {
 // distance off its LASER RANGE pointer):
 //
 //     head, output                mass  metres   stood at      model
-//   Helix I + Focus III +        6,939     10    28-29 %       30.0 %
+//   Helix I + Focus III +        6,939    <13    28-29 %       30.0 %
 //   Rieger-C3, 4,631 W           9,536     12    40.5 %        41.2 %
 //                               16,838     10    70.5 %        72.7 %
 //   Hofstede-S2 +21.72 %,       21,126     20    69 %          68.4 %
@@ -258,7 +268,8 @@ struct ThrottleAdvice {
 //
 // Within 2.2 points but the last, a small rock next to the Hofstede's 10 %
 // minimum; on the Helix I the small rocks read no such thing. 0.19 or 0.21
-// fit both heads worse than 0.2.
+// fit both heads worse than 0.2. The 6,939 kg rock's beam length was not
+// read, only that it was under 13 m.
 //
 // Instability does not raise the demand. instabilityWavePeriod 3 and
 // instabilityWaveVariance 1 make it a wave that moves the balance point over

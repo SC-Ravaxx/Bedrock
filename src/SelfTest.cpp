@@ -5025,6 +5025,41 @@ int runSelfTest() {
                                    std::to_string((int)std::lround(asStock.toHold)) + " % - the crafting bonus counts");
         }
 
+        // The Prospector's Helix I crafted +30.96 %, Focus III and Rieger-C3,
+        // off the recordings of 29.10.2026. 29,945 kg of iron at 0 % and
+        // 11-12 m charged at 100 %, slowly - what the app says past
+        // BREAK_COMFORTABLE. Read stock, the head could not have held it.
+        {
+            SCMiner::MiningLoadout helix;
+            helix.laser = SCMiner::laserById("thcn_helix_s1");
+            helix.craftedPower = 30.96f;
+            helix.modules = {SCMiner::moduleById("passive_focus_mk3"),
+                             SCMiner::moduleById("passive_rieger_mk3")};
+            const SCMiner::LaserOutput o = SCMiner::outputOf(helix, 11.5f);
+            allPassed &= check(helix.laser && std::abs(o.atRange - 6065.0f) < 2.0f &&
+                                   std::abs(o.stock - 4631.0f) < 2.0f,
+                               "the crafted Helix I fit puts out 6,065 at 11.5 m (4,631 stock)");
+            const SCMiner::ThrottleAdvice iron = SCMiner::throttleFor(29945.0f, helix.laser, o.atRange);
+            allPassed &= check(iron.possible && iron.toHold / 100.0f > SCMiner::BREAK_COMFORTABLE,
+                               "29,945 kg of iron at 11.5 m charged slowly at 100 % (model says " +
+                                   std::to_string((int)std::lround(iron.toHold)) + " %)");
+            const SCMiner::ThrottleAdvice ironStock = SCMiner::throttleFor(29945.0f, helix.laser, o.stock);
+            allPassed &= check(!ironStock.possible,
+                               "...read stock, it would ask " + std::to_string((int)std::lround(ironStock.toHold)) +
+                                   " % - the crafting bonus counts");
+            // 356 kg of ice 2 m short of the head's 45 m stood in the optimal
+            // window at 20-24 %, the beam at 42.6-43.4 m: somewhere in that
+            // stretch the straight falloff has to reach the bracket
+            const float nearer =
+                SCMiner::throttleFor(356.0f, helix.laser, SCMiner::outputOf(helix, 42.6f).atRange).toHold;
+            const float further =
+                SCMiner::throttleFor(356.0f, helix.laser, SCMiner::outputOf(helix, 43.4f).atRange).toHold;
+            allPassed &= check(nearer <= 24.0f && further >= 20.0f,
+                               "356 kg of ice at 42.6-43.4 m stood at 20-24 % (model says " +
+                                   std::to_string((int)std::lround(nearer)) + "-" +
+                                   std::to_string((int)std::lround(further)) + " %)");
+        }
+
         // 48,929 kg of savrilium at 75 %: the rock that needs resistance in
         // the model. One Helix II with three Rieger-C3 and +28.84 % crafted -
         // the game says IMPOSSIBLE and the bar does not move at 100 %, where
