@@ -5320,10 +5320,27 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
 
     // The title is the ship's own name, the player's to choose - a click
     // on it and it is typed over where it stands. The kind of ship beside it,
-    // where the name does not say.
+    // where the name does not say; under it, where it does not fit beside it
+    // whole (chosen without the hover's words, so nothing moves under the
+    // pointer).
     const Gdiplus::RectF titleField(left - scaleF(8), y - scaleF(6), removeRect.X - scaleF(10) - (left - scaleF(8)),
                                     scaleF(32));
     const bool titleHot = fit_ >= 0 && isHot(hoverMain_, titleField);
+    const std::wstring title = fit_ >= 0 ? fitTitle() : std::wstring(L"Edit ship");
+    const float titleRoom = titleField.GetRight() - left - scaleF(8);
+    float titleShown = 0;
+    {
+        Gdiplus::RectF titleW;
+        g.MeasureString(title.c_str(), -1, &titleFont, Gdiplus::PointF(0, 0), &titleW);
+        titleShown = (std::min)(titleW.Width, titleRoom);
+    }
+    const float after = left + titleShown + scaleF(6);
+    std::wstring kind;
+    if (ship_ && title != toW(ship_->name)) kind = toW(ship_->name);
+    const bool kindBelow = !kind.empty() && lineWidth(g, kind, rowFont) > titleField.GetRight() - scaleF(8) - after;
+    Gdiplus::StringFormat titleLine;
+    titleLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    titleLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
     if (nameEditing_) {
         fillRoundRect(g, titleField, scaleF(R_CONTROL), COL_CARD_HI);
         strokeRoundRect(g, titleField, scaleF(R_CONTROL), tint(COL_ACCENT, 220));
@@ -5337,29 +5354,30 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
             g.DrawString(fitTitle().c_str(), -1, &titleFont,
                          Gdiplus::PointF(left - scaleF(1) + caretW.Width - scaleF(4), y - scaleF(2)), &faintBrush);
         }
+        if (kindBelow) {
+            g.DrawString(kind.c_str(), -1, &rowFont, Gdiplus::RectF(left - scaleF(1), y + scaleF(29), titleRoom, scaleF(18)),
+                         &titleLine, &faintBrush);
+        }
     } else {
         if (titleHot) fillRoundRect(g, titleField, scaleF(R_CONTROL), COL_HOVER);
-        const std::wstring title = fit_ >= 0 ? fitTitle() : std::wstring(L"Edit ship");
-        Gdiplus::StringFormat titleLine;
-        titleLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
-        titleLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
-        const float titleRoom = titleField.GetRight() - left - scaleF(8);
-        g.DrawString(title.c_str(), -1, &titleFont, Gdiplus::RectF(left - scaleF(1), y - scaleF(2), titleRoom, scaleF(26)),
+        // (a box as tall as the line: the descenders of "Prospector" hang
+        // below the 26 px the name itself takes)
+        g.DrawString(title.c_str(), -1, &titleFont, Gdiplus::RectF(left - scaleF(1), y - scaleF(2), titleRoom, scaleF(31)),
                      &titleLine, &textBrush);
-        Gdiplus::RectF titleW;
-        g.MeasureString(title.c_str(), -1, &titleFont, Gdiplus::PointF(0, 0), &titleW);
-        const float after = left + (std::min)(titleW.Width, titleRoom) + scaleF(6);
-        std::wstring beside;
-        if (ship_ && title != toW(ship_->name)) beside = toW(ship_->name);
+        std::wstring beside = kindBelow ? std::wstring() : kind;
         if (titleHot) beside += beside.empty() ? L"Click to rename" : L"  ·  Click to rename";
         if (!beside.empty() && after < titleField.GetRight() - scaleF(20)) {
             g.DrawString(beside.c_str(), -1, &rowFont,
                          Gdiplus::RectF(after, y + scaleF(5), titleField.GetRight() - scaleF(8) - after, scaleF(16)),
                          &titleLine, &faintBrush);
         }
+        if (kindBelow) {
+            g.DrawString(kind.c_str(), -1, &rowFont, Gdiplus::RectF(left - scaleF(1), y + scaleF(29), titleRoom, scaleF(18)),
+                         &titleLine, &faintBrush);
+        }
     }
     if (fit_ >= 0) loadoutHits_.push_back({titleField, 6, 0});
-    y += scaleF(34);
+    y += scaleF(34) + (kindBelow ? scaleF(18) : 0.0f);
 
     // --- which head, when the ship flies more than one
     // A segmented row: each head a raised tile, the one being edited
@@ -5821,9 +5839,19 @@ void MinerGUI::drawShipPicker(Gdiplus::Graphics& g, int cw) {
     const float inset = scaleF(5);
     const float h = rowH * (float)fits_.size() + addH + 2 * inset;
     // As wide as the field and the Loadout button beside it: a fit's line
-    // says what it flies, and the three new ones need their room
+    // says what it flies, and the three new ones need their room. Wider to
+    // the left where a fit's line needs more, as far as the page's margin.
     const float right = loadoutButton_.Width > 0 ? loadoutButton_.GetRight() : shipField_.GetRight();
-    Gdiplus::RectF panel(shipField_.X, shipField_.GetBottom() + scaleF(6), right - shipField_.X, h);
+    float needed = right - shipField_.X;
+    for (int i = 0; i < (int)fits_.size(); i++) {
+        const ShipFit& f = fits_[i];
+        const float words = (std::max)(lineWidth(g, toW(f.name), rowFont),
+                                       lineWidth(g, fitSummary(*f.ship, i == fit_ ? heads_ : f.heads), noteFont));
+        needed = (std::max)(needed, words + 2 * inset + scaleF(14) + scaleF(2));
+    }
+    const float leftmost = (float)scale(MARGIN);
+    const float panelX = (std::max)(leftmost, (std::min)(shipField_.X, right - needed));
+    Gdiplus::RectF panel(panelX, shipField_.GetBottom() + scaleF(6), right - panelX, h);
     mainscanDropList(g, panel, scaleF(1.0f), frost_);
 
     float y = panel.Y + inset;
