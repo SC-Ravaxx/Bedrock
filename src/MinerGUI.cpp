@@ -693,6 +693,20 @@ Fitted fitLines(Gdiplus::Graphics& g, const std::wstring& t, const Gdiplus::Font
     return out;
 }
 
+// The widest of a text's parts ("a  \u00B7  b"): less room than that and
+// fitLines has to break inside a part
+float widestPart(Gdiplus::Graphics& g, const std::wstring& t, const Gdiplus::Font& f,
+                 const std::wstring& sep = L"  \u00B7  ") {
+    float widest = 0;
+    for (size_t from = 0;;) {
+        const size_t at = t.find(sep, from);
+        widest = (std::max)(widest, lineWidth(g, t.substr(from, at == std::wstring::npos ? std::wstring::npos : at - from), f));
+        if (at == std::wstring::npos) break;
+        from = at + sep.size();
+    }
+    return widest;
+}
+
 // A gear, for the settings: eight flat-topped teeth round a ring, and a
 // hole in the middle that the button shows through. Drawn rather than a
 // glyph, because not every system has a font with one in it.
@@ -4366,16 +4380,36 @@ void MinerGUI::drawContextCard(Gdiplus::Graphics& g, int cw) {
     // the fit by the name it goes by, and the head on it without the
     // " Mining Laser" every laser's name ends in - the field is narrow
     std::wstring shipLine = ship_ ? fitTitle() : std::wstring(L"Select ship");
+    std::wstring headLine;   // the head, and what crafting adds to it
     if (ship_ && loadout_.laser) {
-        shipLine += L"  ·  " + laserShortName(*loadout_.laser);
+        headLine = laserShortName(*loadout_.laser);
         if (loadout_.craftedPower != 0.0f) {
             wchar_t craft[32];
             std::swprintf(craft, 32, L"  %+.2f %%", loadout_.craftedPower);
-            shipLine += craft;
+            headLine += craft;
         }
     }
+    // ...beside the name where the field holds both; where it does not (a
+    // long name, a crafted head, a narrow window), over the field at the
+    // end of its label's line, so neither is cut
+    const float shipRoom = shipW - scaleF(35);
+    const bool headAbove = !headLine.empty() && lineWidth(g, shipLine + L"  ·  " + headLine, fieldFont) > shipRoom;
+    if (!headLine.empty() && !headAbove) shipLine += L"  ·  " + headLine;
     g.DrawString(shipLine.c_str(), -1, &fieldFont, Gdiplus::RectF(shipX + scaleF(11), fieldY, shipW - scaleF(35), h),
                  &oneLine, ship_ ? &textBrush : &faintBrush);
+    if (headAbove) {
+        Gdiplus::Font headFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
+        Gdiplus::StringFormat atRight;
+        atRight.SetAlignment(Gdiplus::StringAlignmentFar);
+        atRight.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+        atRight.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+        // (on the label's baseline: the head's line is a size larger)
+        const float labelEnd = shipX + lineWidth(g, L"SHIP", labelFont) + scaleF(8);
+        g.DrawString(headLine.c_str(), -1, &headFont,
+                     Gdiplus::RectF(labelEnd, top + scaleF(9), shipX + shipW - labelEnd, scaleF(15)), &atRight,
+                     &dimBrush);
+    }
 
     // The button that opens the chosen ship's card: its name, heads, modules.
     // A new ship is added at the foot of the list and opens the same card.
@@ -4418,9 +4452,12 @@ void MinerGUI::drawLookingField(Gdiplus::Graphics& g, float x, float y, float w)
     centred.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
     centred.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
 
+    // A gathering order first: it runs out, the ores stay, and its words are
+    // the amounts - cut short they say nothing. The ores after it, as many
+    // as there is room for.
     std::vector<std::wstring> words;
-    for (const auto& o : lookingFor_) words.push_back(toW(o));
     if (const std::wstring order = orderWords(); !order.empty()) words.push_back(L"Order: " + order);
+    for (const auto& o : lookingFor_) words.push_back(toW(o));
     const auto widthOf = [&](const std::wstring& s, float room) {
         Gdiplus::RectF m;
         g.MeasureString(s.c_str(), -1, &chipFont, Gdiplus::PointF(0, 0), &m);
@@ -6591,36 +6628,10 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
         const MiningLoadout& fit = *rows[i];
         const bool lit = !several ? fit.laser != nullptr : (i < firing_.size() && firing_[i] && fit.laser);
         const bool safe = several && (int)i == safest;
-        Gdiplus::RectF tab(M, y, w, rowH);
-        const bool hot = several && isHot(hoverMain_, tab);
-        // A head that fires is a raised row, one switched off lies flat in
-        // the page; the safe one is washed in green on top of either, a bar
-        // of it down its edge as the best match has
-        fillRoundRect(g, tab, scaleF(R_CONTROL), lit ? (hot ? COL_HOVER : COL_CARD_HI) : (hot ? COL_CARD_HI : COL_CARD));
-        if (safe) markedSurface(g, tab, scaleF(R_CONTROL), scaleF(1.0f), COL_GREEN);
-
-        float tx = M + scaleF(12);
         const std::wstring place = several ? headPlace((int)i) : L"";
-        if (!place.empty()) {
-            // The switch itself: a lit amber dot while the head fires, an
-            // empty ring once it is off - centred on the caps of the place
-            // beside it rather than on the row, which sits a hair higher
-            const float d = scaleF(7);
-            const Gdiplus::RectF dot(tx, y + scaleF(14.5f) - d / 2, d, d);
-            if (lit) {
-                Gdiplus::SolidBrush halo(tint(COL_ACCENT, 50));
-                g.FillEllipse(&halo, dot.X - scaleF(2), dot.Y - scaleF(2), d + scaleF(4), d + scaleF(4));
-                Gdiplus::SolidBrush on(COL_ACCENT);
-                g.FillEllipse(&on, dot);
-            } else {
-                Gdiplus::Pen off(COL_TEXT_FAINT, 1.0f);
-                g.DrawEllipse(&off, dot);
-            }
-            tx += d + scaleF(9);
-            Gdiplus::SolidBrush placeBrush(lit ? COL_TEXT : COL_TEXT_FAINT);
-            g.DrawString(place.c_str(), -1, &labelFont, Gdiplus::PointF(tx, y + scaleF(7)), &placeBrush);
-            tx += scaleF(52);
-        }
+        const float dotD = scaleF(7);
+        // where the head's name starts: after the switch and the place
+        const float tx = M + scaleF(12) + (place.empty() ? 0.0f : dotD + scaleF(9) + scaleF(52));
         HeadState state;
         if (several) {
             state = headState((int)i);
@@ -6635,17 +6646,50 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
         } else {
             state.words = L"—";
         }
-        Gdiplus::RectF stateW;
-        g.MeasureString(state.words.c_str(), -1, &smallFont, Gdiplus::PointF(0, 0), &stateW);
         float tagW = 0;
         if (safe) {
             Gdiplus::RectF measured;
             g.MeasureString(L"SAFE CHOICE", -1, &tagFont, Gdiplus::PointF(0, 0), &measured);
             tagW = measured.Width + scaleF(14);
         }
-        const float wordsX = M + w - scaleF(12) - stateW.Width;
-        const float nameW = (std::max)(scaleF(40), wordsX - tagW - scaleF(10) - tx);
         const std::wstring words = fit.laser ? fitWords(fit, true) : L"HEAD " + std::to_wstring(i + 1) + L" - Empty";
+        // The state at the right of the row, beside the name where both fit;
+        // where not, broken where its parts meet onto lines under its first,
+        // and the row grows by them
+        const float stateRight = M + w - scaleF(12);
+        const float stateRoom = (std::max)(widestPart(g, state.words, smallFont),
+                                           stateRight - tx - lineWidth(g, words, rowFont) - tagW - scaleF(10));
+        const Fitted stateLines = fitLines(g, state.words, smallFont, stateRoom);
+        const float rowHere = rowH + stateLines.more;
+        Gdiplus::RectF tab(M, y, w, rowHere);
+        const bool hot = several && isHot(hoverMain_, tab);
+        // A head that fires is a raised row, one switched off lies flat in
+        // the page; the safe one is washed in green on top of either, a bar
+        // of it down its edge as the best match has
+        fillRoundRect(g, tab, scaleF(R_CONTROL), lit ? (hot ? COL_HOVER : COL_CARD_HI) : (hot ? COL_CARD_HI : COL_CARD));
+        if (safe) markedSurface(g, tab, scaleF(R_CONTROL), scaleF(1.0f), COL_GREEN);
+
+        if (!place.empty()) {
+            // The switch itself: a lit amber dot while the head fires, an
+            // empty ring once it is off - centred on the caps of the place
+            // beside it rather than on the row, which sits a hair higher
+            const float d = dotD;
+            const float dx = M + scaleF(12);
+            const Gdiplus::RectF dot(dx, y + scaleF(14.5f) - d / 2, d, d);
+            if (lit) {
+                Gdiplus::SolidBrush halo(tint(COL_ACCENT, 50));
+                g.FillEllipse(&halo, dot.X - scaleF(2), dot.Y - scaleF(2), d + scaleF(4), d + scaleF(4));
+                Gdiplus::SolidBrush on(COL_ACCENT);
+                g.FillEllipse(&on, dot);
+            } else {
+                Gdiplus::Pen off(COL_TEXT_FAINT, 1.0f);
+                g.DrawEllipse(&off, dot);
+            }
+            Gdiplus::SolidBrush placeBrush(lit ? COL_TEXT : COL_TEXT_FAINT);
+            g.DrawString(place.c_str(), -1, &labelFont, Gdiplus::PointF(dx + d + scaleF(9), y + scaleF(7)), &placeBrush);
+        }
+        const float wordsX = stateRight - stateLines.width;
+        const float nameW = (std::max)(scaleF(40), wordsX - tagW - scaleF(10) - tx);
         g.DrawString(words.c_str(), -1, &rowFont, Gdiplus::RectF(tx, y + scaleF(5), nameW, scaleF(18)), &oneLine,
                      lit ? &textBrush : &faintBrush);
         if (safe) {
@@ -6660,10 +6704,20 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
                                             : state.standing == 2 ? COL_GREEN
                                             : state.standing == 1 ? COL_YELLOW
                                                                   : COL_TEXT_DIM);
-        g.DrawString(state.words.c_str(), -1, &smallFont, Gdiplus::PointF(wordsX, y + scaleF(7)), &stateBrush);
+        if (stateLines.more > 0) {
+            // right-aligned in the room it was broken for
+            Gdiplus::StringFormat lines;
+            lines.SetAlignment(Gdiplus::StringAlignmentFar);
+            lines.SetTrimming(Gdiplus::StringTrimmingNone);
+            g.DrawString(stateLines.text.c_str(), -1, &smallFont,
+                         Gdiplus::RectF(stateRight - stateRoom, y + scaleF(7), stateRoom, scaleF(16) + stateLines.more),
+                         &lines, &stateBrush);
+        } else {
+            g.DrawString(state.words.c_str(), -1, &smallFont, Gdiplus::PointF(wordsX, y + scaleF(7)), &stateBrush);
+        }
 
         if (several) rockHeadHits_.push_back({tab, (int)i});
-        y += rowH + scaleF(4);
+        y += rowHere + scaleF(4);
     }
 
     // The balance under the rows: what reaches the rock at this distance,
@@ -6682,9 +6736,13 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
                           held * 100.0f);
             line += part;
         }
-        g.DrawString(line.c_str(), -1, &smallFont, Gdiplus::RectF(M, y + scaleF(2), w, scaleF(16)), &oneLine,
-                     &faintBrush);
-        y += scaleF(18);
+        // on as many lines as it takes, broken where its parts meet
+        const Fitted balance = fitLines(g, line, smallFont, w);
+        Gdiplus::StringFormat lines;
+        lines.SetTrimming(Gdiplus::StringTrimmingNone);
+        g.DrawString(balance.text.c_str(), -1, &smallFont,
+                     Gdiplus::RectF(M, y + scaleF(2), w, scaleF(16) + balance.more), &lines, &faintBrush);
+        y += scaleF(18) + balance.more;
         // The distance is only said when it is known: it is read off the
         // marker under the rock, not the panel
         if (rock_.distance > 0) {
@@ -6920,9 +6978,6 @@ int MinerGUI::drawRockAdvice(Gdiplus::Graphics& g, int cw, int yPos) {
     float y = (float)yPos;
 
     if (!loadout_.laser) return (int)y;
-    Gdiplus::StringFormat oneLine;
-    oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
-    oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
     Gdiplus::StringFormat right;
     right.SetAlignment(Gdiplus::StringAlignmentFar);
 
@@ -6941,13 +6996,21 @@ int MinerGUI::drawRockAdvice(Gdiplus::Graphics& g, int cw, int yPos) {
     }
     const float tx = tagW > 0 ? inset + tagW + scaleF(10) : inset;
     // With no gadget to name, the card says one thing, and is only as tall
-    // as it takes to say it
+    // as it takes to say it. With one, its line and the note under it go on
+    // to more lines where they are longer than the card is wide - the line
+    // broken where its parts meet, the note where its two halves do
     float boxH = scaleF(64);
+    const float wordsW = w - scaleF(28);
+    Fitted gadgetLine, gadgetNote;
     if (!words.gadget) {
         Gdiplus::RectF said;
         g.MeasureString(words.line.c_str(), -1, &rowFont,
                         Gdiplus::RectF(0, 0, w - (tx - M) - scaleF(14), scaleF(48)), &said);
         boxH = (std::min)(scaleF(64), (std::max)(scaleF(38), said.Height + scaleF(21)));
+    } else {
+        gadgetLine = fitLines(g, words.line, rowFont, wordsW);
+        gadgetNote = fitLines(g, words.note, smallFont, wordsW, L" - ");
+        boxH += gadgetLine.more + gadgetNote.more;
     }
     Gdiplus::RectF box(M, y, w, boxH);
     fillRoundRect(g, box, scaleF(R_CARD), COL_CARD);
@@ -6969,10 +7032,13 @@ int MinerGUI::drawRockAdvice(Gdiplus::Graphics& g, int cw, int yPos) {
     if (words.gadget) {
         g.DrawString(toW(words.gadget->name).c_str(), -1, &nameFont, Gdiplus::PointF(tx, y + scaleF(9)),
                      fittedGadget_ ? &accentBrush : &textBrush);
-        g.DrawString(words.line.c_str(), -1, &rowFont,
-                     Gdiplus::RectF(inset, y + scaleF(30), w - scaleF(28), scaleF(16)), &oneLine, &dimBrush);
-        g.DrawString(words.note.c_str(), -1, &smallFont,
-                     Gdiplus::RectF(inset, y + scaleF(45), w - scaleF(28), scaleF(14)), &oneLine, &faintBrush);
+        Gdiplus::StringFormat lines;
+        lines.SetTrimming(Gdiplus::StringTrimmingNone);
+        g.DrawString(gadgetLine.text.c_str(), -1, &rowFont,
+                     Gdiplus::RectF(inset, y + scaleF(30), wordsW, scaleF(16) + gadgetLine.more), &lines, &dimBrush);
+        g.DrawString(gadgetNote.text.c_str(), -1, &smallFont,
+                     Gdiplus::RectF(inset, y + scaleF(45) + gadgetLine.more, wordsW, scaleF(16) + gadgetNote.more),
+                     &lines, &faintBrush);
     } else {
         // no gadget helps: say what does
         Gdiplus::StringFormat wrap;
@@ -7532,8 +7598,10 @@ int MinerGUI::drawLocationCard(Gdiplus::Graphics& g, int cw, int yPos, int ch) {
         const float textX = left + scaleF(8);
         g.DrawString(w.name.c_str(), -1, &rowFont, Gdiplus::PointF(textX, y + scaleF(4)), nameBrush);
         if (w.twoLines) {
+            // (a box taller than the line it adds: the descenders of
+            // "lagrange" hang below it, and the groove lies lower still)
             g.DrawString(w.sub.c_str(), -1, &subFont,
-                         Gdiplus::RectF(textX, y + scaleF(20), rowW - scaleF(16), lineH), &trimmed,
+                         Gdiplus::RectF(textX, y + scaleF(20), rowW - scaleF(16), scaleF(15)), &trimmed,
                          dimmed ? &faintBrush : &dimBrush);
         } else {
             Gdiplus::RectF measured;
