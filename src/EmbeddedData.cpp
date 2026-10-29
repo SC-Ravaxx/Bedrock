@@ -53,6 +53,7 @@ BEDROCK_BLOB(bedrock_blob_selftest_golem, BEDROCK_TESTS_DIR "/scanpanel/panel_go
 BEDROCK_BLOB(bedrock_blob_selftest_loadout, BEDROCK_TESTS_DIR "/scanpanel/loadout_prospector_1440.jpg")
 BEDROCK_BLOB(bedrock_blob_selftest_gauge_prospector, BEDROCK_TESTS_DIR "/scanpanel/gauge_prospector_27.png")
 BEDROCK_BLOB(bedrock_blob_selftest_gauge_prospector_43, BEDROCK_TESTS_DIR "/scanpanel/gauge_prospector_43.png")
+BEDROCK_BLOB(bedrock_blob_selftest_gauge_turret, BEDROCK_TESTS_DIR "/scanpanel/gauge_turret_16.png")
 BEDROCK_BLOB(bedrock_blob_selftest_marker_lamp, BEDROCK_TESTS_DIR "/lamp_marker_3170.png")
 BEDROCK_BLOB(bedrock_blob_selftest_marker_mfd, BEDROCK_TESTS_DIR "/mfd_marker_15420.png")
 BEDROCK_BLOB(bedrock_blob_selftest_marker_canopy, BEDROCK_TESTS_DIR "/canopy_marker_60000.png")
@@ -101,6 +102,7 @@ bool embeddedResource(const std::string& name, const unsigned char** data, size_
          bedrock_blob_selftest_gauge_prospector_end},
         {"SELFTEST_GAUGE_PROSPECTOR_43", bedrock_blob_selftest_gauge_prospector_43_start,
          bedrock_blob_selftest_gauge_prospector_43_end},
+        {"SELFTEST_GAUGE_TURRET", bedrock_blob_selftest_gauge_turret_start, bedrock_blob_selftest_gauge_turret_end},
         {"SELFTEST_MARKER_LAMP", bedrock_blob_selftest_marker_lamp_start, bedrock_blob_selftest_marker_lamp_end},
         {"SELFTEST_MARKER_MFD", bedrock_blob_selftest_marker_mfd_start, bedrock_blob_selftest_marker_mfd_end},
         {"SELFTEST_MARKER_CANOPY", bedrock_blob_selftest_marker_canopy_start, bedrock_blob_selftest_marker_canopy_end},

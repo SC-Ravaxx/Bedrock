@@ -4418,6 +4418,36 @@ int runSelfTest() {
                                        look.note + ")");
             }
         }
+        // ...and a MOLE turret seat's, whose figure runs down a near straight
+        // line: a red 16 m on rock, the labels at 3436,602 at size 1.468
+        {
+            const cv::Mat gauge = testPicture("scanpanel/gauge_turret_16.png", L"SELFTEST_GAUGE_TURRET");
+            allPassed &= check(!gauge.empty(), "the MOLE turret's LASER RANGE picture is beside the build or inside "
+                                               "the exe");
+            if (!gauge.empty()) {
+                cv::Mat screen(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+                gauge.copyTo(screen(cv::Rect(2180, 488, gauge.cols, gauge.rows)));
+                SCMiner::ScanPanel panel;
+                panel.labels = cv::Point(3436, 602);
+                panel.labelScale = 1.468;
+                panel.labelGlyph = 'T';
+                const SCMiner::LaserRangeLook look = SCMiner::readLaserRange(screen, panel);
+                // the labels 30 units lower put 16 m some 27 units along the
+                // line off its place
+                SCMiner::ScanPanel lower = panel;
+                lower.labels.y += 44;
+                const SCMiner::LaserRangeLook astray = SCMiner::readLaserRange(screen, lower);
+                // ...and the Prospector's gauge is elsewhere
+                SCMiner::ScanPanel prospector = panel;
+                prospector.labelGlyph = 'L';
+                const SCMiner::LaserRangeLook other = SCMiner::readLaserRange(screen, prospector);
+                allPassed &= check(look.metres == 16 && astray.metres == 0 && other.metres == 0,
+                                   "...a MOLE turret's red 16 m reads 16, and nothing 30 units off its place or "
+                                   "beside a Prospector's labels (got " +
+                                       std::to_string(look.metres) + ", " + std::to_string(astray.metres) + ", " +
+                                       std::to_string(other.metres) + ": " + look.note + ")");
+            }
+        }
 
         // The shape reader, on a captured panel put back where it was on a
         // 5120 x 1440 screen: the labels found as a picture, the figures read

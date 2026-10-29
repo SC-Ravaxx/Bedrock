@@ -59,8 +59,23 @@ double prospectorOffTrack(const cv::Point2d& p, int metres) {
     return off;
 }
 
+// The MOLE's turret seats: here the arc runs near straight, from 830 units
+// left of the labels and 91 above them at 3 m down to 879 left and 15 below
+// at 100 m, and the square root of the metres grows evenly along it, 0.0707
+// a unit (87 figures read by eye over six sessions, 2.9 units rms along
+// it). The distance is in units along that line.
+double turretOffTrack(const cv::Point2d& p, int metres) {
+    const double dx = p.x + 854.0, dy = p.y + 39.0;
+    const double along = -0.4223 * dx + 0.9065 * dy;
+    const double across = -0.9065 * dx - 0.4223 * dy;
+    if (std::abs(across) > 20.0) return 1e9;
+    const double expected = (std::sqrt((double)metres) - 5.79397) / 0.070667;
+    return std::abs(along - expected);
+}
+
 const GaugeHud HUDS[] = {
     {"prospector", "LM", cv::Rect2d(-910, -170, 125, 155), 8.5, 0.0, 56.0, prospectorOffTrack, 5.0},
+    {"turret", "TW", cv::Rect2d(-905, -120, 115, 170), 7.0, 10.0, 46.0, turretOffTrack, 10.0},
 };
 
 const GaugeHud* hudOf(char glyph) {
@@ -272,7 +287,8 @@ Numeral numeralAt(const cv::Mat& strip, int i, double firstX) {
 // A numeral reads when it is this like its picture and this far ahead of
 // the next likeliest; the figure ends at a cell that is like none of them or
 // holds little ink against the first. Anything between is a numeral not sure
-// which - and a figure with one of those in it is not read at all.
+// which: in the first cell nothing is read, after it the figure read so far
+// stands only where the triangle's place rules out a longer one.
 constexpr double LIKE_ENOUGH = 0.80;
 constexpr double LEAD_ENOUGH = 0.06;
 constexpr double LIKE_NONE = 0.60;
@@ -380,12 +396,14 @@ LaserRangeLook readLaserRange(const cv::Mat& frame, const ScanPanel& panel) {
         for (int i = 0; i < 3; i++) numerals[i] = numeralAt(strip, i, hud->firstX);
         std::string text;
         bool unsure = false;
+        int unsureAt = -1;
         double least = 1, lead = 1;
         for (int i = 0; i < 3; i++) {
             const Numeral& u = numerals[i];
             if (i > 0 && (u.likeness < LIKE_NONE || u.mass < MASS_NONE * numerals[0].mass)) break;
             if (u.likeness < LIKE_ENOUGH || u.lead < LEAD_ENOUGH) {
                 unsure = true;
+                unsureAt = i;
                 break;
             }
             text += (char)('0' + u.digit);
@@ -398,9 +416,20 @@ LaserRangeLook readLaserRange(const cv::Mat& frame, const ScanPanel& panel) {
                       numerals[1].digit, numerals[1].likeness, numerals[1].lead, numerals[2].digit, numerals[2].likeness,
                       numerals[2].lead);
         tried += trace;
-        if (unsure || text.empty() || text[0] == '0') continue;
+        if (text.empty() || text[0] == '0') continue;
         const int metres = std::atoi(text.c_str());
         const cv::Point2d fromLabels((c.centre.x - panel.labels.x) / s, (c.centre.y - panel.labels.y) / s);
+        // A cell after sure numerals that may or may not hold one: the
+        // figure as read so far stands when the triangle is where it belongs
+        // and nowhere near where any longer one - ten times the metres and
+        // more - would be
+        if (unsure && unsureAt > 0) {
+            bool longer = false;
+            for (int d = 0; d <= 9 && !longer; d++)
+                longer = hud->offTrack(fromLabels, metres * 10 + d) <= 2 * hud->tolerance;
+            if (longer) continue;
+            tried += " short";
+        }
         const double off = hud->offTrack(fromLabels, metres);
         if (off > hud->tolerance) {
             char why[64];
