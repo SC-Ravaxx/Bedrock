@@ -76,6 +76,12 @@ local function live(m)
   return m.trade and not m.ended and m.seen == S.session
 end
 
+-- What was handed in for one does not stay: logging out loses it, whatever
+-- the contract, so a part counts as handed in only in the session it went in
+local function handedNow(p)
+  return p.handed ~= nil and p.handed >= S.session
+end
+
 -- the missions of a trade that are accepted and not over
 local function running(t)
   local list = {}
@@ -137,8 +143,14 @@ local function recent(line, old)
   return at ~= nil and bedrock.now() - at < 10 * 60 * 1000
 end
 
+-- The session the lines coming in are of. The older logs come oldest first,
+-- all of them again when the plugin is new: a line of theirs is of its own
+-- session, not of the latest.
+local reading = S.session
+
 bedrock.watch("Log started on", function(line, old)
   local at = bedrock.time(line)
+  if at then reading = at end
   if at and at > S.session then
     S.session = at
     save()
@@ -156,7 +168,7 @@ bedrock.watch("Contract Accepted:", function(line, old)
   if t and not m.trade then m.trade = t.id end
   m.title = m.title or (t and t.title) or plainTitle(text)
   m.accepted = m.accepted or bedrock.time(line)
-  m.seen = S.session
+  m.seen = math.max(m.seen or 0, reading)
   save()
 end, true)
 
@@ -164,11 +176,11 @@ bedrock.watch("generator name [TheCollector]", function(line, old)
   local id, contract = line:match("missionId %[([%x%-]+)%], generator name %[TheCollector%], contract %[([^%]]+)%]")
   if not id or not byId[contract] then return end
   local m = mission(id)
-  if m.trade ~= contract or m.seen ~= S.session then
+  if m.trade ~= contract or (m.seen or 0) < reading then
     m.trade = contract
     m.title = byId[contract].title
     m.accepted = m.accepted or bedrock.time(line)
-    m.seen = S.session
+    m.seen = math.max(m.seen or 0, reading)
     save()
   end
 end, true)
@@ -190,7 +202,8 @@ bedrock.watch("<ObjectiveUpserted>", function(line, old)
   local m = id and S.missions[id]
   if not m or state ~= "MISSION_OBJECTIVE_STATE_COMPLETED" then return end
   local p = m.parts[objective] or {}
-  if not p.handed then
+  -- ...or again, where it went in during a session before and was lost with it
+  if not p.handed or p.handed < reading then
     p.handed = bedrock.time(line) or bedrock.now()
     m.parts[objective] = p
     save()
@@ -277,7 +290,7 @@ local function tradeCard(ui, t)
   local handed = {}
   for _, m in ipairs(live) do
     for _, p in pairs(m.parts) do
-      if p.handed and p.name then handed[p.name] = true end
+      if handedNow(p) and p.name then handed[p.name] = true end
     end
   end
   ui.text("NEEDS", "dim")
@@ -302,7 +315,7 @@ local function tradeCard(ui, t)
     local all, done = 0, 0
     for _, p in pairs(m.parts) do
       all = all + 1
-      if p.handed then done = done + 1 end
+      if handedNow(p) then done = done + 1 end
     end
     ui.gap()
     ui.text("ACCEPTED IN GAME - " .. (m.accepted and bedrock.date(m.accepted) or "Date not in log") ..
@@ -419,7 +432,7 @@ local function logTab(ui)
     local all, done = 0, 0
     for _, p in pairs(m.parts) do
       all = all + 1
-      if p.handed then done = done + 1 end
+      if handedNow(p) then done = done + 1 end
     end
     local key = "m:" .. (m.accepted or 0) .. ":" .. m.trade
     if ui.card(key, m.title or m.trade, {
@@ -430,8 +443,8 @@ local function logTab(ui)
       table.sort(names, function(a, b) return a[1] < b[1] end)
       for _, e in ipairs(names) do
         local p = e[2]
-        ui.row((p.need or 1) .. " " .. (p.name or "?"), p.handed and "HANDED IN" or ("have " .. have(p.name or "")),
-          p.handed and "good" or nil)
+        ui.row((p.need or 1) .. " " .. (p.name or "?"), handedNow(p) and "HANDED IN" or ("have " .. have(p.name or "")),
+          handedNow(p) and "good" or nil)
       end
       ui.close()
     end
