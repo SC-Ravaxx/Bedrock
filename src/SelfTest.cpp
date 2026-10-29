@@ -4394,6 +4394,30 @@ int runSelfTest() {
                                        std::to_string(astray.metres) + ", " + std::to_string(pilot.metres) + ")");
             }
         }
+        // ...and the current patch's HUD: a red 43 m on blue space - where
+        // the most coloured pixels are the ground's - 21 units further left
+        // of the labels, here at 3108,696 at size 1.003
+        {
+            const cv::Mat gauge = testPicture("scanpanel/gauge_prospector_43.png", L"SELFTEST_GAUGE_PROSPECTOR_43");
+            allPassed &= check(!gauge.empty(), "the current Prospector HUD's LASER RANGE picture is beside the build or "
+                                               "inside the exe");
+            if (!gauge.empty()) {
+                cv::Mat screen(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+                gauge.copyTo(screen(cv::Rect(2215, 584, gauge.cols, gauge.rows)));
+                SCMiner::ScanPanel panel;
+                panel.labels = cv::Point(3108, 696);
+                panel.labelScale = 1.003;
+                panel.labelGlyph = 'L';
+                const SCMiner::LaserRangeLook look = SCMiner::readLaserRange(screen, panel);
+                SCMiner::ScanPanel lower = panel;
+                lower.labels.y += 30;
+                const SCMiner::LaserRangeLook astray = SCMiner::readLaserRange(screen, lower);
+                allPassed &= check(look.metres == 43 && astray.metres == 0,
+                                   "...its red 43 m on blue reads 43, and nothing 30 units off its place (got " +
+                                       std::to_string(look.metres) + ", " + std::to_string(astray.metres) + ": " +
+                                       look.note + ")");
+            }
+        }
 
         // The shape reader, on a captured panel put back where it was on a
         // 5120 x 1440 screen: the labels found as a picture, the figures read

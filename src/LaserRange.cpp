@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <initializer_list>
 #include <vector>
 
 namespace SCMiner {
@@ -43,15 +44,23 @@ struct GaugeHud {
 // left of the labels and 38.4 above them, 143.2 across - fitted against the
 // MAX mark in September, with a Helix I - and the square root of the metres
 // grows with the angle: 4 m at -130.7 degrees, 45 m at -161.5, 82 m at
-// -176.8 (68 figures read by eye, 1.0 degrees rms from the labels' place).
+// -176.8, 113 m past -180 (68 figures read by eye, 1.0 degrees rms from the
+// labels' place). The current patch's HUD, whose panel writes RESISTANCE:
+// and INSTABILITY: out, puts the same circle 21 units further left of the
+// labels (71 figures from 19 to 115 m off recordings of 29.10.2026, 1.5
+// degrees rms): either place will do.
 double prospectorOffTrack(const cv::Point2d& p, int metres) {
-    const double angle = std::atan2(p.y + 38.4, p.x + 717.7) * 180.0 / PI;
     const double expected = (-17.9876 - std::sqrt((double)metres)) / 0.15297;
-    return std::abs(angle - expected);
+    double off = 1e9;
+    for (const double centreX : {-717.7, -738.7}) {
+        const double angle = std::atan2(p.y + 38.4, p.x - centreX) * 180.0 / PI;
+        off = std::min(off, std::abs(std::remainder(angle - expected, 360.0)));
+    }
+    return off;
 }
 
 const GaugeHud HUDS[] = {
-    {"prospector", "LM", cv::Rect2d(-880, -170, 95, 155), 8.5, 0.0, 56.0, prospectorOffTrack, 5.0},
+    {"prospector", "LM", cv::Rect2d(-910, -170, 125, 155), 8.5, 0.0, 56.0, prospectorOffTrack, 5.0},
 };
 
 const GaugeHud* hudOf(char glyph) {
@@ -65,17 +74,24 @@ const GaugeHud* hudOf(char glyph) {
 }
 
 // The digits' pictures, each with its mean taken off and its length, for
-// the likeness below.
+// the likeness below - and the soft ones where there are.
 struct DigitPictures {
     cv::Mat centred[10];
     double norm[10];
+    cv::Mat soft[10];  // empty where the numeral has none
+    double softNorm[10] = {};
     DigitPictures() {
-        for (int d = 0; d < 10; d++) {
+        const auto take = [](const float* values, cv::Mat& centred, double& norm) {
             cv::Mat m(GAUGE_DIGIT_H, GAUGE_DIGIT_W, CV_32F);
-            std::copy(GAUGE_DIGITS[d], GAUGE_DIGITS[d] + GAUGE_DIGIT_W * GAUGE_DIGIT_H, m.ptr<float>(0));
+            std::copy(values, values + GAUGE_DIGIT_W * GAUGE_DIGIT_H, m.ptr<float>(0));
             const double mean = cv::mean(m)[0];
-            centred[d] = m - mean;
-            norm[d] = std::sqrt(centred[d].dot(centred[d]));
+            centred = m - mean;
+            norm = std::sqrt(centred.dot(centred));
+        };
+        for (int d = 0; d < 10; d++) take(GAUGE_DIGITS[d], centred[d], norm[d]);
+        for (int i = 0; GAUGE_SOFT_NUMERALS[i]; i++) {
+            const int d = GAUGE_SOFT_NUMERALS[i] - '0';
+            take(GAUGE_SOFT_DIGITS[i], soft[d], softNorm[d]);
         }
     }
 };
@@ -94,9 +110,11 @@ double median(std::vector<float>& v) {
 
 // How much each pixel is the figure's colour rather than the ground's, 0 to
 // 255: the ground is the median colour right of the triangle, the figure's
-// the median of the most coloured pixels there. The figures are green,
-// yellow, orange or red; the rock behind them grey, or red where its own
-// colour is weaker than theirs.
+// the median of the pixels whose hue stands furthest from the ground's. The
+// figures are green, yellow, orange or red; the rock behind them grey, or
+// red where its own colour is weaker than theirs, and space blue - bluer
+// than a red figure is red, so the most coloured pixels there are the
+// ground's own.
 cv::Mat inkAbout(const cv::Mat& frame, const cv::Point2d& centre, double s, cv::Point& corner) {
     const cv::Rect want((int)std::floor(centre.x - 6 * s), (int)std::floor(centre.y - 14 * s), (int)std::ceil(40 * s),
                         (int)std::ceil(48 * s));
@@ -105,36 +123,44 @@ cv::Mat inkAbout(const cv::Mat& frame, const cv::Point2d& centre, double s, cv::
     if (box.width < 8 || box.height < 8) return cv::Mat();
     const cv::Mat bgr = frame(box);
     const int from = std::max(0, (int)std::lround(centre.x + 4 * s) - box.x);
-    std::vector<float> b, g, r, chroma;
+    std::vector<float> b, g, r;
     const size_t n = (size_t)(box.width - std::min(from, box.width)) * box.height;
     b.reserve(n);
     g.reserve(n);
     r.reserve(n);
-    chroma.reserve(n);
     for (int y = 0; y < bgr.rows; y++) {
         const cv::Vec3b* px = bgr.ptr<cv::Vec3b>(y);
         for (int x = from; x < bgr.cols; x++) {
             b.push_back(px[x][0]);
             g.push_back(px[x][1]);
             r.push_back(px[x][2]);
-            chroma.push_back((float)(std::max({px[x][0], px[x][1], px[x][2]}) - std::min({px[x][0], px[x][1], px[x][2]})));
         }
     }
-    if (chroma.size() < 20) return cv::Mat();
-    // the most coloured pixels: from the 94th percentile of the chroma on
-    std::vector<float> sorted = chroma;
+    if (b.size() < 20) return cv::Mat();
+    // (median() reorders what it is given, and b, g and r must stay in step)
+    std::vector<float> mb = b, mg = g, mr = r;
+    const double ground[3] = {median(mb), median(mg), median(mr)};
+    // hue without lightness: red against green, yellow against blue - each
+    // pixel's distance from the ground's, and the pixels from the 94th
+    // percentile of that on
+    const double groundRg = ground[2] - ground[1], groundYb = (ground[2] + ground[1]) / 2 - ground[0];
+    std::vector<float> apart(b.size());
+    for (size_t i = 0; i < b.size(); i++) {
+        const double rg = r[i] - g[i] - groundRg, yb = (r[i] + g[i]) / 2 - b[i] - groundYb;
+        apart[i] = (float)std::sqrt(rg * rg + yb * yb);
+    }
+    std::vector<float> sorted = apart;
     const size_t at = (size_t)(0.94 * (double)(sorted.size() - 1));
     std::nth_element(sorted.begin(), sorted.begin() + at, sorted.end());
     const float cut = sorted[at];
     std::vector<float> cb, cg, cr;
-    for (size_t i = 0; i < chroma.size(); i++) {
-        if (chroma[i] >= cut) {
+    for (size_t i = 0; i < apart.size(); i++) {
+        if (apart[i] >= cut) {
             cb.push_back(b[i]);
             cg.push_back(g[i]);
             cr.push_back(r[i]);
         }
     }
-    const double ground[3] = {median(b), median(g), median(r)};
     const double ink[3] = {median(cb), median(cg), median(cr)};
     const double span = std::max(1.0, std::sqrt((ink[0] - ground[0]) * (ink[0] - ground[0]) +
                                                 (ink[1] - ground[1]) * (ink[1] - ground[1]) +
@@ -195,6 +221,11 @@ struct Numeral {
     double mass = 0;        // the cell's mean ink
 };
 
+// A soft picture is like any blob of its size, so it counts for this much
+// less than a sharp one: enough that a filled 6 or 0 on grey rock does not
+// read as a soft 4, not so much that a red 43 on blue goes unread.
+constexpr double SOFT_PENALTY = 0.08;
+
 // The numeral in cell i of the upright strip, its place searched a unit
 // and a bit either way.
 Numeral numeralAt(const cv::Mat& strip, int i, double firstX) {
@@ -218,6 +249,9 @@ Numeral numeralAt(const cv::Mat& strip, int i, double firstX) {
             for (int d = 0; d < 10; d++) {
                 const double v = centred.dot(pictures.centred[d]) / (norm * pictures.norm[d]);
                 if (v > best[d]) best[d] = v;
+                if (pictures.soft[d].empty()) continue;
+                const double w = centred.dot(pictures.soft[d]) / (norm * pictures.softNorm[d]) - SOFT_PENALTY;
+                if (w > best[d]) best[d] = w;
             }
         }
     }
@@ -297,6 +331,9 @@ LaserRangeLook readLaserRange(const cv::Mat& frame, const ScanPanel& panel) {
         const int area = stats.at<int>(i, cv::CC_STAT_AREA);
         const double units = area / (s * s);
         if (units < 14 || units > 55 || w > 13 * s || h > 13 * s || w < 3 || h < 3) continue;
+        // about as wide as high, turned as it may be: a bracket or a 1 of a
+        // marker's text nearby is under two-thirds
+        if (w < 0.7 * h) continue;
         const double fill = (double)area / (w * h);
         if (fill < 0.40 || fill > 0.85) continue;
         // brighter than a ring two pixels round it
