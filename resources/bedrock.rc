@@ -19,6 +19,7 @@ SELFTEST_TURRET_VOLUME RCDATA "../tests/scanpanel/panel_turret_copper.png"
 SELFTEST_TURRET_MILLI RCDATA "../tests/scanpanel/panel_turret_milli.png"
 SELFTEST_GOLEM RCDATA "../tests/scanpanel/panel_golem_long_1440.png"
 SELFTEST_LOADOUT RCDATA "../tests/scanpanel/loadout_prospector_1440.jpg"
+SELFTEST_GAUGE_PROSPECTOR RCDATA "../tests/scanpanel/gauge_prospector_27.png"
 // ...and the three signature markers it reads: in a hand-out's folder they
 // are what checks the templates the exe carries rather than a ./glyphs folder
 SELFTEST_MARKER_LAMP RCDATA "../tests/lamp_marker_3170.png"

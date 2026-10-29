@@ -231,6 +231,7 @@ set(CORE_SOURCES
     src/GamePlaces.cpp
     src/ScanPanel.cpp
     src/LoadoutReader.cpp
+    src/LaserRange.cpp
     src/RockContents.cpp
     src/RefineryTerminal.cpp
     src/RefineryOrders.cpp
@@ -294,6 +295,8 @@ set(HEADERS
     include/GameTexts.h
     include/GameTextMarks.h
     include/LoadoutReader.h
+    include/LaserRange.h
+    include/GaugeDigits.h
     include/RockContents.h
     include/RefineryTerminal.h
     include/RefineryOrders.h

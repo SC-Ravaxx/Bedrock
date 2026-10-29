@@ -4166,6 +4166,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     bool scanPanelLive = false;
     std::string panelBenchDir, panelBenchOut;
     int panelBenchShard = 0, panelBenchShards = 1;
+    std::string gaugeBenchDir, gaugeBenchPrefix, gaugeBenchOut;
     std::vector<std::string> panelGlyphArgs;
     std::string updateCheckUrl;
     bool updateCheckAsked = false;
@@ -4595,6 +4596,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 i += 2;
             }
         }
+        else if (arg == "--gaugebench" && i + 3 < __argc) {
+            // --gaugebench <folder> <prefix> <out.csv>: the LASER RANGE gauge
+            // on every frame whose name starts with <prefix>
+            gaugeBenchDir = __argv[i + 1];
+            gaugeBenchPrefix = __argv[i + 2];
+            gaugeBenchOut = __argv[i + 3];
+            i += 3;
+        }
         else if (arg == "--scanpanel") {
             // With files: those. Without: whatever is on the screen right now,
             // which is the only way to measure the search against the HUD the
@@ -4762,6 +4771,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     if (!panelBenchDir.empty()) {
         setupConsole(true);
         return runPanelBench(panelBenchDir, panelBenchOut, panelBenchShard, panelBenchShards);
+    }
+#endif  // BEDROCK_DEV_TOOLS
+
+#ifdef BEDROCK_DEV_TOOLS
+    if (!gaugeBenchDir.empty()) {
+        setupConsole(true);
+        return runGaugeBench(gaugeBenchDir, gaugeBenchPrefix, gaugeBenchOut);
     }
 #endif  // BEDROCK_DEV_TOOLS
 

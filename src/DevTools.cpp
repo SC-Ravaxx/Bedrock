@@ -4,6 +4,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include "DevTools.h"
 #include "DevSwitch.h"
+#include "LaserRange.h"
 #include "GlyphReader.h"
 #include "OCREngine.h"
 #include "ScanPanel.h"
@@ -143,6 +144,62 @@ int runPanelBench(const std::string& dir, const std::string& outCsv, int shard, 
         if (++done % 25 == 0) std::cout << done << " read" << std::endl;
     }
     std::cout << done << " frames into " << outCsv << std::endl;
+    return 0;
+}
+
+int runGaugeBench(const std::string& dir, const std::string& prefix, const std::string& outCsv) {
+    std::vector<std::string> files;
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+        if (!entry.is_regular_file()) continue;
+        const std::string name = entry.path().filename().string();
+        std::string ext = entry.path().extension().string();
+        for (char& c : ext) c = (char)std::tolower((unsigned char)c);
+        if ((ext == ".jpg" || ext == ".png") && name.rfind(prefix, 0) == 0) files.push_back(entry.path().string());
+    }
+    std::sort(files.begin(), files.end());
+    SCMiner::GlyphReader glyphs;
+    glyphs.loadTemplates("./glyphs");
+    SCMiner::OCREngine ocr;
+    SCMiner::OCRConfig cfg;
+    if (!ocr.initialize(cfg)) std::cout << "no tessdata - reading by the shapes alone" << std::endl;
+    SCMiner::throttlePanelSearch(true);
+    std::ofstream out(outCsv, std::ios::trunc);
+    if (!out.is_open()) {
+        std::cout << "cannot write " << outCsv << std::endl;
+        return 1;
+    }
+    out << "file,found,labels_x,labels_y,scale,glyph,metres,pointer_x,pointer_y,tilt,least,lead,panel_ms,gauge_ms,note"
+        << std::endl;
+    int done = 0, read = 0;
+    double gaugeMs = 0;
+    for (const std::string& file : files) {
+        const cv::Mat frame = cv::imread(file, cv::IMREAD_COLOR);
+        if (frame.empty()) continue;
+        const auto t0 = std::chrono::steady_clock::now();
+        const SCMiner::ScanPanel p = SCMiner::readScanPanel(frame, ocr, &glyphs, panelLines());
+        const auto t1 = std::chrono::steady_clock::now();
+        const SCMiner::LaserRangeLook g = SCMiner::readLaserRange(frame, p);
+        const auto t2 = std::chrono::steady_clock::now();
+        const double pms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+        const double gms = std::chrono::duration<double, std::milli>(t2 - t1).count();
+        std::string note = g.note;
+        for (char& c : note) {
+            if (c == '"') c = '\'';
+        }
+        char line[256];
+        std::snprintf(line, sizeof(line), "%s,%d,%d,%d,%.3f,%c,%d,%.1f,%.1f,%.0f,%.2f,%.2f,%.1f,%.2f,",
+                      std::filesystem::path(file).filename().string().c_str(), p.found ? 1 : 0, p.labels.x, p.labels.y,
+                      p.labelScale, p.labelGlyph ? p.labelGlyph : '-', g.metres, g.pointer.x, g.pointer.y, g.tilt, g.least,
+                      g.lead, pms, gms);
+        out << line << '"' << note << '"' << std::endl;
+        done++;
+        if (g.metres > 0) read++;
+        gaugeMs += gms;
+        if (done % 50 == 0) std::cout << done << " frames, " << read << " read" << std::endl;
+    }
+    std::cout << done << " frames, " << read << " gauges read, " << (done ? gaugeMs / done : 0.0)
+              << " ms a gauge look, into " << outCsv << std::endl;
     return 0;
 }
 

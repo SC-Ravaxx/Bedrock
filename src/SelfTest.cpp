@@ -18,6 +18,7 @@
 #include "GamePlaces.h"
 #include "GameTextMarks.h"
 #include "GameTexts.h"
+#include "LaserRange.h"
 #include "LoadoutReader.h"
 #include "MiningHardware.h"
 #include "P4kReader.h"
@@ -4352,6 +4353,45 @@ int runSelfTest() {
                 allPassed &= check(seen.complete() && seen.laser && std::string(seen.laser->name) == "Helix I Mining Laser" &&
                                        names == std::vector<std::string>{"Focus III Module", "Rieger-C3 Module"},
                                    "...and a Prospector's HUD reads as Helix I with Focus III and Rieger-C3 (got " + got + ")");
+            }
+        }
+
+        // The LASER RANGE gauge: the figure beside its white triangle, read
+        // numeral by numeral, the gauge placed from the scan panel's labels.
+        // A cut of the Prospector's at 27 m, put back where it was on a
+        // 5120 x 1440 screen with the labels at 3096,699 at size 1.001.
+        {
+            const cv::Mat gauge = testPicture("scanpanel/gauge_prospector_27.png", L"SELFTEST_GAUGE_PROSPECTOR");
+            allPassed &= check(!gauge.empty(), "the Prospector's LASER RANGE picture is beside the build or inside the exe");
+            if (!gauge.empty()) {
+                const cv::Rect at(2236, 568, gauge.cols, gauge.rows);
+                cv::Mat screen(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+                gauge.copyTo(screen(at));
+                SCMiner::ScanPanel panel;
+                panel.labels = cv::Point(3096, 699);
+                panel.labelScale = 1.001;
+                panel.labelGlyph = 'L';
+                const SCMiner::LaserRangeLook look = SCMiner::readLaserRange(screen, panel);
+                allPassed &= check(look.metres == 27, "the Prospector's LASER RANGE gauge reads 27 m (got " +
+                                                          std::to_string(look.metres) + ": " + look.note + ")");
+                // the triangle without its figure is no reading
+                cv::Mat bare(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+                gauge.colRange(0, 22).copyTo(bare(cv::Rect(at.x, at.y, 22, at.height)));
+                const SCMiner::LaserRangeLook none = SCMiner::readLaserRange(bare, panel);
+                // ...nor a figure that stands where another one belongs: the
+                // labels 30 units lower put 27 m some ten degrees off its place
+                SCMiner::ScanPanel lower = panel;
+                lower.labels.y += 30;
+                const SCMiner::LaserRangeLook astray = SCMiner::readLaserRange(screen, lower);
+                // ...nor a HUD whose gauge is not known: the MOLE's pilot seat
+                // has no laser
+                SCMiner::ScanPanel seat = panel;
+                seat.labelGlyph = 'K';
+                const SCMiner::LaserRangeLook pilot = SCMiner::readLaserRange(screen, seat);
+                allPassed &= check(none.metres == 0 && astray.metres == 0 && pilot.metres == 0,
+                                   "...and nothing for the triangle alone, for 27 m off its place, or beside the MOLE "
+                                   "pilot's labels (got " + std::to_string(none.metres) + ", " +
+                                       std::to_string(astray.metres) + ", " + std::to_string(pilot.metres) + ")");
             }
         }
 

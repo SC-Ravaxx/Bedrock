@@ -27,6 +27,12 @@ SCMiner::TextLineReader* panelLines();
 // through readScanPanel, one CSV row each
 int runPanelBench(const std::string& dir, const std::string& outCsv, int shard, int shards);
 
+// The LASER RANGE gauge read on every frame of a folder whose name starts
+// with <prefix> (all with an empty one), the panel read first the way the
+// app reads it - its labels place the gauge. One line a frame: the panel's
+// labels, what the gauge read and how sure, and what each cost.
+int runGaugeBench(const std::string& dir, const std::string& prefix, const std::string& outCsv);
+
 // --pipeline <files...>: locate and read the signature marker in each saved
 // frame the way the live scan does, one line each
 int runPipelineOnFiles(const std::vector<std::string>& files);

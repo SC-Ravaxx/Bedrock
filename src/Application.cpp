@@ -2,6 +2,7 @@
 #include "DevSwitch.h"
 #include "ScanPanel.h"
 #include "LoadoutReader.h"
+#include "LaserRange.h"
 #include "MiningHardware.h"
 #include "GamePlaces.h"
 #include <cctype>
@@ -1302,18 +1303,26 @@ bool Application::rockViewWanted() {
 // Local time to the millisecond, because a video's file name says when it
 // started and nothing finer. Written only while a panel is on screen, so
 // flying about with nothing scanned writes nothing.
-void Application::logRockReading(const ScanPanel& panel, const RockStats* steady) {
+void Application::logRockReading(const ScanPanel& panel, const RockStats* steady, int rangeMetres) {
     std::error_code ec;
     std::filesystem::create_directories(dataPath("debug"), ec);
     const std::string path = dataPath("debug") + "/rock_readings.csv";
+    const char* HEADER = "time,figures,ore,mass,res,res_printed,inst,scu,"
+                         "steady_mass,steady_res,steady_res_printed,steady_inst,steady_scu,"
+                         "range_m,steady_range_m,box_x,box_y,box_w,box_h,note";
+    // a log with other columns in it starts over
+    if (std::filesystem::exists(path, ec)) {
+        std::ifstream in(path);
+        std::string first;
+        std::getline(in, first);
+        in.close();
+        while (!first.empty() && (first.back() == '\r' || first.back() == '\n')) first.pop_back();
+        if (first != HEADER) std::filesystem::rename(path, dataPath("debug") + "/rock_readings.old.csv", ec);
+    }
     const bool fresh = !std::filesystem::exists(path, ec);
     std::ofstream out(path, std::ios::app);
     if (!out.is_open()) return;
-    if (fresh) {
-        out << "time,figures,ore,mass,res,res_printed,inst,scu,"
-               "steady_mass,steady_res,steady_res_printed,steady_inst,steady_scu,"
-               "box_x,box_y,box_w,box_h,note" << std::endl;
-    }
+    if (fresh) out << HEADER << std::endl;
 
     const auto now = std::chrono::system_clock::now();
     const std::time_t secs = std::chrono::system_clock::to_time_t(now);
@@ -1350,19 +1359,42 @@ void Application::logRockReading(const ScanPanel& panel, const RockStats* steady
     } else {
         out << ",,,,,";
     }
+    out << rangeMetres << "," << (steady ? std::to_string((int)std::lround(steady->distance)) : std::string()) << ",";
     out << panel.box.x << "," << panel.box.y << "," << panel.box.width << ","
         << panel.box.height << "," << quoted(panel.note) << std::endl;
+}
+
+// The middle of the gauge's recent readings: the figure a flash or a
+// misread numeral put there once does not move it.
+float Application::laserRange(std::chrono::steady_clock::time_point now) const {
+    std::vector<int> recent;
+    for (const auto& r : rangeReadings_) {
+        if (now - r.first <= std::chrono::seconds(RANGE_KEPT_SECONDS)) recent.push_back(r.second);
+    }
+    if (recent.empty()) return 0.0f;
+    std::sort(recent.begin(), recent.end());
+    return (float)recent[recent.size() / 2];
+}
+
+void Application::rockToView(RockStats rock, std::chrono::steady_clock::time_point look) {
+    if (shownMass_ > 0 && std::fabs(rock.mass - shownMass_) > shownMass_ * 0.25f) {
+        while (!rangeReadings_.empty() && rangeReadings_.front().first < look) rangeReadings_.pop_front();
+    }
+    rock.distance = laserRange(look);
+    gui_->updateRock(rock);
+    shownRock_ = rock;
 }
 
 // Every look at the screen for a rock, read or not, with what it cost and
 // when it came. rock_readings.csv holds only the looks that read something,
 // and what makes a rock come in late is the looks in between.
 static void logRockLook(double lookMs, double sinceLastMs, int waitMs, bool panelUp, bool quick, int misses,
-                        double glance, const ScanPanel& panel) {
+                        double glance, const ScanPanel& panel, const LaserRangeLook& range) {
 #ifndef BEDROCK_DEV_TOOLS
     // The notes in this log say in words how the reader works. A release
     // keeps the figures of a scan (scan_log.csv) and not this.
     (void)lookMs; (void)sinceLastMs; (void)waitMs; (void)panelUp; (void)quick; (void)misses; (void)glance; (void)panel;
+    (void)range;
     return;
 #endif
     static std::ofstream out;
@@ -1373,7 +1405,8 @@ static void logRockLook(double lookMs, double sinceLastMs, int waitMs, bool pane
         std::filesystem::create_directories(dataPath("debug"), ec);
         const std::string path = dataPath("debug") + "/rock_looks.csv";
         const char* HEADER =
-            "time,look_ms,since_last_ms,wait_ms,panel_up,quick,misses,found,figures,labels_x,labels_y,scale,ink,glance,note";
+            "time,look_ms,since_last_ms,wait_ms,panel_up,quick,misses,found,figures,labels_x,labels_y,scale,ink,glance,"
+            "range_m,note,range_note";
         // a long session's worth, then it starts over - and a log with other
         // columns in it starts over too
         bool stale = std::filesystem::exists(path, ec) && std::filesystem::file_size(path, ec) > 20u * 1024u * 1024u;
@@ -1398,15 +1431,18 @@ static void logRockLook(double lookMs, double sinceLastMs, int waitMs, bool pane
     char when[16] = {};
     std::strftime(when, sizeof(when), "%H:%M:%S", &local);
     std::string note = panel.note.substr(0, 110);
-    for (char& c : note) {
-        if (c == '"') c = '\'';
-        if (c == '\n' || c == '\r') c = ' ';
+    std::string rangeNote = range.note.substr(0, 160);
+    for (std::string* text : {&note, &rangeNote}) {
+        for (char& c : *text) {
+            if (c == '"') c = '\'';
+            if (c == '\n' || c == '\r') c = ' ';
+        }
     }
     char line[220];
-    std::snprintf(line, sizeof(line), "%s.%03d,%.0f,%.0f,%d,%d,%d,%d,%d,%d,%d,%d,%.3f,%d,%.2f,", when, millis, lookMs,
+    std::snprintf(line, sizeof(line), "%s.%03d,%.0f,%.0f,%d,%d,%d,%d,%d,%d,%d,%d,%.3f,%d,%.2f,%d,", when, millis, lookMs,
                   (std::min)(sinceLastMs, 99999.0), waitMs, panelUp ? 1 : 0, quick ? 1 : 0, misses, panel.found ? 1 : 0,
-                  panel.figuresRead, panel.labels.x, panel.labels.y, panel.labelScale, panel.ink, glance);
-    out << line << '"' << note << '"' << std::endl;
+                  panel.figuresRead, panel.labels.x, panel.labels.y, panel.labelScale, panel.ink, glance, range.metres);
+    out << line << '"' << note << "\",\"" << rangeNote << '"' << std::endl;
 }
 
 // What happens to a rock's list, step by step: a reading started, what it
@@ -1579,8 +1615,16 @@ void Application::lookForRock() {
     rockSettlingLooks_ = settling ? rockSettlingLooks_ + 1 : 0;
     rockSettling_ = false;
     if (panel.found) glanceQuiet_ = 0;
+    // The laser's range, off the gauge the panel's labels place: on every
+    // look that found them, whether or not its figures were read, and kept
+    // for the rock on view - see laserRange
+    const LaserRangeLook range = panel.labels.x >= 0 ? readLaserRange(frame, panel) : LaserRangeLook();
+    if (range.metres > 0) {
+        rangeReadings_.emplace_back(now, range.metres);
+        while (rangeReadings_.size() > 5) rangeReadings_.pop_front();
+    }
     logRockLook(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - now).count(), sinceLastMs,
-                waitMs, panelUp, quick, rockMisses_, glance, panel);
+                waitMs, panelUp, quick, rockMisses_, glance, panel, range);
 
     // The shape reader's looks go to the steadier, which says when the
     // figures are settled; until then the view keeps what it had
@@ -1590,8 +1634,8 @@ void Application::lookForRock() {
         RockStats rock;
         const bool settled = rockSteadier_.add(panel, rock);
         rockSettling_ = !settled;
-        logRockReading(panel, settled ? &rock : nullptr);
         if (!settled) {
+            logRockReading(panel, nullptr, range.metres);
             // A panel that will not settle for twelve seconds is not the
             // rock the view shows any more
             if (++rockUnsettled_ >= 16) {
@@ -1602,11 +1646,13 @@ void Application::lookForRock() {
                 }
                 clearRockView();
                 shownMass_ = 0;
+                rangeReadings_.clear();
             }
             return;
         }
         rockUnsettled_ = 0;
-        gui_->updateRock(rock);
+        rockToView(rock, now);
+        logRockReading(panel, &shownRock_, range.metres);
         loadoutCheckForRock(rock.mass);
         shownMass_ = rock.mass;
         shownOre_ = rock.ore;
@@ -1654,15 +1700,16 @@ void Application::lookForRock() {
         while (rockReadings_.size() > 5) rockReadings_.pop_front();
 
         RockStats rock = steadyRock(rockReadings_);
-        logRockReading(panel, &rock);
         // ...but the view needs a mass to say anything at all, so it waits
         // for one rather than showing a rock with no figures on it.
-        if (rock.mass <= 0) return;
-        // The distance is not in the panel - it is printed under the rock's
-        // own marker - so it is left at zero, which the rock view reads as
-        // full power. Until that is read too, the figures it shows are the
-        // laser at its best rather than at this range.
-        gui_->updateRock(rock);
+        if (rock.mass <= 0) {
+            logRockReading(panel, &rock, range.metres);
+            return;
+        }
+        // The distance is not in the panel: it comes off the LASER RANGE
+        // gauge beside it, where that is read - see laserRange
+        rockToView(rock, now);
+        logRockReading(panel, &shownRock_, range.metres);
         loadoutCheckForRock(rock.mass);
         shownMass_ = rock.mass;
         shownOre_ = rock.ore;
@@ -1679,7 +1726,7 @@ void Application::lookForRock() {
 
     // A panel seen but not read well enough to count is logged all the same:
     // those are exactly the looks where the reader is losing the rock.
-    if (panel.found) logRockReading(panel, nullptr);
+    if (panel.found) logRockReading(panel, nullptr, range.metres);
 
     // A look that found the panel's labels and read none of its figures is
     // not a miss: the panel is still on screen. In the MOLE's turrets the
@@ -1715,11 +1762,21 @@ void Application::lookForRock() {
                     shownMass_ = 0;
                     otherMass_ = 0;
                     otherLooks_ = 0;
+                    rangeReadings_.clear();
                     clearRockView();
                 }
             } else {
                 otherMass_ = 0;
                 otherLooks_ = 0;
+            }
+        }
+        // A look that reads the gauge and none of the figures moves the
+        // range on view all the same
+        if (rockSeen_ && shownMass_ > 0 && otherLooks_ == 0 && range.metres > 0) {
+            const float metres = laserRange(now);
+            if (std::fabs(metres - shownRock_.distance) >= 0.5f) {
+                shownRock_.distance = metres;
+                gui_->updateRock(shownRock_);
             }
         }
         // The list under the labels is the rock's on view all the same, and
@@ -1748,6 +1805,7 @@ void Application::lookForRock() {
         rockReadings_.clear();
         rockSteadier_.clear();
         rockUnsettled_ = 0;
+        rangeReadings_.clear();
         clearRockView();
         shownMass_ = 0;
     }

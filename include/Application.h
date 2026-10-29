@@ -183,8 +183,23 @@ private:
     bool shipCanMine() const;   // the ship the log names can mine, or none is named yet
     // One line per look at a scan panel into debug\rock_readings.csv - what
     // was read, and what the median made of it. steady is null for a look that
-    // did not name enough figures to count.
-    void logRockReading(const ScanPanel& panel, const RockStats* steady);
+    // did not name enough figures to count. rangeMetres is what the LASER
+    // RANGE gauge read on the same look, 0 for nothing.
+    void logRockReading(const ScanPanel& panel, const RockStats* steady, int rangeMetres);
+    // The laser's range to the rock: the middle of the gauge's last five
+    // readings, none older than RANGE_KEPT; 0 when there is none, which the
+    // rock view reads as full power. A look that reads no gauge leaves the
+    // readings as they are - the laser off for a moment, a flash over the
+    // figure - and a rock that leaves the view takes them with it.
+    std::deque<std::pair<std::chrono::steady_clock::time_point, int>> rangeReadings_;
+    static constexpr int RANGE_KEPT_SECONDS = 15;
+    float laserRange(std::chrono::steady_clock::time_point now) const;
+    // ...and the rock as last given to the view, to give again with a new
+    // range on looks that read the gauge and no figures
+    RockStats shownRock_;
+    // The rock to the view with the gauge's range on it. A rock of another
+    // mass than the one on view drops the readings taken before this look.
+    void rockToView(RockStats rock, std::chrono::steady_clock::time_point look);
     // Whether the rock view is fed at all; see the definition
     static bool rockViewWanted();
     std::chrono::steady_clock::time_point lastRockLook_{};
