@@ -595,6 +595,104 @@ void drawToggle(Gdiplus::Graphics& g, const Gdiplus::RectF& r, const wchar_t* la
     g.DrawString(label, -1, &font, Gdiplus::RectF(tx, r.Y, r.GetRight() - tx, r.Height), &middleLeft, &brush);
 }
 
+// A line's width as GDI+ lays it out with the default StringFormat, the one
+// Bedrock draws with. The Linux build's shim measures at the font's
+// advances, and GDI+ sets a line 3 % wider (GdiplusShim.h): a choice made
+// on the narrower width - whether a text fits, where it breaks - would keep
+// on one line in a shot what Windows cuts. Windows answers as it measures.
+float lineWidth(Gdiplus::Graphics& g, const std::wstring& t, const Gdiplus::Font& f) {
+    Gdiplus::RectF w;
+    g.MeasureString(t.c_str(), (INT)t.size(), &f, Gdiplus::PointF(0, 0), &w);
+#ifdef _WIN32
+    return w.Width;
+#else
+    return w.Width * 1.03f;
+#endif
+}
+
+// A text in lines `room` wide: on one where it fits; otherwise broken where
+// its parts meet ("a  \u00B7  b", the separator left out at a break), and
+// between words only inside a part wider than the room. The breaks are its
+// own, at GDI+'s widths, so the Linux build breaks where Windows does; draw
+// it into a box `room` wide without NoWrap and without trimming. `more` is
+// how much taller than one line it gets, `width` its widest line. What lays
+// rows out by it asks the same when measuring and when drawing, so the
+// rows, the card ends, the hits and the scrolling agree. Used by the plugin
+// pages, the rock card, the Ore Finder, the Grind Planner.
+struct Fitted {
+    std::wstring text;
+    float more = 0;
+    float width = 0;   // the widest line, as MeasureString has it (what layouts are placed by)
+};
+
+Fitted fitLines(Gdiplus::Graphics& g, const std::wstring& t, const Gdiplus::Font& f, float room,
+                const std::wstring& sep = L"  \u00B7  ", bool keepMark = false) {
+    Fitted out{t, 0.0f, 0.0f};
+    if (t.empty()) return out;
+    auto measured = [&](const std::wstring& s) {
+        Gdiplus::RectF w;
+        g.MeasureString(s.c_str(), (INT)s.size(), &f, Gdiplus::PointF(0, 0), &w);
+        return w.Width;
+    };
+    out.width = measured(t);
+    if (room <= 0 || lineWidth(g, t, f) <= room) return out;
+    // (a list's comma stays at the end of the line it breaks: `keepMark`)
+    std::wstring mark;
+    if (keepMark) {
+        mark = sep;
+        while (!mark.empty() && mark.back() == L' ') mark.pop_back();
+    }
+    std::wstring line;
+    out.text.clear();
+    out.width = 0;
+    auto keep = [&](const std::wstring& done) {
+        if (!out.text.empty()) out.text += L"\n";
+        out.text += done;
+        out.width = (std::max)(out.width, (std::min)(room, measured(done)));
+    };
+    // a part on lines of its own, broken between its words; the last of
+    // them stays open for what follows
+    auto startWith = [&](const std::wstring& part) {
+        line.clear();
+        for (size_t from = 0;;) {
+            const size_t space = part.find(L' ', from);
+            const std::wstring word = part.substr(from, space == std::wstring::npos ? std::wstring::npos : space - from);
+            if (line.empty()) {
+                line = word;
+            } else if (lineWidth(g, line + L" " + word + mark, f) <= room) {
+                line += L" " + word;
+            } else {
+                keep(line);
+                line = word;
+            }
+            if (space == std::wstring::npos) break;
+            from = space + 1;
+        }
+    };
+    for (size_t from = 0;;) {
+        const size_t at = t.find(sep, from);
+        const std::wstring part = t.substr(from, at == std::wstring::npos ? std::wstring::npos : at - from);
+        if (line.empty()) {
+            startWith(part);
+        } else if (lineWidth(g, line + sep + part + mark, f) <= room) {
+            line += sep + part;
+        } else {
+            keep(line + mark);
+            startWith(part);
+        }
+        if (at == std::wstring::npos) break;
+        from = at + sep.size();
+    }
+    keep(line);
+    // (measured in a box, not from a point: the Linux build measures one
+    // line from a point)
+    Gdiplus::RectF one, all;
+    g.MeasureString(t.c_str(), -1, &f, Gdiplus::PointF(0, 0), &one);
+    g.MeasureString(out.text.c_str(), -1, &f, Gdiplus::RectF(0, 0, 100000.0f, 100000.0f), &all);
+    out.more = (std::max)(0.0f, all.Height - one.Height);
+    return out;
+}
+
 // A gear, for the settings: eight flat-topped teeth round a ring, and a
 // hole in the middle that the button shows through. Drawn rather than a
 // glyph, because not every system has a font with one in it.
@@ -24813,42 +24911,10 @@ float MinerGUI::paintPluginPieces(Gdiplus::Graphics& g, const std::vector<Plugin
         g.MeasureString(t.c_str(), -1, &f, Gdiplus::PointF(0, 0), &w);
         return w.Width;
     };
-    // A text in lines `room` wide: on one where it fits; otherwise broken
-    // where its parts meet ("a  \u00B7  b", the dot at a break left out), and
-    // between words only inside a part wider than the room. `more` is how
-    // much taller than one line it gets. The measuring and the drawing both
-    // ask, so the rows, the card ends and the scrolling agree.
-    struct Fitted {
-        std::wstring text;
-        float more = 0;
-    };
-    auto fit = [&](const std::wstring& t, const Gdiplus::Font& f, float room) {
-        Fitted out{t, 0.0f};
-        if (t.empty() || room <= 0 || width(t, f) <= room) return out;
-        static const std::wstring dot = L"  \u00B7  ";
-        std::wstring line;
-        out.text.clear();
-        for (size_t from = 0;;) {
-            const size_t at = t.find(dot, from);
-            const std::wstring part = t.substr(from, at == std::wstring::npos ? std::wstring::npos : at - from);
-            if (line.empty()) {
-                line = part;
-            } else if (width(line + dot + part, f) <= room) {
-                line += dot + part;
-            } else {
-                out.text += line + L"\n";
-                line = part;
-            }
-            if (at == std::wstring::npos) break;
-            from = at + dot.size();
-        }
-        out.text += line;
-        Gdiplus::RectF one, all;
-        g.MeasureString(t.c_str(), -1, &f, Gdiplus::PointF(0, 0), &one);
-        g.MeasureString(out.text.c_str(), -1, &f, Gdiplus::RectF(0, 0, room, scaleF(2000)), &lines, &all);
-        out.more = (std::max)(0.0f, all.Height - one.Height);
-        return out;
-    };
+    // A text in lines `room` wide, broken where its parts meet (fitLines):
+    // the measuring and the drawing both ask, so the rows, the card ends
+    // and the scrolling agree
+    auto fit = [&](const std::wstring& t, const Gdiplus::Font& f, float room) { return fitLines(g, t, f, room); };
     auto hit = [&](const Gdiplus::RectF& r, int kind, const std::string& id, int value) {
         if (draw) pluginHits_.push_back({r, kind, id, value});
     };
