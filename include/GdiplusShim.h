@@ -662,6 +662,7 @@ struct Text {
     qreal measuredWidth = 0; // what the shim's MeasureString gave for it
     qreal extra = 0;         // what GDI+'s gives more
     qreal shift = 0;         // how much further on Windows puts it
+    qreal em = 0;            // its size
 };
 
 struct Target {
@@ -895,8 +896,11 @@ inline void textLocked(Target& t, QPainter* p, const Font& font, const QString& 
         const Text* after = nullptr;
         for (const Text& a : t.texts) {
             if (!a.measured) continue;
+            // (tucked a little into the padding GDI+ measures, at most)
             const qreal end = a.origin.x() + a.measuredWidth;
-            if (origin.x() < end - 0.5 || origin.x() > end + std::max<qreal>(8.0, 1.5 * asked) * sx) continue;
+            if (origin.x() < end - std::max<qreal>(0.5, 0.3 * a.em) || origin.x() > end + std::max<qreal>(8.0, 1.5 * asked) * sx) {
+                continue;
+            }
             const qreal common = std::min(a.band.bottom(), band.bottom()) - std::max(a.band.top(), band.top());
             if (common < 0.5 * std::min(a.band.height(), band.height())) continue;
             if (!after || end > after->origin.x() + after->measuredWidth) after = &a;
@@ -904,6 +908,10 @@ inline void textLocked(Target& t, QPainter* p, const Font& font, const QString& 
         if (after) shift = after->shift + after->extra;
     }
     const qreal shiftHere = sx > 0 ? shift / sx : 0.0;
+    // What MeasureString gives for it, here and in Windows
+    const bool own = state().measured.count(measureKey(font, s)) > 0;
+    const qreal measuredHere = fm.horizontalAdvance(s) + 2 * detail::pad(f);
+    const qreal measuredThere = advance(withoutTrailingSpace(s)) + 2 * pad;
 
     Text x;
     x.text = s;
@@ -912,13 +920,21 @@ inline void textLocked(Target& t, QPainter* p, const Font& font, const QString& 
     x.origin = origin;
     x.band = band;
     x.shift = shift;
+    x.em = asked * sx;
     QStringList lines;
     QRectF box;
     qreal room = 0;   // how wide a line may be, inside the padding
     int holds = 1;    // how many lines the box has room for
     if (layout) {
         box = layout->q();
-        if (shiftHere != 0) box.setLeft(std::min(box.left() + shiftHere, box.right() - 1.0));
+        // A box the app made as wide as the text measures, or a little
+        // wider, is as much wider in Windows
+        const bool fitted = own && box.width() >= measuredHere - 0.5 && box.width() <= measuredHere + 2 * asked;
+        if (fitted) box.setWidth(box.width() + measuredThere - measuredHere);
+        if (shiftHere != 0) {
+            if (fitted) box.translate(shiftHere, 0);
+            else box.setLeft(std::min(box.left() + shiftHere, box.right() - 1.0));
+        }
         room = box.width() - 2 * pad > 0 ? box.width() - 2 * pad : box.width();
         holds = std::max(1, (int)((box.height() + 0.01) / spacing));
         const bool single = (flags & Qt::TextSingleLine) != 0;
@@ -1002,10 +1018,10 @@ inline void textLocked(Target& t, QPainter* p, const Font& font, const QString& 
     }
     x.where = layout ? boxOnPicture : extent;
     // ...and for a text that may come after it, how far on it would start
-    if (near && lines.size() == 1 && state().measured.count(measureKey(font, s)) > 0) {
+    if (near && lines.size() == 1 && own) {
         x.measured = true;
-        x.measuredWidth = (fm.horizontalAdvance(s) + 2 * detail::pad(f)) * sx;
-        x.extra = (advance(withoutTrailingSpace(s)) + 2 * pad) * sx - x.measuredWidth;
+        x.measuredWidth = measuredHere * sx;
+        x.extra = (measuredThere - measuredHere) * sx;
     }
     if (std::none_of(x.lines.begin(), x.lines.end(), [](const Line& l) { return visible(l.seen); })) return;
     t.texts.push_back(std::move(x));
