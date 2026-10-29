@@ -17882,17 +17882,106 @@ void MinerGUI::paintMarketColumn(Gdiplus::Graphics& g, int cw, int ch, float car
     const float headH = scaleF(34);
     const float footH = scaleF(30);
     const float room = (float)ch - scaleF(64) - y;
-    // the two cards share what room there is, the buyers first: they are
-    // who the miner sells to
-    const int fits = (std::max)(1, (int)((room - 2 * headH - footH - scaleF(20)) / rowH));
-    const int buyShown = (int)(std::min)(buying.size(), (size_t)(std::max)(1, fits - (std::min)((int)selling.size(), fits / 2)));
-    const int sellShown = (int)(std::min)(selling.size(), (size_t)(std::max)(0, fits - buyShown));
 
     std::wstring oreUpper = toW(ore);
     std::transform(oreUpper.begin(), oreUpper.end(), oreUpper.begin(), ::towupper);
+    // The heading and, on the right, how many and the order: on one line
+    // where they fit, the count and the order on a line under the heading
+    // where a long ore's name would run into them
+    float sortW = 0;
+    for (const wchar_t* way : {L"Newest", L"Price"}) {
+        Gdiplus::RectF wayW;
+        g.MeasureString(way, -1, &subFont, Gdiplus::PointF(0, 0), &wayW);
+        sortW += wayW.Width + scaleF(8);
+    }
+    auto countOf = [](const std::vector<const UexListing*>& rows) {
+        std::wstring count = rows.empty() ? L"" : std::to_wstring(rows.size()) + (rows.size() == 1 ? L" listing" : L" listings");
+        if (!count.empty()) count += L"  \u00B7  sort:";
+        return count;
+    };
+    auto headTwoLines = [&](const wchar_t* label, const std::vector<const UexListing*>& rows) {
+        Gdiplus::RectF labelW;
+        g.MeasureString(label, -1, &smallFont, Gdiplus::PointF(0, 0), &labelW);
+        const std::wstring count = countOf(rows);
+        const float countW = count.empty() ? 0.0f : lineWidth(g, count, subFont);
+        return labelW.Width + scaleF(3) + lineWidth(g, oreUpper, smallFont) + scaleF(8) + countW + sortW > rw;
+    };
+    const float headMore = scaleF(16);   // the count and the order, on a line of their own
+    const wchar_t* buyLabel = L"PLAYERS BUYING  \u00B7";
+    const wchar_t* sellLabel = L"PLAYERS SELLING  \u00B7";
+    const float buyHeadH = headH + (headTwoLines(buyLabel, buying) ? headMore : 0.0f);
+    const float sellHeadH = headH + (headTwoLines(sellLabel, selling) ? headMore : 0.0f);
+    // A listing's title beside its price, on more lines where it is longer
+    // than that (three at most: the rest of a longer one is cut). The room
+    // is what Windows leaves it, the quality and the price as wide as GDI+
+    // lays them out, so a shot breaks a title where Windows does.
+    struct TitlePlace {
+        float x = 0, room = 0, more = 0;
+        std::wstring lines;   // the title broken into lines, as many as hold it
+        std::wstring rest;    // the third line and what follows it, on the third and cut
+    };
+    Gdiplus::RectF oneTitle, twoTitles;
+    g.MeasureString(L"Ag", -1, &titleFont, Gdiplus::PointF(0, 0), &oneTitle);
+    g.MeasureString(L"Ag\nAg", -1, &titleFont, Gdiplus::RectF(0, 0, 100000.0f, 100000.0f), &twoTitles);
+    const float titleStep = (std::max)(1.0f, twoTitles.Height - oneTitle.Height);   // a line, to the next
+    auto titlePlace = [&](const UexListing& listing) {
+        TitlePlace at;
+        const std::wstring price = formatNumber((int)(std::min)(listing.price, 2.0e9));
+        const std::wstring unit = L" aUEC / " + unitWord(listing.unit);
+        at.x = rx;
+        if (listing.quality > 0) at.x += lineWidth(g, L"Q" + std::to_wstring(listing.quality), qualityFont) + scaleF(4);
+        at.room = rx + rw - lineWidth(g, unit, subFont) - lineWidth(g, price, priceFont) - scaleF(10) - at.x;
+        const Fitted fitted = fitLines(g, toW(listing.title), titleFont, at.room);
+        if (fitted.more <= 0) return at;
+        std::vector<std::wstring> lines;
+        for (size_t from = 0;;) {
+            const size_t end = fitted.text.find(L'\n', from);
+            lines.push_back(fitted.text.substr(from, end == std::wstring::npos ? std::wstring::npos : end - from));
+            if (end == std::wstring::npos) break;
+            from = end + 1;
+        }
+        if (lines.size() <= 3) {
+            at.lines = fitted.text;
+            at.more = fitted.more;
+        } else {
+            at.lines = lines[0] + L"\n" + lines[1];
+            for (size_t k = 2; k < lines.size(); k++) at.rest += (k > 2 ? L" " : L"") + lines[k];
+            at.more = titleStep * 2.0f;
+        }
+        return at;
+    };
+    auto rowsOnly = [&](const std::vector<const UexListing*>& rows, int shown) {
+        float h = 0;
+        for (int i = 0; i < shown && i < (int)rows.size(); i++) h += rowH + titlePlace(*rows[(size_t)i]).more;
+        return h;
+    };
+    auto rowsHeight = [&](const std::vector<const UexListing*>& rows, int shown) {
+        return rows.empty() || shown == 0 ? scaleF(24) : rowsOnly(rows, shown);
+    };
+    // the hint under the last card: in the card's padding as well, and on
+    // two lines where even that is too narrow
+    const std::wstring hint = L"Click a listing to open it on uexcorp.space and message the player";
+    const float hintLeft = cardX + scaleF(6);
+    const Fitted hintLines = fitLines(g, hint, subFont, rx + rw - hintLeft);
+    const float lastFootH = footH + hintLines.more;
+    // the two cards share what room there is, the buyers first: they are
+    // who the miner sells to
+    const float rowsRoom = room - buyHeadH - sellHeadH - lastFootH - scaleF(20);
+    const int fits = (std::max)(1, (int)(rowsRoom / rowH));
+    int buyShown = (int)(std::min)(buying.size(), (size_t)(std::max)(1, fits - (std::min)((int)selling.size(), fits / 2)));
+    int sellShown = (int)(std::min)(selling.size(), (size_t)(std::max)(0, fits - buyShown));
+    // ...a row fewer where long titles take second lines, the sellers first
+    while (buyShown + sellShown > 1 && rowsOnly(buying, buyShown) + rowsOnly(selling, sellShown) > rowsRoom) {
+        if (sellShown > 0 && sellShown >= buyShown) sellShown--;
+        else if (buyShown > 1) buyShown--;
+        else sellShown--;
+    }
+
     auto card = [&](const wchar_t* label, const std::vector<const UexListing*>& rows, int shown, bool last) {
-        const float rowsH = rows.empty() || shown == 0 ? scaleF(24) : rowH * (float)shown;
-        const float h = headH + rowsH + (last ? footH : scaleF(8));
+        const float cardHeadH = last ? sellHeadH : buyHeadH;
+        const bool twoLineHead = cardHeadH > headH;
+        const float rowsH = rowsHeight(rows, shown);
+        const float h = cardHeadH + rowsH + (last ? lastFootH : scaleF(8));
         const Gdiplus::RectF box(cardX, y, cardW, h);
         fillRoundRect(g, box, scaleF(R_CARD), COL_CARD);
         cardLight(g, box, scaleF(R_CARD), scaleF(44));
@@ -17904,7 +17993,7 @@ void MinerGUI::paintMarketColumn(Gdiplus::Graphics& g, int cw, int ch, float car
             g.MeasureString(label, -1, &smallFont, Gdiplus::PointF(0, 0), &measured);
             g.DrawString(oreUpper.c_str(), -1, &smallFont, Gdiplus::PointF(rx + measured.Width + scaleF(3), ry), &textBrush);
         }
-        std::wstring count = rows.empty() ? L"" : std::to_wstring(rows.size()) + (rows.size() == 1 ? L" listing" : L" listings");
+        const float sortY = twoLineHead ? ry + headMore : ry;
         // the order, on the right: the one in use bright, the other a link
         float sortLeft = rx + rw;
         for (const wchar_t* way : {L"Newest", L"Price"}) {
@@ -17912,16 +18001,16 @@ void MinerGUI::paintMarketColumn(Gdiplus::Graphics& g, int cw, int ch, float car
             Gdiplus::RectF wayW;
             g.MeasureString(way, -1, &subFont, Gdiplus::PointF(0, 0), &wayW);
             sortLeft -= wayW.Width;
-            const Gdiplus::RectF hit(sortLeft - scaleF(3), ry - scaleF(2), wayW.Width + scaleF(6), scaleF(18));
+            const Gdiplus::RectF hit(sortLeft - scaleF(3), sortY - scaleF(2), wayW.Width + scaleF(6), scaleF(18));
             Gdiplus::SolidBrush wayBrush(on ? COL_TEXT : (isHot(hoverPlan_, hit) ? COL_ACCENT_HI : COL_ACCENT));
-            g.DrawString(way, -1, &subFont, Gdiplus::PointF(sortLeft, ry + scaleF(1)), &wayBrush);
+            g.DrawString(way, -1, &subFont, Gdiplus::PointF(sortLeft, sortY + scaleF(1)), &wayBrush);
             if (!on) planHits_.push_back({hit, 9, MinerGUI::fromW(way)});
             sortLeft -= scaleF(8);
         }
-        if (!count.empty()) count += L"  \u00B7  sort:";
-        g.DrawString(count.c_str(), -1, &subFont, Gdiplus::RectF(rx, ry + scaleF(1), sortLeft - rx, scaleF(14)),
+        const std::wstring count = countOf(rows);
+        g.DrawString(count.c_str(), -1, &subFont, Gdiplus::RectF(rx, sortY + scaleF(1), sortLeft - rx, scaleF(15)),
                      &rightAlign, &faintBrush);
-        ry += scaleF(24);
+        ry += scaleF(24) + (twoLineHead ? headMore : 0.0f);
         if (rows.empty()) {
             std::wstring none;
             if (!uexEnabled_) none = L"";
@@ -17932,7 +18021,9 @@ void MinerGUI::paintMarketColumn(Gdiplus::Graphics& g, int cw, int ch, float car
         }
         for (int i = 0; i < shown && i < (int)rows.size(); i++) {
             const UexListing& listing = *rows[(size_t)i];
-            const Gdiplus::RectF band(rx - scaleF(8), ry - scaleF(3), rw + scaleF(16), rowH - scaleF(2));
+            const TitlePlace at = titlePlace(listing);
+            const float thisH = rowH + at.more;
+            const Gdiplus::RectF band(rx - scaleF(8), ry - scaleF(3), rw + scaleF(16), thisH - scaleF(2));
             const bool hot = isHot(hoverPlan_, band);
             if (hot) fillRoundRect(g, band, scaleF(R_CONTROL), COL_HOVER);
             // a listing the player is talking about opens at their thread; one they
@@ -17951,18 +18042,29 @@ void MinerGUI::paintMarketColumn(Gdiplus::Graphics& g, int cw, int ch, float car
             g.DrawString(unit.c_str(), -1, &subFont, Gdiplus::PointF(unitX, ry + scaleF(3)), &dimBrush);
             g.DrawString(price.c_str(), -1, &priceFont, Gdiplus::PointF(unitX - priceW.Width, ry), &textBrush);
             // the quality, in its rarity's colour, before the title
-            float tx = rx;
             if (listing.quality > 0) {
                 const std::wstring q = L"Q" + std::to_wstring(listing.quality);
                 Gdiplus::SolidBrush qualityBrush(qualityColor(listing.quality));
-                Gdiplus::RectF qW;
-                g.MeasureString(q.c_str(), -1, &qualityFont, Gdiplus::PointF(0, 0), &qW);
-                g.DrawString(q.c_str(), -1, &qualityFont, Gdiplus::PointF(tx, ry + scaleF(1)), &qualityBrush);
-                tx += qW.Width + scaleF(4);
+                g.DrawString(q.c_str(), -1, &qualityFont, Gdiplus::PointF(rx, ry + scaleF(1)), &qualityBrush);
             }
-            g.DrawString(toW(listing.title).c_str(), -1, &titleFont,
-                         Gdiplus::RectF(tx, ry, unitX - priceW.Width - scaleF(10) - tx, scaleF(18)), &oneLine,
-                         hot ? &accentBrush : &textBrush);
+            if (!at.lines.empty()) {
+                // on lines of their own, broken between words; past three,
+                // the third ends in dots
+                Gdiplus::StringFormat lines;
+                lines.SetTrimming(Gdiplus::StringTrimmingNone);
+                const float linesH = at.rest.empty() ? oneTitle.Height + at.more : oneTitle.Height + titleStep;
+                g.DrawString(at.lines.c_str(), -1, &titleFont, Gdiplus::RectF(at.x, ry, at.room, linesH + scaleF(1)),
+                             &lines, hot ? &accentBrush : &textBrush);
+                if (!at.rest.empty()) {
+                    g.DrawString(at.rest.c_str(), -1, &titleFont,
+                                 Gdiplus::RectF(at.x, ry + titleStep * 2.0f, at.room, oneTitle.Height + scaleF(1)),
+                                 &oneLine, hot ? &accentBrush : &textBrush);
+                }
+            } else {
+                g.DrawString(toW(listing.title).c_str(), -1, &titleFont, Gdiplus::RectF(at.x, ry, at.room, scaleF(18)),
+                             &oneLine, hot ? &accentBrush : &textBrush);
+            }
+            const float subY = ry + scaleF(18) + at.more;
             // where, who, and how long it stands - and the player's own
             // conversation about it, where there is one
             std::wstring sub = toW(listing.user);
@@ -17978,21 +18080,26 @@ void MinerGUI::paintMarketColumn(Gdiplus::Graphics& g, int cw, int ch, float car
                 const wchar_t* mine = L"Your conversation  \u00B7  ";
                 Gdiplus::RectF mineW;
                 g.MeasureString(mine, -1, &subFont, Gdiplus::PointF(0, 0), &mineW);
-                g.DrawString(mine, -1, &subFont, Gdiplus::PointF(rx, ry + scaleF(18)), &accentBrush);
+                g.DrawString(mine, -1, &subFont, Gdiplus::PointF(rx, subY), &accentBrush);
                 subX += mineW.Width;
             }
-            g.DrawString(sub.c_str(), -1, &subFont, Gdiplus::RectF(subX, ry + scaleF(18), rx + rw - subX, scaleF(14)), &oneLine,
+            g.DrawString(sub.c_str(), -1, &subFont, Gdiplus::RectF(subX, subY, rx + rw - subX, scaleF(15)), &oneLine,
                          &dimBrush);
-            ry += rowH;
+            ry += thisH;
         }
         if (last) {
-            g.DrawString(L"Click a listing to open it on uexcorp.space and message the player", -1, &subFont,
-                         Gdiplus::RectF(rx, y + h - scaleF(22), rw, scaleF(14)), &rightAlign, &faintBrush);
+            Gdiplus::StringFormat hintFormat;
+            hintFormat.SetAlignment(Gdiplus::StringAlignmentFar);
+            hintFormat.SetTrimming(Gdiplus::StringTrimmingNone);
+            g.DrawString(hintLines.text.c_str(), -1, &subFont,
+                         Gdiplus::RectF(hintLeft, y + h - scaleF(22) - hintLines.more, rx + rw - hintLeft,
+                                        scaleF(15) + hintLines.more),
+                         &hintFormat, &faintBrush);
         }
         y += h + scaleF(10);
     };
-    card(L"PLAYERS BUYING  \u00B7", buying, buyShown, false);
-    card(L"PLAYERS SELLING  \u00B7", selling, sellShown, true);
+    card(buyLabel, buying, buyShown, false);
+    card(sellLabel, selling, sellShown, true);
 }
 
 void MinerGUI::paintPlanner(HDC hdc) {
@@ -18464,10 +18571,88 @@ void MinerGUI::paintPlanner(HDC hdc) {
                     if (same) deals.push_back(&*deal);
                 }
             }
+            // Each deal's words, and how they lie - worked out once for the
+            // card's height and again to draw it
+            struct DealWords {
+                std::wstring verb, price, day, sub, market;
+                bool marketFirst = false;   // after the price, on the first line
+                float subRoom = 0;
+                Fitted subLines;            // what, how much and where, broken where its parts meet
+            };
+            auto dealWords = [&](const Trade& deal) {
+                static const wchar_t* const MONTHS[] = {L"Jan", L"Feb", L"Mar", L"Apr", L"May", L"Jun",
+                                                        L"Jul", L"Aug", L"Sep", L"Oct", L"Nov", L"Dec"};
+                DealWords w;
+                w.verb = deal.sold ? L"Sold" : L"Bought";
+                w.price = formatNumber((int)(deal.perScu() + 0.5)) + L" aUEC / SCU";
+                // the player's own day: the log's stamp is UTC, and an evening's deal
+                // in America or a morning's in Australia would stand a day off
+                if (const long long utc = Reputation::epochOf(deal.stamp); utc > 0) {
+                    const std::time_t t = (std::time_t)utc;
+                    std::tm local{};
+                    if (localtime_s(&local, &t) == 0 && local.tm_mon >= 0 && local.tm_mon < 12) {
+                        w.day = std::to_wstring(local.tm_mday) + L" " + MONTHS[local.tm_mon] + L" " +
+                                std::to_wstring(local.tm_year + 1900);
+                    }
+                } else if (deal.stamp.size() >= 10) {
+                    const int month = std::atoi(deal.stamp.substr(5, 2).c_str());
+                    const int dayOfMonth = std::atoi(deal.stamp.substr(8, 2).c_str());
+                    if (month >= 1 && month <= 12 && dayOfMonth >= 1) {
+                        w.day = std::to_wstring(dayOfMonth) + L" " + MONTHS[month - 1] + L" " + toW(deal.stamp.substr(0, 4));
+                    }
+                }
+                // "50 SCU", "12.40 SCU": whole where it is whole
+                wchar_t amount[48];
+                std::swprintf(amount, 48, std::abs(deal.scu - std::round(deal.scu)) < 0.005 ? L"%.0f SCU" : L"%.2f SCU",
+                              deal.scu);
+                std::wstring where = toW(deal.place);
+                if (where.empty()) {
+                    // the shop as the game names it, without the prefix every one of them has
+                    std::string shop = deal.shop;
+                    if (shop.rfind("SCShop_", 0) == 0) shop = shop.substr(7);
+                    std::replace(shop.begin(), shop.end(), '_', ' ');
+                    where = toW(shop);
+                }
+                w.sub = toW(TradeBook::nameOf(deal.resource)) + L"  \u00B7  " + amount + L"  \u00B7  " + where;
+                // ...and beside it what the market says now: for a sale what
+                // the best buyer pays, for a purchase what the cheapest seller
+                // asks. The refined material only: UEX has next to no prices for
+                // ore as it came out of the rock.
+                if (uexEnabled_ && uexPrices_) {
+                    const std::string traded = TradeBook::nameOf(deal.resource);
+                    if (!traded.empty() && traded.find(" (") == std::string::npos) {
+                        if (deal.sold) {
+                            const double best = uexPrices_->bestPrice(traded);
+                            if (best > 0) w.market = L"Currently up to " + formatNumber((int)(best + 0.5));
+                        } else if (const UexOffer* cheapest = uexPrices_->cheapestBuy(traded)) {
+                            w.market = L"Currently from " + formatNumber((int)(cheapest->price + 0.5));
+                        }
+                    }
+                }
+                // On the first line, right after the player's own price, where
+                // there is room between it and the day; else on the second, at
+                // its end, and the words before it go on to a third line where
+                // the two do not fit side by side
+                float marketW = 0;
+                if (!w.market.empty()) {
+                    Gdiplus::RectF marketR, priceR, dayR;
+                    g.MeasureString(w.market.c_str(), -1, &subFont, Gdiplus::PointF(0, 0), &marketR);
+                    g.MeasureString(w.price.c_str(), -1, &placeFont, Gdiplus::PointF(0, 0), &priceR);
+                    g.MeasureString(w.day.c_str(), -1, &subFont, Gdiplus::PointF(0, 0), &dayR);
+                    const float at = rx + scaleF(48) + priceR.Width + scaleF(4);
+                    w.marketFirst = at + marketR.Width + scaleF(8) <= rx + rw - dayR.Width;
+                    if (!w.marketFirst) marketW = marketR.Width + scaleF(8);
+                }
+                w.subRoom = rw - scaleF(48) - marketW;
+                w.subLines = fitLines(g, w.sub, subFont, w.subRoom);
+                return w;
+            };
             const int dealsShown = (std::min)((int)deals.size(), 4);
             const float dealH = scaleF(34);
+            float dealsH = 0;
+            for (int i = 0; i < dealsShown; i++) dealsH += dealH + dealWords(*deals[(size_t)i]).subLines.more;
             const float dealCardH = deals.empty() ? 0.0f
-                                                  : scaleF(34) + dealH * (float)dealsShown +
+                                                  : scaleF(34) + dealsH +
                                                         ((int)deals.size() > dealsShown ? scaleF(14) : 0.0f) + scaleF(4);
             const float roomDown = (float)ch - scaleF(64) - ry - (rockCardH > 0 ? rockCardH + scaleF(10) : 0.0f) -
                                    (sellCardH > 0 ? sellCardH + scaleF(10) : 0.0f) -
@@ -18565,7 +18750,8 @@ void MinerGUI::paintPlanner(HDC hdc) {
                 // The way the Blueprints list says it
                 std::wstring moreText = L"Showing " + std::to_wstring(first + 1) + L"\u2013" +
                                         std::to_wstring(first + shown) + L"  \u00B7  Scroll with mouse wheel";
-                Gdiplus::RectF r(rx, rowsTop + listH, rw, scaleF(12));
+                // (as tall as the line: the descenders of "Showing" hang below 12 px)
+                Gdiplus::RectF r(rx, rowsTop + listH, rw, scaleF(15));
                 g.DrawString(moreText.c_str(), -1, &subFont, r, &rightAlign, &faintBrush);
             } else if (more) {
                 // no room for a single row under the cards below it
@@ -18721,89 +18907,31 @@ void MinerGUI::paintPlanner(HDC hdc) {
                 g.DrawString(L"From game log", -1, &subFont,
                              Gdiplus::RectF(rx, dy + scaleF(1), rw, scaleF(14)), &rightAlign, &faintBrush);
                 dy += scaleF(24);
-                static const wchar_t* const MONTHS[] = {L"Jan", L"Feb", L"Mar", L"Apr", L"May", L"Jun",
-                                                        L"Jul", L"Aug", L"Sep", L"Oct", L"Nov", L"Dec"};
-                Gdiplus::StringFormat oneLine;
-                oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
-                oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+                Gdiplus::StringFormat lines;
+                lines.SetTrimming(Gdiplus::StringTrimmingNone);
                 for (int i = 0; i < dealsShown; i++) {
-                    const Trade& deal = *deals[(size_t)i];
+                    const DealWords w = dealWords(*deals[(size_t)i]);
                     // "sold  15,960 aUEC / SCU" and on the right the day; under it
                     // what exactly, how much, and where
-                    const std::wstring verb = deal.sold ? L"Sold" : L"Bought";
-                    g.DrawString(verb.c_str(), -1, &subFont, Gdiplus::PointF(rx, dy + scaleF(3)), &dimBrush);
-                    const std::wstring price = formatNumber((int)(deal.perScu() + 0.5)) + L" aUEC / SCU";
-                    g.DrawString(price.c_str(), -1, &placeFont, Gdiplus::PointF(rx + scaleF(48), dy), &textBrush);
-                    std::wstring day;
-                    // the player's own day: the log's stamp is UTC, and an evening's deal
-                    // in America or a morning's in Australia would stand a day off
-                    if (const long long utc = Reputation::epochOf(deal.stamp); utc > 0) {
-                        const std::time_t t = (std::time_t)utc;
-                        std::tm local{};
-                        if (localtime_s(&local, &t) == 0 && local.tm_mon >= 0 && local.tm_mon < 12) {
-                            day = std::to_wstring(local.tm_mday) + L" " + MONTHS[local.tm_mon] + L" " +
-                                  std::to_wstring(local.tm_year + 1900);
-                        }
-                    } else if (deal.stamp.size() >= 10) {
-                        const int month = std::atoi(deal.stamp.substr(5, 2).c_str());
-                        const int dayOfMonth = std::atoi(deal.stamp.substr(8, 2).c_str());
-                        if (month >= 1 && month <= 12 && dayOfMonth >= 1) {
-                            day = std::to_wstring(dayOfMonth) + L" " + MONTHS[month - 1] + L" " + toW(deal.stamp.substr(0, 4));
-                        }
-                    }
-                    g.DrawString(day.c_str(), -1, &subFont, Gdiplus::RectF(rx, dy + scaleF(3), rw, scaleF(14)), &rightAlign,
+                    g.DrawString(w.verb.c_str(), -1, &subFont, Gdiplus::PointF(rx, dy + scaleF(3)), &dimBrush);
+                    g.DrawString(w.price.c_str(), -1, &placeFont, Gdiplus::PointF(rx + scaleF(48), dy), &textBrush);
+                    g.DrawString(w.day.c_str(), -1, &subFont, Gdiplus::RectF(rx, dy + scaleF(3), rw, scaleF(14)), &rightAlign,
                                  &dimBrush);
-                    // "50 SCU", "12.40 SCU": whole where it is whole
-                    wchar_t amount[48];
-                    std::swprintf(amount, 48, std::abs(deal.scu - std::round(deal.scu)) < 0.005 ? L"%.0f SCU" : L"%.2f SCU",
-                                  deal.scu);
-                    std::wstring where = toW(deal.place);
-                    if (where.empty()) {
-                        // the shop as the game names it, without the prefix every one of them has
-                        std::string shop = deal.shop;
-                        if (shop.rfind("SCShop_", 0) == 0) shop = shop.substr(7);
-                        std::replace(shop.begin(), shop.end(), '_', ' ');
-                        where = toW(shop);
-                    }
-                    const std::wstring sub = toW(TradeBook::nameOf(deal.resource)) + L"  \u00B7  " + amount + L"  \u00B7  " + where;
-                    // ...and beside it what the market says now: for a sale what
-                    // the best buyer pays, for a purchase what the cheapest seller
-                    // asks. The refined material only: UEX has next to no prices for
-                    // ore as it came out of the rock.
-                    std::wstring market;
-                    if (uexEnabled_ && uexPrices_) {
-                        const std::string traded = TradeBook::nameOf(deal.resource);
-                        if (!traded.empty() && traded.find(" (") == std::string::npos) {
-                            if (deal.sold) {
-                                const double best = uexPrices_->bestPrice(traded);
-                                if (best > 0) market = L"Currently up to " + formatNumber((int)(best + 0.5));
-                            } else if (const UexOffer* cheapest = uexPrices_->cheapestBuy(traded)) {
-                                market = L"Currently from " + formatNumber((int)(cheapest->price + 0.5));
-                            }
-                        }
-                    }
-                    // On the first line, right after the player's own price, where
-                    // there is room between it and the day; else on the second,
-                    // at its end, the place giving way to it
-                    float marketW = 0;
-                    if (!market.empty()) {
-                        Gdiplus::RectF marketR, priceR, dayR;
-                        g.MeasureString(market.c_str(), -1, &subFont, Gdiplus::PointF(0, 0), &marketR);
-                        g.MeasureString(price.c_str(), -1, &placeFont, Gdiplus::PointF(0, 0), &priceR);
-                        g.MeasureString(day.c_str(), -1, &subFont, Gdiplus::PointF(0, 0), &dayR);
-                        const float at = rx + scaleF(48) + priceR.Width + scaleF(4);
-                        if (at + marketR.Width + scaleF(8) <= rx + rw - dayR.Width) {
-                            g.DrawString(market.c_str(), -1, &subFont, Gdiplus::PointF(at, dy + scaleF(3)), &dimBrush);
+                    if (!w.market.empty()) {
+                        if (w.marketFirst) {
+                            Gdiplus::RectF priceR;
+                            g.MeasureString(w.price.c_str(), -1, &placeFont, Gdiplus::PointF(0, 0), &priceR);
+                            g.DrawString(w.market.c_str(), -1, &subFont,
+                                         Gdiplus::PointF(rx + scaleF(48) + priceR.Width + scaleF(4), dy + scaleF(3)), &dimBrush);
                         } else {
-                            marketW = marketR.Width + scaleF(8);
-                            g.DrawString(market.c_str(), -1, &subFont, Gdiplus::RectF(rx, dy + scaleF(17), rw, scaleF(14)),
+                            g.DrawString(w.market.c_str(), -1, &subFont, Gdiplus::RectF(rx, dy + scaleF(17), rw, scaleF(14)),
                                          &rightAlign, &dimBrush);
                         }
                     }
-                    g.DrawString(sub.c_str(), -1, &subFont,
-                                 Gdiplus::RectF(rx + scaleF(48), dy + scaleF(17), rw - scaleF(48) - marketW, scaleF(14)),
-                                 &oneLine, &faintBrush);
-                    dy += dealH;
+                    g.DrawString(w.subLines.text.c_str(), -1, &subFont,
+                                 Gdiplus::RectF(rx + scaleF(48), dy + scaleF(17), w.subRoom, scaleF(15) + w.subLines.more),
+                                 &lines, &faintBrush);
+                    dy += dealH + w.subLines.more;
                 }
                 if ((int)deals.size() > dealsShown) {
                     const std::wstring more = L"+" + std::to_wstring((int)deals.size() - dealsShown) + L" earlier";

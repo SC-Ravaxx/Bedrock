@@ -170,11 +170,20 @@ static std::shared_ptr<const std::vector<SCMiner::UexListing>> shotListings(cons
         {true, 900000, "cscu", 800, "WTB Hadanite 800+", "", "Gem_Cutter", 1, 0},
         {false, 650000, "unit", -1, "Hadanite, cleaned", "GrimHEX", "Yela_Digger", 5, 0},
     };
+    // (an ore with a long name: the market's heading runs into its count)
+    static const Row quantainium[] = {
+        {true, 2200000, "scu", 900, "WTB Quantainium Q900+", "", "Forge_Seeker", 1, 0},
+        {true, 1600000, "scu", 700, "Buying Quantainium, any quality", "", "Old_Ledger", 12, 0},
+        {false, 2400000, "scu", 985, "Quantainium Q985 - refined, waiting at CRU-L1", "CRU-L1", "Vela_Mining", 2, 0},
+        {false, 1900000, "scu", 920, "Quantainium 920", "Levski", "Delamar_Rocks", 7, 0},
+        {false, 1750000, "scu", 870, "Quantainium Q870, bulk", "Orison", "Cloudview_Ore", 15, 4},
+    };
     const Row* rows = nullptr;
     size_t count = 0;
     if (ore == "Ouratite") { rows = ouratite; count = sizeof(ouratite) / sizeof(ouratite[0]); }
     if (ore == "Hephaestanite") { rows = hephaestanite; count = sizeof(hephaestanite) / sizeof(hephaestanite[0]); }
     if (ore == "Hadanite") { rows = hadanite; count = sizeof(hadanite) / sizeof(hadanite[0]); }
+    if (ore == "Quantainium") { rows = quantainium; count = sizeof(quantainium) / sizeof(quantainium[0]); }
     auto out = std::make_shared<std::vector<SCMiner::UexListing>>();
     for (size_t i = 0; i < count; i++) {
         SCMiner::UexListing listing;
@@ -1701,6 +1710,15 @@ int runScreenshots(const std::string& dir) {
     gui.openUexTabForShot("Hand minables", "Hadanite");
     pump();
     if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_market_gems.png", true);
+    // ...and an ore with a long name, whose heading and count take two lines,
+    // gone again after (the rock view would quote its buyers), and the
+    // planner back on the gem it was on
+    gui.setUexMarket("Quantainium", shotListings("Quantainium", shotNow), shotNow - 60, "");
+    gui.openUexTabForShot("Quantainium");
+    pump();
+    if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_market_long.png", true);
+    gui.setUexMarket("Quantainium", std::make_shared<std::vector<SCMiner::UexListing>>(), shotNow, "");
+    gui.openUexTabForShot("Hand minables", "Hadanite");
     gui.openUexTabForShot(nullptr);
     gui.setUexThreads(nullptr);
     // ...and the UEX account: what it gives and the key, then whether to send
