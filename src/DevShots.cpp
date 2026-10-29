@@ -1636,6 +1636,49 @@ int runScreenshots(const std::string& dir) {
         shoot(gui.windowHandle(), "main_page_datarunner_empty.png");
         gui.railPickForShot(SCMiner::MinerGUI::RailItem::Scan);
         pump();
+        // The foot while Bedrock reads a terminal by itself, as at Levski's
+        // cargo office on 29 October 2026: no row held still yet; 4 of the
+        // 14 wares the log listed for its BUY list; 24 rows of LOCAL MARKET
+        // VALUE, which the log does not list; the BUY list whole; and the
+        // picture left to check once the player has gone
+        if (!rows.empty()) {
+            auto listOf = [&](int id, int side, size_t count) {
+                auto shot = shotOf(id);
+                shot->automatic = true;
+                shot->side = side;
+                shot->rows.clear();
+                for (size_t i = 0; i < count; i++) shot->rows.push_back(rows[i % rows.size()]);
+                return shot;
+            };
+            auto readingOf = [&](const std::vector<std::shared_ptr<D::Shot>>& shots, const std::vector<int>& lengths,
+                                 int reading) {
+                SCMiner::MinerGUI::DatarunnerState state = stateOf(shots, false);
+                state.lengths = lengths;
+                state.reading = reading >= 0;
+                state.readingShot = (std::max)(reading, 0);
+                return state;
+            };
+            const auto buy = listOf(11, 1, 4);
+            const auto sell = listOf(12, 2, 24);
+            const auto whole = listOf(13, 1, 14);
+            gui.setDatarunner(readingOf({}, {}, 0));
+            pump();
+            shoot(gui.windowHandle(), "main_datarunner_reading.png");
+            gui.setDatarunner(readingOf({buy}, {14}, buy->id));
+            pump();
+            shoot(gui.windowHandle(), "main_datarunner_reading_rows.png");
+            gui.setDatarunner(readingOf({buy, sell}, {14, 0}, sell->id));
+            pump();
+            shoot(gui.windowHandle(), "main_datarunner_reading_sell.png");
+            gui.setDatarunner(readingOf({whole}, {14}, whole->id));
+            pump();
+            shoot(gui.windowHandle(), "main_datarunner_reading_all.png");
+            gui.setDatarunner(readingOf({buy}, {14}, -1));
+            pump();
+            shoot(gui.windowHandle(), "main_datarunner_left.png");
+            gui.setDatarunner(SCMiner::MinerGUI::DatarunnerState());
+            pump();
+        }
     }
     // The news window, painted straight into the bitmap like the other
     // windows of its own: its 2.5 page, then the 2.0 page behind the tab

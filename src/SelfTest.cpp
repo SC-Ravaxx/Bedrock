@@ -1914,6 +1914,56 @@ int runSelfTest() {
                                             "offered again, read however; a list sent or put away at the terminal is "
                                             "read no more there");
         }
+        // The foot of the main window while Bedrock reads a terminal: the
+        // rows in the picture of the list being read, out of the length the
+        // game's log gives the BUY list (Levski's cargo office, 29 October
+        // 2026: 4 of 14) - more rows than that, or no length, the rows
+        // alone; once he has left, the one picture waiting with its rows
+        {
+            using SCMiner::MinerGUI;
+            const std::wstring dot = L"  \u00B7  ";
+            const std::wstring atTerminal = L"Reading the terminal" + dot;
+            const std::wstring scroll = dot + L"Scroll down, then hold still";
+            const bool whileReading =
+                MinerGUI::datarunnerFootWords(true, 0, 0, 0) == atTerminal + L"Hold the list still for a moment" &&
+                MinerGUI::datarunnerFootWords(true, 1, 0, 14) == atTerminal + L"Hold the list still for a moment" &&
+                MinerGUI::datarunnerFootWords(true, 1, 4, 14) == atTerminal + L"4 of 14 rows" + scroll &&
+                MinerGUI::datarunnerFootWords(true, 1, 24, 0) == atTerminal + L"24 rows" + scroll &&
+                MinerGUI::datarunnerFootWords(true, 1, 1, 0) == atTerminal + L"1 row" + scroll &&
+                MinerGUI::datarunnerFootWords(true, 1, 14, 14) == atTerminal + L"14 of 14 rows" + dot + L"Click to open" &&
+                MinerGUI::datarunnerFootWords(true, 1, 16, 14) == atTerminal + L"16 rows" + scroll &&
+                MinerGUI::datarunnerFootWords(true, 3, 4, 14) == atTerminal + L"4 of 14 rows" + scroll;
+            allPassed &= check(whileReading, "the foot while a terminal is read: the rows of its list so far, out of the "
+                                             "BUY list's length - more than that or no length, the rows alone; the "
+                                             "list whole, the way to it");
+            const std::wstring oneWaiting = L"1 terminal screenshot to check" + dot;
+            const bool afterwards =
+                MinerGUI::datarunnerFootWords(false, 1, 4, 14) == oneWaiting + L"4 of 14 rows" + dot + L"Click to open" &&
+                MinerGUI::datarunnerFootWords(false, 1, 24, 0) == oneWaiting + L"24 rows" + dot + L"Click to open" &&
+                MinerGUI::datarunnerFootWords(false, 1, 0, 0) == oneWaiting + L"Click to open" &&
+                MinerGUI::datarunnerFootWords(false, 2, 4, 14) ==
+                    L"2 terminal screenshots to check" + dot + L"Click to open" &&
+                MinerGUI::datarunnerFootWords(false, 0, 0, 0).empty();
+            allPassed &= check(afterwards, "the foot once the terminal is left: the one picture waiting with its rows, "
+                                           "two or more counted");
+            // the length: the fill of the picture's shop, its BUY list only
+            D::Shot buyList;
+            buyList.side = 1;
+            buyList.shop = "SCShop_Admin_lt_base_g";
+            D::Shot otherShop = buyList;
+            otherShop.shop = "SCShop_Trdpst_Warehouse_OTLW_Int_A";
+            D::Shot noShop = buyList;
+            noShop.shop.clear();
+            D::Shot market = buyList;
+            market.side = 2;
+            D::Shot unknown = buyList;
+            unknown.side = 0;
+            const bool lengths = D::listLength(buyList, first) == 3 && D::listLength(otherShop, first) == 0 &&
+                                 D::listLength(noShop, first) == 0 && D::listLength(market, first) == 0 &&
+                                 D::listLength(unknown, first) == 0 && D::listLength(buyList, nullptr) == 0;
+            allPassed &= check(lengths, "a list's length from the game's log: the wares listed for that shop, its BUY "
+                                        "list only");
+        }
         // A report UEX stopped at its second row, a duplicate: the first row
         // went, the second is on UEX from the player's report of the last
         // five minutes - both held as sent, so Send goes on with the third

@@ -3668,6 +3668,10 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                     phoneSay(PHONE_WORKS_ON_PC);
                     return 0;
                 }
+                // the picture the line is about, where it is about one
+                for (size_t i = 0; i < datarunner_.shots.size(); i++) {
+                    if (datarunner_.shots[i]->id == datarunnerHitShot_) drIndex_ = (int)i;
+                }
                 showDatarunner(true);
                 return 0;
             }
@@ -15513,13 +15517,38 @@ void MinerGUI::drawFooter(Gdiplus::Graphics& g, int cw, int ch) {
     bool leftClickable = true;
     bool pluginNoteNow = false;
     const bool updateWaiting = updateWorthShowing();
+    // The Datarunner's picture the line is about: that of the list being
+    // read at a terminal, else the one waiting where only one is
+    struct DrPicture {
+        int id = 0, rows = 0, length = 0;
+    } beingRead, onlyOne;
+    const int waiting = datarunnerWaiting();
+    for (size_t i = 0; i < datarunner_.shots.size(); i++) {
+        const Datarunner::Shot& shot = *datarunner_.shots[i];
+        DrPicture it;
+        it.id = shot.id;
+        it.rows = (int)shot.rows.size();
+        it.length = i < datarunner_.lengths.size() ? datarunner_.lengths[i] : 0;
+        if (datarunner_.readingShot > 0 && shot.id == datarunner_.readingShot) beingRead = it;
+        if (waiting == 1 && shot.state != Datarunner::Shot::State::Sent &&
+            shot.state != Datarunner::Shot::State::Sending) {
+            onlyOne = it;
+        }
+    }
+    // A terminal being read comes first, before an update even: it is up
+    // only while the player stands at it
+    const bool reading = datarunner_.reading && (beingRead.rows > 0 || !backupOpen_);
     // ...after an update, the Datarunner's pictures waiting to be checked
-    const int screenshots = updateWaiting ? 0 : datarunnerWaiting();
-    if (screenshots > 0) {
+    const int screenshots = reading || updateWaiting ? 0 : waiting;
+    datarunnerHitShot_ = reading ? beingRead.id : onlyOne.id;
+    if (reading) {
+        // its picture so far is a button; before a row, a line
+        leftText = datarunnerFootWords(true, waiting, beingRead.rows, beingRead.length);
+        if (beingRead.rows > 0) leftBrush = &accentBrush;
+        else leftClickable = false;
+    } else if (screenshots > 0) {
         leftBrush = &accentBrush;
-        leftText = std::to_wstring(screenshots) +
-                   (screenshots == 1 ? L" terminal screenshot to check" : L" terminal screenshots to check") +
-                   L"  \u00B7  Click to open";
+        leftText = datarunnerFootWords(false, screenshots, onlyOne.rows, onlyOne.length);
     } else if (updateWaiting) {
         leftBrush = &accentBrush;
         if (updateState_ == 3) {
@@ -15541,10 +15570,6 @@ void MinerGUI::drawFooter(Gdiplus::Graphics& g, int cw, int ch) {
         // a picture just read that showed no terminal: for a minute, so the
         // key press is not met with nothing at all
         leftText = toW(datarunner_.note);
-        leftClickable = false;
-    } else if (datarunner_.reading && !backupOpen_) {
-        // a terminal in use, being read without Print Screen
-        leftText = L"Reading the terminal  \u00B7  Hold the list still for a moment";
         leftClickable = false;
     } else if (pluginNoteShowing() && !backupOpen_) {
         // a plugin's word, for a minute: a click opens the plugin
@@ -15602,16 +15627,18 @@ void MinerGUI::drawFooter(Gdiplus::Graphics& g, int cw, int ch) {
         if (leftClickable) {
             // An update waiting is the one thing on the window asking to be
             // pressed, so it is the amber button - as are pictures waiting
-            // for the player; the backup is an ordinary one, and the chosen
-            // kind while its card is up
-            const ButtonKind kind = updateWaiting || screenshots > 0 ? ButtonKind::Primary
-                                    : backupOpen_ || pluginNoteNow   ? ButtonKind::Selected
-                                                                     : ButtonKind::Secondary;
+            // for the player, and the one of a terminal being read; the
+            // backup is an ordinary one, and the chosen kind while its card
+            // is up
+            const bool pictures = reading || screenshots > 0;
+            const ButtonKind kind = updateWaiting || pictures      ? ButtonKind::Primary
+                                    : backupOpen_ || pluginNoteNow ? ButtonKind::Selected
+                                                                   : ButtonKind::Secondary;
             drawButton(g, box, leftText.c_str(), strongFont, kind, isHot(hoverMain_, box), scaleF(R_CONTROL));
-            (screenshots > 0  ? datarunnerHit_
-             : updateWaiting  ? updateHit_
-             : pluginNoteNow  ? pluginNoteHit_
-                              : backupHit_) = box;
+            (pictures        ? datarunnerHit_
+             : updateWaiting ? updateHit_
+             : pluginNoteNow ? pluginNoteHit_
+                             : backupHit_) = box;
         } else {
             // Nothing to press: a line, not a button
             g.DrawString(leftText.c_str(), -1, &strongFont, Gdiplus::PointF(M, y), leftBrush);
@@ -17089,6 +17116,26 @@ int MinerGUI::datarunnerWaiting() const {
         if (shot->state != Datarunner::Shot::State::Sent && shot->state != Datarunner::Shot::State::Sending) waiting++;
     }
     return waiting;
+}
+
+std::wstring MinerGUI::datarunnerFootWords(bool reading, int waiting, int rows, int length) {
+    const std::wstring dot = L"  \u00B7  ";
+    // "4 of 14 rows"; more than the list holds - a name misread, one read
+    // twice - or a length not known, the rows alone
+    std::wstring count;
+    if (rows > 0) {
+        const bool within = length > 0 && rows <= length;
+        count = std::to_wstring(rows) + (within ? L" of " + std::to_wstring(length) : std::wstring()) +
+                ((within ? length : rows) == 1 ? L" row" : L" rows");
+    }
+    if (reading) {
+        if (rows <= 0) return L"Reading the terminal" + dot + L"Hold the list still for a moment";
+        const bool whole = length > 0 && rows == length;
+        return L"Reading the terminal" + dot + count + dot + (whole ? L"Click to open" : L"Scroll down, then hold still");
+    }
+    if (waiting <= 0) return std::wstring();
+    if (waiting > 1) return std::to_wstring(waiting) + L" terminal screenshots to check" + dot + L"Click to open";
+    return L"1 terminal screenshot to check" + dot + (count.empty() ? std::wstring() : count + dot) + L"Click to open";
 }
 
 void MinerGUI::setDatarunner(const DatarunnerState& state) {

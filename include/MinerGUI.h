@@ -167,14 +167,21 @@ public:
         std::vector<std::string> blocked;          // per picture: what stands in the way of Send; "" nothing
         std::vector<std::vector<int>> holds;       // per picture and row: Datarunner::Hold
         std::vector<std::string> versions;         // per picture: the game version it is of; "" not known
+        std::vector<int> lengths;                  // per picture: its list's length as the game's log has it; 0 not known
         // to pick from: UEX's commodities, and every commodity terminal
         std::shared_ptr<const std::vector<std::pair<std::string, int>>> commodities;
         std::shared_ptr<const std::vector<std::pair<int, std::string>>> terminals;
         bool signUp = false;                       // UEX takes no reports from this account yet
         std::string note;                          // a picture just read that showed no terminal; "" none
         bool reading = false;                      // a terminal in use is being read (no Print Screen)
+        int readingShot = 0;                       // ...the id of the picture of the list being read; 0 none yet
     };
     void setDatarunner(const DatarunnerState& state);
+    // The foot's words for the Datarunner: while a terminal is read, the
+    // rows in the picture of the list being read, out of the list's length
+    // where it is known (0 not); after, the pictures waiting - with the rows
+    // of the one, where it is one. "" for nothing to say.
+    static std::wstring datarunnerFootWords(bool reading, int waiting, int rows, int length);
     // What the player did on the card, of the picture with that id: 1 Send,
     // 2 Discard (Close, once sent), 3 a row removed or put back, 4 a row's
     // values to check confirmed, 5 a row's level set (value 1..7), 6 its
@@ -1432,6 +1439,7 @@ private:
     std::vector<DrHit> drHits_;
     Gdiplus::RectF drRect_, drRows_, drList_, drListAnchor_;
     Gdiplus::RectF datarunnerHit_;            // the foot's way in
+    int datarunnerHitShot_ = 0;               // ...to the picture its line is about; 0 the card's own
     std::map<std::string, std::unique_ptr<Gdiplus::Bitmap>> drSnippets_;
     int datarunnerWaiting() const;            // pictures still to be sent or let go
     // `evenEmpty`: the rail's page, which opens with no picture waiting too

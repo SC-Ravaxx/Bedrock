@@ -5722,7 +5722,6 @@ bool Application::watchTerminal() {
     bool changed = false;
     const auto now = std::chrono::steady_clock::now();
     const bool on = datarunnerSince_ > 0 && !uexKey_.empty();
-    const bool wasReading = terminalReading();
     // a look read
     if (terminalJob_.valid() && terminalJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
         std::shared_ptr<Datarunner::Shot> look = terminalJob_.get();
@@ -5763,14 +5762,7 @@ bool Application::watchTerminal() {
                     // One picture and one report for a list: the rows join
                     // the picture of the same shop's same list not sent yet,
                     // and their piece of the look goes under it
-                    std::shared_ptr<Datarunner::Shot> into;
-                    for (const auto& shot : datarunnerShots_) {
-                        if (shot->automatic && shot->shop == fresh->shop && shot->side == fresh->side &&
-                            shot->state == Datarunner::Shot::State::Check && shot->taken >= since &&
-                            !shot->montage.empty()) {
-                            into = shot;
-                        }
-                    }
+                    const std::shared_ptr<Datarunner::Shot> into = terminalPicture(fresh->shop, fresh->side, since);
                     std::vector<cv::Rect> where;
                     for (const Datarunner::Row& row : fresh->rows) where.push_back(row.card);
                     const int frameHeight = look->montage.rows;
@@ -5804,17 +5796,21 @@ bool Application::watchTerminal() {
         if (sawTerminal) {
             look->montage.release();   // kept to compare with, not to send
             terminalLastLook_ = look;
+            terminalSeenLook_ = look;
         } else {
             terminalLastLook_.reset();
         }
     }
+    // what the foot says of the reading, pushed where it changed - by the
+    // clock too: a look that missed the terminal ends it only later
     auto reading = [&]() {
-        if (wasReading != terminalReading()) changed = true;
+        if (terminalReadingShot() != terminalReadingPushed_) changed = true;
         return changed;
     };
     if (!on) {
         terminalLooking_ = false;
         terminalLastLook_.reset();
+        terminalSeenLook_.reset();
         terminalDone_.clear();
         return reading();
     }
@@ -5827,6 +5823,7 @@ bool Application::watchTerminal() {
             terminalLooking_ = true;
             terminalSeen_ = now;
             terminalLastLook_.reset();
+            terminalSeenLook_.reset();
             terminalDone_.clear();
         }
     }
@@ -5835,6 +5832,7 @@ bool Application::watchTerminal() {
     if (now - terminalSeen_ > std::chrono::seconds(20)) {
         terminalLooking_ = false;
         terminalLastLook_.reset();
+        terminalSeenLook_.reset();
         terminalDone_.clear();
         return reading();
     }
@@ -5879,10 +5877,33 @@ bool Application::watchTerminal() {
     return reading();
 }
 
-// A terminal in use being read: one in sight, its list not done with
+// A terminal in use being read: one in sight within the last six seconds,
+// its list not done with. A look that misses the terminal while the list
+// moves puts the next one two seconds off: six seconds carry the reading
+// over two such looks in a row (each read in up to 1.6 s), so the foot
+// stays put while the player scrolls.
 bool Application::terminalReading() const {
-    return terminalLooking_ && terminalLastLook_ &&
-           !Datarunner::listDone(terminalDone_, terminalLastLook_->shop, terminalLastLook_->side);
+    return terminalLooking_ && terminalSeenLook_ &&
+           std::chrono::steady_clock::now() - terminalSeen_ < std::chrono::seconds(6) &&
+           !Datarunner::listDone(terminalDone_, terminalSeenLook_->shop, terminalSeenLook_->side);
+}
+
+int Application::terminalReadingShot() const {
+    if (!terminalReading()) return -1;
+    const auto picture =
+        terminalPicture(terminalSeenLook_->shop, terminalSeenLook_->side, (long long)std::time(nullptr) - 30 * 60);
+    return picture ? picture->id : 0;
+}
+
+std::shared_ptr<Datarunner::Shot> Application::terminalPicture(const std::string& shop, int side, long long since) const {
+    std::shared_ptr<Datarunner::Shot> into;
+    for (const auto& shot : datarunnerShots_) {
+        if (shot->automatic && shot->shop == shop && shot->side == side &&
+            shot->state == Datarunner::Shot::State::Check && shot->taken >= since && !shot->montage.empty()) {
+            into = shot;
+        }
+    }
+    return into;
 }
 
 void Application::serviceDatarunner() {
@@ -5962,6 +5983,8 @@ void Application::serviceDatarunner() {
 
 void Application::pushDatarunner() {
     datarunnerPushed_ = std::chrono::steady_clock::now();
+    const int reading = terminalReadingShot();
+    terminalReadingPushed_ = reading;
     if (!gui_) return;
     const long long now = (long long)std::time(nullptr);
     MinerGUI::DatarunnerState state;
@@ -5977,6 +6000,8 @@ void Application::pushDatarunner() {
         for (const Datarunner::Row& row : shot->rows) holds.push_back((int)Datarunner::holdOf(*shot, row, datarunnerSent_, now));
         state.holds.push_back(holds);
         state.versions.push_back(version);
+        state.lengths.push_back(
+            Datarunner::listLength(*shot, library_.trades().terminalAt(shot->taken * 1000 + 999, 30ll * 60 * 1000)));
     }
     if (uexDirectory_) {
         state.commodities = std::make_shared<const std::vector<std::pair<std::string, int>>>(uexDirectory_->commodityNames());
@@ -5984,7 +6009,8 @@ void Application::pushDatarunner() {
     }
     state.signUp = uexAccountTrouble_ == "datarunner";
     state.note = datarunnerNote_;
-    state.reading = terminalReading();
+    state.reading = reading >= 0;
+    state.readingShot = (std::max)(reading, 0);
     gui_->setDatarunner(state);
 }
 

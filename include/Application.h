@@ -537,6 +537,10 @@ private:
     long long terminalStartedFor_ = 0;      // the log's terminal line the looking began with, ms
     bool terminalLooking_ = false;
     std::shared_ptr<Datarunner::Shot> terminalLastLook_;   // the last look that saw a terminal, null none
+    // ...the last one that did since the looking began, kept through looks
+    // that missed it (terminalReading)
+    std::shared_ptr<const Datarunner::Shot> terminalSeenLook_;
+    int terminalReadingPushed_ = -1;        // terminalReadingShot as pushDatarunner last told the window
     // the rows the looks gave the player in the last half hour, whatever came
     // of them - sent, closed or thrown away, they are not offered again
     std::vector<std::shared_ptr<Datarunner::Shot>> terminalOffered_;
@@ -554,6 +558,11 @@ private:
     bool watchScreenshots();
     bool watchTerminal();
     bool terminalReading() const;
+    // ...and the picture of the list being read: its id, 0 none yet; -1 not reading
+    int terminalReadingShot() const;
+    // The picture Bedrock's looks at a shop's list go into: its own of that
+    // list not sent yet, taken from `since` on (Unix seconds); null none
+    std::shared_ptr<Datarunner::Shot> terminalPicture(const std::string& shop, int side, long long since) const;
     void pushDatarunner();
     void datarunnerAction(int action, int shot, int row, int value);
     void datarunnerAnswered(const UexSent& sent);

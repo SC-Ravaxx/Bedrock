@@ -258,6 +258,11 @@ bool listDone(const std::vector<std::pair<std::string, int>>& done, const std::s
     return false;
 }
 
+int listLength(const Shot& shot, const TradeBook::TerminalFill* fill) {
+    if (!fill || shot.side != 1 || shot.shop.empty() || fill->shop != shot.shop) return 0;
+    return (int)fill->boxes.size();
+}
+
 bool blackPicture(const cv::Mat& bgr) {
     if (bgr.empty()) return false;
     cv::Mat gray;

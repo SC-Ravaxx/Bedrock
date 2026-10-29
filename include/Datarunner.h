@@ -153,6 +153,11 @@ Shot newRowsOf(const Shot& look, const std::vector<std::shared_ptr<Shot>>& shots
 // whether `shop`'s list on `side` is among them - one not made out (0)
 // where either of that shop's is
 bool listDone(const std::vector<std::pair<std::string, int>>& done, const std::string& shop, int side);
+// How long the list a picture shows is, where the game's log says: the
+// wares listed when the terminal's list filled (`fill`, the one at the
+// picture's time) - for the BUY list of that very shop only; the log has
+// nothing of LOCAL MARKET VALUE. 0 not known.
+int listLength(const Shot& shot, const TradeBook::TerminalFill* fill);
 
 // A picture with nothing on it, as Star Citizen saved its screenshots with
 // HDR on: nought throughout. A dark scene still has its lights and its HUD.
