@@ -623,6 +623,9 @@ public:
 //   CLIPPED  it needs more than its box has (width, lines, height of the
 //            ink), or it runs past the clip or the picture's edge
 //   OVERLAP  two texts that can be seen lie over each other
+//   SPLIT    a text of parts ("a  \u00B7  b") wrapped inside a part that began
+//            after a separator, or with a separator left at a line's end or
+//            start, where it could break where the parts meet (fitLines)
 // A text is no longer there to be seen where an opaque fill or picture
 // drawn after it covers it; a picture with texts of its own drawn one to
 // one brings them along (a page drawn first and the lists over it). Where
@@ -1053,6 +1056,36 @@ inline void reportLocked(const Target& t) {
         else if (clip > 1.0) why << QStringLiteral("clip: %1 px outside the clip").arg(px(clip));
         if (!why.isEmpty()) {
             out += QStringLiteral("TEXTCHECK CLIPPED %1 %2 %3 %4\n").arg(size, xywh(x.where), quoted(x.text), why.join(QStringLiteral("; ")));
+        }
+        if (x.lines.size() > 1 && x.text.contains(QChar(0x00B7))) {
+            // where each line's words stand in the text, so that a break
+            // of its own ("\n") is told from a wrap
+            const QChar dot(0x00B7);
+            std::vector<int> at;
+            int from = 0;
+            for (const Line& l : x.lines) {
+                const int k = (int)x.text.indexOf(l.words, from);
+                at.push_back(k);
+                if (k >= 0) from = k + (int)l.words.size();
+            }
+            for (size_t i = 0; i + 1 < x.lines.size(); i++) {
+                if (at[i] < 0 || at[i + 1] < 0) continue;
+                const int end = at[i] + (int)x.lines[i].words.size();
+                const QString gap = x.text.mid(end, at[i + 1] - end);
+                if (gap.contains(QLatin1Char('\n')) || gap.contains(QChar::LineSeparator) || gap.contains(dot)) continue;
+                // (a separator has a space before it; a dot that begins a
+                // line of its own is a list's bullet)
+                const QString& a = x.lines[i].words;
+                bool parted = false;
+                for (int k = 1; k < (int)a.size() && !parted; k++) parted = a[k] == dot && a[k - 1] == QLatin1Char(' ');
+                if (parted || x.lines[i + 1].words.startsWith(dot)) {
+                    QStringList shown;
+                    for (const Line& l : x.lines) shown << l.words;
+                    out += QStringLiteral("TEXTCHECK SPLIT %1 %2 %3 -> %4\n")
+                               .arg(size, xywh(x.where), quoted(x.text), quoted(shown.join(QLatin1Char('\n'))));
+                    break;
+                }
+            }
         }
     }
     for (size_t i = 0; i < t.texts.size(); i++) {

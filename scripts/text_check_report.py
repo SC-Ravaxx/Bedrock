@@ -15,7 +15,7 @@ with a screen as tall as 1440 px, so that the windows keep their size
 
 The shim prints, at the end of each painting of a picture, a line
 "TEXTCHECK PASS WxH texts=N" and then what it found in that painting
-(TEXTCHECK CUT / CLIPPED / OVERLAP, see include/GdiplusShim.h). The shot run
+(TEXTCHECK CUT / CLIPPED / OVERLAP / SPLIT, see include/GdiplusShim.h). The shot run
 prints "<name>.png: WxH ..." for each picture it saves. A picture is given
 the findings of the last painting of its size since the picture before it:
 that painting is the one in the file. Paintings of other sizes (an
@@ -32,8 +32,8 @@ from collections import OrderedDict, defaultdict
 
 PNG = re.compile(r"^([\w.\-]+\.png): (\d+)x(\d+)")
 PASS = re.compile(r"^TEXTCHECK PASS (\d+)x(\d+) texts=(\d+)")
-FOUND = re.compile(r"^TEXTCHECK (CUT|CLIPPED|OVERLAP) (\d+)x(\d+) (.*)$")
-KINDS = ("CUT", "CLIPPED", "OVERLAP")
+FOUND = re.compile(r"^TEXTCHECK (CUT|CLIPPED|OVERLAP|SPLIT) (\d+)x(\d+) (.*)$")
+KINDS = ("CUT", "CLIPPED", "OVERLAP", "SPLIT")
 
 
 def quoted(s, i):
@@ -62,7 +62,7 @@ def parse(kind, rest):
     f["box"] = box
     f["text"], i = quoted(rest, i)
     tail = rest[i:].strip()
-    if kind == "CUT":
+    if kind in ("CUT", "SPLIT"):
         assert tail.startswith("->"), tail
         f["shown"], j = quoted(tail, tail.index('"'))
         f["note"] = tail[j:].strip()
@@ -80,8 +80,8 @@ def parse(kind, rest):
 
 def key(f):
     """What makes two findings the same, wherever and in whichever picture"""
-    if f["kind"] == "CUT":
-        return ("CUT", f["text"], f["shown"])
+    if f["kind"] in ("CUT", "SPLIT"):
+        return (f["kind"], f["text"], f["shown"])
     if f["kind"] == "CLIPPED":
         reasons = tuple(sorted(r.split(":")[0] for r in f["why"].split("; ")))
         return ("CLIPPED", f["text"], reasons)
@@ -152,6 +152,8 @@ def describe(f):
         return f"{code(short(t, 140))} \u2192 {code(short(s, 140))}{note}"
     if f["kind"] == "CLIPPED":
         return f"{code(short(f['text']))} \u2014 {f['why']}"
+    if f["kind"] == "SPLIT":
+        return f"{code(short(f['shown'], 160))}"
     return f"{code(short(f['text'], 80))} at {f['box']} \u00d7 {code(short(f['text2'], 80))} at {f['box2']}, by {f['by']}"
 
 
