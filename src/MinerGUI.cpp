@@ -1992,8 +1992,8 @@ void MinerGUI::keepOverlayHeight() {
 // content has wanted less for FIT_SHRINK_MS, so it does not jump from rock to
 // rock, and towards the middle of its screen, so it stays on it.
 // The width is fixed at OVERLAY_WIDTH: following the content, it was too
-// restless from rock to rock. A line too long for it goes on two lines
-// instead of ending on "...".
+// restless from rock to rock. A line too long for it goes on more lines,
+// broken where its parts meet, instead of ending on "...".
 int MinerGUI::overlayMaxWidth() const {
     return scale(OVERLAY_WIDTH);
 }
@@ -15756,19 +15756,23 @@ void MinerGUI::drawCompactRock(Gdiplus::Graphics& g, int cw, int ch) {
     oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
     const auto fits = [&](float need) { return y + need <= (float)ch - scaleF(6); };
     // A line as wide as it is (wantWidth); one too long even for the widest
-    // overlay goes on two lines rather than ending on "..."
+    // overlay goes on as many lines as it takes rather than ending on "...",
+    // broken where its parts meet first, at Windows' widths (fitLines), as
+    // on the full window's rock card
     const float widest = (float)overlayMaxWidth() - 2 * M;
-    Gdiplus::StringFormat twoLines;
-    twoLines.SetTrimming(Gdiplus::StringTrimmingEllipsisWord);
+    Gdiplus::StringFormat lines;
+    lines.SetTrimming(Gdiplus::StringTrimmingNone);
     const auto line = [&](const std::wstring& text, const Gdiplus::Font& font, Gdiplus::Brush& brush) {
         if (text.empty()) return;
         Gdiplus::RectF w;
         g.MeasureString(text.c_str(), -1, &font, Gdiplus::PointF(0, 0), &w);
         wantWidth(M + w.Width + M);
-        if (w.Width > widest) {
-            if (!fits(2 * step)) return;
-            g.DrawString(text.c_str(), -1, &font, Gdiplus::RectF(M, y, rowW, 2 * step + scaleF(2)), &twoLines, &brush);
-            y += 2 * step;
+        if (lineWidth(g, text, font) > widest) {
+            const Fitted fitted = fitLines(g, text, font, rowW);
+            const int n = 1 + (int)std::count(fitted.text.begin(), fitted.text.end(), L'\n');
+            if (!fits(n * step)) return;
+            g.DrawString(fitted.text.c_str(), -1, &font, Gdiplus::RectF(M, y, rowW, n * step + scaleF(2)), &lines, &brush);
+            y += n * step;
             return;
         }
         if (!fits(step)) return;
