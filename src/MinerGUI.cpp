@@ -471,6 +471,130 @@ void drawButton(Gdiplus::Graphics& g, const Gdiplus::RectF& r, const wchar_t* la
     g.DrawString(label, -1, &font, r, &centred, &brush);
 }
 
+// A segmented control: the choices of one setting side by side on one
+// raised surface (COL_CARD_HI), the picked one amber, the one under the
+// pointer a step up. segmentedWidth measures a group before anything is
+// drawn, so a row of groups can be laid out first; drawSegmented draws one
+// and gives back where each segment went, for the hits. `pad` is the room
+// either side of a segment's words on top of MeasureString's own, `s` the
+// window's scale.
+struct Segment {
+    std::wstring text;
+    bool figure = false;    // a grade's letter or a size: numeralFamily, a pixel less room
+    bool on = false;        // picked
+    bool open = false;      // what it opens is showing
+    bool chevron = false;   // it opens a list: an arrow after the words
+};
+
+constexpr float SEGMENT_INSET = 2.0f;    // between the surface and its segments
+constexpr float SEGMENT_ARROW = 14.0f;   // what the arrow adds to a segment
+
+float segmentWidth(Gdiplus::Graphics& g, const Segment& seg, const Gdiplus::Font& words,
+                   const Gdiplus::Font& figures, float pad, float s) {
+    Gdiplus::RectF w;
+    g.MeasureString(seg.text.c_str(), -1, seg.figure ? &figures : &words, Gdiplus::PointF(0, 0), &w);
+    return w.Width + 2.0f * (seg.figure ? pad - s : pad) + (seg.chevron ? SEGMENT_ARROW * s : 0.0f);
+}
+
+float segmentedWidth(Gdiplus::Graphics& g, const std::vector<Segment>& segs, const Gdiplus::Font& words,
+                     const Gdiplus::Font& figures, float pad, float s) {
+    float total = 2.0f * SEGMENT_INSET * s;
+    for (const Segment& seg : segs) total += segmentWidth(g, seg, words, figures, pad, s);
+    return total;
+}
+
+// A choice's face: picked, an amber wash and a 1 px amber line inside its
+// edge; under the pointer, or while what it opens is showing, a step up;
+// otherwise nothing of its own. Gives back the ink for its words.
+Gdiplus::Color choiceFace(Gdiplus::Graphics& g, const Gdiplus::RectF& r, float radius, bool on, bool hot,
+                          bool open) {
+    if (on) {
+        fillRoundRect(g, r, radius, tint(COL_ACCENT, hot ? 52 : 40));
+        strokeRoundRect(g, r, radius, tint(COL_ACCENT, 115));
+        return COL_ACCENT;
+    }
+    if (hot || open) {
+        fillRoundRect(g, r, radius, COL_HOVER);
+        return COL_TEXT;
+    }
+    return COL_TEXT_DIM;
+}
+
+// A small open arrow, pointing down (a list to open) or up (it is open)
+void drawChevron(Gdiplus::Graphics& g, float cx, float cy, float s, bool up, const Gdiplus::Color& ink) {
+    Gdiplus::Pen pen(ink, 1.5f * s);
+    pen.SetStartCap(Gdiplus::LineCapRound);
+    pen.SetEndCap(Gdiplus::LineCapRound);
+    pen.SetLineJoin(Gdiplus::LineJoinRound);
+    const float hw = 3.5f * s, hh = (up ? -2.0f : 2.0f) * s;
+    const Gdiplus::PointF arrow[3] = {Gdiplus::PointF(cx - hw, cy - hh), Gdiplus::PointF(cx, cy + hh),
+                                      Gdiplus::PointF(cx + hw, cy - hh)};
+    g.DrawLines(&pen, arrow, 3);
+}
+
+std::vector<Gdiplus::RectF> drawSegmented(Gdiplus::Graphics& g, float x, float y, float h,
+                                          const std::vector<Segment>& segs, const Gdiplus::Font& words,
+                                          const Gdiplus::Font& figures, float pad, float s, const POINT& hover) {
+    const float inset = SEGMENT_INSET * s;
+    fillRoundRect(g, Gdiplus::RectF(x, y, segmentedWidth(g, segs, words, figures, pad, s), h), R_CONTROL * s,
+                  COL_CARD_HI);
+    Gdiplus::StringFormat centre;
+    centre.SetAlignment(Gdiplus::StringAlignmentCenter);
+    centre.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    centre.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    std::vector<Gdiplus::RectF> places;
+    float sx = x + inset;
+    for (const Segment& seg : segs) {
+        const float sw = segmentWidth(g, seg, words, figures, pad, s);
+        const Gdiplus::RectF r(sx, y + inset, sw, h - 2.0f * inset);
+        const bool hot = hover.x >= 0 && r.Contains((float)hover.x, (float)hover.y);
+        const Gdiplus::Color ink = choiceFace(g, r, (R_CONTROL - SEGMENT_INSET) * s, seg.on, hot, seg.open);
+        Gdiplus::SolidBrush brush(ink);
+        const float arrow = seg.chevron ? SEGMENT_ARROW * s : 0.0f;
+        // the words centred in what the arrow leaves, the arrow just after them
+        g.DrawString(seg.text.c_str(), -1, seg.figure ? &figures : &words,
+                     Gdiplus::RectF(r.X, r.Y, sw - arrow, r.Height), &centre, &brush);
+        if (seg.chevron) {
+            const float side = seg.figure ? pad - s : pad;
+            drawChevron(g, r.GetRight() - side - arrow + 6.0f * s, r.Y + r.Height / 2.0f, s, seg.open, ink);
+        }
+        places.push_back(r);
+        sx += sw;
+    }
+    return places;
+}
+
+// A switch with a surface of its own: a tick box and its words, amber once
+// on, the way a picked segment is
+float toggleWidth(Gdiplus::Graphics& g, const wchar_t* label, const Gdiplus::Font& font, float s) {
+    Gdiplus::RectF w;
+    g.MeasureString(label, -1, &font, Gdiplus::PointF(0, 0), &w);
+    return 10.0f * s + 11.0f * s + 5.0f * s + w.Width + 8.0f * s;
+}
+
+void drawToggle(Gdiplus::Graphics& g, const Gdiplus::RectF& r, const wchar_t* label, const Gdiplus::Font& font,
+                bool on, bool hot, float s) {
+    const float radius = R_CONTROL * s;
+    fillRoundRect(g, r, radius, COL_CARD_HI);
+    const Gdiplus::Color ink = choiceFace(g, r, radius, on, hot, false);
+    const float boxS = 11.0f * s;
+    const Gdiplus::RectF box(r.X + 10.0f * s, r.Y + (r.Height - boxS) / 2.0f, boxS, boxS);
+    if (on) {
+        fillRoundRect(g, box, 2.0f * s, COL_ACCENT);
+        Gdiplus::Pen tick(COL_ACCENT_INK, 1.8f * s);
+        g.DrawLine(&tick, box.X + 2.5f * s, box.Y + 5.5f * s, box.X + 4.5f * s, box.Y + 8.0f * s);
+        g.DrawLine(&tick, box.X + 4.5f * s, box.Y + 8.0f * s, box.X + 8.5f * s, box.Y + 3.0f * s);
+    } else {
+        strokeRoundRect(g, box, 2.0f * s, hot ? COL_TEXT_DIM : COL_TEXT_FAINT);
+    }
+    Gdiplus::StringFormat middleLeft;
+    middleLeft.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    middleLeft.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    Gdiplus::SolidBrush brush(ink);
+    const float tx = box.GetRight() + 5.0f * s;
+    g.DrawString(label, -1, &font, Gdiplus::RectF(tx, r.Y, r.GetRight() - tx, r.Height), &middleLeft, &brush);
+}
+
 // A gear, for the settings: eight flat-topped teeth round a ring, and a
 // hole in the middle that the button shows through. Drawn rather than a
 // glyph, because not every system has a font with one in it.
@@ -11557,8 +11681,8 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
 
     // One row shape for both lists: a dot, a name, a count, and the pick
     // marked as a selection, its count in amber. "All", which is no pick at
-    // all, is marked in plain ink instead - the way the filter bar marks its
-    // "any" - so amber on this window always means the list is narrowed.
+    // all, is marked in plain ink instead, so amber in this list always
+    // means it is narrowed.
     auto filterRow = [&](const wchar_t* label, int kind, int index, bool chosen, const std::wstring& right,
                          const Gdiplus::Color& chipColor, bool hasChip) {
         Gdiplus::RectF row(M, y, leftW, mrowH);
@@ -11701,23 +11825,41 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
         g.DrawString(count.c_str(), -1, &subFont, r, &rightAlign, &faintBrush);
     }
 
-    // ---- the filter bar: grade, size, class ----
-    // Offered from what the current selection actually contains, so it never
-    // shows a grade or a size that would empty the list. Armour and
-    // handhelds carry none of the three, and then the bar simply is not there.
+    // ---- the filters: a grid of three rows ----
+    // Offered from what the current selection actually contains, so a group
+    // never shows a grade or a size that would empty the list, and a group
+    // with nothing to choose between is not there. Two columns of segmented
+    // controls, each column's labels right-aligned in one slot, and a third
+    // column against the right edge:
+    //   LIBRARY  GRADE                 Shopping list
+    //   SIZE     SYSTEM                Has contract
+    //   CLASS, across both columns     FROM
+    // The two columns are as wide as their widest group over every
+    // blueprint, so they stay put while the list is cut down.
     float ry = listTop + scaleF(20);
     {
-        std::vector<char> grades;
-        std::vector<int> sizes, classes;
+        std::vector<char> grades, everyGrade;
+        std::vector<int> sizes, classes, everySize, everyClass;
         unsigned systemMask = 0;
         struct Outfit { std::string name; int recipes; };
         std::vector<Outfit> factions;
         // ...and how the current selection splits on whether a contract
-        // hands the recipe out: the chips are only worth showing when both
+        // hands the recipe out: the switch is only worth showing when both
         // kinds are in it, the same rule the other groups follow.
         int dropped = 0, undropped = 0;
         for (int b = 0; b < CRAFT_BLUEPRINT_COUNT; b++) {
             const CraftBlueprint& c = CRAFT_BLUEPRINTS[b];
+            // every blueprint's, for the widths of the columns
+            if (c.grade && std::find(everyGrade.begin(), everyGrade.end(), c.grade) == everyGrade.end()) {
+                everyGrade.push_back(c.grade);
+            }
+            if (c.size >= 0 && std::find(everySize.begin(), everySize.end(), (int)c.size) == everySize.end()) {
+                everySize.push_back(c.size);
+            }
+            if (c.itemClass >= 0 &&
+                std::find(everyClass.begin(), everyClass.end(), (int)c.itemClass) == everyClass.end()) {
+                everyClass.push_back(c.itemClass);
+            }
             if (craftType_ >= 0 && c.type != craftType_) continue;
             if (craftMaterial_ >= 0) {
                 bool uses = false;
@@ -11774,229 +11916,279 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
         std::sort(grades.begin(), grades.end());
         std::sort(sizes.begin(), sizes.end());
         std::sort(classes.begin(), classes.end());
+        std::sort(everyGrade.begin(), everyGrade.end());
+        std::sort(everySize.begin(), everySize.end());
+        std::sort(everyClass.begin(), everyClass.end());
 
         {
-            float fx = rx;
-            float fy = ry;
-            int chipLines = 1;
-            const float chipH = scaleF(20);
-            Gdiplus::StringFormat centre;
-            centre.SetAlignment(Gdiplus::StringAlignmentCenter);
-            centre.SetLineAlignment(Gdiplus::StringAlignmentCenter);
-
-            // The words on the chips - the semibold face at the grind
-            // planner's size, so the filters of the two windows that lead
-            // into each other are one kind of chip - and a format for the
-            // headings in front of them: centred on the chip's line, not
-            // hung from its top
+            const float sc = scaleF(1.0f);
+            const float ctrlH = scaleF(26);
+            const float rowGap = scaleF(8);
+            const float labelGap = scaleF(9);
             Gdiplus::Font chipFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+            Gdiplus::Font figureFont(&numeralFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular,
+                                     Gdiplus::UnitPixel);
+            Gdiplus::StringFormat centred;
+            centred.SetAlignment(Gdiplus::StringAlignmentCenter);
+            centred.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+            centred.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
             Gdiplus::StringFormat leftMid;
             leftMid.SetLineAlignment(Gdiplus::StringAlignmentCenter);
             leftMid.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
-            auto wide = [&](const std::wstring& text, float room) {
+            Gdiplus::StringFormat labelRight;
+            labelRight.SetAlignment(Gdiplus::StringAlignmentFar);
+            labelRight.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+            labelRight.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+            auto textWidth = [&](const std::wstring& text, const Gdiplus::Font& font) {
                 Gdiplus::RectF w;
-                g.MeasureString(text.c_str(), -1, &chipFont, Gdiplus::PointF(0, 0), &w);
-                return w.Width + room;
+                g.MeasureString(text.c_str(), -1, &font, Gdiplus::PointF(0, 0), &w);
+                return w.Width;
             };
 
-            // The shopping list keeps the right-hand end of the FIRST line, so the
-            // number in it does not shove the filters about as things go on and off
-            // the list. It is measured before any of them are drawn, because they
-            // have to stop short of it: chips flowing left to right would otherwise
-            // end up under it once there are enough.
-            float listW = 0;
-            {
-                const int n = cartTotal();
-                Gdiplus::Font buttonFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-                Gdiplus::Font badgeFont(&markFamily(), scaleF(Type::MICRO), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-                const wchar_t* text = L"Shopping list";
-                Gdiplus::RectF w;
-                g.MeasureString(text, -1, &buttonFont, Gdiplus::PointF(0, 0), &w);
-                // How many are on it, as a badge at the end: amber, the one
-                // number on the bar that is yours rather than the game's
-                const std::wstring count = n > 0 ? std::to_wstring(n) : std::wstring();
-                const float badgeH = scaleF(14);
-                float badgeW = 0;
-                if (n > 0) {
-                    Gdiplus::RectF cwid;
-                    g.MeasureString(count.c_str(), -1, &badgeFont, Gdiplus::PointF(0, 0), &cwid);
-                    badgeW = (std::max)(badgeH, cwid.Width + scaleF(4));
+            // A group: its segments, and what a click on each sets
+            struct Group {
+                std::vector<Segment> segs;
+                std::vector<int> values;
+                void add(const std::wstring& text, bool figure, bool on, int value) {
+                    Segment seg;
+                    seg.text = text;
+                    seg.figure = figure;
+                    seg.on = on;
+                    segs.push_back(seg);
+                    values.push_back(value);
                 }
-                // room for the trolley in front of the words: the button
-                // and the plus on every row then carry the same mark, and
-                // one explains the other
-                const float icon = scaleF(15);
-                listW = scaleF(9) + icon + scaleF(4) + w.Width + (n > 0 ? scaleF(2) + badgeW : 0.0f) + scaleF(7);
-                Gdiplus::RectF box(rx + rw - listW, fy, listW, chipH);
+            };
+            const std::wstring have = std::to_wstring(ownedCount()) + L" owned";
+            Group library;
+            library.add(L"All", false, craftOwned_ == 0, 0);
+            library.add(have, false, craftOwned_ == 1, 1);
+            library.add(L"Missing", false, craftOwned_ == 2, 2);
+            auto gradeGroup = [&](const std::vector<char>& list) {
+                Group one;
+                one.add(L"Any", false, craftGrade_ == 0, 0);
+                for (char gr : list) one.add(std::wstring(1, (wchar_t)gr), true, craftGrade_ == gr, (int)gr);
+                return one;
+            };
+            auto sizeGroup = [&](const std::vector<int>& list) {
+                Group one;
+                one.add(L"Any", false, craftSize_ < 0, -1);
+                for (int sz : list) one.add(std::to_wstring(sz), true, craftSize_ == sz, sz);
+                return one;
+            };
+            auto classGroup = [&](const std::vector<int>& list) {
+                Group one;
+                one.add(L"Any", false, craftClass_ < 0, -1);
+                for (int cl : list) one.add(toW(CRAFT_CLASSES[cl]), false, craftClass_ == cl, cl);
+                return one;
+            };
+            auto systemGroup = [&](unsigned mask) {
+                Group one;
+                one.add(L"Any", false, craftSystem_ == 0, 0);
+                for (int i = 0; i < 3; i++) {
+                    if (!(mask & (1u << i)) && craftSystem_ != i + 1) continue;
+                    one.add(CRAFT_SYSTEM_NAMES[i + 1], false, craftSystem_ == i + 1, i + 1);
+                }
+                return one;
+            };
+            // Two segments, and the twenty-odd factions themselves only when
+            // they are asked for. How many are picked is on the second
+            // segment, so a closed list never hides that the view is
+            // narrowed - and it stays amber while it narrows, open or shut.
+            auto fromGroup = [&](const std::wstring& pick) {
+                Group one;
+                one.add(L"Any", false, craftFactions_.empty(), -1);
+                one.add(pick, false, !craftFactions_.empty(), craftFactionPick_ ? 0 : 1);
+                one.segs.back().open = craftFactionPick_;
+                one.segs.back().chevron = true;
+                return one;
+            };
+            std::wstring pick = L"Select faction";
+            if (!craftFactions_.empty()) pick += L"  \u00B7  " + std::to_wstring((int)craftFactions_.size());
+            // ...the widest it gets, every outfit there is picked, for the room
+            static const int everyOutfit = [] {
+                std::set<std::string> all;
+                for (int i = 0; i < CRAFT_SOURCE_COUNT; i++) {
+                    if (*CRAFT_SOURCES[i].faction) all.insert(CRAFT_SOURCES[i].faction);
+                }
+                return (int)all.size();
+            }();
+            const std::wstring widestPick = L"Select faction  \u00B7  " + std::to_wstring(everyOutfit);
+
+            // The shopping list: how many are on it as a badge at its end,
+            // amber, the one number on the bar that is yours rather than
+            // the game's
+            const int inCart = cartTotal();
+            Gdiplus::Font buttonFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+            Gdiplus::Font badgeFont(&markFamily(), scaleF(Type::MICRO), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+            const wchar_t* listText = L"Shopping list";
+            const std::wstring badgeText = inCart > 0 ? std::to_wstring(inCart) : std::wstring();
+            const float badgeH = scaleF(14);
+            const float badgeW = inCart > 0 ? (std::max)(badgeH, textWidth(badgeText, badgeFont) + scaleF(4)) : 0.0f;
+            // room for the trolley in front of the words: the button and
+            // the plus on every row then carry the same mark, and one
+            // explains the other
+            const float icon = scaleF(15);
+            const float listWordsW = textWidth(listText, buttonFont);
+            const float listW = scaleF(9) + icon + scaleF(4) + listWordsW + (inCart > 0 ? scaleF(2) + badgeW : 0.0f) +
+                                scaleF(7);
+            const wchar_t* contractText = L"Has contract";
+            const float contractW = toggleWidth(g, contractText, chipFont, sc);
+
+            // The slots the labels stand in, right-aligned
+            const float slot1 = (std::max)({textWidth(L"LIBRARY", smallFont), textWidth(L"SIZE", smallFont),
+                                            textWidth(L"CLASS", smallFont)});
+            const float slot2 = (std::max)(textWidth(L"GRADE", smallFont), textWidth(L"SYSTEM", smallFont));
+            const float fromLabel = textWidth(L"FROM", smallFont);
+
+            // Room either side of a segment's words, and the gap between the
+            // columns: the most the tightest row allows. Measured with every
+            // blueprint's groups, so it holds whatever the list is cut to;
+            // the outfits' segment as it reads with none picked, and with
+            // every one of them picked it still clears CLASS.
+            const Group everyGrades = gradeGroup(everyGrade), everySizes = sizeGroup(everySize),
+                        everyClasses = classGroup(everyClass), everySystems = systemGroup(7u),
+                        plainFrom = fromGroup(L"Select faction"), widestFrom = fromGroup(widestPick);
+            static const float FITS[][2] = {{8, 26}, {7, 26}, {6, 26}, {5, 26}, {5, 20},
+                                            {4, 20}, {4, 14}, {3, 14}, {3, 10}, {2, 8}};
+            float pad = 0, gap = 0, col1 = 0;
+            for (const auto& fit : FITS) {
+                pad = scaleF(fit[0]);
+                gap = scaleF(fit[1]);
+                const float edgeGap = (std::min)(gap, scaleF(12));   // to the right-hand column
+                auto width = [&](const Group& one) {
+                    return segmentedWidth(g, one.segs, chipFont, figureFont, pad, sc);
+                };
+                col1 = (std::max)(width(library), width(everySizes));
+                const float x2 = slot1 + labelGap + col1 + gap + slot2 + labelGap;
+                const float classEnd = slot1 + labelGap + width(everyClasses);
+                const bool first = x2 + width(everyGrades) + edgeGap <= rw - listW;
+                const bool second = x2 + width(everySystems) + edgeGap <= rw - contractW;
+                const bool third = classEnd + edgeGap <= rw - fromLabel - labelGap - width(plainFrom) &&
+                                   classEnd + scaleF(4) <= rw - fromLabel - labelGap - width(widestFrom);
+                if (first && second && third) break;
+            }
+            const float x1 = rx + slot1 + labelGap;        // column 1's controls
+            const float slot2X = x1 + col1 + gap;          // column 2's label slot
+            const float x2 = slot2X + slot2 + labelGap;    // column 2's controls
+
+            auto label = [&](const wchar_t* text, float slotX, float slotW, float y) {
+                g.DrawString(text, -1, &smallFont, Gdiplus::RectF(slotX - scaleF(8), y, slotW + scaleF(8), ctrlH),
+                             &labelRight, &faintBrush);
+            };
+            auto drawGroup = [&](const Group& one, float x, float y, int kind) {
+                const std::vector<Gdiplus::RectF> places =
+                    drawSegmented(g, x, y, ctrlH, one.segs, chipFont, figureFont, pad, sc, hoverCraft_);
+                for (size_t i = 0; i < places.size(); i++) craftHits_.push_back({places[i], kind, one.values[i]});
+            };
+
+            const bool manySystems = systemMask && (systemMask & (systemMask - 1));
+            const bool showSystem = manySystems || craftSystem_ > 0;
+            const bool showFrom = factions.size() > 1 || !craftFactions_.empty();
+            // Whether a contract hands it out: one switch and no heading,
+            // because "any" is simply it being off. 926 of the 1,606 recipes
+            // are dropped by nothing at all, so a recipe you do not own is
+            // worth a second look only when there is a way to earn it.
+            const bool showContract = dropped && undropped;
+
+            // The library first: what you have, what you still need
+            float rowY = ry;
+            label(L"LIBRARY", rx, slot1, rowY);
+            drawGroup(library, x1, rowY, 16);
+            if (!grades.empty()) {
+                label(L"GRADE", slot2X, slot2, rowY);
+                drawGroup(gradeGroup(grades), x2, rowY, 8);
+            }
+            // The shopping list keeps the right-hand end of the first row, so
+            // the number in it does not shove the filters about as things go
+            // on and off the list
+            {
+                const Gdiplus::RectF box(rx + rw - listW, rowY, listW, ctrlH);
                 const bool hot = isHot(hoverCraft_, box);
                 drawButton(g, box, L"", buttonFont, cartOpen_ ? ButtonKind::Selected : ButtonKind::Secondary, hot,
                            scaleF(R_CONTROL));
                 // ...in the ink drawButton gives the words of that kind
                 const Gdiplus::Color ink = cartOpen_ ? COL_ACCENT : (hot ? COL_TEXT : tint(COL_TEXT, 215));
-                drawTrolley(g, Gdiplus::RectF(box.X + scaleF(9), box.Y + (chipH - icon) / 2.0f, icon, icon), ink);
+                drawTrolley(g, Gdiplus::RectF(box.X + scaleF(9), box.Y + (ctrlH - icon) / 2.0f, icon, icon), ink);
                 Gdiplus::SolidBrush inkBrush(ink);
-                g.DrawString(text, -1, &buttonFont,
-                             Gdiplus::RectF(box.X + scaleF(9) + icon + scaleF(4), box.Y, w.Width + scaleF(2), chipH),
+                g.DrawString(listText, -1, &buttonFont,
+                             Gdiplus::RectF(box.X + scaleF(9) + icon + scaleF(4), box.Y, listWordsW + scaleF(2), ctrlH),
                              &leftMid, &inkBrush);
-                if (n > 0) {
-                    Gdiplus::RectF badge(box.GetRight() - scaleF(7) - badgeW, box.Y + (chipH - badgeH) / 2.0f,
+                if (inCart > 0) {
+                    Gdiplus::RectF badge(box.GetRight() - scaleF(7) - badgeW, box.Y + (ctrlH - badgeH) / 2.0f,
                                          badgeW, badgeH);
                     fillRoundRect(g, badge, badgeH / 2.0f, COL_ACCENT);
                     Gdiplus::SolidBrush dark(COL_ACCENT_INK);
-                    g.DrawString(count.c_str(), -1, &badgeFont, badge, &centre, &dark);
+                    g.DrawString(badgeText.c_str(), -1, &badgeFont, badge, &centred, &dark);
                 }
                 craftHits_.push_back({box, 22, 0});
             }
-            // How far a chip may reach: short of the list on the first line,
-            // the full width on any line below it
-            auto edge = [&]() {
-                return (chipLines == 1) ? (rx + rw - listW - scaleF(14)) : (rx + rw);
-            };
-            auto newLine = [&]() {
-                fx = rx;
-                fy += chipH + scaleF(6);
-                chipLines++;
-            };
+            float bottom = rowY + ctrlH;
 
-            // A chip is a capsule: unpicked, a raised surface and quiet
-            // words; picked, the selection's amber. Except the "any" and
-            // "all" of a group, which are that filter switched off - those
-            // are picked in plain ink, so what is amber on the bar is exactly
-            // what is narrowing the list, and a bar at rest has none.
-            auto chip = [&](const std::wstring& label, bool on, int kind, int value, float width, bool off) {
-                if (fx > rx && fx + width > edge()) newLine();
-                Gdiplus::RectF box(fx, fy, width, chipH);
-                const float round = chipH / 2.0f;
-                const bool hot = isHot(hoverCraft_, box);
-                Gdiplus::SolidBrush* ink = &dimBrush;
-                if (on && !off) {
-                    fillRoundRect(g, box, round, tint(COL_ACCENT, hot ? 44 : 30));
-                    strokeRoundRect(g, box, round, tint(COL_ACCENT, 200));
-                    ink = &accentBrush;
-                } else if (on) {
-                    fillRoundRect(g, box, round, COL_HOVER);
-                    strokeRoundRect(g, box, round, tint(COL_TEXT, 90));
-                    ink = &textBrush;
-                } else {
-                    // Under the pointer only half a step up and the words
-                    // lit: a full COL_HOVER here was the picked "any" less
-                    // its rim, and two chips of a group looked chosen
-                    fillRoundRect(g, box, round, COL_CARD_HI);
-                    if (hot) {
-                        fillRoundRect(g, box, round, tint(COL_TEXT, 8));
-                        ink = &textBrush;
-                    }
+            if (sizes.size() > 1 || showSystem || showContract) {
+                rowY = bottom + rowGap;
+                if (sizes.size() > 1) {
+                    label(L"SIZE", rx, slot1, rowY);
+                    drawGroup(sizeGroup(sizes), x1, rowY, 9);
                 }
-                g.DrawString(label.c_str(), -1, &chipFont, box, &centre, ink);
-                craftHits_.push_back({box, kind, value});
-                fx += width + scaleF(4);
-            };
-            auto label = [&](const wchar_t* text) {
-                Gdiplus::RectF w;
-                g.MeasureString(text, -1, &smallFont, Gdiplus::PointF(0, 0), &w);
-                // a heading never ends a line on its own: room for it and for
-                // the first two chips that belong to it, or it wraps first
-                if (fx > rx && fx + w.Width + scaleF(60) > edge()) newLine();
-                g.DrawString(text, -1, &smallFont, Gdiplus::RectF(fx, fy, w.Width + scaleF(2), chipH), &leftMid,
-                             &faintBrush);
-                fx += w.Width + scaleF(4);
-            };
+                if (showSystem) {
+                    label(L"SYSTEM", slot2X, slot2, rowY);
+                    drawGroup(systemGroup(systemMask), x2, rowY, 26);
+                }
+                if (showContract) {
+                    const Gdiplus::RectF box(rx + rw - contractW, rowY, contractW, ctrlH);
+                    drawToggle(g, box, contractText, chipFont, craftContract_ == 1, isHot(hoverCraft_, box), sc);
+                    craftHits_.push_back({box, 18, craftContract_ == 1 ? 0 : 1});
+                }
+                bottom = rowY + ctrlH;
+            }
 
-            // The library first: what you have, what you still need
-            label(L"LIBRARY");
-            chip(L"all", craftOwned_ == 0, 16, 0, scaleF(30), true);
-            {
-                const std::wstring have = std::to_wstring(ownedCount()) + L" owned";
-                chip(have, craftOwned_ == 1, 16, 1, wide(have, scaleF(14)), false);
+            if (!classes.empty() || showFrom) {
+                rowY = bottom + rowGap;
+                if (!classes.empty()) {
+                    label(L"CLASS", rx, slot1, rowY);
+                    drawGroup(classGroup(classes), x1, rowY, 10);
+                }
+                if (showFrom) {
+                    const Group from = fromGroup(pick);
+                    const float fromX = rx + rw - segmentedWidth(g, from.segs, chipFont, figureFont, pad, sc);
+                    label(L"FROM", fromX - labelGap - fromLabel, fromLabel, rowY);
+                    const std::vector<Gdiplus::RectF> places =
+                        drawSegmented(g, fromX, rowY, ctrlH, from.segs, chipFont, figureFont, pad, sc, hoverCraft_);
+                    craftHits_.push_back({places[0], 27, from.values[0]});
+                    craftHits_.push_back({places[1], 28, from.values[1]});
+                }
+                bottom = rowY + ctrlH;
             }
-            chip(L"missing", craftOwned_ == 2, 16, 2, scaleF(56), false);
-            fx += scaleF(10);
 
-            if (!grades.empty()) {
-                label(L"GRADE");
-                chip(L"any", craftGrade_ == 0, 8, 0, scaleF(30), true);
-                for (char gr : grades) {
-                    std::wstring one(1, (wchar_t)gr);
-                    chip(one, craftGrade_ == gr, 8, (int)gr, scaleF(22), false);
-                }
-                fx += scaleF(10);
-            }
-            // Whether a contract hands it out: one switch and no heading, because
-            // "any" is simply it being off; a group of three with its own heading
-            // gets cut off at the right edge and wraps the bar onto a third line.
-            // 926 of the 1,606 recipes are dropped by nothing at all, so a recipe
-            // you do not own is worth a second look only when there is a way to
-            // earn it.
-            if (dropped && undropped) {
-                const std::wstring text = L"Has contract";
-                chip(text, craftContract_ == 1, 18, craftContract_ == 1 ? 0 : 1, wide(text, scaleF(16)), false);
-                fx += scaleF(10);
-            }
-            // Size and class on a line of their own, always: on one line the size
-            // chips run into the list button and the last of them wraps to the left
-            // under LIBRARY. Two rows of two groups read as the grid they are.
-            if (sizes.size() > 1 || !classes.empty()) newLine();
-            if (sizes.size() > 1) {
-                label(L"SIZE");
-                chip(L"any", craftSize_ < 0, 9, -1, scaleF(30), true);
-                for (int sz : sizes) chip(std::to_wstring(sz), craftSize_ == sz, 9, sz, scaleF(22), false);
-                fx += scaleF(10);
-            }
-            if (!classes.empty()) {
-                label(L"CLASS");
-                chip(L"any", craftClass_ < 0, 10, -1, scaleF(30), true);
-                for (int cl : classes) {
-                    const std::wstring name = toW(CRAFT_CLASSES[cl]);
-                    chip(name, craftClass_ == cl, 10, cl, wide(name, scaleF(14)), false);
-                }
-            }
-            // Where it can be earned, and from whom - on a line of their own
-            // below size and class, because the factions are words rather
-            // than single letters and wrap far more readily.
-            const bool manySystems = systemMask && (systemMask & (systemMask - 1));
-            if (manySystems || craftSystem_ > 0 || factions.size() > 1 ||
-                !craftFactions_.empty()) {
-                newLine();
-            }
-            if (manySystems || craftSystem_ > 0) {
-                label(L"SYSTEM");
-                chip(L"any", craftSystem_ == 0, 26, 0, scaleF(30), true);
-                for (int i = 0; i < 3; i++) {
-                    if (!(systemMask & (1u << i)) && craftSystem_ != i + 1) continue;
-                    const std::wstring name = CRAFT_SYSTEM_NAMES[i + 1];
-                    chip(name, craftSystem_ == i + 1, 26, i + 1, wide(name, scaleF(14)), false);
-                }
-                fx += scaleF(10);
-            }
-            if (factions.size() > 1 || !craftFactions_.empty()) {
-                label(L"FROM");
-                // Two chips, and the twenty-odd factions themselves only when
-                // they are asked for. How many are picked is on the second
-                // chip, so a closed list never hides that the view is narrowed
-                // - and it stays amber while it narrows, open or shut. Open
-                // with nothing picked it narrows nothing, so it is plain ink.
-                chip(L"any", craftFactions_.empty(), 27, -1, scaleF(30), true);
-                {
-                    std::wstring text = L"Select faction";
-                    if (!craftFactions_.empty()) {
-                        text += L"  \u00B7  " + std::to_wstring((int)craftFactions_.size());
-                    }
-                    chip(text, craftFactionPick_ || !craftFactions_.empty(), 28, craftFactionPick_ ? 0 : 1,
-                         wide(text, scaleF(16)), /*off=*/craftFactions_.empty());
-                }
+            // The outfits, once asked for: under the grid, as many lines as
+            // they take, each its own switch
+            if (showFrom) {
                 factionHits_.clear();
                 if (craftFactionPick_) {
-                    newLine();
+                    const float pickH = ctrlH - 2.0f * SEGMENT_INSET * sc;
+                    const float radius = (R_CONTROL - SEGMENT_INSET) * sc;
+                    float px = rx, py = bottom + rowGap;
                     for (const auto& outfit : factions) {
-                        const bool on = std::find(craftFactions_.begin(), craftFactions_.end(),
-                                                  outfit.name) != craftFactions_.end();
+                        const bool on = std::find(craftFactions_.begin(), craftFactions_.end(), outfit.name) !=
+                                        craftFactions_.end();
                         const std::wstring text = toW(outfit.name);
-                        chip(text, on, 27, (int)factionHits_.size(), wide(text, scaleF(14)), false);
+                        const float pw = textWidth(text, chipFont) + 2.0f * pad;
+                        if (px > rx && px + pw > rx + rw) {
+                            px = rx;
+                            py += pickH + scaleF(6);
+                        }
+                        const Gdiplus::RectF box(px, py, pw, pickH);
+                        fillRoundRect(g, box, radius, COL_CARD_HI);
+                        Gdiplus::SolidBrush ink(choiceFace(g, box, radius, on, isHot(hoverCraft_, box), false));
+                        g.DrawString(text.c_str(), -1, &chipFont, box, &centred, &ink);
+                        craftHits_.push_back({box, 27, (int)factionHits_.size()});
                         factionHits_.push_back(outfit.name);
+                        px += pw + scaleF(4);
                     }
+                    bottom = py + pickH;
                 }
             }
-            ry += chipLines * chipH + (chipLines - 1) * scaleF(6) + scaleF(10);
+            ry = bottom + scaleF(10);
         }
     }
 
