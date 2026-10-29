@@ -11637,9 +11637,32 @@ void MinerGUI::paintCartPickList(Gdiplus::Graphics& g, int cw, int ch) {
     const int columns = stations ? 2 : 1;
     const int count = stations ? REFINERY_COUNT : REFINING_METHOD_COUNT;
     const int rows = (count + columns - 1) / columns;
-    // A station column wide enough for "MIC-L1 Shallow Frontier Station" whole:
-    // at 200 px the long names of the Stanton stations all ended in dots
-    const float colW = stations ? scaleF(250) : scaleF(440);
+    // A station column wide enough for the longest name whole, at GDI+'s
+    // widths ("CRU-L1 Ambitious Dream Station"): at 200 px the long names
+    // of the Stanton stations all ended in dots, and 250 still cut the
+    // longest by a pixel in Windows
+    float colW = stations ? scaleF(250) : scaleF(440);
+    // a method's three factors, at the right of its row
+    auto factorsOf = [](const RefiningMethod& m) {
+        std::wstringstream fac;
+        fac << std::fixed << std::setprecision(2) << L"Yield \u00D7" << m.yield << L"  Time \u00D7" << m.time
+            << L"  Cost \u00D7" << m.cost;
+        return fac.str();
+    };
+    if (stations) {
+        for (int i = 0; i < REFINERY_COUNT; i++) {
+            colW = (std::max)(colW, lineWidth(g, toW(REFINERIES[i].name), rowFont) + scaleF(64) + scaleF(4) + scaleF(4));
+        }
+    } else {
+        // ...and the methods' wide enough for the longest rating between
+        // the name and the factors
+        float rating = 0, factors = 0;
+        for (int i = 0; i < REFINING_METHOD_COUNT; i++) {
+            rating = (std::max)(rating, lineWidth(g, toW(REFINING_METHODS[i].rating), subFont));
+            factors = (std::max)(factors, lineWidth(g, factorsOf(REFINING_METHODS[i]), numFont));
+        }
+        colW = (std::max)(colW, scaleF(150) + rating + scaleF(10) + factors + scaleF(10) + scaleF(4) + scaleF(4));
+    }
     Gdiplus::RectF list(cartPickAnchor_.X, cartPickAnchor_.Y + cartPickAnchor_.Height + scaleF(4),
                         colW * columns + 2 * pad, rows * rowH + 2 * pad);
     // Inside the window, whatever the field's place
@@ -11670,13 +11693,13 @@ void MinerGUI::paintCartPickList(Gdiplus::Graphics& g, int cw, int ch) {
             const RefiningMethod& m = REFINING_METHODS[i];
             Gdiplus::RectF nameRect(row.X + scaleF(10), row.Y, scaleF(140), row.Height);
             g.DrawString(toW(m.name).c_str(), -1, &rowFont, nameRect, &leftMid, nameInk);
-            Gdiplus::RectF rateRect(row.X + scaleF(150), row.Y, scaleF(150), row.Height);
+            const std::wstring fac = factorsOf(m);
+            const float rateW = (std::max)(scaleF(150), row.Width - scaleF(150) - scaleF(10) - lineWidth(g, fac, numFont) -
+                                                            scaleF(10));
+            Gdiplus::RectF rateRect(row.X + scaleF(150), row.Y, rateW, row.Height);
             g.DrawString(toW(m.rating).c_str(), -1, &subFont, rateRect, &leftMid, &faintBrush);
-            std::wstringstream fac;
-            fac << std::fixed << std::setprecision(2) << L"Yield \u00D7" << m.yield << L"  Time \u00D7" << m.time
-                << L"  Cost \u00D7" << m.cost;
             Gdiplus::RectF facRect(row.X, row.Y, row.Width - scaleF(10), row.Height);
-            g.DrawString(fac.str().c_str(), -1, &numFont, facRect, &rightMid, on ? &dimBrush : &faintBrush);
+            g.DrawString(fac.c_str(), -1, &numFont, facRect, &rightMid, on ? &dimBrush : &faintBrush);
             craftHits_.push_back({slot, 34, i});
         }
     }
@@ -22067,10 +22090,16 @@ void MinerGUI::paintRefinery(HDC hdc) {
                 Gdiplus::RectF nameRect(row.X + scaleF(14), row.Y, scaleF(158), rowH);
                 lg.DrawString(toW(m.name).c_str(), -1, &rowFont, nameRect, &leftMid,
                               on ? &accentBrush : &dimBrush);
-                Gdiplus::RectF rateRect(row.X + scaleF(172), row.Y, scaleF(252), rowH);
+                // the rating as far as the factors leave room for it, at least
+                // as far as it always went
+                const std::wstring facText = factors(m);
+                const float rateX = row.X + scaleF(172);
+                const float rateW = (std::max)(scaleF(252), row.GetRight() - scaleF(10) - lineWidth(lg, facText, numFont) -
+                                                                scaleF(10) - rateX);
+                Gdiplus::RectF rateRect(rateX, row.Y, rateW, rowH);
                 lg.DrawString(toW(m.rating).c_str(), -1, &subFont, rateRect, &leftMid, &faintBrush);
                 Gdiplus::RectF facRect(row.X, row.Y, row.Width - scaleF(10), rowH);
-                lg.DrawString(factors(m).c_str(), -1, &numFont, facRect, &rightMid,
+                lg.DrawString(facText.c_str(), -1, &numFont, facRect, &rightMid,
                               on ? &dimBrush : &faintBrush);
                 refHits_.push_back({row, 7, i});
             }
