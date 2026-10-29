@@ -20428,12 +20428,121 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
             return ty + tagH - y0;
         };
 
+        // The row's second line: the outfit, the ladder, what is open of it
+        // and what else it pays into - broken where its parts meet onto a
+        // line more where it is longer than the column it stands in
+        // (A set can still be fed only by contracts whose name the files
+        // never spell out - LOC_UNINITIALIZED in the game's own data. Those
+        // read as the outfit, see contractTitle.)
+        const bool unnamed = rawTitle(src.title);
+        std::wstring note = unnamed ? std::wstring(L"Not named in game files") : toW(src.faction);
+        {
+            // Every separator below leads with the thing before it, so an
+            // empty outfit must not leave a dot hanging at the front
+            auto add = [&](const std::wstring& text) {
+                if (!note.empty()) note += L"  \u00B7  ";
+                note += text;
+            };
+            if (set.rungs.size() > 1) {
+                // What the set is: a ladder, and how far it reaches - not a count of
+                // table rows (missions times blueprints), which means nothing to a player.
+                const CraftSource& low = CRAFT_SOURCES[set.rungs.front()];
+                const CraftSource& high = CRAFT_SOURCES[set.rungs.back()];
+                std::wstring ladder = std::to_wstring(set.rungs.size()) + L" missions";
+                if (*low.standing && *high.standing) {
+                    ladder += standingRank(low.standing) == standingRank(high.standing)
+                                  ? L" at " + toW(low.standing)
+                                  : L" by rank, " + toW(low.standing) + L" \u2192 " + toW(high.standing);
+                }
+                add(ladder);
+            } else if (*src.standing) {
+                add(toW(src.standing));
+            }
+            if (set.open >= 0 && !set.rungs.empty()) {
+                const int n = (int)set.rungs.size();
+                bool later = false;   // one of them asks for more than the player has yet
+                for (int r : set.rungs) later = later || rungOpen(r) == -1;
+                if (n == 1) {
+                    add(set.open ? L"Available" : later ? L"Not available yet" : L"No longer offered");
+                } else if (set.open == n) {
+                    add(L"All " + std::to_wstring(n) + L" available");
+                } else if (set.open == 0) {
+                    add(later ? L"None available yet" : L"None offered anymore");
+                } else {
+                    add(std::to_wstring(set.open) + L" of " + std::to_wstring(n) + L" available");
+                }
+            }
+            if (set.chance != 100) add(std::to_wstring(set.chance) + L" % payout");
+            if (!set.also.empty()) {
+                add(L"Also pays into " + std::to_wstring(set.also.size()) +
+                    (set.also.size() == 1 ? L" more set" : L" more sets"));
+            }
+        }
+        // up to where the line's own words on the right begin
+        const float noteRoom = (std::max)(scaleF(40), runsX - scaleF(104) - scaleF(10) - left);
+        const Fitted noteLines = fitLines(g, note, subFont, noteRoom);
+
+        // What else a run of these missions pays out of, a line each for what
+        // of it is still missing and which of this set's missions feed it -
+        // each on more lines where it is longer than the card is wide
+        struct AlsoWords {
+            Fitted head, by;
+            bool missing = false;   // something of it still to get: the head in amber
+            int via = 0;
+        };
+        std::vector<AlsoWords> alsoWords;
+        if (open) {
+            for (const auto& a : set.also) {
+                const std::vector<int>& og = poolGroups()[a.group];
+                const CraftSource& any = CRAFT_SOURCES[og.front()];
+                int missing = 0;
+                std::wstring names;
+                int named = 0;
+                for (int k = 0; k < any.poolCount; k++) {
+                    const char* name = CRAFT_POOL_ITEMS[any.poolFirst + k];
+                    const std::vector<int>* bps = blueprintsNamed(name);
+                    bool have = false;
+                    if (bps) {
+                        for (int b : *bps) have = have || isOwned(b);
+                    }
+                    if (have) continue;
+                    missing++;
+                    if (named < 4) {
+                        if (!names.empty()) names += L"  \u00B7  ";
+                        names += toW(name);
+                        named++;
+                    }
+                }
+                if (missing > named) names += L"  \u00B7  +" + std::to_wstring(missing - named);
+                const std::wstring head =
+                    missing ? std::to_wstring(missing) + L" of " + std::to_wstring(any.poolCount) + L" missing: " + names
+                            : L"All " + std::to_wstring(any.poolCount) + L" in library";
+                std::wstring by = L"from ";
+                for (size_t k = 0; k < a.by.size(); k++) by += (k ? L", " : L"") + a.by[k];
+                AlsoWords w;
+                w.missing = missing > 0;
+                w.head = fitLines(g, head, subFont, textW);
+                // (the missions' names stay whole: broken after a comma)
+                w.by = fitLines(g, by, subFont, textW - scaleF(12), L", ", true);
+                // the set opens under one of the missions that link the
+                // two: a row of that set with one of their names
+                w.via = og.front();
+                for (int m : og) {
+                    if (std::find(a.by.begin(), a.by.end(), contractTitle(CRAFT_SOURCES[m])) != a.by.end()) {
+                        w.via = m;
+                        break;
+                    }
+                }
+                alsoWords.push_back(std::move(w));
+            }
+        }
+
         // Measured first, drawn second, from the same figures: a row that
         // reserves less than it paints cuts its own last line off. Folded, a
         // row is its two lines; open, each part below them that has anything
         // to say, a heading and its body.
-        const float headH = scaleF(44);
-        const float bodyTop = scaleF(44);     // the first heading, from the row's top line
+        const float headH = scaleF(44) + noteLines.more;
+        const float bodyTop = scaleF(44) + noteLines.more;   // the first heading, from the row's top line
         const float labelH = scaleF(15);      // a heading, to its body
         const float after = scaleF(9);        // a body, to the next heading - or the card's foot
         float rowH = headH;
@@ -20460,9 +20569,10 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
                 rankH = rankLineH + chipsH + scaleF(5) + (rankNext.empty() ? 0.0f : rungH) + sourceH;
                 rowH += labelH + rankH + after;
             }
-            // ...and the other sets the same missions pay out of, two lines each
-            if (!set.also.empty()) {
-                alsoH = rungH * 2.0f * (float)set.also.size();
+            // ...and the other sets the same missions pay out of, two lines
+            // each and more where they are long
+            if (!alsoWords.empty()) {
+                for (const AlsoWords& w : alsoWords) alsoH += rungH * 2.0f + w.head.more + w.by.more;
                 rowH += labelH + alsoH + after;
             }
             if (!whereLine.empty()) {
@@ -20511,10 +20621,6 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
         // then be found with the eye. Cut where the column ends, measured,
         // because the head is drawn without a box and would run under the
         // figures at the right.
-        // (A set can still be fed only by contracts whose name the files
-        // never spell out - LOC_UNINITIALIZED in the game's own data. Those
-        // read as the outfit, see contractTitle.)
-        const bool unnamed = rawTitle(src.title);
         {
             const float headW = missX - scaleF(76) - left - scaleF(12);
             std::vector<std::wstring> names;
@@ -20539,56 +20645,11 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
                          open ? &accentBrush : &textBrush);
         }
         {
-            std::wstring note = unnamed ? std::wstring(L"Not named in game files")
-                                        : toW(src.faction);
-            // Every separator below leads with the thing before it, so an
-            // empty outfit must not leave a dot hanging at the front
-            auto add = [&](const std::wstring& text) {
-                if (!note.empty()) note += L"  \u00B7  ";
-                note += text;
-            };
-            if (set.rungs.size() > 1) {
-                // What the set is: a ladder, and how far it reaches - not a count of
-                // table rows (missions times blueprints), which means nothing to a player.
-                const CraftSource& low = CRAFT_SOURCES[set.rungs.front()];
-                const CraftSource& high = CRAFT_SOURCES[set.rungs.back()];
-                std::wstring ladder = std::to_wstring(set.rungs.size()) + L" missions";
-                if (*low.standing && *high.standing) {
-                    ladder += standingRank(low.standing) == standingRank(high.standing)
-                                  ? L" at " + toW(low.standing)
-                                  : L" by rank, " + toW(low.standing) + L" \u2192 " + toW(high.standing);
-                }
-                add(ladder);
-            } else if (*src.standing) {
-                add(toW(src.standing));
-            }
-            if (set.open >= 0 && !set.rungs.empty()) {
-                const int n = (int)set.rungs.size();
-                bool later = false;   // one of them asks for more than the player has yet
-                for (int r : set.rungs) later = later || rungOpen(r) == -1;
-                if (n == 1) {
-                    add(set.open ? L"Available" : later ? L"Not available yet" : L"No longer offered");
-                } else if (set.open == n) {
-                    add(L"All " + std::to_wstring(n) + L" available");
-                } else if (set.open == 0) {
-                    add(later ? L"None available yet" : L"None offered anymore");
-                } else {
-                    add(std::to_wstring(set.open) + L" of " + std::to_wstring(n) + L" available");
-                }
-            }
-            if (set.chance != 100) add(std::to_wstring(set.chance) + L" % payout");
-            if (!set.also.empty()) {
-                add(L"Also pays into " + std::to_wstring(set.also.size()) +
-                    (set.also.size() == 1 ? L" more set" : L" more sets"));
-            }
-            // up to where the line's own words on the right begin
+            // the second line, on as many as it was measured to take
             Gdiplus::StringFormat noteLine;
-            noteLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
-            noteLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
-            const float noteRight = runsX - scaleF(104) - scaleF(10);
-            g.DrawString(note.c_str(), -1, &subFont,
-                         Gdiplus::RectF(left + scaleF(1), subBase - subAsc, (std::max)(scaleF(40), noteRight - left),
-                                        scaleF(16)),
+            noteLine.SetTrimming(Gdiplus::StringTrimmingNone);
+            g.DrawString(noteLines.text.c_str(), -1, &subFont,
+                         Gdiplus::RectF(left + scaleF(1), subBase - subAsc, noteRoom, scaleF(16) + noteLines.more),
                          &noteLine, &dimBrush);
         }
         {
@@ -20781,43 +20842,18 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
                              &faintBrush);
                 uy += sourceH + after;
             }
-            if (!set.also.empty()) {
+            if (!alsoWords.empty()) {
                 // What else a run of these missions pays out of: a contract
                 // with more than one pool - the game's "Pool 2" - fills that
                 // set with the same run. Each line: what of it is still
                 // missing, then which of this set's missions feed it. A click
                 // opens that set, and the pointer over one lights it.
                 heading(L"THE SAME RUNS ALSO PAY OUT OF");
-                Gdiplus::StringFormat cut;
-                cut.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
-                cut.SetTrimming(Gdiplus::StringTrimmingEllipsisWord);
-                for (const auto& a : set.also) {
-                    const std::vector<int>& og = poolGroups()[a.group];
-                    const CraftSource& any = CRAFT_SOURCES[og.front()];
-                    int missing = 0;
-                    std::wstring names;
-                    int named = 0;
-                    for (int k = 0; k < any.poolCount; k++) {
-                        const char* name = CRAFT_POOL_ITEMS[any.poolFirst + k];
-                        const std::vector<int>* bps = blueprintsNamed(name);
-                        bool have = false;
-                        if (bps) {
-                            for (int b : *bps) have = have || isOwned(b);
-                        }
-                        if (have) continue;
-                        missing++;
-                        if (named < 4) {
-                            if (!names.empty()) names += L"  \u00B7  ";
-                            names += toW(name);
-                            named++;
-                        }
-                    }
-                    if (missing > named) names += L"  \u00B7  +" + std::to_wstring(missing - named);
-                    const std::wstring head =
-                        missing ? std::to_wstring(missing) + L" of " + std::to_wstring(any.poolCount) +
-                                      L" missing: " + names
-                                : L"All " + std::to_wstring(any.poolCount) + L" in library";
-                    const Gdiplus::RectF link(left, uy, textW, rungH * 2.0f);
+                Gdiplus::StringFormat lines;
+                lines.SetTrimming(Gdiplus::StringTrimmingNone);
+                for (const AlsoWords& w : alsoWords) {
+                    const float headLinesH = rungH + w.head.more, byLinesH = rungH + w.by.more;
+                    const Gdiplus::RectF link(left, uy, textW, headLinesH + byLinesH);
                     const bool hot = isHot(hoverGrind_, link);
                     if (hot) {
                         fillRoundRect(g,
@@ -20825,24 +20861,13 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
                                                      link.Height + scaleF(1)),
                                       scaleF(R_CONTROL), COL_CARD_HI);
                     }
-                    const Gdiplus::RectF line(left, uy, textW, rungH);
-                    g.DrawString(head.c_str(), -1, &subFont, line, &cut,
-                                 missing ? (hot ? &accentHiBrush : &accentBrush) : &dimBrush);
-                    std::wstring by = L"from ";
-                    for (size_t k = 0; k < a.by.size(); k++) by += (k ? L", " : L"") + a.by[k];
-                    g.DrawString(by.c_str(), -1, &subFont, Gdiplus::RectF(left + scaleF(12), uy + rungH, textW - scaleF(12), rungH),
-                                 &cut, &faintBrush);
-                    // the set opens under one of the missions that link the
-                    // two: a row of that set with one of their names
-                    int via = og.front();
-                    for (int m : og) {
-                        if (std::find(a.by.begin(), a.by.end(), contractTitle(CRAFT_SOURCES[m])) != a.by.end()) {
-                            via = m;
-                            break;
-                        }
-                    }
-                    grindHits_.push_back({link, 5, via});
-                    uy += rungH * 2.0f;
+                    g.DrawString(w.head.text.c_str(), -1, &subFont, Gdiplus::RectF(left, uy, textW, headLinesH + scaleF(1)),
+                                 &lines, w.missing ? (hot ? &accentHiBrush : &accentBrush) : &dimBrush);
+                    g.DrawString(w.by.text.c_str(), -1, &subFont,
+                                 Gdiplus::RectF(left + scaleF(12), uy + headLinesH, textW - scaleF(12), byLinesH + scaleF(1)),
+                                 &lines, &faintBrush);
+                    grindHits_.push_back({link, 5, w.via});
+                    uy += headLinesH + byLinesH;
                 }
                 uy += after;
             }
