@@ -614,9 +614,10 @@ public:
 // --------------------------------------------------------------------------
 // The text check, for the shot run (BEDROCK_TEXT_CHECK=1): what of the texts
 // a Windows user would see wrong in a picture. Every DrawString is noted on
-// the picture it goes into, laid out as GDI+ lays it out at the size the
-// font was asked for - the shim draws at that size rounded to the pixel -
-// and when the painting of a picture ends, what is wrong in it is printed,
+// the picture it goes into, laid out as GDI+ lays it out - at the size the
+// font was asked for, where the shim draws at that size rounded to the
+// pixel, and 3 % wider than the shim draws it (GDIPLUS_WIDER) - and when
+// the painting of a picture ends, what is wrong in it is printed,
 // one line each, among the shot run's own lines:
 //   CUT      shortened to fit its box: GDI+ trims it and puts in the "..."
 //   CLIPPED  it needs more than its box has (width, lines, height of the
@@ -654,6 +655,13 @@ struct Text {
     QRectF clip;             // the picture and the painter's clip
     QString shortOf;         // what the box lacks for it, if anything
     std::vector<Line> lines;
+    // For a text the app measured and may have put another one after:
+    QPointF origin;          // where it starts, as the shim has it
+    QRectF band;             // ...and the height of its first line there
+    bool measured = false;   // one line, near aligned, its words measured
+    qreal measuredWidth = 0; // what the shim's MeasureString gave for it
+    qreal extra = 0;         // what GDI+'s gives more
+    qreal shift = 0;         // how much further on Windows puts it
 };
 
 struct Target {
@@ -667,6 +675,7 @@ struct State {
     std::mutex lock;
     std::unordered_map<const QPaintDevice*, Target> targets;
     std::unordered_map<qint64, bool> opaque;   // pictures, by cacheKey
+    std::unordered_map<QString, int> measured; // MeasureString's words, by font
 };
 
 inline State& state() {
@@ -675,6 +684,12 @@ inline State& state() {
 }
 
 inline bool visible(const QRectF& r) { return r.width() >= 0.5 && r.height() >= 0.5; }
+
+inline QString measureKey(const Font& font, const QString& s) {
+    const QFont& f = font.q();
+    const qreal size = font.exactPixels() > 0 ? (qreal)font.exactPixels() : f.pointSizeF();
+    return QStringLiteral("%1|%2|%3|%4|").arg(f.family()).arg(size).arg(f.bold()).arg(f.italic()) + s;
+}
 
 // How far a reaches out of b, the most on any side
 inline qreal outside(const QRectF& a, const QRectF& b) {
@@ -836,6 +851,16 @@ inline void coverLocked(Target& t, QPainter* p, const QPainterPath& shape, bool 
                   t.texts.end());
 }
 
+// How much wider GDI+ lays a line out than the font's advances add up to:
+// with the default StringFormat, which Bedrock draws and measures with,
+// 3.0 % at every size from 9 to 57.5 px, in Segoe UI, Segoe UI Semibold and
+// Bahnschrift, ClearTypeGridFit and AntiAlias alike (GenericTypographic
+// lays it out at the advances, as Qt does)
+constexpr qreal GDIPLUS_WIDER = 1.03;
+// Bahnschrift in bold: Windows takes the font's bold instance, Qt here the
+// regular one made heavier, 3 % narrower
+constexpr qreal BAHNSCHRIFT_BOLD_WIDER = 1.03;
+
 // A DrawString: where GDI+ puts the lines at the asked size. `drawn` is what
 // the shim drew, `layout` the box (null for the point overloads)
 inline void textLocked(Target& t, QPainter* p, const Font& font, const QString& s, const QString& drawn,
@@ -847,23 +872,53 @@ inline void textLocked(Target& t, QPainter* p, const Font& font, const QString& 
     const qreal asked = font.exactPixels() > 0 ? (qreal)font.exactPixels() : rounded;
     // widths and heights scale with the size; Qt's are the rounded size's
     const qreal k = rounded > 0 ? asked / rounded : 1.0;
+    // ...and across, a line takes what GDI+ gives it
+    const bool heavier = f.bold() && f.family() == QLatin1String("Bahnschrift");
+    const qreal kx = k * GDIPLUS_WIDER * (heavier ? BAHNSCHRIFT_BOLD_WIDER : 1.0);
     const qreal pad = asked / 6.0;
     const qreal ascent = fm.ascent() * k;
     const qreal spacing = std::max<qreal>(1.0, fm.lineSpacing() * k);
-    auto advance = [&](const QString& w) { return fm.horizontalAdvance(w) * k; };
+    auto advance = [&](const QString& w) { return fm.horizontalAdvance(w) * kx; };
     const QTransform m = p->combinedTransform();
     const qreal sx = std::hypot(m.m11(), m.m12());
+    const qreal sy = std::hypot(m.m21(), m.m22());
+
+    // Put right after a text the app measured - a name, and its kind beside
+    // it - it starts further on in Windows, by what GDI+ measures that text
+    // wider; a box that does goes as far as before
+    const bool near = !(flags & (Qt::AlignRight | Qt::AlignHCenter));
+    const QPointF origin = m.map(layout ? QPointF(layout->X, layout->Y) : QPointF(at.X, at.Y));
+    const QRectF band(origin.x(), origin.y(), 1.0,
+                      (layout ? std::min<qreal>(layout->Height, spacing) : spacing) * sy);
+    qreal shift = 0;
+    if (near) {
+        const Text* after = nullptr;
+        for (const Text& a : t.texts) {
+            if (!a.measured) continue;
+            const qreal end = a.origin.x() + a.measuredWidth;
+            if (origin.x() < end - 0.5 || origin.x() > end + std::max<qreal>(8.0, 1.5 * asked) * sx) continue;
+            const qreal common = std::min(a.band.bottom(), band.bottom()) - std::max(a.band.top(), band.top());
+            if (common < 0.5 * std::min(a.band.height(), band.height())) continue;
+            if (!after || end > after->origin.x() + after->measuredWidth) after = &a;
+        }
+        if (after) shift = after->shift + after->extra;
+    }
+    const qreal shiftHere = sx > 0 ? shift / sx : 0.0;
 
     Text x;
     x.text = s;
     x.shotWhole = flat(drawn) == flat(s);
     x.boxed = layout != nullptr;
+    x.origin = origin;
+    x.band = band;
+    x.shift = shift;
     QStringList lines;
     QRectF box;
     qreal room = 0;   // how wide a line may be, inside the padding
     int holds = 1;    // how many lines the box has room for
     if (layout) {
         box = layout->q();
+        if (shiftHere != 0) box.setLeft(std::min(box.left() + shiftHere, box.right() - 1.0));
         room = box.width() - 2 * pad > 0 ? box.width() - 2 * pad : box.width();
         holds = std::max(1, (int)((box.height() + 0.01) / spacing));
         const bool single = (flags & Qt::TextSingleLine) != 0;
@@ -871,14 +926,14 @@ inline void textLocked(Target& t, QPainter* p, const Font& font, const QString& 
         one.replace(QLatin1Char('\n'), QLatin1Char(' '));
         if (trimming != StringTrimmingNone) {
             const int most = single ? 1 : holds;
-            x.shown = most > 1 ? detail::wrapAndTrim(s, fm, room / k, most) : fm.elidedText(s, Qt::ElideRight, room / k);
+            x.shown = most > 1 ? detail::wrapAndTrim(s, fm, room / kx, most) : fm.elidedText(s, Qt::ElideRight, room / kx);
             lines = x.shown.split(QLatin1Char('\n'));
         } else {
             x.shown = s;
             QStringList wrapped;
             if (!single) {
                 for (const QString& para : s.split(QLatin1Char('\n')))
-                    wrapped += detail::wrapAndTrim(para, fm, room / k, INT_MAX).split(QLatin1Char('\n'));
+                    wrapped += detail::wrapAndTrim(para, fm, room / kx, INT_MAX).split(QLatin1Char('\n'));
             }
             if (single || (wrapped.size() > 1 && holds == 1)) {
                 // one line however long: GDI+ starts it at the box's near
@@ -923,7 +978,7 @@ inline void textLocked(Target& t, QPainter* p, const Font& font, const QString& 
         const QString body = withoutTrailingSpace(w.mid(lead));
         if (body.isEmpty()) continue;
         const qreal width = advance(withoutTrailingSpace(w));
-        qreal left = (layout ? box.x() : at.X) + pad;
+        qreal left = (layout ? box.x() : at.X + shiftHere) + pad;
         if (layout && width <= room + 0.5) {
             if (across & Qt::AlignRight) left = box.right() - pad - width;
             else if (across & Qt::AlignHCenter) left = box.x() + (box.width() - width) / 2;
@@ -931,7 +986,7 @@ inline void textLocked(Target& t, QPainter* p, const Font& font, const QString& 
         const qreal start = left + advance(w.left(lead));
         const qreal base = top + i * spacing + ascent;
         const QRectF tight = fm.tightBoundingRect(body);
-        const QRectF ink(start + tight.left() * k, base + tight.top() * k, tight.width() * k, tight.height() * k);
+        const QRectF ink(start + tight.left() * kx, base + tight.top() * k, tight.width() * kx, tight.height() * k);
         if (layout && i < holds) past = std::max({past, box.top() - ink.top(), ink.bottom() - box.bottom()});
         Line l;
         l.words = body;
@@ -946,6 +1001,12 @@ inline void textLocked(Target& t, QPainter* p, const Font& font, const QString& 
         x.shortOf = x.shortOf.isEmpty() ? high : x.shortOf + QStringLiteral("; ") + high;
     }
     x.where = layout ? boxOnPicture : extent;
+    // ...and for a text that may come after it, how far on it would start
+    if (near && lines.size() == 1 && state().measured.count(measureKey(font, s)) > 0) {
+        x.measured = true;
+        x.measuredWidth = (fm.horizontalAdvance(s) + 2 * detail::pad(f)) * sx;
+        x.extra = (advance(withoutTrailingSpace(s)) + 2 * pad) * sx - x.measuredWidth;
+    }
     if (std::none_of(x.lines.begin(), x.lines.end(), [](const Line& l) { return visible(l.seen); })) return;
     t.texts.push_back(std::move(x));
 }
@@ -1042,6 +1103,15 @@ inline void text(const QPaintDevice* device, QPainter* p, const Font& font, cons
     if (Target* t = targetLocked(device)) textLocked(*t, p, font, s, drawn, layout, at, flags, trimming);
 }
 
+// MeasureString on any picture: words the app may put something after
+inline void measured(const Font& font, const QString& s) {
+    if (!on()) return;
+    std::lock_guard<std::mutex> hold(state().lock);
+    auto& known = state().measured;
+    if (known.size() > 8192) known.clear();
+    known[measureKey(font, s)]++;
+}
+
 inline void fill(const QPaintDevice* device, QPainter* p, const Brush* brush, const QPainterPath& shape, bool rectangle) {
     std::lock_guard<std::mutex> hold(state().lock);
     Target* t = targetLocked(device);
@@ -1091,6 +1161,8 @@ inline void image(const QPaintDevice* device, QPainter* p, const QImage& picture
     for (const Text& x : from->texts) {
         Text c = x;
         c.where.translate(by);
+        c.origin += by;
+        c.band.translate(by);
         c.clip = c.clip.translated(by).intersected(within);
         for (Line& l : c.lines) {
             l.box.translate(by);
@@ -1380,6 +1452,7 @@ public:
     Status MeasureString(const wchar_t* text, int length, const Font* font,
                          const RectF& layout, const StringFormat* format, RectF* out) const {
         const QString s = detail::toQ(text, length);
+        textcheck::measured(*font, s);
         const QFontMetricsF fm(font->q());
         int flags = Qt::TextWordWrap;
         if (format) flags = (format->qtFlags() & Qt::TextSingleLine) ? Qt::TextSingleLine : Qt::TextWordWrap;
