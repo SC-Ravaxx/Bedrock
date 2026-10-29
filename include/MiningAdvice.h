@@ -47,6 +47,13 @@ struct MiningLoadout {
     // which is the fracture power under another name, so the range runs from
     // 0.64x for a poor craft to 1.44x for a good one. That is a wider spread
     // than any module gives, which is why it belongs here and not as a footnote.
+    //
+    // Measured on a MOLE's Hofstede-S2 at +21.72 % with FLTR-XL and Rieger-C3:
+    // 25,175 kg of copper stood still at 80 %, where the stock head would need
+    // 99 %, and 21,126 kg held in the optimal window at 69 % (68 crafted, 83
+    // stock). The bonus multiplies after the modules; added to the modules'
+    // per cents instead it fits ten Hofstede rocks worse (2.6 against 2.0
+    // points rms) and the Helix II ones by 10 points.
     float craftedPower = 0.0f;    // per cent, as the item shows it. 0 = stock.
 };
 
@@ -68,6 +75,11 @@ struct LaserOutput {
 // simplest thing that fits the two numbers. The HUD bar changes colour in
 // steps, so the truth may well be stepped; when that is measured this is the
 // one place to change.
+//
+// Two turret readings past a Hofstede-S2's 60 m say the line is near enough:
+// 14,721 kg of copper at 69 m stood at 51 % (line 51.5, no falloff 47.7) and
+// 2,380 kg of taranite at 86 m at 10 % (line 12.2, none 9.6). A square curve
+// fits them no better. One rock held at several distances would settle it.
 inline float rangeFalloff(const MiningLaser& laser, float metres) {
     if (metres <= laser.fullRange) return 1.0f;
     if (metres >= laser.zeroRange) return 0.0f;
@@ -229,6 +241,25 @@ struct ThrottleAdvice {
 // tries), so a trend with mass or printed resistance fitted to them is
 // fitted to noise.
 //
+// Checked on two heads with rocks at 0 %, each where its bar stood still
+// (Prospector: fire_s1..s5 of 17.9.2026; MOLE turret: the same day,
+// distance off its LASER RANGE pointer):
+//
+//     head, output                mass  metres   stood at      model
+//   Helix I + Focus III +        6,939     10    28-29 %       30.0 %
+//   Rieger-C3, 4,631 W           9,536     12    40.5 %        41.2 %
+//                               16,838     10    70.5 %        72.7 %
+//   Hofstede-S2 +21.72 %,       21,126     20    69 %          68.4 %
+//   FLTR-XL + Rieger-C3,        25,175     51    80 %          81.5 %
+//   6,177 W                     14,721     69    51 %          51.5 %
+//                                3,493     54    12 %          11.3 %
+//                                4,049     19    about 15 %    13.1 %
+//                                2,661     57    13.3 %         8.6 %
+//
+// Within 2.2 points but the last, a small rock next to the Hofstede's 10 %
+// minimum; on the Helix I the small rocks read no such thing. 0.19 or 0.21
+// fit both heads worse than 0.2.
+//
 // Instability does not raise the demand. instabilityWavePeriod 3 and
 // instabilityWaveVariance 1 make it a wave that moves the balance point over
 // time; on a rock at INST 0.00 the point reads within one per cent, while
@@ -382,6 +413,23 @@ struct GadgetOnRock {
 // torite rocks held at 55.5 and 57 %, the curve asks 59 and 62. A 48,929 kg
 // savrilium at 75 % stays impossible for a Helix II with three Rieger-C3 and
 // +28.84 % crafted, as in the game: 6,713 through against 9,786.
+//
+// A second head bears it out: a MOLE's Hofstede-S2, +21.72 % crafted with
+// FLTR-XL and Rieger-C3 (6,177 W), the same day off the turret:
+//
+//     mass  ore           green  falls at  climbs at     line   curve
+//   10,542  -              34 %    46.0 %     47.2 %   51.7 %  46.8 %
+//    3,050  -              40 %         -     17.8 %   16.5 %  14.7 %
+//    2,380  TARANITE 86 m  26 %    10.0 %     15.0 %   13.3 %  12.2 %
+//
+// (the first two at 33 and 40 m; the 3,050 kg one held in the window at
+// 13.7-15.8 %, the taranite stood at the head's 10 % minimum). Fitted again
+// to all six, the exponent comes out 1.17; with the five doubtful readings
+// as well - the aslarite at INST 387, the torite pair of unknown colour, the
+// Helix II turret on two stilerons at INST 660-742 - 1.23, and leaving any
+// one rock out moves it between 1.16 and 1.27. 1.17 would ask 2 points more
+// on the quantainium and under 1 point anywhere else, inside what one rock
+// reads from one try to the next, so 1.21 stays.
 //
 // Four rocks, one at INST 387 wobbling on its wave: the exponent is a
 // measurement, not a law. resistanceCurveFactor = 0.6 in

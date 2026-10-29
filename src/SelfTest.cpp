@@ -4983,6 +4983,48 @@ int runSelfTest() {
                                    std::to_string((int)std::lround(slow.toHold)) + " %)");
         }
 
+        // The MOLE's Hofstede-S2, crafted +21.72 %, FLTR-XL and Rieger-C3, off
+        // the turret recordings of 17.9.2026: where the bar stood still, or
+        // the throttle it fell at and the one it climbed at, at the distance
+        // the LASER RANGE pointer showed. Two-sided like the Helix I rocks,
+        // with the same 3 points of slack.
+        {
+            SCMiner::MiningLoadout hof;
+            hof.laser = SCMiner::laserById("shin_hofstede_s2");
+            hof.craftedPower = 21.72f;
+            hof.modules = {SCMiner::moduleById("passive_fltr_mk3"),
+                           SCMiner::moduleById("passive_rieger_mk3")};
+            const SCMiner::LaserOutput close = SCMiner::outputOf(hof, 0);
+            allPassed &= check(hof.laser && std::abs(close.fracture - 6177.0f) < 2.0f &&
+                                   std::abs(close.stock - 5075.0f) < 2.0f,
+                               "the crafted Hofstede-S2 fit puts out 6,177 (5,075 stock)");
+            struct Stood { float mass, green, metres, lo, hi; const char* what; };
+            for (const Stood& rock : {Stood{21126.0f, 0.0f, 20.0f, 66.0f, 72.0f, "21,126 kg of copper at 20 m"},
+                                      Stood{25175.0f, 0.0f, 51.0f, 78.0f, 82.0f, "25,175 kg of copper at 51 m"},
+                                      Stood{14721.0f, 0.0f, 69.0f, 50.0f, 52.0f, "14,721 kg of copper at 69 m"},
+                                      Stood{4049.0f, 0.0f, 19.0f, 12.0f, 17.0f, "4,049 kg of copper at 19 m"},
+                                      Stood{3493.0f, 0.0f, 54.0f, 11.0f, 13.0f, "3,493 kg of copper at 54 m"},
+                                      Stood{10542.0f, 34.0f, 33.0f, 46.0f, 47.2f, "10,542 kg at 34 % green, 33 m"},
+                                      Stood{3050.0f, 40.0f, 40.0f, 12.0f, 17.8f, "3,050 kg at 40 % green, 40 m"},
+                                      Stood{2380.0f, 26.0f, 86.0f, 10.0f, 11.0f, "2,380 kg of taranite at 26 % green, 86 m"}}) {
+                const SCMiner::LaserOutput o = SCMiner::outputOf(hof, rock.metres);
+                const float own = SCMiner::rockOwnResistance(rock.green, true, o.resistance / 100.0f);
+                const SCMiner::ThrottleAdvice held = SCMiner::throttleFor(
+                    rock.mass, hof.laser, o.atRange * SCMiner::resistanceLetsThrough(own, o.resistance));
+                allPassed &= check(held.possible && held.toHold >= rock.lo - 3.0f && held.toHold <= rock.hi + 3.0f,
+                                   std::string(rock.what) + " held between " + std::to_string((int)std::lround(rock.lo)) +
+                                       " and " + std::to_string((int)std::lround(rock.hi)) + " % (model says " +
+                                       std::to_string((int)std::lround(held.toHold)) + " %)");
+            }
+            // ...and the crafting bonus is what makes it so: stock, the
+            // 25,175 kg rock would ask 99 %, and it stood at 80
+            const SCMiner::ThrottleAdvice asStock = SCMiner::throttleFor(
+                25175.0f, hof.laser, close.stock * SCMiner::rangeFalloff(*hof.laser, 51.0f));
+            allPassed &= check(asStock.toHold > 82.0f + 10.0f,
+                               "...read stock, the 25,175 kg rock would ask " +
+                                   std::to_string((int)std::lround(asStock.toHold)) + " % - the crafting bonus counts");
+        }
+
         // 48,929 kg of savrilium at 75 %: the rock that needs resistance in
         // the model. One Helix II with three Rieger-C3 and +28.84 % crafted -
         // the game says IMPOSSIBLE and the bar does not move at 100 %, where
