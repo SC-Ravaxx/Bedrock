@@ -583,6 +583,10 @@ int runScreenshots(const std::string& dir) {
         gui.railPickForShot(Rail::Plugin, "wikelo");
         pump();
         shoot(gui.windowHandle(), "main_page_wikelo.png");
+        // ...and a trade whose parts have long names, on the page's 480 px
+        gui.pluginStateForShot("wikelo", {"t:TheCollector_Vehicle_Medium_F7_MK2"}, {}, {{"find", "navy f7"}});
+        pump();
+        shoot(gui.windowHandle(), "main_page_wikelo_long.png");
         gui.railPickForShot(Rail::Scan);
         pump();
         return 0;

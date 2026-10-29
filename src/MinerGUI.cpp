@@ -24784,6 +24784,15 @@ float MinerGUI::paintPluginPieces(Gdiplus::Graphics& g, const std::vector<Plugin
     rightLine.SetLineAlignment(Gdiplus::StringAlignmentCenter);
     rightLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
     rightLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+    // ...and the same two broken into lines, for a title or a label that
+    // does not fit on one: on a 480 px page a cut loses the end of a name
+    Gdiplus::StringFormat lines;
+    lines.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    lines.SetTrimming(Gdiplus::StringTrimmingNone);
+    Gdiplus::StringFormat rightLines;
+    rightLines.SetAlignment(Gdiplus::StringAlignmentFar);
+    rightLines.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    rightLines.SetTrimming(Gdiplus::StringTrimmingNone);
 
     const float M = (float)scale(MARGIN);
     const float right = (float)cw - M;
@@ -24803,6 +24812,42 @@ float MinerGUI::paintPluginPieces(Gdiplus::Graphics& g, const std::vector<Plugin
         Gdiplus::RectF w;
         g.MeasureString(t.c_str(), -1, &f, Gdiplus::PointF(0, 0), &w);
         return w.Width;
+    };
+    // A text in lines `room` wide: on one where it fits; otherwise broken
+    // where its parts meet ("a  \u00B7  b", the dot at a break left out), and
+    // between words only inside a part wider than the room. `more` is how
+    // much taller than one line it gets. The measuring and the drawing both
+    // ask, so the rows, the card ends and the scrolling agree.
+    struct Fitted {
+        std::wstring text;
+        float more = 0;
+    };
+    auto fit = [&](const std::wstring& t, const Gdiplus::Font& f, float room) {
+        Fitted out{t, 0.0f};
+        if (t.empty() || room <= 0 || width(t, f) <= room) return out;
+        static const std::wstring dot = L"  \u00B7  ";
+        std::wstring line;
+        out.text.clear();
+        for (size_t from = 0;;) {
+            const size_t at = t.find(dot, from);
+            const std::wstring part = t.substr(from, at == std::wstring::npos ? std::wstring::npos : at - from);
+            if (line.empty()) {
+                line = part;
+            } else if (width(line + dot + part, f) <= room) {
+                line += dot + part;
+            } else {
+                out.text += line + L"\n";
+                line = part;
+            }
+            if (at == std::wstring::npos) break;
+            from = at + dot.size();
+        }
+        out.text += line;
+        Gdiplus::RectF one, all;
+        g.MeasureString(t.c_str(), -1, &f, Gdiplus::PointF(0, 0), &one);
+        g.MeasureString(out.text.c_str(), -1, &f, Gdiplus::RectF(0, 0, room, scaleF(2000)), &lines, &all);
+        out.more = (std::max)(0.0f, all.Height - one.Height);
+        return out;
     };
     auto hit = [&](const Gdiplus::RectF& r, int kind, const std::string& id, int value) {
         if (draw) pluginHits_.push_back({r, kind, id, value});
@@ -24928,8 +24973,15 @@ float MinerGUI::paintPluginPieces(Gdiplus::Graphics& g, const std::vector<Plugin
             case UiItem::Kind::Card: {
                 closeCard();
                 card++;
-                const float headH = scaleF(46);
                 const bool open = it.open;
+                // the chip at the right, then the title and the line under it
+                // in what is left, each on more lines where it does not fit
+                const std::wstring chipText = toW(it.chip);
+                const float chipW = chipText.empty() ? 0.0f : width(chipText, chipFont) + scaleF(18);
+                const float chipLeft = chipText.empty() ? edge : edge - chipW - scaleF(12);
+                const Fitted title = fit(toW(it.text), nameFont, chipLeft - left);
+                const Fitted sub = fit(toW(it.value), subFont, chipLeft - left);
+                const float headH = scaleF(46) + title.more + sub.more;
                 const Gdiplus::RectF head(M, y - scaleF(4), right - M, headH);
                 if (draw) {
                     if (open) {
@@ -24943,25 +24995,20 @@ float MinerGUI::paintPluginPieces(Gdiplus::Graphics& g, const std::vector<Plugin
                     } else if (isHot(hoverPlugins_, head)) {
                         fillRoundRect(g, head, scaleF(R_CONTROL), COL_CARD);
                     }
-                    // the chip at the right, then the title and the line under
-                    // it in what is left
-                    float chipLeft = edge;
-                    if (!it.chip.empty()) {
-                        const std::wstring c = toW(it.chip);
-                        const float cw2 = width(c, chipFont) + scaleF(18);
-                        const Gdiplus::RectF pill(edge - cw2, y + scaleF(5), cw2, scaleF(20));
+                    if (!chipText.empty()) {
+                        const Gdiplus::RectF pill(edge - chipW, y + scaleF(5), chipW, scaleF(20));
                         const Gdiplus::Color colour = toneColour(it.tone, COL_ACCENT);
                         fillRoundRect(g, pill, pill.Height / 2.0f, tint(colour, 36));
                         Gdiplus::SolidBrush ink(colour);
-                        g.DrawString(c.c_str(), -1, &chipFont, pill, &centre, &ink);
-                        chipLeft = pill.X - scaleF(12);
+                        g.DrawString(chipText.c_str(), -1, &chipFont, pill, &centre, &ink);
                     }
-                    const std::wstring title = toW(it.text), sub = toW(it.value);
-                    g.DrawString(title.c_str(), -1, &nameFont, Gdiplus::RectF(left, y, chipLeft - left, scaleF(22)),
-                                 &oneLine, open ? &textBrush : &textBrush);
-                    if (!sub.empty()) {
-                        g.DrawString(sub.c_str(), -1, &subFont, Gdiplus::RectF(left, y + scaleF(21), chipLeft - left, scaleF(16)),
-                                     &oneLine, &dimBrush);
+                    g.DrawString(title.text.c_str(), -1, &nameFont,
+                                 Gdiplus::RectF(left, y, chipLeft - left, scaleF(22) + title.more),
+                                 title.more > 0 ? &lines : &oneLine, &textBrush);
+                    if (!sub.text.empty()) {
+                        g.DrawString(sub.text.c_str(), -1, &subFont,
+                                     Gdiplus::RectF(left, y + scaleF(21) + title.more, chipLeft - left, scaleF(16) + sub.more),
+                                     sub.more > 0 ? &lines : &oneLine, &dimBrush);
                     }
                     // a fold mark at the left edge, where a plugin's card opens and shuts
                     if (!pluginShown_.empty()) {
@@ -24991,30 +25038,40 @@ float MinerGUI::paintPluginPieces(Gdiplus::Graphics& g, const std::vector<Plugin
                 closeCard();
                 break;
             case UiItem::Kind::Row: {
-                const float h = scaleF(20);
+                const std::wstring value = toW(it.value);
+                const float vw = (std::min)(width(value, bodyFont) + scaleF(4), (edge - left) * 0.6f);
+                const float labelW = edge - left - vw - scaleF(10);
+                const Fitted label = fit(toW(it.text), bodyFont, labelW);
+                const Fitted shown = fit(value, bodyFont, vw);
+                const float h = scaleF(20) + (std::max)(label.more, shown.more);
                 if (draw) {
-                    const std::wstring label = toW(it.text), value = toW(it.value);
-                    const float vw = (std::min)(width(value, bodyFont) + scaleF(4), (edge - left) * 0.6f);
-                    g.DrawString(label.c_str(), -1, &bodyFont, Gdiplus::RectF(left, y, edge - left - vw - scaleF(10), h),
-                                 &oneLine, &dimBrush);
+                    g.DrawString(label.text.c_str(), -1, &bodyFont, Gdiplus::RectF(left, y, labelW, h),
+                                 label.more > 0 ? &lines : &oneLine, &dimBrush);
                     Gdiplus::SolidBrush ink(toneColour(it.tone, COL_TEXT));
-                    g.DrawString(value.c_str(), -1, &bodyFont, Gdiplus::RectF(edge - vw, y, vw, h), &rightLine, &ink);
+                    g.DrawString(shown.text.c_str(), -1, &bodyFont, Gdiplus::RectF(edge - vw, y, vw, h),
+                                 shown.more > 0 ? &rightLines : &rightLine, &ink);
                 }
                 y += h;
                 break;
             }
             case UiItem::Kind::Counter: {
-                const float h = scaleF(26);
+                // the label beside the counter on as many lines as it takes,
+                // the counter in the middle of them
+                const float ctrlH = scaleF(26);
                 const float bw = scaleF(26), vw = scaleF(64);
-                const Gdiplus::RectF plus(edge - bw, y, bw, h);
-                const Gdiplus::RectF value(plus.X - scaleF(4) - vw, y, vw, h);
-                const Gdiplus::RectF minus(value.X - scaleF(4) - bw, y, bw, h);
+                const float minusX = edge - bw - scaleF(4) - vw - scaleF(4) - bw;
+                const float labelW = minusX - left - scaleF(10);
+                const Fitted label = fit(toW(it.text), bodyFont, labelW);
+                const float h = ctrlH + label.more;
+                const float cy = y + label.more / 2.0f;
+                const Gdiplus::RectF plus(edge - bw, cy, bw, ctrlH);
+                const Gdiplus::RectF value(plus.X - scaleF(4) - vw, cy, vw, ctrlH);
+                const Gdiplus::RectF minus(value.X - scaleF(4) - bw, cy, bw, ctrlH);
                 const bool typing = pluginTyping_ == it.id && pluginTypingNumber_;
                 if (draw) {
                     Gdiplus::SolidBrush ink(toneColour(it.tone, COL_TEXT));
-                    g.DrawString(toW(it.text).c_str(), -1, &bodyFont,
-                                 Gdiplus::RectF(left, y, minus.X - left - scaleF(10), h), &oneLine,
-                                 it.tone == UiItem::Tone::Plain ? &textBrush : &ink);
+                    g.DrawString(label.text.c_str(), -1, &bodyFont, Gdiplus::RectF(left, y, labelW, h),
+                                 label.more > 0 ? &lines : &oneLine, it.tone == UiItem::Tone::Plain ? &textBrush : &ink);
                     drawButton(g, minus, L"\u2212", buttonFont, ButtonKind::Secondary, isHot(hoverPlugins_, minus),
                                scaleF(R_CONTROL));
                     drawButton(g, plus, L"+", buttonFont, ButtonKind::Secondary, isHot(hoverPlugins_, plus),
@@ -25060,12 +25117,13 @@ float MinerGUI::paintPluginPieces(Gdiplus::Graphics& g, const std::vector<Plugin
                 break;
             }
             case UiItem::Kind::Progress: {
+                const Fitted words = fit(toW(it.text), subFont, edge - left);
                 if (draw) {
-                    if (!it.text.empty()) {
-                        g.DrawString(toW(it.text).c_str(), -1, &subFont, Gdiplus::RectF(left, y, edge - left, scaleF(16)),
-                                     &oneLine, &dimBrush);
+                    if (!words.text.empty()) {
+                        g.DrawString(words.text.c_str(), -1, &subFont, Gdiplus::RectF(left, y, edge - left, scaleF(16) + words.more),
+                                     words.more > 0 ? &lines : &oneLine, &dimBrush);
                     }
-                    const Gdiplus::RectF track(left, y + scaleF(19), edge - left, scaleF(6));
+                    const Gdiplus::RectF track(left, y + scaleF(19) + words.more, edge - left, scaleF(6));
                     fillRoundRect(g, track, track.Height / 2.0f, COL_CARD_HI);
                     if (it.fraction > 0) {
                         const Gdiplus::RectF done(track.X, track.Y, (std::max)(track.Height, (float)(track.Width * it.fraction)),
@@ -25073,7 +25131,7 @@ float MinerGUI::paintPluginPieces(Gdiplus::Graphics& g, const std::vector<Plugin
                         fillRoundRect(g, done, track.Height / 2.0f, toneColour(it.tone, COL_ACCENT));
                     }
                 }
-                y += scaleF(32);
+                y += scaleF(32) + words.more;
                 break;
             }
             case UiItem::Kind::Gap:
