@@ -29,19 +29,28 @@
 #include <QColor>
 #include <QFont>
 #include <QFontMetricsF>
+#include <QImage>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPen>
 #include <QRectF>
 #include <QStack>
 #include <QString>
+#include <QStringList>
 #include <QTransform>
 
+#include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <cwchar>
+#include <iostream>
+#include <mutex>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 // The one pixel format MinerGUI names, for a thumbnail with alpha
 #define PixelFormat32bppPARGB 0x000E200B
@@ -328,6 +337,7 @@ public:
         // program that lays itself out in pixels.
         if (unit == UnitPixel) {
             f_.setPixelSize((int)std::lround(size));
+            exact_ = size;
         } else {
             f_.setPointSizeF(size);
         }
@@ -352,9 +362,13 @@ public:
         family->ascentOfEm_ = size > 0 ? QFontMetricsF(f_).ascent() / size : 0.0;
         return Ok;
     }
+    // The size in pixels as asked, which GDI+ draws at - Qt is given it
+    // rounded to the pixel (0 for a size in points)
+    REAL exactPixels() const { return exact_; }
 
 private:
     QFont f_;
+    REAL exact_ = 0;
 };
 
 class StringFormat {
@@ -521,6 +535,12 @@ private:
     QPainterPath path_;
 };
 
+// The text check's (below) hold on a picture: let go when the picture goes
+// or is written to other than by drawing
+namespace textcheck {
+inline void forget(const QPaintDevice* device);
+}
+
 class Image {
 public:
     virtual ~Image() = default;
@@ -544,12 +564,14 @@ public:
         if (img_.isNull()) status_ = GenericError;
         else img_ = img_.convertToFormat(QImage::Format_ARGB32_Premultiplied);
     }
+    ~Bitmap() override { textcheck::forget(&img_); }
     const QImage& q() const override { return img_; }
     QImage& image() { return img_; }
     // Qt's premultiplied ARGB lies in memory as GDI+'s PARGB does - blue,
     // green, red, alpha - so the pixels are handed out where they are
-    Status LockBits(const Rect* rect, UINT, PixelFormat format, BitmapData* data) {
+    Status LockBits(const Rect* rect, UINT flags, PixelFormat format, BitmapData* data) {
         if (!data || img_.isNull()) return GenericError;
+        if (flags & ImageLockModeWrite) textcheck::forget(&img_);
         if (img_.format() != QImage::Format_ARGB32_Premultiplied)
             img_ = img_.convertToFormat(QImage::Format_ARGB32_Premultiplied);
         const Rect all(0, 0, img_.width(), img_.height());
@@ -578,6 +600,7 @@ class TextureBrush : public Brush {
 public:
     explicit TextureBrush(Image* image) : img_(image ? image->q() : QImage()) {}
     QBrush q() const override { return QBrush(img_); }
+    const QImage& image() const { return img_; }
 
 private:
     QImage img_;
@@ -589,10 +612,504 @@ public:
 };
 
 // --------------------------------------------------------------------------
+// The text check, for the shot run (BEDROCK_TEXT_CHECK=1): what of the texts
+// a Windows user would see wrong in a picture. Every DrawString is noted on
+// the picture it goes into, laid out as GDI+ lays it out at the size the
+// font was asked for - the shim draws at that size rounded to the pixel -
+// and when the painting of a picture ends, what is wrong in it is printed,
+// one line each, among the shot run's own lines:
+//   CUT      shortened to fit its box: GDI+ trims it and puts in the "..."
+//   CLIPPED  it needs more than its box has (width, lines, height of the
+//            ink), or it runs past the clip or the picture's edge
+//   OVERLAP  two texts that can be seen lie over each other
+// A text is no longer there to be seen where an opaque fill or picture
+// drawn after it covers it; a picture with texts of its own drawn one to
+// one brings them along (a page drawn first and the lists over it). It
+// only looks: the pictures are the same with it as without it.
+// scripts/text_check_report.py sorts the lines to the pictures.
+namespace textcheck {
+
+inline bool on() {
+    static const bool enabled = [] {
+        const char* v = std::getenv("BEDROCK_TEXT_CHECK");
+        return v != nullptr && *v != '\0' && std::strcmp(v, "0") != 0;
+    }();
+    return enabled;
+}
+
+// A line of a text, in the picture's pixels
+struct Line {
+    QString words;
+    QRectF box;    // across, the line's advance; up and down, its ink
+    QRectF ink;    // the glyphs
+    QRectF seen;   // what of box can be seen: inside the clip and the text's box, under no later fill
+};
+
+struct Text {
+    QString text;            // as asked
+    QString shown;           // as GDI+ shows it at the asked size, a line break where it is wrapped
+    bool shotWhole = true;   // ...and whether the shot, at the size rounded, shows all of it
+    bool boxed = false;      // drawn into a box (the rectangle overload), which GDI+ clips to
+    QRectF where;            // the box, or for a point what the lines take
+    QRectF clip;             // the picture and the painter's clip
+    QString shortOf;         // what the box lacks for it, if anything
+    std::vector<Line> lines;
+};
+
+struct Target {
+    int open = 0;            // Graphics drawing on it
+    bool kept = false;       // a Bitmap: its texts go along where it is drawn
+    QRectF frame;            // the whole picture
+    std::vector<Text> texts;
+};
+
+struct State {
+    std::mutex lock;
+    std::unordered_map<const QPaintDevice*, Target> targets;
+    std::unordered_map<qint64, bool> opaque;   // pictures, by cacheKey
+};
+
+inline State& state() {
+    static State s;
+    return s;
+}
+
+inline bool visible(const QRectF& r) { return r.width() >= 0.5 && r.height() >= 0.5; }
+
+// How far a reaches out of b, the most on any side
+inline qreal outside(const QRectF& a, const QRectF& b) {
+    return std::max({b.left() - a.left(), a.right() - b.right(), b.top() - a.top(), a.bottom() - b.bottom(), (qreal)0});
+}
+
+// The painter's clip in the picture's pixels, within the picture
+inline QRectF clipOf(QPainter* p, const QRectF& frame) {
+    if (!p->hasClipping()) return frame;
+    return frame.intersected(p->combinedTransform().mapRect(p->clipBoundingRect()));
+}
+
+inline QString quoted(const QString& s) {
+    QString out(QLatin1Char('"'));
+    for (const QChar c : s) {
+        if (c == QLatin1Char('"') || c == QLatin1Char('\\')) {
+            out += QLatin1Char('\\');
+            out += c;
+        } else if (c == QLatin1Char('\n') || c == QChar::LineSeparator) {
+            out += QLatin1String("\\n");
+        } else {
+            out += c;
+        }
+    }
+    return out + QLatin1Char('"');
+}
+
+inline QString xywh(const QRectF& r) {
+    return QStringLiteral("%1,%2,%3,%4")
+        .arg(std::lround(r.x()))
+        .arg(std::lround(r.y()))
+        .arg(std::lround(r.width()))
+        .arg(std::lround(r.height()));
+}
+
+inline QString px(qreal v) { return QString::number(v, 'f', 1); }
+
+// The words, wherever the lines break
+inline QString flat(const QString& s) {
+    QString f = s;
+    f.replace(QLatin1Char('\n'), QLatin1Char(' '));
+    f.replace(QChar::LineSeparator, QLatin1Char(' '));
+    return f.simplified();
+}
+
+inline QString withoutTrailingSpace(const QString& s) {
+    int n = (int)s.size();
+    while (n > 0 && s[n - 1].isSpace()) n--;
+    return s.left(n);
+}
+
+inline bool opaqueLocked(const QImage& img) {
+    if (img.isNull()) return false;
+    if (!img.hasAlphaChannel()) return true;
+    auto& known = state().opaque;
+    const auto it = known.find(img.cacheKey());
+    if (it != known.end()) return it->second;
+    const bool argb = img.format() == QImage::Format_ARGB32 || img.format() == QImage::Format_ARGB32_Premultiplied;
+    const QImage pixels = argb ? img : img.convertToFormat(QImage::Format_ARGB32);
+    bool all = true;
+    for (int y = 0; all && y < pixels.height(); y++) {
+        const auto* row = reinterpret_cast<const QRgb*>(pixels.constScanLine(y));
+        for (int x = 0; x < pixels.width(); x++) {
+            if (qAlpha(row[x]) != 255) {
+                all = false;
+                break;
+            }
+        }
+    }
+    if (known.size() > 4096) known.clear();
+    known[img.cacheKey()] = all;
+    return all;
+}
+
+inline bool opaqueLocked(const Brush* brush) {
+    if (!brush) return false;
+    if (const auto* texture = dynamic_cast<const TextureBrush*>(brush)) return opaqueLocked(texture->image());
+    return brush->q().isOpaque();
+}
+
+inline Target* targetLocked(const QPaintDevice* device) {
+    auto& targets = state().targets;
+    const auto it = targets.find(device);
+    return it == targets.end() ? nullptr : &it->second;
+}
+
+// r less the part of it that is gone, where that takes a side off it; a
+// hole in the middle leaves the wider side, a corner leaves it whole
+inline QRectF without(const QRectF& r, const QRectF& gone) {
+    if (gone.top() <= r.top() + 0.5 && gone.bottom() >= r.bottom() - 0.5) {
+        const QRectF left(r.left(), r.top(), gone.left() - r.left(), r.height());
+        const QRectF right(gone.right(), r.top(), r.right() - gone.right(), r.height());
+        return left.width() >= right.width() ? left : right;
+    }
+    if (gone.left() <= r.left() + 0.5 && gone.right() >= r.right() - 0.5) {
+        const QRectF above(r.left(), r.top(), r.width(), gone.top() - r.top());
+        const QRectF below(r.left(), gone.bottom(), r.width(), r.bottom() - gone.bottom());
+        return above.height() >= below.height() ? above : below;
+    }
+    return r;
+}
+
+// An opaque shape painted over what is there (in the painter's units)
+inline void coverLocked(Target& t, QPainter* p, const QPainterPath& shape, bool rectangle) {
+    if (t.texts.empty()) return;
+    const QTransform m = p->combinedTransform();
+    const QRectF bounds = m.mapRect(shape.boundingRect()).intersected(clipOf(p, t.frame));
+    if (!visible(bounds)) return;
+    const bool plain = rectangle && m.type() <= QTransform::TxScale;
+    QPainterPath onPicture;
+    bool mapped = false;
+    auto covers = [&](const QRectF& r) {
+        if (plain) return true;
+        if (!mapped) {
+            onPicture = m.map(shape);
+            mapped = true;
+        }
+        return onPicture.contains(r.adjusted(0.25, 0.25, -0.25, -0.25));
+    };
+    for (Text& x : t.texts) {
+        for (Line& l : x.lines) {
+            if (!visible(l.seen) || !bounds.intersects(l.seen)) continue;
+            const QRectF part = l.seen.intersected(bounds);
+            if (covers(part)) {
+                l.seen = without(l.seen, part);
+                continue;
+            }
+            // A shape with round corners over a part of the line: the longest
+            // run of columns in which it covers the line's whole height
+            const bool tall = part.top() <= l.seen.top() + 0.5 && part.bottom() >= l.seen.bottom() - 0.5;
+            if (plain || !tall) continue;
+            qreal start = 0, bestStart = 0, bestLength = 0;
+            bool running = false;
+            for (qreal cx = part.left(); cx < part.right(); cx += 1.0) {
+                const qreal step = std::min<qreal>(1.0, part.right() - cx);
+                const bool covered = covers(QRectF(cx, part.top(), step, part.height()));
+                if (covered && !running) {
+                    start = cx;
+                    running = true;
+                }
+                const bool last = cx + 1.0 >= part.right();
+                if (running && (!covered || last)) {
+                    const qreal stop = covered ? cx + step : cx;
+                    if (stop - start > bestLength) {
+                        bestLength = stop - start;
+                        bestStart = start;
+                    }
+                    running = false;
+                }
+            }
+            if (bestLength >= 1.0) l.seen = without(l.seen, QRectF(bestStart, part.top(), bestLength, part.height()));
+        }
+    }
+    t.texts.erase(std::remove_if(t.texts.begin(), t.texts.end(),
+                                 [](const Text& x) {
+                                     return std::none_of(x.lines.begin(), x.lines.end(),
+                                                         [](const Line& l) { return visible(l.seen); });
+                                 }),
+                  t.texts.end());
+}
+
+// A DrawString: where GDI+ puts the lines at the asked size. `drawn` is what
+// the shim drew, `layout` the box (null for the point overloads)
+inline void textLocked(Target& t, QPainter* p, const Font& font, const QString& s, const QString& drawn,
+                       const RectF* layout, const PointF& at, int flags, StringTrimming trimming) {
+    if (s.trimmed().isEmpty()) return;
+    const QFont& f = font.q();
+    const QFontMetricsF fm(f);
+    const qreal rounded = f.pixelSize() > 0 ? (qreal)f.pixelSize() : f.pointSizeF() * 96.0 / 72.0;
+    const qreal asked = font.exactPixels() > 0 ? (qreal)font.exactPixels() : rounded;
+    // widths and heights scale with the size; Qt's are the rounded size's
+    const qreal k = rounded > 0 ? asked / rounded : 1.0;
+    const qreal pad = asked / 6.0;
+    const qreal ascent = fm.ascent() * k;
+    const qreal spacing = std::max<qreal>(1.0, fm.lineSpacing() * k);
+    auto advance = [&](const QString& w) { return fm.horizontalAdvance(w) * k; };
+    const QTransform m = p->combinedTransform();
+    const qreal sx = std::hypot(m.m11(), m.m12());
+
+    Text x;
+    x.text = s;
+    x.shotWhole = flat(drawn) == flat(s);
+    x.boxed = layout != nullptr;
+    QStringList lines;
+    QRectF box;
+    qreal room = 0;   // how wide a line may be, inside the padding
+    int holds = 1;    // how many lines the box has room for
+    if (layout) {
+        box = layout->q();
+        room = box.width() - 2 * pad > 0 ? box.width() - 2 * pad : box.width();
+        holds = std::max(1, (int)((box.height() + 0.01) / spacing));
+        const bool single = (flags & Qt::TextSingleLine) != 0;
+        QString one = s;
+        one.replace(QLatin1Char('\n'), QLatin1Char(' '));
+        if (trimming != StringTrimmingNone) {
+            const int most = single ? 1 : holds;
+            x.shown = most > 1 ? detail::wrapAndTrim(s, fm, room / k, most) : fm.elidedText(s, Qt::ElideRight, room / k);
+            lines = x.shown.split(QLatin1Char('\n'));
+        } else {
+            x.shown = s;
+            QStringList wrapped;
+            if (!single) {
+                for (const QString& para : s.split(QLatin1Char('\n')))
+                    wrapped += detail::wrapAndTrim(para, fm, room / k, INT_MAX).split(QLatin1Char('\n'));
+            }
+            if (single || (wrapped.size() > 1 && holds == 1)) {
+                // one line however long: GDI+ starts it at the box's near
+                // side, aligned as it may be, and the box cuts it off
+                lines = QStringList{one};
+                const qreal need = advance(withoutTrailingSpace(one));
+                if (need > room + 0.5) {
+                    x.shortOf = QStringLiteral("width: needs %1 px, has %2").arg(px(need * sx), px(room * sx));
+                }
+            } else {
+                lines = wrapped;
+                if (lines.size() > holds) {
+                    x.shortOf = QStringLiteral("lines: needs %1, has room for %2").arg(lines.size()).arg(holds);
+                }
+                qreal widest = 0;
+                for (const QString& w : lines) widest = std::max(widest, advance(withoutTrailingSpace(w)));
+                if (widest > room + 0.5 && x.shortOf.isEmpty()) {
+                    x.shortOf = QStringLiteral("width: a word needs %1 px, has %2").arg(px(widest * sx), px(room * sx));
+                }
+            }
+        }
+    } else {
+        x.shown = s;
+        lines = s.split(QLatin1Char('\n'));
+    }
+
+    const int across = flags & (Qt::AlignLeft | Qt::AlignRight | Qt::AlignHCenter);
+    const int down = flags & (Qt::AlignTop | Qt::AlignBottom | Qt::AlignVCenter);
+    const qreal block = lines.size() * spacing;
+    qreal top = layout ? box.y() : at.Y;
+    if (layout && (down & Qt::AlignVCenter)) top += (box.height() - block) / 2;
+    else if (layout && (down & Qt::AlignBottom)) top += box.height() - block;
+    x.clip = clipOf(p, t.frame);
+    const QRectF boxOnPicture = layout ? m.mapRect(box) : QRectF();
+    const QRectF can = layout ? x.clip.intersected(boxOnPicture) : x.clip;
+    qreal past = 0;   // the ink out of the box, above or below
+    QRectF extent;
+    for (int i = 0; i < (int)lines.size(); i++) {
+        const QString& w = lines[i];
+        int lead = 0;
+        while (lead < (int)w.size() && w[lead].isSpace()) lead++;
+        const QString body = withoutTrailingSpace(w.mid(lead));
+        if (body.isEmpty()) continue;
+        const qreal width = advance(withoutTrailingSpace(w));
+        qreal left = (layout ? box.x() : at.X) + pad;
+        if (layout && width <= room + 0.5) {
+            if (across & Qt::AlignRight) left = box.right() - pad - width;
+            else if (across & Qt::AlignHCenter) left = box.x() + (box.width() - width) / 2;
+        }
+        const qreal start = left + advance(w.left(lead));
+        const qreal base = top + i * spacing + ascent;
+        const QRectF tight = fm.tightBoundingRect(body);
+        const QRectF ink(start + tight.left() * k, base + tight.top() * k, tight.width() * k, tight.height() * k);
+        if (layout && i < holds) past = std::max({past, box.top() - ink.top(), ink.bottom() - box.bottom()});
+        Line l;
+        l.words = body;
+        l.ink = m.mapRect(ink);
+        l.box = m.mapRect(QRectF(start, ink.top(), advance(body), ink.height()));
+        l.seen = l.box.intersected(can);
+        extent = extent.isNull() ? l.box : extent.united(l.box);
+        x.lines.push_back(l);
+    }
+    if (layout && past > 1.0) {
+        const QString high = QStringLiteral("height: ink %1 px out of the box").arg(px(past * std::hypot(m.m21(), m.m22())));
+        x.shortOf = x.shortOf.isEmpty() ? high : x.shortOf + QStringLiteral("; ") + high;
+    }
+    x.where = layout ? boxOnPicture : extent;
+    if (std::none_of(x.lines.begin(), x.lines.end(), [](const Line& l) { return visible(l.seen); })) return;
+    t.texts.push_back(std::move(x));
+}
+
+// The end of a picture's painting: what is wrong in it
+inline void reportLocked(const Target& t) {
+    const QString size = QStringLiteral("%1x%2").arg(std::lround(t.frame.width())).arg(std::lround(t.frame.height()));
+    QString out = QStringLiteral("TEXTCHECK PASS %1 texts=%2\n").arg(size).arg(t.texts.size());
+    for (const Text& x : t.texts) {
+        if (flat(x.shown) != flat(x.text)) {
+            out += QStringLiteral("TEXTCHECK CUT %1 %2 %3 -> %4%5\n")
+                       .arg(size, xywh(x.where), quoted(x.text), quoted(x.shown),
+                            x.shotWhole ? QStringLiteral(" (the shot shows it whole)") : QString());
+        }
+        QStringList why;
+        if (!x.shortOf.isEmpty()) why << x.shortOf;
+        qreal edge = 0, clip = 0;
+        for (const Line& l : x.lines) {
+            const QRectF ink = x.boxed ? l.ink.intersected(x.where) : l.ink;
+            if (!visible(ink)) continue;
+            edge = std::max(edge, outside(ink, t.frame));
+            clip = std::max(clip, outside(ink, x.clip));
+        }
+        if (edge > 1.0) why << QStringLiteral("edge: %1 px past the picture").arg(px(edge));
+        else if (clip > 1.0) why << QStringLiteral("clip: %1 px outside the clip").arg(px(clip));
+        if (!why.isEmpty()) {
+            out += QStringLiteral("TEXTCHECK CLIPPED %1 %2 %3 %4\n").arg(size, xywh(x.where), quoted(x.text), why.join(QStringLiteral("; ")));
+        }
+    }
+    for (size_t i = 0; i < t.texts.size(); i++) {
+        for (size_t j = i + 1; j < t.texts.size(); j++) {
+            bool found = false;
+            for (const Line& a : t.texts[i].lines) {
+                if (found || !visible(a.seen)) continue;
+                for (const Line& b : t.texts[j].lines) {
+                    if (!visible(b.seen)) continue;
+                    const QRectF both = a.seen.intersected(b.seen);
+                    if (both.width() <= 1.0 || both.height() <= 1.0) continue;
+                    // the same words a hair off themselves: a shadow, a second coat
+                    if (a.words == b.words && std::abs(a.seen.center().x() - b.seen.center().x()) <= 2.5 &&
+                        std::abs(a.seen.center().y() - b.seen.center().y()) <= 2.5) {
+                        continue;
+                    }
+                    out += QStringLiteral("TEXTCHECK OVERLAP %1 %2 %3 vs %4 %5 by %6x%7\n")
+                               .arg(size, xywh(a.seen), quoted(a.words), xywh(b.seen), quoted(b.words), px(both.width()),
+                                    px(both.height()));
+                    found = true;
+                    break;
+                }
+            }
+        }
+    }
+    std::cout << out.toStdString() << std::flush;
+}
+
+// A Graphics begins on a picture: the first of them begins its painting,
+// and what was noted on it before is over
+inline const QPaintDevice* begin(QPainter* p, bool bitmap) {
+    if (!on() || !p || !p->isActive()) return nullptr;
+    const QPaintDevice* device = p->device();
+    // (the one-pixel pictures text is measured on are not looked at)
+    if (!device || device->width() < 16 || device->height() < 16) return nullptr;
+    std::lock_guard<std::mutex> hold(state().lock);
+    Target& t = state().targets[device];
+    if (t.open++ == 0) {
+        t.texts.clear();
+        t.kept = bitmap;
+        t.frame = QRectF(0, 0, device->width(), device->height());
+    }
+    return device;
+}
+
+inline void end(const QPaintDevice* device) {
+    std::lock_guard<std::mutex> hold(state().lock);
+    auto& targets = state().targets;
+    const auto it = targets.find(device);
+    if (it == targets.end() || it->second.open <= 0) return;
+    if (--it->second.open > 0) return;
+    reportLocked(it->second);
+    if (!it->second.kept) targets.erase(it);
+}
+
+inline void forget(const QPaintDevice* device) {
+    if (!on()) return;
+    std::lock_guard<std::mutex> hold(state().lock);
+    auto& targets = state().targets;
+    const auto it = targets.find(device);
+    if (it != targets.end() && it->second.open == 0) targets.erase(it);
+}
+
+inline void text(const QPaintDevice* device, QPainter* p, const Font& font, const QString& s, const QString& drawn,
+                 const RectF* layout, const PointF& at, int flags, StringTrimming trimming) {
+    std::lock_guard<std::mutex> hold(state().lock);
+    if (Target* t = targetLocked(device)) textLocked(*t, p, font, s, drawn, layout, at, flags, trimming);
+}
+
+inline void fill(const QPaintDevice* device, QPainter* p, const Brush* brush, const QPainterPath& shape, bool rectangle) {
+    std::lock_guard<std::mutex> hold(state().lock);
+    Target* t = targetLocked(device);
+    if (!t || t->texts.empty() || !opaqueLocked(brush)) return;
+    coverLocked(*t, p, shape, rectangle);
+}
+
+inline void fill(const QPaintDevice* device, QPainter* p, const Brush* brush, const QRectF& r) {
+    QPainterPath shape;
+    shape.addRect(r);
+    fill(device, p, brush, shape, true);
+}
+
+inline void clear(const QPaintDevice* device, QPainter* p, const QColor& c) {
+    if (c.alpha() != 255) return;
+    std::lock_guard<std::mutex> hold(state().lock);
+    Target* t = targetLocked(device);
+    if (!t || t->texts.empty()) return;
+    QPainterPath shape;
+    shape.addRect(QRectF(p->window()));
+    coverLocked(*t, p, shape, true);
+}
+
+// A picture drawn into dest (painter units) from source (its own pixels,
+// null for all of it)
+inline void image(const QPaintDevice* device, QPainter* p, const QImage& picture, const QRectF& dest,
+                  const QRectF& source) {
+    std::lock_guard<std::mutex> hold(state().lock);
+    Target* t = targetLocked(device);
+    if (!t) return;
+    if (!t->texts.empty() && opaqueLocked(picture)) {
+        QPainterPath shape;
+        shape.addRect(dest);
+        coverLocked(*t, p, shape, true);
+    }
+    const Target* from = targetLocked(static_cast<const QPaintDevice*>(&picture));
+    if (!from || from == t || from->texts.empty()) return;
+    const QTransform m = p->combinedTransform();
+    const QRectF to = m.mapRect(dest);
+    const QRectF part = source.isNull() ? QRectF(0, 0, picture.width(), picture.height()) : source;
+    if (m.type() > QTransform::TxScale || std::abs(to.width() - part.width()) > 0.5 ||
+        std::abs(to.height() - part.height()) > 0.5) {
+        return;   // stretched: its words are not read off it
+    }
+    const QPointF by = to.topLeft() - part.topLeft();
+    const QRectF within = clipOf(p, t->frame).intersected(to);
+    for (const Text& x : from->texts) {
+        Text c = x;
+        c.where.translate(by);
+        c.clip = c.clip.translated(by).intersected(within);
+        for (Line& l : c.lines) {
+            l.box.translate(by);
+            l.ink.translate(by);
+            l.seen = l.seen.translated(by).intersected(within);
+        }
+        if (std::any_of(c.lines.begin(), c.lines.end(), [](const Line& l) { return visible(l.seen); })) {
+            t->texts.push_back(std::move(c));
+        }
+    }
+}
+
+}  // namespace textcheck
+
+// --------------------------------------------------------------------------
 
 class Graphics {
 public:
-    explicit Graphics(QPainter* p) : p_(p) {}
+    explicit Graphics(QPainter* p) : p_(p) { check_ = textcheck::begin(p_, false); }
     // On a DC: the window's painter while it paints, the bitmap's for a
     // memory DC. The painter's state is put back when this goes.
     // Whatever transform and clip the painter already carries is the DC's
@@ -603,6 +1120,7 @@ public:
             p_->save();
             restoreOnExit_ = true;
         }
+        check_ = textcheck::begin(p_, false);
     }
     // On a picture of its own
     explicit Graphics(Image* image) {
@@ -610,8 +1128,10 @@ public:
             own_ = new QPainter(&bitmap->image());
             p_ = own_;
         }
+        check_ = textcheck::begin(p_, true);
     }
     ~Graphics() {
+        if (check_) textcheck::end(check_);
         if (!p_) return;
         while (depth_ > 0) { p_->restore(); depth_--; }
         if (restoreOnExit_) p_->restore();
@@ -666,11 +1186,13 @@ public:
 
     Status Clear(const Color& c) {
         p_->fillRect(p_->window(), c.q());
+        if (check_) textcheck::clear(check_, p_, c.q());
         return Ok;
     }
 
     Status FillRectangle(const Brush* brush, const RectF& r) {
         p_->fillRect(r.q(), brush->q());
+        if (check_) textcheck::fill(check_, p_, brush, r.q());
         return Ok;
     }
     Status FillRectangle(const Brush* brush, REAL x, REAL y, REAL w, REAL h) {
@@ -693,6 +1215,11 @@ public:
         p_->setBrush(brush->q());
         p_->drawEllipse(r.q());
         p_->restore();
+        if (check_) {
+            QPainterPath shape;
+            shape.addEllipse(r.q());
+            textcheck::fill(check_, p_, brush, shape, false);
+        }
         return Ok;
     }
     Status FillEllipse(const Brush* brush, REAL x, REAL y, REAL w, REAL h) {
@@ -739,6 +1266,7 @@ public:
     }
     Status FillPath(const Brush* brush, const GraphicsPath* path) {
         p_->fillPath(path->q(), brush->q());
+        if (check_) textcheck::fill(check_, p_, brush, path->q(), false);
         return Ok;
     }
     Status DrawPath(const Pen* pen, const GraphicsPath* path) {
@@ -751,12 +1279,14 @@ public:
     }
     Status DrawImage(Image* img, const RectF& dest) {
         p_->drawImage(dest.q(), img->q());
+        if (check_) textcheck::image(check_, p_, img->q(), dest.q(), QRectF());
         return Ok;
     }
     // A part of the picture (in its own pixels) into a rectangle of the page
     Status DrawImage(Image* img, const RectF& dest, REAL sx, REAL sy, REAL sw, REAL sh, Unit,
                      const ImageAttributes* = nullptr) {
         p_->drawImage(dest.q(), img->q(), QRectF(sx, sy, sw, sh));
+        if (check_) textcheck::image(check_, p_, img->q(), dest.q(), QRectF(sx, sy, sw, sh));
         return Ok;
     }
     Status DrawImage(Image* img, REAL x, REAL y, REAL w, REAL h) {
@@ -813,6 +1343,10 @@ public:
         }
         p_->drawText(box, drawn, shown);
         p_->restore();
+        if (check_) {
+            textcheck::text(check_, p_, *font, s, shown, &layout, PointF(), flags,
+                            format ? format->trimming() : StringTrimmingNone);
+        }
         return Ok;
     }
     // The point overload is NOT the rectangle overload with a zero-sized
@@ -832,6 +1366,7 @@ public:
         const QFontMetricsF fm(font->q());
         p_->drawText(QPointF(at.X + detail::pad(font->q()), at.Y + fm.ascent()), s);
         p_->restore();
+        if (check_) textcheck::text(check_, p_, *font, s, s, nullptr, at, Qt::AlignLeft | Qt::AlignTop, StringTrimmingNone);
         return Ok;
     }
 
@@ -903,6 +1438,7 @@ private:
     InterpolationMode interp_ = InterpolationModeDefault;
     bool restoreOnExit_ = false;
     GraphicsState depth_ = 0;
+    const QPaintDevice* check_ = nullptr;   // the picture the text check notes this Graphics' texts on
 };
 
 // --------------------------------------------------------------------------
