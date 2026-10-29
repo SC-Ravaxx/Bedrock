@@ -10,6 +10,9 @@ namespace SCMiner {
 
 std::string UexPrices::commodityOf(const std::string& ore) {
     if (ore == "Aluminium") return "Aluminum";
+    // Ice goes by what is sold of it, refined: Pressurized Ice, in UEX's price
+    // list and on its marketplace alike
+    if (ore == "Ice") return "Pressurized Ice";
     return ore;
 }
 

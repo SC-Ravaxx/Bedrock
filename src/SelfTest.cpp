@@ -1247,6 +1247,7 @@ int runSelfTest() {
         price(778, "Levski", "Lindinium", 51000, 1, 2);
         for (int i = 0; i < 7; i++) price(90 + i, "Terminal", "Gold", 25000 + 1000 * (i / 2), 1, 7 - i);
         price(507, "Ashland", "Laranite", 9100, 5, 1);                   // stock high: nearly full
+        price(778, "Levski", "Pressurized Ice", 4600, 1, 1);             // what ice is sold as
         // ...and what terminals ask for it: the cheapest one that has any
         auto asks = [&](int id, const char* name, const char* commodity, double buy, int status, double days) {
             rows += ",{\"id_terminal\":" + std::to_string(id) + ",\"terminal_name\":\"" + name +
@@ -1274,9 +1275,9 @@ int runSelfTest() {
                             q[0].place == "Stanton" + dot + "Crusader" && q[1].place == "Pyro" + dot + "Ignis" &&
                             al.size() == 1 && al[0].place == "Pyro" && lin.size() == 1 &&
                             lin[0].place == "Nyx" + dot + "Delamar" && goldOrdered && gold[0].price == 28000 &&
-                            prices.bestPrice("Ice") == 0 &&
+                            prices.bestPrice("Ice") == 4600 && prices.bestPrice("Tin") == 0 &&
                             prices.mostValuable({"Gold", "Aluminium", "Quantainium", "Ice"}) == "Quantainium" &&
-                            prices.mostValuable({"Ice"}).empty();
+                            prices.mostValuable({"Tin"}).empty();
         // the best in a system (any case), the cheapest seller, the stock
         const UexOffer* pyro = prices.bestIn("Quantainium", "PYRO");
         const UexOffer* cheapest = prices.cheapestBuy("Gold");
@@ -1294,7 +1295,7 @@ int runSelfTest() {
         allPassed &= check(offers && says,
                            "UEX's best five for a refined ore, best first and the newer report first of two alike; "
                            "full terminals, month-old prices, nought and the raw ore left out; a gateway goes by its "
-                           "system, Levski by Delamar; Aluminium is UEX's Aluminum (got " +
+                           "system, Levski by Delamar; Aluminium is UEX's Aluminum, ice its Pressurized Ice (got " +
                                std::to_string(q.size()) + " for Quantainium" + (why.empty() ? "" : ", " + why) + ")");
     }
 
@@ -2125,9 +2126,10 @@ int runSelfTest() {
         const auto forLess = Mk::buyersFor(listings, 900);
         std::map<std::string, int> items;
         const bool named = Mk::readItems("{\"status\":\"ok\",\"data\":[{\"id_item\":5943,\"item_name\":\"Ouratite\"},"
-                                         "{\"id_item\":\"5852\",\"item_name\":\"Aluminum\"}]}", items, why) &&
+                                         "{\"id_item\":\"5852\",\"item_name\":\"Aluminum\"},"
+                                         "{\"id_item\":5948,\"item_name\":\"Pressurized Ice\"}]}", items, why) &&
                            Mk::itemFor(items, "Ouratite") == 5943 && Mk::itemFor(items, "Aluminium") == 5852 &&
-                           Mk::itemFor(items, "Ice") == 0;
+                           Mk::itemFor(items, "Ice") == 5948 && Mk::itemFor(items, "Tin") == 0;
         // the player's conversations: the newest about a listing, its page
         // from a notification, and that page's shape for the others
         SCMiner::UexThreads threads;
@@ -2145,7 +2147,8 @@ int runSelfTest() {
         allPassed &= check(reads && forGood.size() == 2 && forLess.size() == 1 && named,
                            "the UEX marketplace read: figures as numbers or strings, sold out, lapsed and other "
                            "currencies out, quality 0 or 1 none, renewed from the approval, cSCU counted in SCU; "
-                           "a buyer for better than the part is none (got " + std::to_string(listings.size()) + ")");
+                           "a buyer for better than the part is none; ice is the marketplace's Pressurized Ice (got " +
+                               std::to_string(listings.size()) + ")");
     }
 
     // --- The game's texts: the marks filled in, the file put together, whose
