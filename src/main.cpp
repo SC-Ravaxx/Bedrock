@@ -2752,9 +2752,13 @@ int runFiring(const std::string& dir, const std::string& prefix, const std::stri
         return 1;
     }
     const cv::Mat maxTemplate = yellowness(maxLabel);
+    // Tesseract reads the two figures, the throttle and the beam's whole
+    // metres. Without it - a build with BEDROCK_WITH_TESSERACT off, or no
+    // tessdata where the tool runs - they stay empty (throttle -1, no
+    // digits) and the rest is read by shape all the same.
     SCMiner::OCREngine ocr;
     SCMiner::OCRConfig cfg;
-    if (!ocr.initialize(cfg)) return 1;
+    if (!ocr.initialize(cfg)) std::cout << "no OCR - the throttle and range figures stay empty" << std::endl;
     // the whole range of sizes only every fourth frame, as the app looks
     SCMiner::throttlePanelSearch(true);
     if (!dump.empty()) std::filesystem::create_directories(dump, ec);
@@ -2841,11 +2845,15 @@ int runFiring(const std::string& dir, const std::string& prefix, const std::stri
                 }
                 pixels += inner[y];
             }
-            // A bar grows from the foot, at row 441 of the cut: green that
-            // starts higher up - the OPTIMAL window's box sits at about the
-            // charge bar's radius - is no bar, and an empty bar is none.
+            // A bar grows from the foot, at row 441 of the cut (450-453 in
+            // the recordings of 29.10.2026): green that starts higher up -
+            // the OPTIMAL window's box sits at about the charge bar's radius -
+            // is no bar, and an empty bar is none. The scan starts just below
+            // the foot, at row 462: the CHARGE LEVEL label under it (rows
+            // 473-479 there) reads as green, and a scan from the cut's bottom
+            // ended at the gap above it, with both bars read at the foot.
             const auto topOf = [&](const std::vector<int>& rows) {
-                int y = (int)rows.size() - 1;
+                int y = (std::min)((int)rows.size() - 1, 462);
                 while (y >= 0 && rows[y] == 0) y--;           // up to the foot
                 if (y < 415) return -1;
                 int found = -1, gap = 0;
