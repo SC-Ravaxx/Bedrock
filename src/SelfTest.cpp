@@ -660,6 +660,17 @@ int runSelfTest() {
             SCMiner::refineryMaterialIn("CONSTRUCTION SALVAGE") == "Construction Salvage";
         allPassed &= check(workload, "a refinery's workload reads: CURRENT CAPACITY's figure, and the game's sentence on "
                                      "it by its word or, misread, by the surcharge's; the salvage's refined name");
+        // ...and the other refined names that are not the material's: what
+        // PROCESSING lists for raw ice and raw silicon
+        const bool refined = SCMiner::refineryMaterialIn("PRESSURIZED ICE") == "Raw Ice" &&
+                             SCMiner::refineryMaterialIn("PRESSURIZED lCE") == "Raw Ice" &&
+                             SCMiner::refineryMaterialIn("PRESSURIZEDICE") == "Raw Ice" &&
+                             SCMiner::refineryMaterialIn("RAW ICE") == "Raw Ice" &&
+                             SCMiner::refineryMaterialIn("SILICON") == "Raw Silicon" &&
+                             SCMiner::refineryMaterialIn("RAW SILICON") == "Raw Silicon" &&
+                             SCMiner::refineryMaterialIn("PRESSURE") == "";
+        allPassed &= check(refined, "the refined names that are not the raw material's: PRESSURIZED ICE for raw ice, "
+                                    "SILICON for raw silicon");
 
         // ...and shared (RefineryShare): the report as the service takes it,
         // its answer, and when a reading goes again

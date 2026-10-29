@@ -838,6 +838,20 @@ std::string refineryMaterialIn(const std::string& text, bool* inert) {
             return "Construction Salvage";
         }
     }
+    // ...and where what comes out is named for itself, not for what went in:
+    // PROCESSING lists raw ice as PRESSURIZED ICE (Levski, 29.10.2026) and,
+    // by the game's commodities, raw silicon as SILICON
+    {
+        struct Refined {
+            const char* name;
+            const char* material;
+        };
+        static const Refined REFINED[] = {{"PRESSURIZEDICE", "Raw Ice"}, {"SILICON", "Raw Silicon"}};
+        for (const Refined& r : REFINED) {
+            const std::string want = r.name;
+            if (editDistance(t, want) <= (std::max)(1, static_cast<int>(want.size()) / 5)) return r.material;
+        }
+    }
     int best = 1 << 30;
     std::string name;
     for (const char* material : REFINERY_MATERIALS) {
