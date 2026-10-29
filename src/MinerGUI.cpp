@@ -707,6 +707,19 @@ float widestPart(Gdiplus::Graphics& g, const std::wstring& t, const Gdiplus::Fon
     return widest;
 }
 
+// Where a text's letters are, up and down, against the top of its line: the
+// middle of their outline. GDI+ places a line's box, not its letters, and
+// how much room a box keeps above and below them differs from font to font -
+// so a figure and a pill put in one band by their boxes do not stand at one
+// height. Set the line's top at (wanted middle - this) to centre the letters.
+float inkMiddle(const std::wstring& t, const Gdiplus::FontFamily& family, int style, float size) {
+    Gdiplus::GraphicsPath outline;
+    outline.AddString(t.c_str(), -1, &family, style, size, Gdiplus::PointF(0, 0), nullptr);
+    Gdiplus::RectF ink;
+    outline.GetBounds(&ink);
+    return ink.Y + ink.Height / 2;
+}
+
 // A gear, for the settings: eight flat-topped teeth round a ring, and a
 // hole in the middle that the button shows through. Drawn rather than a
 // glyph, because not every system has a font with one in it.
@@ -7261,18 +7274,23 @@ int MinerGUI::drawResults(Gdiplus::Graphics& g, int cw, int yPos) {
         }
 
         // Probability, right-aligned; rows outside the system carry none -
-        // and on the best match its rarity in a pill before it
+        // and on the best match its rarity in a pill before it. Both stand on
+        // the row's middle by their letters (inkMiddle): placed by its line's
+        // box, the figure stood 5 px above the pill.
         float rightWords = row.GetRight() - scaleF(14);
+        const float middle = ry + rowH / 2;
         if (!dimmed) {
             std::wstringstream pct;
             pct << std::fixed << std::setprecision(1) << result.probability << L" %";
+            const std::wstring figure = pct.str();
             Gdiplus::StringFormat rightAlign;
             rightAlign.SetAlignment(Gdiplus::StringAlignmentFar);
-            Gdiplus::RectF pctRect(row.X, ry + scaleF(11), row.Width - scaleF(14), scaleF(20));
+            const float top = middle - inkMiddle(figure, numeralFamily(), Gdiplus::FontStyleBold, scaleF(Type::NUMBER));
+            Gdiplus::RectF pctRect(row.X, top, row.Width - scaleF(14), scaleF(24));
             Gdiplus::SolidBrush pctBrush(best ? COL_GREEN : COL_TEXT);
-            g.DrawString(pct.str().c_str(), -1, &pctFont, pctRect, &rightAlign, &pctBrush);
+            g.DrawString(figure.c_str(), -1, &pctFont, pctRect, &rightAlign, &pctBrush);
             Gdiplus::RectF pctW;
-            g.MeasureString(pct.str().c_str(), -1, &pctFont, Gdiplus::PointF(0, 0), &pctW);
+            g.MeasureString(figure.c_str(), -1, &pctFont, Gdiplus::PointF(0, 0), &pctW);
             rightWords -= pctW.Width;
         }
         const bool rarityPill =
@@ -7283,13 +7301,14 @@ int MinerGUI::drawResults(Gdiplus::Graphics& g, int cw, int yPos) {
             Gdiplus::RectF measured;
             g.MeasureString(rarityText.c_str(), -1, &pillFont, Gdiplus::PointF(0, 0), &measured);
             const float pillW = measured.Width + scaleF(10);
-            const Gdiplus::RectF pill(rightWords - scaleF(6) - pillW, ry + (rowH - scaleF(18)) / 2, pillW, scaleF(18));
+            const Gdiplus::RectF pill(rightWords - scaleF(6) - pillW, middle - scaleF(9), pillW, scaleF(18));
             fillRoundRect(g, pill, scaleF(6), tint(getRarityColor(result.rarity), 34));
             Gdiplus::StringFormat centered;
             centered.SetAlignment(Gdiplus::StringAlignmentCenter);
-            centered.SetLineAlignment(Gdiplus::StringAlignmentCenter);
             Gdiplus::SolidBrush pillBrush(getRarityColor(result.rarity));
-            g.DrawString(rarityText.c_str(), -1, &pillFont, pill, &centered, &pillBrush);
+            const float wordTop = middle - inkMiddle(rarityText, textFamily(), Gdiplus::FontStyleBold, scaleF(Type::MICRO));
+            g.DrawString(rarityText.c_str(), -1, &pillFont,
+                         Gdiplus::RectF(pill.X, wordTop, pill.Width, pill.GetBottom() - wordTop), &centered, &pillBrush);
             rightWords = pill.X;
         }
 
