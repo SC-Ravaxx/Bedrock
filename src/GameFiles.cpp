@@ -433,7 +433,7 @@ std::string roundTrip(long long ms) {
     const std::time_t t = static_cast<std::time_t>(ms / 1000);
     const std::tm local = localOf(t);
     const long off = offsetAt(t);
-    char text[64];
+    char text[160];
     std::snprintf(text, sizeof text, "%04d-%02d-%02dT%02d:%02d:%02d.%03d0000%c%02ld:%02ld", local.tm_year + 1900,
                   local.tm_mon + 1, local.tm_mday, local.tm_hour, local.tm_min, local.tm_sec, static_cast<int>(ms % 1000),
                   off < 0 ? '-' : '+', std::labs(off) / 3600, (std::labs(off) % 3600) / 60);
@@ -442,7 +442,7 @@ std::string roundTrip(long long ms) {
 
 std::string idOf(long long ms) {
     const std::tm local = localOf(static_cast<std::time_t>(ms / 1000));
-    char text[32];
+    char text[96];
     std::snprintf(text, sizeof text, "%04d-%02d-%02d_%02d-%02d-%02d", local.tm_year + 1900, local.tm_mon + 1, local.tm_mday,
                   local.tm_hour, local.tm_min, local.tm_sec);
     return text;
@@ -1145,7 +1145,7 @@ void log(const fs::path& root, const std::string& text) {
     }
     const long long ms = nowMs();
     const std::tm local = localOf(static_cast<std::time_t>(ms / 1000));
-    char stampText[32];
+    char stampText[96];
     std::snprintf(stampText, sizeof stampText, "%04d-%02d-%02d %02d:%02d:%02d", local.tm_year + 1900, local.tm_mon + 1,
                   local.tm_mday, local.tm_hour, local.tm_min, local.tm_sec);
     std::ofstream out(file, std::ios::binary | std::ios::app);
