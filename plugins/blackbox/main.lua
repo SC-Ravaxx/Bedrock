@@ -114,8 +114,8 @@ local function pickDefaultChannel()
 end
 
 -- ---- the timer -------------------------------------------------------------------
--- Every 2 s the engine looks at the files. What it did goes to the foot of
--- Bedrock's window: a backup made, and over it a notice.
+-- Every 2 s the engine looks at the files. A notice and a failure go to the
+-- foot of Bedrock's window; a backup made shows on the page alone.
 local lastError
 bedrock.every(2, function()
   local had = {}
@@ -132,9 +132,7 @@ bedrock.every(2, function()
   end
   local s = E.status
   if s ~= status and s then
-    if s.kind == "saved" then
-      bedrock.note("BLACKBOX" .. DOT .. s.channel .. " BACKED UP - " .. s.text)
-    elseif s.kind == "failed" then
+    if s.kind == "failed" then
       bedrock.note("BLACKBOX" .. DOT .. s.channel .. " BACKUP FAILED - " .. s.text)
     elseif s.kind == "error" then
       bedrock.note("BLACKBOX" .. DOT .. "CHECK FAILED - " .. s.text)
