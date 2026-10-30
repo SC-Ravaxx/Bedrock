@@ -8,8 +8,8 @@
 // showing a different number than the app does. The fourth marks a
 // package that replaces one of the same patch number, and is shown
 // wherever it is not 0.
-#define BEDROCK_VERSION_MAJOR 2
-#define BEDROCK_VERSION_MINOR 7
+#define BEDROCK_VERSION_MAJOR 3
+#define BEDROCK_VERSION_MINOR 0
 #define BEDROCK_VERSION_PATCH 0
 #define BEDROCK_VERSION_BUILD 0
 
