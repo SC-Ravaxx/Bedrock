@@ -1568,8 +1568,10 @@ int runScreenshots(const std::string& dir) {
         gui.setDatarunner(stateOf(waiting, false));
         pump();
         shoot(gui.windowHandle(), "main_datarunner_waiting.png");
-        // ...its page, as the rail opens it
+        // ...its page, as the rail opens it (its introduction put away: it
+        // has pictures of its own further on)
         gui.railPickForShot(SCMiner::MinerGUI::RailItem::Datarunner);
+        gui.closeDatarunnerIntroForShot();
         pump();
         shoot(gui.windowHandle(), "main_page_datarunner.png");
         gui.openDatarunnerForShot(0);

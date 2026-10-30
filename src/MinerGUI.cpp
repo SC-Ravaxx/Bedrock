@@ -17497,16 +17497,20 @@ void MinerGUI::drawDatarunnerIntro(Gdiplus::Graphics& g, int cw, int ch) {
             case 2: {
                 const Fit s = sized(terminal, 0.68f);
                 const float lineY = vy + (s.h > 0 ? s.h + scaleF(8) : 0.0f);
+                // the foot's line as it reads then, broken where its parts meet
+                const Fitted line = fitLines(g, datarunnerFootWords(true, 0, 4, 14), strongFont, textW);
                 if (draw) {
                     if (terminal) {
                         g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
                         g.DrawImage(terminal, Gdiplus::RectF(vx, vy, s.w, s.h));
                     }
-                    const std::wstring line = datarunnerFootWords(true, 0, 4, 14);
-                    g.DrawString(line.c_str(), -1, &strongFont, Gdiplus::RectF(vx, lineY, textW, scaleF(18)),
-                                 &middleLeft, &accentBrush);
+                    Gdiplus::StringFormat lines;
+                    lines.SetTrimming(Gdiplus::StringTrimmingNone);
+                    g.DrawString(line.text.c_str(), -1, &strongFont,
+                                 Gdiplus::RectF(vx, lineY + scaleF(1), textW, scaleF(18) + line.more), &lines,
+                                 &accentBrush);
                 }
-                return lineY - vy + scaleF(18);
+                return lineY - vy + scaleF(18) + line.more;
             }
             case 3: {
                 const Fit s = sized(rowShot, 1.0f);
