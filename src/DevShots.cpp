@@ -1630,8 +1630,35 @@ int runScreenshots(const std::string& dir) {
         gui.openDatarunnerForShot(-1);
         gui.setDatarunner(SCMiner::MinerGUI::DatarunnerState());
         pump();
-        // ...and the rail's page with no picture waiting
+        // ...and the rail's page with no picture waiting - its introduction
+        // first, as the rail opens it: as it opens, the third step being
+        // read, at the end with the box ticked, in the narrowest window and
+        // in a tall one; then put away, the page under it
         gui.railPickForShot(SCMiner::MinerGUI::RailItem::Datarunner);
+        gui.datarunnerIntroForShot(0, false);
+        pump();
+        shoot(gui.windowHandle(), "datarunner_intro.png");
+        gui.datarunnerIntroForShot(2, false);
+        pump();
+        shoot(gui.windowHandle(), "datarunner_intro_step3.png");
+        gui.datarunnerIntroForShot(-1, true);
+        pump();
+        shoot(gui.windowHandle(), "datarunner_intro_end.png");
+        {
+            RECT size = {};
+            GetWindowRect(gui.windowHandle(), &size);
+            SetWindowPos(gui.windowHandle(), nullptr, 0, 0, 1, 1, SWP_NOMOVE | SWP_NOZORDER);
+            gui.datarunnerIntroForShot(2, false);
+            pump();
+            shoot(gui.windowHandle(), "datarunner_intro_narrow.png");
+            SetWindowPos(gui.windowHandle(), nullptr, 0, 0, size.right - size.left, 1400, SWP_NOMOVE | SWP_NOZORDER);
+            gui.datarunnerIntroForShot(2, false);
+            pump();
+            shoot(gui.windowHandle(), "datarunner_intro_tall.png");
+            SetWindowPos(gui.windowHandle(), nullptr, 0, 0, size.right - size.left, size.bottom - size.top,
+                         SWP_NOMOVE | SWP_NOZORDER);
+        }
+        gui.closeDatarunnerIntroForShot();
         pump();
         shoot(gui.windowHandle(), "main_page_datarunner_empty.png");
         gui.railPickForShot(SCMiner::MinerGUI::RailItem::Scan);

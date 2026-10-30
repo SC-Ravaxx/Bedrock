@@ -3780,6 +3780,8 @@ void Application::saveRegionConfig() {
         file << "uexoffered=" << (uexOffered_ ? 1 : 0) << std::endl;
         // UEX Datarunner: 0, or when the player turned it on (on the UEX card)
         file << "datarunner=" << datarunnerSince_ << std::endl;
+        // ...and whether its introduction comes up when the rail opens it
+        file << "datarunnerintro=" << (datarunnerIntroOff_ ? 0 : 1) << std::endl;
         if (!updateUrl_.empty()) file << "updateurl=" << updateUrl_ << std::endl;
         // The viewport the aim point was picked in. The point was chosen by
         // eye against the HUD, and the HUD is laid out in the viewport, not on
@@ -3862,6 +3864,7 @@ void Application::loadRegionConfig() {
                 else if (key == "stats") statsWanted_ = (value != 0);
                 else if (key == "uex") uexWanted_ = (value != 0);
                 else if (key == "uexoffered") uexOffered_ = (value != 0);
+                else if (key == "datarunnerintro") datarunnerIntroOff_ = (value == 0);
                 // gametexts=1: the box in the Blueprints window - see GameTexts
                 else if (key == "gametexts") gameTextsWanted_ = (value != 0);
                 // gamenames=1: the box beside it, for the components' names
@@ -5550,6 +5553,7 @@ void Application::pushUexAccount() {
     account.keyChanges = uexKeyChanges_;
     account.datarunner = datarunnerSince_ > 0;
     account.datarunnerSince = datarunnerSince_;
+    account.introOff = datarunnerIntroOff_;
     gui_->setUexAccount(account);
 }
 
@@ -5601,6 +5605,13 @@ void Application::uexAccountAction(int action, const std::string& text) {
     } else if (action == 5) {
         // the first start's offer was made: not again
         uexOffered_ = true;
+        saveRegionConfig();
+        pushUexAccount();
+        return;
+    } else if (action == 8 || action == 9) {
+        // the Datarunner's introduction: not to come up by itself any more,
+        // or to come up again - nothing to tell
+        datarunnerIntroOff_ = action == 8;
         saveRegionConfig();
         pushUexAccount();
         return;

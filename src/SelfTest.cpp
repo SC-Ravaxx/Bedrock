@@ -3152,6 +3152,26 @@ int runSelfTest() {
                                    Application::whatsNewAfter("2.6.7", "2.7.0", false) == W::Card,
                                "...and before 3.0 as before: news from before 2.5, 2.6.7's thanks, else the card");
         }
+        // The Datarunner's introduction moving on by itself: each step read
+        // for its time, 0.8 s to move to the next, the last one staying
+        {
+            using G = SCMiner::MinerGUI;
+            const std::vector<int> reads = {6000, 5000, 7000};
+            const G::IntroAt start = G::introAt(0, reads), moving = G::introAt(6400, reads),
+                             second = G::introAt(6800, reads), last = G::introAt(12200, reads),
+                             end = G::introAt(12600, reads);
+            allPassed &= check(start.step == 0 && start.from == -1 && !start.done && start.nextMs == 6000 &&
+                                   moving.step == 1 && moving.from == 0 && std::abs(moving.move - 0.5f) < 0.01f &&
+                                   second.step == 1 && second.from == -1 && second.nextMs == 11800 &&
+                                   last.step == 2 && last.from == 1 && std::abs(last.move - 0.5f) < 0.01f &&
+                                   end.step == 2 && end.done && end.nextMs == 0,
+                               "the Datarunner's introduction: step 1 read 6 s, halfway to step 2 at 6.4 s, "
+                               "step 2 read from 6.8 s, the last reached at 12.6 s and kept (got step " +
+                                   std::to_string(moving.step) + " at 6.4 s, " + std::to_string(last.step) +
+                                   " at 12.2 s, done " + std::to_string(end.done) + ")");
+            allPassed &= check(G::introReadMs(0) == 4500 && G::introReadMs(100) == 5000 && G::introReadMs(1000) == 8000,
+                               "...a step read for 4.5 to 8 s by its words' length");
+        }
         {
             SCMiner::Updater::Release r;
             const std::string hash(64, 'a');

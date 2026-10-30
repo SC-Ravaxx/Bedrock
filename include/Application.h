@@ -524,6 +524,9 @@ private:
     // shows a commodity terminal waits on the main window for the player.
     // Nothing goes but on their Send.
     long long datarunnerSince_ = 0;
+    // "Don't show next time" ticked under its introduction: the rail opens
+    // the page without it (region_config.txt datarunnerintro=0)
+    bool datarunnerIntroOff_ = false;
     long long datarunnerFrom_ = 0;                          // pictures older than this are not read
     std::filesystem::path datarunnerFolder_;                // the ScreenShots folder looked at
     std::set<std::string> datarunnerKnown_;                 // its pictures dealt with, by name

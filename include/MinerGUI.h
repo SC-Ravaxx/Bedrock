@@ -144,14 +144,37 @@ public:
         int keyChanges = 0;          // counts every key kept, so a card waiting for one sees it come
         bool datarunner = false;     // the UEX Datarunner is on (Datarunner.h)
         long long datarunnerSince = 0;
+        bool introOff = false;       // "Don't show next time" ticked under the Datarunner's introduction
     };
     void setUexAccount(const UexAccount& account);
     // What was pressed: 1 a key pasted (the clipboard's text), 2 the key
     // forgotten, 3 agreed - reporting on, 4 declined or switched off, 5 the
     // first start's offer made (whatever came of it), 6 the UEX Datarunner
-    // turned on, 7 turned off
+    // turned on, 7 turned off, 8 its introduction not to come up by itself
+    // any more, 9 to come up again
     using UexAccountCallback = std::function<void(int action, const std::string& text)>;
     void setUexAccountCallback(UexAccountCallback callback) { onUexAccount_ = std::move(callback); }
+    // Where the Datarunner's introduction stands `ms` after it began, each
+    // step read for `reads` ms and INTRO_MOVE_MS taken to move on to the
+    // next: the step lit, the one it is moving away from (-1 none) and how
+    // far (0..1), whether the last step is reached, and when the next change
+    // is due (ms since the beginning; 0 none). Pure, for the self-test.
+    struct IntroAt {
+        int step = 0;
+        int from = -1;
+        float move = 1.0f;
+        bool done = false;
+        long long nextMs = 0;
+    };
+    static IntroAt introAt(long long ms, const std::vector<int>& reads);
+    static int introReadMs(size_t characters);   // a step's reading time, by its words' length
+    static constexpr int INTRO_MOVE_MS = 800;
+    static constexpr int INTRO_LEAD_MS = 1500;   // the first step's, on top of its reading time
+    // --screenshot only: the introduction up over the Datarunner's page, the
+    // step being read where the clock reaches it (< 0: at the end), the box
+    // ticked or not; and put away again, nothing kept
+    void datarunnerIntroForShot(int step, bool ticked);
+    void closeDatarunnerIntroForShot();
     // At the first start, UEX offered over the main window, once it is free -
     // no other card, no news window (the application calls tickUexOffer each
     // tick)
@@ -1462,6 +1485,28 @@ private:
     void pressUexCard(int action, UexCardView& view, HWND owner);
     void showUexWelcome(int step);   // ...and the main window's buttons, which take turns with it
     void closeUexWelcome();          // ...and tells the application the offer was made
+    // The UEX account card over the main window, asked for (the Datarunner's
+    // introduction): no first-start offer, and Close goes back to what is under it
+    void showUexAccountCard();
+    // The Datarunner's introduction: how it works, over its page - when the
+    // rail opens the page, until "Don't show next time" was ticked once
+    // (UexAccount::introOff), and from "How it works" at any time. It moves
+    // on by itself, step after step (introAt), until a wheel, a key or a
+    // click takes over.
+    bool drIntro_ = false;
+    bool drIntroTicked_ = false;    // the box, as it stands
+    bool drIntroAuto_ = false;      // still moving on by itself
+    std::chrono::steady_clock::time_point drIntroStart_;
+    long long drIntroAtMs_ = -1;    // --screenshot only: where it stands, instead of the clock
+    float drIntroScroll_ = 0.0f;    // the steps' offset in their view
+    int drIntroLit_ = 0;            // the step lit once nothing moves by itself
+    std::vector<float> drIntroTops_;   // each step's top in the steps, from the last paint
+    float drIntroView_ = 0.0f, drIntroContent_ = 0.0f;
+    std::unique_ptr<Gdiplus::Bitmap> drIntroShots_[2];   // the terminal in the game, a row checked
+    void showDatarunnerIntro(bool on);
+    void stopDatarunnerIntro();     // a wheel, key or click: the player reads on by themselves
+    void drIntroTick();
+    void drawDatarunnerIntro(Gdiplus::Graphics& g, int cw, int ch);
     Gdiplus::RectF planBlinkRow_;     // where the blinking row was drawn; empty where none was
     void keepPlanPulse();             // the beat runs while the Ore Finder is open and has a row to blink
 

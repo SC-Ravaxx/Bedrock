@@ -79,6 +79,7 @@ constexpr int ORE_ROWS_BUTTON_W = 40;   // the overlay's Rows/Line switch
 #define TIMER_REFINERY_DONE 12  // the Refinery button's count of finished work orders, kept up to time
 #define TIMER_SETTINGS_PULSE 13 // the settings' preview, blinking as the overlay does
 #define TIMER_PHONE        14   // the phone's pictures, drawn again where the window changed
+#define TIMER_DR_INTRO     15   // the Datarunner's introduction, moving on by itself
 #ifndef WM_APP
 #define WM_APP 0x8000   // (the Linux shim has none)
 #endif
@@ -3274,6 +3275,13 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 return 0;
             }
             if (datarunnerOpen_) {
+                // its introduction: the wheel takes over from it
+                if (drIntro_) {
+                    stopDatarunnerIntro();
+                    drIntroScroll_ -= GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA * scaleF(48);
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                    return 0;
+                }
                 drScroll_ -= GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA * scaleF(48);
                 InvalidateRect(hwnd, nullptr, FALSE);
                 return 0;
@@ -3789,6 +3797,10 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 phoneTick();
                 return 0;
             }
+            if (wParam == TIMER_DR_INTRO) {
+                drIntroTick();
+                return 0;
+            }
             if (wParam == 1) {
                 pulseOn_ = !pulseOn_;
                 // ...and for a match the shopping list wants, which blinks
@@ -4013,8 +4025,10 @@ void MinerGUI::paintWindowBody(Gdiplus::Graphics& g, int cw, int ch) {
     if (backupOpen_) drawBackupCard(g, cw, ch);
     if (whatsNewOpen_) drawWhatsNewCard(g, cw, ch);
     if (loadoutOpen_) drawLoadoutCard(g, cw, ch);
-    if (uexWelcome_.step) drawUexCard(g, cw, ch, uexWelcome_, hoverMain_);
     if (datarunnerOpen_) drawDatarunnerCard(g, cw, ch);
+    // (the UEX account card can be asked for from the Datarunner's
+    // introduction, and lies over it then)
+    if (uexWelcome_.step) drawUexCard(g, cw, ch, uexWelcome_, hoverMain_);
 }
 
 // ---- the rail ---------------------------------------------------------------
@@ -4117,8 +4131,12 @@ void MinerGUI::railPick(RailItem item, const std::string& id) {
             toScanPage();
             break;
         case R::Datarunner:
-            // its card, the page; a second click shuts it
-            if (!datarunnerWasOpen) showDatarunner(true, true);
+            // its card, the page; a second click shuts it. How it works over
+            // it, until "Don't show next time" was ticked once.
+            if (!datarunnerWasOpen) {
+                showDatarunner(true, true);
+                if (!uexAccount_.introOff) showDatarunnerIntro(true);
+            }
             break;
         case R::Refinery:
             toggleRefinery();
@@ -17195,6 +17213,7 @@ void MinerGUI::showDatarunner(bool on, bool evenEmpty) {
     if (on && datarunner_.shots.empty() && !evenEmpty) return;
     if (on) closeOtherSheets(datarunnerOpen_);
     if (on) toScanPage();   // (its card lies over the scan page)
+    if (!on && drIntro_) showDatarunnerIntro(false);   // (and its introduction with it)
     datarunnerOpen_ = on;
     endDatarunnerEdit();
     drScroll_ = 0;
@@ -17202,6 +17221,389 @@ void MinerGUI::showDatarunner(bool on, bool evenEmpty) {
     // take turns with it, as with the other cards
     buttonsUnderCard(on);
     if (hwnd_) InvalidateRect(hwnd_, nullptr, TRUE);
+}
+
+// ---------------------------------------------------------------------------
+// The Datarunner's introduction: how it works, five steps standing one under
+// the other. They move up by themselves, one at a time, the one being read
+// lit and the others faded; a wheel, a key or a click hands them over. The
+// box and the ways out stay put at the foot.
+// ---------------------------------------------------------------------------
+namespace {
+struct IntroStep {
+    const wchar_t* heading;
+    const wchar_t* text;
+};
+const IntroStep INTRO_STEPS[] = {
+    {L"Connect your UEX account",
+     L"Click Get key: your UEX account page opens at the Secret Key. Copy it, then click Paste key."},
+    {L"Turn on the Datarunner",
+     L"Click Turn on in the UEX account card. UEX takes reports from registered datarunners only: sign up on "
+     L"UEX once."},
+    {L"At a commodity terminal",
+     L"Select the terminal\u2019s own inventory, nothing picked, first row fully visible. Hold the list still for "
+     L"a moment. For a long list, scroll down, then hold still again. Print Screen works as well."},
+    {L"Check the rows",
+     L"When the list is read, click the line at the foot of the window. Every row is shown with its part of the "
+     L"picture. Click a value to correct it."},
+    {L"Send",
+     L"Nothing is sent until you click Send. A report carries the values you checked, the picture and your UEX "
+     L"name, and other datarunners can see it."},
+};
+constexpr int INTRO_STEP_COUNT = (int)(sizeof(INTRO_STEPS) / sizeof(INTRO_STEPS[0]));
+}  // namespace
+
+int MinerGUI::introReadMs(size_t characters) {
+    return std::clamp(2000 + 30 * (int)characters, 4500, 8000);
+}
+
+MinerGUI::IntroAt MinerGUI::introAt(long long ms, const std::vector<int>& reads) {
+    IntroAt at;
+    const int n = (int)reads.size();
+    long long t = (std::max)(0LL, ms), begun = 0;
+    for (int i = 0; i < n; i++) {
+        // the last one, reached: it stays, and nothing moves on any more
+        if (i == n - 1) {
+            at.step = i;
+            at.done = true;
+            return at;
+        }
+        // being read...
+        if (t < reads[(size_t)i]) {
+            at.step = i;
+            at.nextMs = begun + reads[(size_t)i];
+            return at;
+        }
+        t -= reads[(size_t)i];
+        begun += reads[(size_t)i];
+        // ...then moving on to the next
+        if (t < INTRO_MOVE_MS) {
+            at.step = i + 1;
+            at.from = i;
+            at.move = (float)t / (float)INTRO_MOVE_MS;
+            at.nextMs = (std::max)(0LL, ms) + 16;
+            return at;
+        }
+        t -= INTRO_MOVE_MS;
+        begun += INTRO_MOVE_MS;
+    }
+    at.done = true;
+    return at;
+}
+
+// each step's reading time, the first one's with the moment it takes to look up
+static std::vector<int> introReads() {
+    std::vector<int> reads;
+    for (int i = 0; i < INTRO_STEP_COUNT; i++) {
+        const size_t length = wcslen(INTRO_STEPS[i].heading) + wcslen(INTRO_STEPS[i].text);
+        reads.push_back(MinerGUI::introReadMs(length) + (i == 0 ? MinerGUI::INTRO_LEAD_MS : 0));
+    }
+    return reads;
+}
+
+void MinerGUI::showDatarunnerIntro(bool on) {
+    if (on) {
+        drIntro_ = true;
+        drIntroTicked_ = uexAccount_.introOff;
+        drIntroAuto_ = true;
+        drIntroStart_ = std::chrono::steady_clock::now();
+        drIntroAtMs_ = -1;
+        drIntroScroll_ = 0.0f;
+        drIntroLit_ = 0;
+        drIntroTick();
+    } else if (drIntro_) {
+        drIntro_ = false;
+        drIntroAuto_ = false;
+        drIntroAtMs_ = -1;
+        if (hwnd_) KillTimer(hwnd_, TIMER_DR_INTRO);
+        // the box as it was left, kept by the application
+        if (drIntroTicked_ != uexAccount_.introOff && onUexAccount_) onUexAccount_(drIntroTicked_ ? 8 : 9, "");
+    }
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void MinerGUI::stopDatarunnerIntro() {
+    if (!drIntroAuto_) return;
+    drIntroAuto_ = false;
+    if (hwnd_) KillTimer(hwnd_, TIMER_DR_INTRO);
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+// The clock looked at: drawn anew, and woken again when the next change is
+// due - every frame while a step moves up, once a step while it is read
+void MinerGUI::drIntroTick() {
+    if (!hwnd_) return;
+    KillTimer(hwnd_, TIMER_DR_INTRO);
+    if (!drIntro_ || !drIntroAuto_) return;
+    const long long ms = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::steady_clock::now() - drIntroStart_)
+                             .count();
+    const IntroAt at = introAt(ms, introReads());
+    InvalidateRect(hwnd_, nullptr, FALSE);
+    if (at.done) return;   // (the paint lets go of it once it is at the end)
+    SetTimer(hwnd_, TIMER_DR_INTRO, (UINT)(std::max)(16LL, at.nextMs - ms), nullptr);
+}
+
+void MinerGUI::datarunnerIntroForShot(int step, bool ticked) {
+    if (!datarunnerOpen_) showDatarunner(true, true);
+    showDatarunnerIntro(true);
+    if (hwnd_) KillTimer(hwnd_, TIMER_DR_INTRO);
+    drIntroAuto_ = false;
+    long long ms = 0;
+    const std::vector<int> reads = introReads();
+    if (step < 0) {
+        ms = 3600000LL;
+    } else {
+        for (int k = 0; k < step && k < (int)reads.size(); k++) ms += reads[(size_t)k] + INTRO_MOVE_MS;
+    }
+    drIntroAtMs_ = ms;
+    drIntroTicked_ = ticked;
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void MinerGUI::closeDatarunnerIntroForShot() {
+    drIntroTicked_ = uexAccount_.introOff;
+    showDatarunnerIntro(false);
+}
+
+void MinerGUI::showUexAccountCard() {
+    uexWelcome_.welcome = false;
+    uexWelcome_.step = 1;
+    uexWelcome_.keyChangesAtPaste = -1;
+    buttonsUnderCard(true);
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, TRUE);
+}
+
+void MinerGUI::drawDatarunnerIntro(Gdiplus::Graphics& g, int cw, int ch) {
+    Gdiplus::Font markFont(&markFamily(), scaleF(Type::TITLE), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font headFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font stepFont(&markFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font textFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font btnFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font strongFont(&markFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::SolidBrush textBrush(COL_TEXT), dimBrush(COL_TEXT_DIM), faintBrush(COL_TEXT_FAINT);
+    Gdiplus::SolidBrush accentBrush(COL_ACCENT), greenBrush(COL_GREEN);
+    Gdiplus::StringFormat rightLine;
+    rightLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    rightLine.SetAlignment(Gdiplus::StringAlignmentFar);
+    rightLine.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    Gdiplus::StringFormat middleLeft;
+    middleLeft.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    middleLeft.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    Gdiplus::StringFormat centred;
+    centred.SetAlignment(Gdiplus::StringAlignmentCenter);
+    centred.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    const POINT hover = hoverMain_;
+    auto measure = [&](const std::wstring& text, const Gdiplus::Font& font) {
+        Gdiplus::RectF room;
+        g.MeasureString(text.c_str(), -1, &font, Gdiplus::PointF(0, 0), &room);
+        return room.Width;
+    };
+
+    // The card the page's is, with its title, and what this is
+    const float cardX = scaleF(8), cardY = scaleF(8);
+    drRect_ = Gdiplus::RectF(cardX, cardY, (float)cw - 2 * cardX, (float)ch - 2 * cardY);
+    refplanGlassPane(g, drRect_, scaleF(R_CARD), scaleF(18), COL_CARD);
+    const float left = cardX + scaleF(14), width = drRect_.Width - 2 * scaleF(14), right = left + width;
+    float y = cardY + scaleF(12);
+    g.DrawString(L"UEX DATARUNNER", -1, &markFont, Gdiplus::PointF(left, y), &textBrush);
+    g.DrawString(L"Esc to close", -1, &headFont, Gdiplus::RectF(left, y, width, scaleF(24)), &rightLine, &faintBrush);
+    y += scaleF(32);
+    g.DrawString(L"HOW IT WORKS", -1, &headFont, Gdiplus::PointF(left, y), &dimBrush);
+    y += scaleF(26);
+    const float viewTop = y;
+
+    // The foot: the box on the left, the ways on the right - the box on a
+    // line of its own where both do not fit on one
+    const float bh = scaleF(30), gap = scaleF(10);
+    const std::wstring tickWords = L"Don\u2019t show next time";
+    const std::wstring uexWords = uexAccount_.keyEnd.empty() ? L"Connect UEX" : L"UEX account";
+    const float boxS = scaleF(11), pad = scaleF(10);
+    const float tickW = pad + boxS + scaleF(7) + measure(tickWords, btnFont) + pad;
+    const float uexW = measure(uexWords, btnFont) + scaleF(32);
+    const float closeW = scaleF(96);
+    const bool oneLine = tickW + gap + uexW + gap + closeW <= width;
+    const float buttonsY = drRect_.GetBottom() - scaleF(14) - bh;
+    const float tickY = oneLine ? buttonsY : buttonsY - gap - bh;
+    const Gdiplus::RectF closeBox(right - closeW, buttonsY, closeW, bh);
+    const Gdiplus::RectF uexBox(closeBox.X - gap - uexW, buttonsY, uexW, bh);
+    const Gdiplus::RectF tickBox(left, tickY, tickW, bh);
+    hairline(g, left, tickY - scaleF(12), right);
+    const float viewBottom = tickY - scaleF(20);
+    drawButton(g, closeBox, L"Close", btnFont, ButtonKind::Primary, isHot(hover, closeBox), scaleF(R_CONTROL));
+    drHits_.push_back({closeBox, 32, -1, 0});
+    drawButton(g, uexBox, uexWords.c_str(), btnFont, ButtonKind::Secondary, isHot(hover, uexBox), scaleF(R_CONTROL));
+    drHits_.push_back({uexBox, 31, -1, 0});
+    {
+        // the box, as the Blueprints window has its
+        const bool hot = isHot(hover, tickBox);
+        drawButton(g, tickBox, L"", btnFont, ButtonKind::Secondary, hot, scaleF(R_CONTROL));
+        const Gdiplus::RectF box(tickBox.X + pad, tickBox.Y + (bh - boxS) / 2.0f, boxS, boxS);
+        if (drIntroTicked_) {
+            fillRoundRect(g, box, scaleF(2), COL_ACCENT);
+            Gdiplus::Pen tick(COL_ACCENT_INK, scaleF(1.8f));
+            g.DrawLine(&tick, box.X + scaleF(2.5f), box.Y + scaleF(5.5f), box.X + scaleF(4.5f), box.Y + scaleF(8));
+            g.DrawLine(&tick, box.X + scaleF(4.5f), box.Y + scaleF(8), box.X + scaleF(8.5f), box.Y + scaleF(3));
+        } else {
+            strokeRoundRect(g, box, scaleF(2), hot ? COL_TEXT_DIM : COL_TEXT_FAINT);
+        }
+        Gdiplus::SolidBrush ink(hot ? COL_TEXT : tint(COL_TEXT, 215));
+        g.DrawString(tickWords.c_str(), -1, &btnFont,
+                     Gdiplus::RectF(box.GetRight() + scaleF(7), tickBox.Y, tickBox.GetRight() - box.GetRight(), bh),
+                     &middleLeft, &ink);
+        drHits_.push_back({tickBox, 30, -1, 0});
+    }
+
+    // What goes with each step, under its words: the buttons it names as
+    // the app draws them, the game's terminal, a row being checked. Its
+    // height, and drawn where `draw` says so.
+    const float numD = scaleF(24);
+    const float textLeft = left + numD + scaleF(12);
+    const float textW = right - textLeft;
+    struct Fit {
+        float w, h;
+    };
+    const auto sized = [&](Gdiplus::Bitmap* picture, float natural) {
+        // a picture at its own size (`natural` of its pixels a point), no wider than the words
+        if (!picture) return Fit{0.0f, 0.0f};
+        const float w = (std::min)(textW, scaleF((float)picture->GetWidth() * natural));
+        return Fit{w, w * (float)picture->GetHeight() / (float)picture->GetWidth()};
+    };
+    Gdiplus::Bitmap* terminal = carriedPicture("INTRO_TERMINAL", drIntroShots_[0]);
+    Gdiplus::Bitmap* rowShot = carriedPicture("INTRO_ROW", drIntroShots_[1]);
+    const auto visual = [&](int i, float vx, float vy, bool draw) -> float {
+        const auto button = [&](const wchar_t* label, float bx, float by2, ButtonKind kind) {
+            const float bw = (std::max)(scaleF(96), measure(label, btnFont) + scaleF(32));
+            if (draw) drawButton(g, Gdiplus::RectF(bx, by2, bw, bh), label, btnFont, kind, false, scaleF(R_CONTROL));
+            return bw;
+        };
+        switch (i) {
+            case 0: {
+                const float w = button(L"Get key", vx, vy, ButtonKind::Secondary);
+                button(L"Paste key", vx + w + gap, vy, ButtonKind::Secondary);
+                return bh;
+            }
+            case 1: {
+                if (draw) {
+                    const std::wstring heading = L"UEX DATARUNNER";
+                    g.DrawString(heading.c_str(), -1, &btnFont, Gdiplus::PointF(vx, vy), &textBrush);
+                    g.DrawString(L"  \u00B7  OFF", -1, &btnFont, Gdiplus::PointF(vx + measure(heading, btnFont), vy),
+                                 &faintBrush);
+                }
+                const float w = button(L"Turn on", vx, vy + scaleF(24), ButtonKind::Primary);
+                button(L"Sign up on UEX", vx + w + gap, vy + scaleF(24), ButtonKind::Secondary);
+                return scaleF(24) + bh;
+            }
+            case 2: {
+                const Fit s = sized(terminal, 0.68f);
+                const float lineY = vy + (s.h > 0 ? s.h + scaleF(8) : 0.0f);
+                if (draw) {
+                    if (terminal) {
+                        g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+                        g.DrawImage(terminal, Gdiplus::RectF(vx, vy, s.w, s.h));
+                    }
+                    const std::wstring line = datarunnerFootWords(true, 0, 4, 14);
+                    g.DrawString(line.c_str(), -1, &strongFont, Gdiplus::RectF(vx, lineY, textW, scaleF(18)),
+                                 &middleLeft, &accentBrush);
+                }
+                return lineY - vy + scaleF(18);
+            }
+            case 3: {
+                const Fit s = sized(rowShot, 1.0f);
+                if (draw && rowShot) {
+                    g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+                    g.DrawImage(rowShot, Gdiplus::RectF(vx, vy, s.w, s.h));
+                }
+                return s.h;
+            }
+            default: {
+                if (draw) {
+                    g.DrawString(L"READY - Click Send to report 3 rows to UEX", -1, &textFont,
+                                 Gdiplus::RectF(vx, vy, textW, scaleF(18)), &middleLeft, &greenBrush);
+                }
+                button(L"Send", vx, vy + scaleF(26), ButtonKind::Primary);
+                return scaleF(26) + bh;
+            }
+        }
+    };
+
+    // Laid out first, so the view knows where each step stands
+    struct Laid {
+        float top, height, textH;
+    };
+    std::vector<Laid> laid;
+    float contentY = 0.0f;
+    const float between = scaleF(28);
+    for (int i = 0; i < INTRO_STEP_COUNT; i++) {
+        Gdiplus::RectF room;
+        g.MeasureString(INTRO_STEPS[i].text, -1, &textFont, Gdiplus::RectF(0, 0, textW, scaleF(1000)), &room);
+        const float h = numD + scaleF(6) + room.Height + scaleF(10) + visual(i, 0, 0, false);
+        laid.push_back({contentY, h, room.Height});
+        contentY += h + between;
+    }
+    const float content = contentY - between;
+    const float view = (std::max)(scaleF(40), viewBottom - viewTop);
+    const float most = (std::max)(0.0f, content - view);
+    const auto target = [&](int i) { return std::clamp(laid[(size_t)i].top - scaleF(4), 0.0f, most); };
+
+    // Where it stands: by the clock while it runs by itself (or where a
+    // picture of it says), else where the wheel left it. Only the step
+    // being read is lit while it runs; at the end and by hand all are.
+    std::vector<float> lit(INTRO_STEP_COUNT, 1.0f);
+    if (drIntroAuto_ || drIntroAtMs_ >= 0) {
+        const long long ms =
+            drIntroAtMs_ >= 0 ? drIntroAtMs_
+                              : (long long)std::chrono::duration_cast<std::chrono::milliseconds>(
+                                    std::chrono::steady_clock::now() - drIntroStart_)
+                                    .count();
+        const IntroAt at = introAt(ms, introReads());
+        const float eased = at.from >= 0 ? at.move * at.move * (3.0f - 2.0f * at.move) : 1.0f;
+        drIntroScroll_ = at.from >= 0 ? target(at.from) + (target(at.step) - target(at.from)) * eased : target(at.step);
+        drIntroLit_ = at.step;
+        if (!at.done) {
+            std::fill(lit.begin(), lit.end(), 0.0f);
+            lit[(size_t)at.step] = eased;
+            if (at.from >= 0) lit[(size_t)at.from] = 1.0f - eased;
+        } else if (drIntroAuto_) {
+            drIntroAuto_ = false;   // at the end: from here on by hand
+        }
+    }
+    drIntroScroll_ = std::clamp(drIntroScroll_, 0.0f, most);
+    drIntroView_ = view;
+    drIntroContent_ = content;
+    drIntroTops_.clear();
+    for (const Laid& l : laid) drIntroTops_.push_back(l.top);
+
+    // ...and drawn, inside their view
+    const Gdiplus::GraphicsState outside = g.Save();
+    g.SetClip(Gdiplus::RectF(drRect_.X, viewTop, drRect_.Width, view));
+    for (int i = 0; i < INTRO_STEP_COUNT; i++) {
+        const Laid& l = laid[(size_t)i];
+        const float top = viewTop + l.top - drIntroScroll_;
+        if (top > viewTop + view || top + l.height < viewTop) continue;
+        const bool on = lit[(size_t)i] > 0.5f;
+        const Gdiplus::RectF disc(left, top, numD, numD);
+        Gdiplus::SolidBrush discBrush(on ? COL_ACCENT : tint(COL_TEXT, 26));
+        g.FillEllipse(&discBrush, disc);
+        Gdiplus::SolidBrush numberInk(on ? COL_ACCENT_INK : COL_TEXT_DIM);
+        g.DrawString(std::to_wstring(i + 1).c_str(), -1, &btnFont, disc, &centred, &numberInk);
+        g.DrawString(INTRO_STEPS[i].heading, -1, &stepFont, Gdiplus::RectF(textLeft, top, textW, numD), &middleLeft,
+                     &textBrush);
+        float sy = top + numD + scaleF(6);
+        g.DrawString(INTRO_STEPS[i].text, -1, &textFont, Gdiplus::RectF(textLeft, sy, textW, l.textH + scaleF(2)),
+                     nullptr, &dimBrush);
+        sy += l.textH + scaleF(10);
+        visual(i, textLeft, sy, true);
+        // the steps not being read, faded
+        if (lit[(size_t)i] < 1.0f) {
+            Gdiplus::SolidBrush veil(tint(COL_CARD, (int)std::lround(170.0f * (1.0f - lit[(size_t)i]))));
+            g.FillRectangle(&veil, Gdiplus::RectF(drRect_.X, top - scaleF(8), drRect_.Width, l.height + scaleF(16)));
+        }
+        // a click on a step: read on by hand
+        const float hitTop = (std::max)(top, viewTop), hitBottom = (std::min)(top + l.height, viewTop + view);
+        if (hitBottom > hitTop) drHits_.push_back({Gdiplus::RectF(left, hitTop, width, hitBottom - hitTop), 33, i, 0});
+    }
+    g.Restore(outside);
 }
 
 void MinerGUI::openDatarunnerForShot(int index, int kind, int row, const std::wstring& entry) {
@@ -17326,6 +17728,13 @@ Gdiplus::Bitmap* MinerGUI::datarunnerSnippet(const Datarunner::Shot& shot, size_
 }
 
 bool MinerGUI::datarunnerChar(wchar_t c) {
+    // its introduction: Esc puts it away and leaves the page; any other key
+    // takes over from it
+    if (drIntro_) {
+        if (c == VK_ESCAPE) showDatarunnerIntro(false);
+        else stopDatarunnerIntro();
+        return true;
+    }
     if (drEditRow_ >= 0) {
         if (c == VK_RETURN || c == VK_TAB) {
             commitDatarunnerEdit();
@@ -17435,6 +17844,24 @@ void MinerGUI::pressDatarunner(const DrHit& hit, HWND owner) {
                 }
             }
             break;
+        // ...and its introduction
+        case 30:  // Don't show next time
+            drIntroTicked_ = !drIntroTicked_;
+            break;
+        case 31:  // Connect UEX, UEX account: the account card over it
+            stopDatarunnerIntro();
+            showUexAccountCard();
+            break;
+        case 32:  // Close: the page under it
+            showDatarunnerIntro(false);
+            break;
+        case 33:  // a step: read on from there by hand
+            stopDatarunnerIntro();
+            drIntroLit_ = hit.row;
+            break;
+        case 34:  // How it works, from the page
+            showDatarunnerIntro(true);
+            break;
         default:
             break;
     }
@@ -17444,6 +17871,24 @@ void MinerGUI::pressDatarunner(const DrHit& hit, HWND owner) {
 void MinerGUI::drawDatarunnerCard(Gdiplus::Graphics& g, int cw, int ch) {
     drHits_.clear();
     drRect_ = drRows_ = drList_ = Gdiplus::RectF();
+    if (drIntro_) {
+        drawDatarunnerIntro(g, cw, ch);
+        return;
+    }
+    // Beside "Esc to close" on both cards: the way to the introduction
+    const auto introLink = [&](const Gdiplus::Font& font, float left, float y, float width) {
+        Gdiplus::RectF esc, words;
+        g.MeasureString(L"Esc to close", -1, &font, Gdiplus::PointF(0, 0), &esc);
+        g.MeasureString(L"How it works", -1, &font, Gdiplus::PointF(0, 0), &words);
+        const Gdiplus::RectF at(left + width - esc.Width - scaleF(16) - words.Width, y, words.Width + scaleF(2),
+                                scaleF(24));
+        Gdiplus::StringFormat middle;
+        middle.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+        middle.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+        Gdiplus::SolidBrush linkBrush(isHot(hoverMain_, at) ? COL_ACCENT_HI : COL_ACCENT);
+        g.DrawString(L"How it works", -1, &font, at, &middle, &linkBrush);
+        drHits_.push_back({at, 34, -1, 0});
+    };
     if (datarunner_.shots.empty()) {
         // the rail's page with no picture waiting: the card, saying so
         Gdiplus::Font markFont(&markFamily(), scaleF(Type::TITLE), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
@@ -17461,6 +17906,7 @@ void MinerGUI::drawDatarunnerCard(Gdiplus::Graphics& g, int cw, int ch) {
         g.DrawString(L"UEX DATARUNNER", -1, &markFont, Gdiplus::PointF(left, y), &textBrush);
         g.DrawString(L"Esc to close", -1, &headFont, Gdiplus::RectF(left, y, width, scaleF(24)), &rightLine,
                      &faintBrush);
+        introLink(headFont, left, y, width);
         g.DrawString(L"NO TERMINAL SCREENSHOTS TO CHECK", -1, &headFont, Gdiplus::PointF(left, y + scaleF(32)),
                      &dimBrush);
         return;
@@ -17518,6 +17964,7 @@ void MinerGUI::drawDatarunnerCard(Gdiplus::Graphics& g, int cw, int ch) {
     float y = cardY + scaleF(12);
     g.DrawString(L"UEX DATARUNNER", -1, &markFont, Gdiplus::PointF(left, y), &textBrush);
     g.DrawString(L"Esc to close", -1, &headFont, Gdiplus::RectF(left, y, width, scaleF(24)), &rightLine, &faintBrush);
+    introLink(headFont, left, y, width);
     y += scaleF(32);
 
     // Which picture, when it was taken, and the way to see it whole

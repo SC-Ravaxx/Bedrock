@@ -41,6 +41,10 @@ TOUR_PLUGIN RCDATA "tour_plugin.png"
 TOUR_DATARUNNER RCDATA "tour_datarunner.png"
 TOUR_PHONE RCDATA "tour_phone.png"
 TOUR_GAUGE RCDATA "tour_gauge.jpg"
+// The Datarunner's introduction: a commodity terminal in the game, and a
+// row of Bedrock's being checked
+INTRO_TERMINAL RCDATA "intro_terminal.jpg"
+INTRO_ROW RCDATA "intro_row.png"
 
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION BEDROCK_VERSION_MAJOR,BEDROCK_VERSION_MINOR,BEDROCK_VERSION_PATCH,BEDROCK_VERSION_BUILD
