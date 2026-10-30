@@ -148,7 +148,76 @@ int runPanelBench(const std::string& dir, const std::string& outCsv, int shard, 
     return 0;
 }
 
+// The gauge alone on the frames an earlier --gaugebench run lists, each with
+// the labels that run found (its CSV's file, found, labels_x, labels_y, scale
+// and glyph): the panel is not read again, so a change to the gauge reader
+// is compared on the very same labels, in a fraction of the time.
+int runGaugeReplay(const std::string& dir, const std::string& labelsCsv, const std::string& outCsv) {
+    std::ifstream in(labelsCsv);
+    if (!in.is_open()) {
+        std::cout << "cannot read " << labelsCsv << std::endl;
+        return 1;
+    }
+    std::ofstream out(outCsv, std::ios::trunc);
+    if (!out.is_open()) {
+        std::cout << "cannot write " << outCsv << std::endl;
+        return 1;
+    }
+    out << "file,found,labels_x,labels_y,scale,glyph,metres,pointer_x,pointer_y,tilt,least,lead,panel_ms,gauge_ms,note"
+        << std::endl;
+    std::string row;
+    std::getline(in, row);  // the header
+    int done = 0, read = 0, looked = 0;
+    double gaugeMs = 0;
+    while (std::getline(in, row)) {
+        if (!row.empty() && row.back() == '\r') row.pop_back();
+        std::vector<std::string> field;
+        size_t from = 0;
+        for (int k = 0; k < 6; k++) {
+            const size_t comma = row.find(',', from);
+            if (comma == std::string::npos) break;
+            field.push_back(row.substr(from, comma - from));
+            from = comma + 1;
+        }
+        if (field.size() < 6) continue;
+        SCMiner::ScanPanel p;
+        p.found = field[1] == "1";
+        p.labels = cv::Point(std::atoi(field[2].c_str()), std::atoi(field[3].c_str()));
+        p.labelScale = std::atof(field[4].c_str());
+        p.labelGlyph = field[5] == "-" ? 0 : field[5][0];
+        SCMiner::LaserRangeLook g;
+        double gms = 0;
+        if (p.labels.x >= 0) {
+            const cv::Mat frame = cv::imread((std::filesystem::path(dir) / field[0]).string(), cv::IMREAD_COLOR);
+            if (frame.empty()) continue;
+            const auto t1 = std::chrono::steady_clock::now();
+            g = SCMiner::readLaserRange(frame, p);
+            gms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t1).count();
+            looked++;
+        } else {
+            g.note = "no labels";
+        }
+        std::string note = g.note;
+        for (char& c : note) {
+            if (c == '"') c = '\'';
+        }
+        char line[256];
+        std::snprintf(line, sizeof(line), "%s,%d,%d,%d,%.3f,%c,%d,%.1f,%.1f,%.0f,%.2f,%.2f,%.1f,%.2f,", field[0].c_str(),
+                      p.found ? 1 : 0, p.labels.x, p.labels.y, p.labelScale, p.labelGlyph ? p.labelGlyph : '-', g.metres,
+                      g.pointer.x, g.pointer.y, g.tilt, g.least, g.lead, 0.0, gms);
+        out << line << '"' << note << '"' << std::endl;
+        done++;
+        if (g.metres > 0) read++;
+        gaugeMs += gms;
+    }
+    std::cout << done << " frames, " << read << " gauges read, " << (looked ? gaugeMs / looked : 0.0)
+              << " ms a gauge look on " << looked << " with labels, into " << outCsv << std::endl;
+    return 0;
+}
+
 int runGaugeBench(const std::string& dir, const std::string& prefix, const std::string& outCsv) {
+    // a prefix "@<earlier bench.csv>": that run's frames and labels
+    if (!prefix.empty() && prefix[0] == '@') return runGaugeReplay(dir, prefix.substr(1), outCsv);
     std::vector<std::string> files;
     std::error_code ec;
     for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
