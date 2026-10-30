@@ -17456,10 +17456,41 @@ void MinerGUI::drawDatarunnerIntro(Gdiplus::Graphics& g, int cw, int ch) {
 
     // What goes with each step, under its words: the buttons it names as
     // the app draws them, the game's terminal, a row being checked. Its
-    // height, and drawn where `draw` says so.
+    // height, and drawn where `draw` says so. Measuring, it notes where its
+    // texts and buttons stand in the steps (`bands`, with the numbers,
+    // headings and lines): the view shows each whole or not at all.
     const float numD = scaleF(24);
     const float textLeft = left + numD + scaleF(12);
     const float textW = right - textLeft;
+    std::vector<std::pair<float, float>> bands;
+    const auto lineHeight = [&](const Gdiplus::Font& font) {
+        Gdiplus::RectF one;
+        g.MeasureString(L"Ag", -1, &font, Gdiplus::PointF(0, 0), &one);
+        return one.Height;
+    };
+    const float textLineH = lineHeight(textFont), strongLineH = lineHeight(strongFont);
+    // A text broken by fitLines (at GDI+'s widths, so the Linux build breaks
+    // where Windows does), drawn a line at a time: a line the view's edge
+    // would cut is left out whole
+    const auto linesOf = [](const std::wstring& text) {
+        std::vector<std::wstring> lines;
+        for (size_t from = 0;;) {
+            const size_t at = text.find(L'\n', from);
+            lines.push_back(text.substr(from, at == std::wstring::npos ? std::wstring::npos : at - from));
+            if (at == std::wstring::npos) break;
+            from = at + 1;
+        }
+        return lines;
+    };
+    Gdiplus::StringFormat plainLines;
+    plainLines.SetTrimming(Gdiplus::StringTrimmingNone);
+    const auto drawLines = [&](const std::vector<std::wstring>& lines, const Gdiplus::Font& font, float lineH, float x,
+                               float y, const Gdiplus::Brush& brush) {
+        for (size_t k = 0; k < lines.size(); k++) {
+            g.DrawString(lines[k].c_str(), -1, &font,
+                         Gdiplus::RectF(x, y + (float)k * lineH, textW, lineH + scaleF(2)), &plainLines, &brush);
+        }
+    };
     struct Fit {
         float w, h;
     };
@@ -17472,9 +17503,13 @@ void MinerGUI::drawDatarunnerIntro(Gdiplus::Graphics& g, int cw, int ch) {
     Gdiplus::Bitmap* terminal = carriedPicture("INTRO_TERMINAL", drIntroShots_[0]);
     Gdiplus::Bitmap* rowShot = carriedPicture("INTRO_ROW", drIntroShots_[1]);
     const auto visual = [&](int i, float vx, float vy, bool draw) -> float {
+        const auto band = [&](float top, float height) {
+            if (!draw) bands.push_back({top, top + height});
+        };
         const auto button = [&](const wchar_t* label, float bx, float by2, ButtonKind kind) {
             const float bw = (std::max)(scaleF(96), measure(label, btnFont) + scaleF(32));
             if (draw) drawButton(g, Gdiplus::RectF(bx, by2, bw, bh), label, btnFont, kind, false, scaleF(R_CONTROL));
+            band(by2, bh);
             return bw;
         };
         switch (i) {
@@ -17490,6 +17525,7 @@ void MinerGUI::drawDatarunnerIntro(Gdiplus::Graphics& g, int cw, int ch) {
                     g.DrawString(L"  \u00B7  OFF", -1, &btnFont, Gdiplus::PointF(vx + measure(heading, btnFont), vy),
                                  &faintBrush);
                 }
+                band(vy, lineHeight(btnFont));
                 const float w = button(L"Turn on", vx, vy + scaleF(24), ButtonKind::Primary);
                 button(L"Sign up on UEX", vx + w + gap, vy + scaleF(24), ButtonKind::Secondary);
                 return scaleF(24) + bh;
@@ -17499,16 +17535,16 @@ void MinerGUI::drawDatarunnerIntro(Gdiplus::Graphics& g, int cw, int ch) {
                 const float lineY = vy + (s.h > 0 ? s.h + scaleF(8) : 0.0f);
                 // the foot's line as it reads then, broken where its parts meet
                 const Fitted line = fitLines(g, datarunnerFootWords(true, 0, 4, 14), strongFont, textW);
+                const std::vector<std::wstring> lines = linesOf(line.text);
                 if (draw) {
                     if (terminal) {
                         g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
                         g.DrawImage(terminal, Gdiplus::RectF(vx, vy, s.w, s.h));
                     }
-                    Gdiplus::StringFormat lines;
-                    lines.SetTrimming(Gdiplus::StringTrimmingNone);
-                    g.DrawString(line.text.c_str(), -1, &strongFont,
-                                 Gdiplus::RectF(vx, lineY + scaleF(1), textW, scaleF(18) + line.more), &lines,
-                                 &accentBrush);
+                    drawLines(lines, strongFont, strongLineH, vx, lineY + scaleF(1), accentBrush);
+                }
+                for (size_t k = 0; k < lines.size(); k++) {
+                    band(lineY + scaleF(1) + (float)k * strongLineH, strongLineH);
                 }
                 return lineY - vy + scaleF(18) + line.more;
             }
@@ -17525,6 +17561,7 @@ void MinerGUI::drawDatarunnerIntro(Gdiplus::Graphics& g, int cw, int ch) {
                     g.DrawString(L"READY - Click Send to report 3 rows to UEX", -1, &textFont,
                                  Gdiplus::RectF(vx, vy, textW, scaleF(18)), &middleLeft, &greenBrush);
                 }
+                band(vy, scaleF(18));
                 button(L"Send", vx, vy + scaleF(26), ButtonKind::Primary);
                 return scaleF(26) + bh;
             }
@@ -17533,17 +17570,24 @@ void MinerGUI::drawDatarunnerIntro(Gdiplus::Graphics& g, int cw, int ch) {
 
     // Laid out first, so the view knows where each step stands
     struct Laid {
-        float top, height, textH;
+        float top, height;
+        std::vector<std::wstring> lines;   // its words, a line each
     };
     std::vector<Laid> laid;
     float contentY = 0.0f;
     const float between = scaleF(28);
     for (int i = 0; i < INTRO_STEP_COUNT; i++) {
-        Gdiplus::RectF room;
-        g.MeasureString(INTRO_STEPS[i].text, -1, &textFont, Gdiplus::RectF(0, 0, textW, scaleF(1000)), &room);
-        const float h = numD + scaleF(6) + room.Height + scaleF(10) + visual(i, 0, 0, false);
-        laid.push_back({contentY, h, room.Height});
-        contentY += h + between;
+        Laid l{contentY, 0.0f, linesOf(fitLines(g, INTRO_STEPS[i].text, textFont, textW).text)};
+        bands.push_back({contentY, contentY + numD});   // its number and heading
+        float y = contentY + numD + scaleF(6);
+        for (size_t k = 0; k < l.lines.size(); k++) {
+            bands.push_back({y + (float)k * textLineH, y + (float)(k + 1) * textLineH});
+        }
+        y += (float)l.lines.size() * textLineH + scaleF(10);
+        y += visual(i, textLeft, y, false);
+        l.height = y - contentY;
+        laid.push_back(std::move(l));
+        contentY = y + between;
     }
     const float content = contentY - between;
     const float view = (std::max)(scaleF(40), viewBottom - viewTop);
@@ -17578,9 +17622,27 @@ void MinerGUI::drawDatarunnerIntro(Gdiplus::Graphics& g, int cw, int ch) {
     drIntroTops_.clear();
     for (const Laid& l : laid) drIntroTops_.push_back(l.top);
 
-    // ...and drawn, inside their view
+    // ...and drawn, inside their view. It ends on whole pixels, and before a
+    // line, a button or a heading its edge would cut by more than a pixel -
+    // short of the pixel that one's smoothed edge would show in.
+    const float onPage = viewTop - drIntroScroll_;
+    float clipTop = std::round(viewTop), clipBottom = std::round(viewTop + view);
+    for (bool moved = true; moved;) {
+        moved = false;
+        for (const auto& [bandTop, bandBottom] : bands) {
+            const float y0 = onPage + bandTop, y1 = onPage + bandBottom;
+            if (y0 < clipTop - 1.0f && y1 > clipTop) {
+                clipTop = std::ceil(y1);
+                moved = true;
+            }
+            if (y1 > clipBottom + 1.0f && y0 < clipBottom) {
+                clipBottom = std::floor(y0);
+                moved = true;
+            }
+        }
+    }
     const Gdiplus::GraphicsState outside = g.Save();
-    g.SetClip(Gdiplus::RectF(drRect_.X, viewTop, drRect_.Width, view));
+    g.SetClip(Gdiplus::RectF(drRect_.X, clipTop, drRect_.Width, (std::max)(0.0f, clipBottom - clipTop)));
     for (int i = 0; i < INTRO_STEP_COUNT; i++) {
         const Laid& l = laid[(size_t)i];
         const float top = viewTop + l.top - drIntroScroll_;
@@ -17594,9 +17656,8 @@ void MinerGUI::drawDatarunnerIntro(Gdiplus::Graphics& g, int cw, int ch) {
         g.DrawString(INTRO_STEPS[i].heading, -1, &stepFont, Gdiplus::RectF(textLeft, top, textW, numD), &middleLeft,
                      &textBrush);
         float sy = top + numD + scaleF(6);
-        g.DrawString(INTRO_STEPS[i].text, -1, &textFont, Gdiplus::RectF(textLeft, sy, textW, l.textH + scaleF(2)),
-                     nullptr, &dimBrush);
-        sy += l.textH + scaleF(10);
+        drawLines(l.lines, textFont, textLineH, textLeft, sy, dimBrush);
+        sy += (float)l.lines.size() * textLineH + scaleF(10);
         visual(i, textLeft, sy, true);
         // the steps not being read, faded
         if (lit[(size_t)i] < 1.0f) {
