@@ -23834,40 +23834,38 @@ void MinerGUI::drawTour(Gdiplus::Graphics& g, int cw, int ch) {
                      Gdiplus::RectF(pane.X + pad + scaleF(2), by, pane.Width - 2 * pad, bh), &leftMid, &faintBrush);
     };
     // a picture of Bedrock's own, as large as the pane allows above its
-    // caption, in its middle
+    // caption - the whole pane where it has none - in its middle
     const auto picture = [&](const char* name, std::unique_ptr<Gdiplus::Bitmap>& kept, const wchar_t* words) {
         refplanGlassPane(g, pane, scaleF(R_CARD), scaleF(14), COL_BG);
         if (Gdiplus::Bitmap* shot = carriedPicture(name, kept)) {
-            const float maxW = pane.Width - 2 * pad, maxH = by - scaleF(10) - (pane.Y + pad);
+            const float bottom = words && *words ? by - scaleF(10) : pane.GetBottom() - pad;
+            const float maxW = pane.Width - 2 * pad, maxH = bottom - (pane.Y + pad);
             const float k = (std::min)(maxW / (float)shot->GetWidth(), maxH / (float)shot->GetHeight());
             const float w = (float)shot->GetWidth() * k, h = (float)shot->GetHeight() * k;
             g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
             g.DrawImage(shot, Gdiplus::RectF(pane.X + (pane.Width - w) / 2.0f, pane.Y + pad + (maxH - h) / 2.0f, w, h));
         }
-        caption(words);
+        if (words && *words) caption(words);
     };
 
     switch (page) {
         case 0:
             title(nullptr);
             para(L"A new main window.", leadFont, textBrush, 14, textW);
-            para(L"The rail on the left leads to Scan, Refinery, Ore Finder, Blueprints, Notes and your plugins. "
-                 L"Settings and the Datarunner are at its foot.",
+            para(L"Scan, Refinery, Ore Finder, Blueprints, Notes and your plugins are now in the sidebar on the "
+                 L"left. Settings and the Datarunner are at the bottom.",
                  bodyFont, dimBrush, 14, textW);
-            para(L"The scan page shows location, ship and target ores at the top, the signature in large figures "
-                 L"and the best match with its probability. The other matches are folded away.",
+            para(L"The scan page shows the best match first. Matches that can\u2019t occur at your location are "
+                 L"folded into one line.",
                  bodyFont, dimBrush, 14, textW);
-            picture("TOUR_MAIN", tourShots_[0], L"The scan page");
+            picture("TOUR_MAIN", tourShots_[0], L"");
             break;
         case 1: {
             title(L"Distance to the rock");
-            para(L"Bedrock now reads the distance off the LASER RANGE gauge of the Prospector, the MOLE\u2019s "
-                 L"turrets and the Golem. The laser power on the rock card and the throttle that holds the charge "
-                 L"steady take it into account.",
+            para(L"Bedrock now reads the distance from LASER RANGE in the Prospector, MOLE and Golem, and uses it "
+                 L"for the laser power and the throttle on the rock card.",
                  bodyFont, dimBrush, 14, textW);
-            para(L"When the rock is too far, the card says NEAR END OF LASER RANGE or OUT OF RANGE. A distance "
-                 L"that cannot be read for sure is not used.",
-                 bodyFont, dimBrush, 14, textW);
+            para(L"If the rock is too far away, the card tells you.", bodyFont, dimBrush, 14, textW);
             // ...and under the words the gauge it is read off, as the game
             // draws it, at its own size: the same 26 m as the example
             if (Gdiplus::Bitmap* gauge = carriedPicture("TOUR_GAUGE", tourShots_[TOUR_PAGES])) {
@@ -23897,32 +23895,36 @@ void MinerGUI::drawTour(Gdiplus::Graphics& g, int cw, int ch) {
         }
         case 2:
             title(L"Plugins");
-            para(L"Plugins add pages of their own to Bedrock. Install them from Plugins in the rail. Every plugin "
-                 L"is signed by Ravaxx.",
+            para(L"Bedrock now has plugins. Install them under Plugins in the sidebar.", bodyFont, dimBrush, 14,
+                 textW);
+            para(L"Wikelo shows Wikelo\u2019s trades, your inventory and your contracts.", bodyFont, dimBrush, 14,
+                 textW);
+            para(L"Blackbox backs up your keybinds, settings and characters, so you can restore them after a "
+                 L"patch resets them.",
                  bodyFont, dimBrush, 14, textW);
-            para(L"The first is Wikelo: Wikelo\u2019s trades, your inventory and contracts, read from the game log.",
-                 bodyFont, dimBrush, 14, textW);
-            picture("TOUR_PLUGIN", tourShots_[2], L"The Wikelo plugin");
+            picture("TOUR_PLUGIN", tourShots_[2], L"");
             break;
         case 3:
             title(L"UEX Datarunner");
-            para(L"Report commodity terminal prices to UEX. At a terminal, hold the list still and Bedrock reads "
-                 L"it, or press Print Screen.",
+            para(L"Send commodity prices to UEX. At a terminal, Bedrock reads the price list when you hold it "
+                 L"still or press Print Screen.",
                  bodyFont, dimBrush, 14, textW);
-            para(L"You check every row before anything is sent. Reporting needs your UEX key and a datarunner "
-                 L"account on UEX.",
+            para(L"You check every row before anything is sent. You need a datarunner account on UEX and your "
+                 L"UEX key.",
                  bodyFont, dimBrush, 14, textW);
-            picture("TOUR_DATARUNNER", tourShots_[3], L"Checking a terminal\u2019s rows");
+            picture("TOUR_DATARUNNER", tourShots_[3], L"");
             break;
         case 4:
             title(L"Phone or tablet");
-            para(L"A phone or tablet on the same network can show the overlay or the whole window in its browser. "
-                 L"Turn it on in the settings and scan the QR code.",
+            para(L"Playing on a single screen? Put the overlay or the whole Bedrock window on your phone or "
+                 L"tablet, so nothing covers the game.",
                  bodyFont, dimBrush, 14, textW);
-            para(L"With View the picture is only shown. With Control a tap works like a click and a long press "
-                 L"like a right click.",
+            para(L"There\u2019s no app to install. Turn it on in Settings, scan the QR code and it opens in the "
+                 L"browser. Phone and PC need to be on the same network.",
                  bodyFont, dimBrush, 14, textW);
-            picture("TOUR_PHONE", tourShots_[4], L"The overlay on a phone");
+            para(L"View only shows it. With Control, a tap is a click and a long press is a right-click.",
+                 bodyFont, dimBrush, 14, textW);
+            picture("TOUR_PHONE", tourShots_[4], L"");
             break;
         default: {
             // The rest of 3.0, as the card names it: each a name and a line,
@@ -23933,11 +23935,13 @@ void MinerGUI::drawTour(Gdiplus::Graphics& g, int cw, int ch) {
                 para(name, itemFont, textBrush, 4, wide);
                 para(line, bodyFont, dimBrush, 18, wide);
             };
-            item(L"Wording", L"All texts follow one style: a short status in capitals, then what to do. "
-                             L"Thanks to andydsm!");
-            item(L"Long texts", L"Texts that were cut off now continue on a second line.");
+            item(L"Fonts", L"One set of fonts and sizes in every window, easier to read.");
+            item(L"Design", L"Fewer lines and frames, rounder corners.");
+            item(L"Blueprints", L"The filters are tidied up into a clear grid.");
+            item(L"Wording", L"Texts across the app were reworded, based on andydsm\u2019s suggestions. Thanks!");
+            item(L"Long texts", L"Long texts wrap to a second line instead of being cut off.");
             item(L"Refinery and Ore Finder", L"The mouse wheel scrolls their lists.");
-            item(L"Ice and silicon", L"Work orders are read while they are processed. UEX prices for ice are shown.");
+            item(L"Ice and silicon", L"Work orders are now read while they are being processed. Ice has UEX prices.");
             item(L"MOLE", L"A turret without a laser is no longer counted.");
             // ...and every change, on the card
             const wchar_t* all = L"See all changes";
@@ -26565,7 +26569,7 @@ void MinerGUI::paintPluginView(Gdiplus::Graphics& g, int cw, int ch, bool page) 
                     foot = toW(pluginNote_);
                     footBrush = &accentBrush;
                 } else {
-                    foot = toW(e.name + " " + e.version + "  \u00B7  Plugin by Ravaxx");
+                    foot = toW(e.name + " " + e.version);
                 }
             }
         }

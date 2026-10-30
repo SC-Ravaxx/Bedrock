@@ -210,7 +210,7 @@ bool unpack(const std::string& package, const std::filesystem::path& root, const
         std::filesystem::remove_all(staging, ec);
         why = !written ? "it could not be written to the data folder"
               : !named ? "its plugin.json names another plugin"
-                       : "it is not signed by Ravaxx";
+                       : "not signed";
         return false;
     }
     const std::filesystem::path target = root / id, old = root / (".old-" + id);
