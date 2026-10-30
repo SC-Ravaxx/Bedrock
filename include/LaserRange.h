@@ -33,6 +33,9 @@ struct LaserRangeLook {
 // The gauge of the HUD whose scan panel was found in this frame: placed from
 // the panel's labels and their size. Only on HUDs whose gauge is known - see
 // LaserRange.cpp; a MOLE's pilot seat has no laser and no gauge.
-LaserRangeLook readLaserRange(const cv::Mat& frame, const ScanPanel& panel);
+// toneMapped: the frame is an HDR desktop brought down to eight bits by
+// DxgiCapture (ToneMap.h), where the HUD's white sits near 190 instead of
+// 255; the gauge is then read off what an SDR capture of it holds.
+LaserRangeLook readLaserRange(const cv::Mat& frame, const ScanPanel& panel, bool toneMapped = false);
 
 }  // namespace SCMiner

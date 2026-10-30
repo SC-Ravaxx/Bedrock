@@ -2,7 +2,9 @@
 
 #include "GaugeDigits.h"
 #include "ScanPanel.h"
+#include "ToneMap.h"
 
+#include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
@@ -181,6 +183,16 @@ const DigitPictures& digitPictures() {
     return pictures;
 }
 
+// ToneMap::sdrLevel of every eight-bit level, for cv::LUT
+const cv::Mat& sdrLevels() {
+    static const cv::Mat levels = [] {
+        cv::Mat m(1, 256, CV_8U);
+        for (int i = 0; i < 256; i++) m.at<uchar>(0, i) = ToneMap::sdrLevel(i);
+        return m;
+    }();
+    return levels;
+}
+
 double median(std::vector<float>& v) {
     if (v.empty()) return 0;
     const size_t mid = v.size() / 2;
@@ -351,7 +363,7 @@ Numeral numeralAt(const cv::Mat& strip, int i, double firstX) {
 
 }  // namespace
 
-LaserRangeLook readLaserRange(const cv::Mat& frame, const ScanPanel& panel) {
+LaserRangeLook readLaserRange(const cv::Mat& frame, const ScanPanel& panel, bool toneMapped) {
     LaserRangeLook look;
     if (frame.empty() || frame.type() != CV_8UC3) {
         look.note = "no frame";
@@ -376,9 +388,27 @@ LaserRangeLook readLaserRange(const cv::Mat& frame, const ScanPanel& panel) {
         return look;
     }
 
+    // A tone-mapped HDR frame is first turned back into what an SDR capture
+    // holds, as far as the reader looks: the window and the figures' reach
+    // beyond it. The thresholds and pictures below are of SDR captures, the
+    // triangle above 185 in every channel; tone mapping puts the HUD's white
+    // at 180 to 190, and the triangle was found in none of 170 such looks.
+    cv::Mat sdr;
+    cv::Point origin(0, 0);
+    if (toneMapped) {
+        const int reach = (int)std::ceil(40 * s) + 2;
+        const cv::Rect around = cv::Rect(window.x - reach, window.y - reach, window.width + 2 * reach,
+                                         window.height + 2 * reach) &
+                                cv::Rect(0, 0, frame.cols, frame.rows);
+        cv::LUT(frame(around), sdrLevels(), sdr);
+        origin = around.tl();
+    }
+    const cv::Mat& src = toneMapped ? sdr : frame;
+    const cv::Point2d shift(origin);
+
     // The triangle: white - every channel bright and close together - and
     // filled, the size of one, and brighter than what is round it.
-    const cv::Mat part = frame(window);
+    const cv::Mat part = src(window - origin);
     cv::Mat white(part.size(), CV_8U), luma(part.size(), CV_8U);
     for (int y = 0; y < part.rows; y++) {
         const cv::Vec3b* px = part.ptr<cv::Vec3b>(y);
@@ -447,10 +477,11 @@ LaserRangeLook readLaserRange(const cv::Mat& frame, const ScanPanel& panel) {
     std::string tried;
     for (const Candidate& c : candidates) {
         cv::Point corner;
-        const cv::Mat ink = inkAbout(frame, c.centre, s, corner);
+        const cv::Point2d at = c.centre - shift;   // in src
+        const cv::Mat ink = inkAbout(src, at, s, corner);
         if (ink.empty()) continue;
-        const double tilt = levelTilt(ink, corner, c.centre, s, *hud);
-        const cv::Mat strip = upright(ink, corner, c.centre, s, tilt);
+        const double tilt = levelTilt(ink, corner, at, s, *hud);
+        const cv::Mat strip = upright(ink, corner, at, s, tilt);
         Numeral numerals[3];
         for (int i = 0; i < 3; i++) numerals[i] = numeralAt(strip, i, hud->firstX);
         std::string text;

@@ -20,6 +20,7 @@
 #include "GameTextMarks.h"
 #include "GameTexts.h"
 #include "LaserRange.h"
+#include "ToneMap.h"
 #include "LoadoutReader.h"
 #include "MiningHardware.h"
 #include "P4kReader.h"
@@ -4462,6 +4463,39 @@ int runSelfTest() {
                                        std::to_string(look.metres) + ", " + std::to_string(astray.metres) + ": " +
                                        look.note + ")");
             }
+        }
+        // ...and the same HUD as the app sees it on an HDR desktop, tone
+        // mapped (DxgiCapture): a green 12 m whose triangle tops out near 190,
+        // cut from the app's own scan recording of 30.10.2026 with the labels
+        // it found in that look, 3093,642 at size 0.965. Taken for what it is,
+        // the triangle is not white enough to be found.
+        {
+            const cv::Mat gauge = testPicture("scanpanel/gauge_prospector_live12.png", L"SELFTEST_GAUGE_PROSPECTOR_LIVE");
+            allPassed &= check(!gauge.empty(), "the tone-mapped LASER RANGE picture is beside the build or inside the exe");
+            if (!gauge.empty()) {
+                cv::Mat screen(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+                gauge.copyTo(screen(cv::Rect(2256, 498, gauge.cols, gauge.rows)));
+                SCMiner::ScanPanel panel;
+                panel.labels = cv::Point(3093, 642);
+                panel.labelScale = 0.965;
+                panel.labelGlyph = 'L';
+                const SCMiner::LaserRangeLook look = SCMiner::readLaserRange(screen, panel, true);
+                const SCMiner::LaserRangeLook asIs = SCMiner::readLaserRange(screen, panel, false);
+                allPassed &= check(look.metres == 12 && asIs.metres == 0,
+                                   "...tone mapped, its green 12 m reads 12, and nothing taken as an SDR picture (got " +
+                                       std::to_string(look.metres) + ", " + std::to_string(asIs.metres) + ": " +
+                                       look.note + ")");
+            }
+        }
+        // the way back from the tone map: SDR white (137) and above is 255,
+        // below it the level an SDR capture holds
+        {
+            const int black = SCMiner::ToneMap::sdrLevel(0), white = SCMiner::ToneMap::sdrLevel(137),
+                      above = SCMiner::ToneMap::sdrLevel(190), grey = SCMiner::ToneMap::sdrLevel(63);
+            allPassed &= check(black == 0 && white == 255 && above == 255 && grey == 123,
+                               "the tone map undone: 0, 137, 190 and 63 come back as 0, 255, 255 and 123 (got " +
+                                   std::to_string(black) + ", " + std::to_string(white) + ", " + std::to_string(above) +
+                                   ", " + std::to_string(grey) + ")");
         }
         // ...and a MOLE turret seat's, whose figure runs down a near straight
         // line: a red 16 m on rock, the labels at 3436,602 at size 1.468

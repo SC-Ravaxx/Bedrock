@@ -152,7 +152,7 @@ int runPanelBench(const std::string& dir, const std::string& outCsv, int shard, 
 // the labels that run found (its CSV's file, found, labels_x, labels_y, scale
 // and glyph): the panel is not read again, so a change to the gauge reader
 // is compared on the very same labels, in a fraction of the time.
-int runGaugeReplay(const std::string& dir, const std::string& labelsCsv, const std::string& outCsv) {
+int runGaugeReplay(const std::string& dir, const std::string& labelsCsv, const std::string& outCsv, bool toneMapped) {
     std::ifstream in(labelsCsv);
     if (!in.is_open()) {
         std::cout << "cannot read " << labelsCsv << std::endl;
@@ -191,7 +191,7 @@ int runGaugeReplay(const std::string& dir, const std::string& labelsCsv, const s
             const cv::Mat frame = cv::imread((std::filesystem::path(dir) / field[0]).string(), cv::IMREAD_COLOR);
             if (frame.empty()) continue;
             const auto t1 = std::chrono::steady_clock::now();
-            g = SCMiner::readLaserRange(frame, p);
+            g = SCMiner::readLaserRange(frame, p, toneMapped);
             gms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t1).count();
             looked++;
         } else {
@@ -215,9 +215,13 @@ int runGaugeReplay(const std::string& dir, const std::string& labelsCsv, const s
     return 0;
 }
 
-int runGaugeBench(const std::string& dir, const std::string& prefix, const std::string& outCsv) {
+int runGaugeBench(const std::string& dir, const std::string& prefixGiven, const std::string& outCsv) {
+    // a prefix "hdr:...": the frames are HDR desktops tone mapped the way
+    // DxgiCapture does it, as the app's own scan recordings hold them
+    const bool toneMapped = prefixGiven.rfind("hdr:", 0) == 0;
+    const std::string prefix = toneMapped ? prefixGiven.substr(4) : prefixGiven;
     // a prefix "@<earlier bench.csv>": that run's frames and labels
-    if (!prefix.empty() && prefix[0] == '@') return runGaugeReplay(dir, prefix.substr(1), outCsv);
+    if (!prefix.empty() && prefix[0] == '@') return runGaugeReplay(dir, prefix.substr(1), outCsv, toneMapped);
     std::vector<std::string> files;
     std::error_code ec;
     for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
@@ -249,7 +253,7 @@ int runGaugeBench(const std::string& dir, const std::string& prefix, const std::
         const auto t0 = std::chrono::steady_clock::now();
         const SCMiner::ScanPanel p = SCMiner::readScanPanel(frame, ocr, &glyphs, panelLines());
         const auto t1 = std::chrono::steady_clock::now();
-        const SCMiner::LaserRangeLook g = SCMiner::readLaserRange(frame, p);
+        const SCMiner::LaserRangeLook g = SCMiner::readLaserRange(frame, p, toneMapped);
         const auto t2 = std::chrono::steady_clock::now();
         const double pms = std::chrono::duration<double, std::milli>(t1 - t0).count();
         const double gms = std::chrono::duration<double, std::milli>(t2 - t1).count();

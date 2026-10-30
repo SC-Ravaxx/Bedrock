@@ -1,4 +1,5 @@
 #include "DxgiCapture.h"
+#include "ToneMap.h"
 
 #include <cmath>
 #include <iostream>
@@ -15,41 +16,8 @@ namespace {
 // screen - so this only has to be short enough not to stall the scan.
 constexpr UINT ACQUIRE_TIMEOUT_MS = 16;
 
-// scRGB is linear light with 1.0 at SDR white (80 nits). Where the picture
-// sits on that scale, measured with --capture on this game in HDR:
-//
-//     median 0.25   p90 0.44   p99 4.62   p99.9 5.31   max 5.75
-//
-// The world - terrain, sky - lives below half of SDR white. The HUD and its
-// markers live at four to six times it, which matches the 400 nits Star
-// Citizen reports. The two are decades apart in light, and everything worth
-// reading is in the upper group.
-//
-// Treating 1.0 as white, with a shoulder above it into the last ten display
-// levels, puts digits on 253 and the plate under them on 244 - nine levels
-// apart where the reader needs forty - and no frame reads (0 of 108). So
-// white goes where the HUD is, and only what is brighter gets compressed.
-constexpr float TONE_WHITE = 4.0f;        // the scRGB level that becomes white
-constexpr float TONE_SHOULDER_AT = 0.8f;  // where the curve starts to bend
-constexpr float TONE_SHOULDER_RATE = 3.0f;
-
-float toneMap(float linear) {
-    if (linear <= 0.0f) return 0.0f;   // scRGB allows negatives for wide gamut
-    const float t = linear / TONE_WHITE;
-    if (t <= TONE_SHOULDER_AT) return t;
-    // Never quite reaches 1.0, so a sun or a lamp above the HUD level still
-    // separates instead of collapsing into one flat white the way GDI leaves it
-    return TONE_SHOULDER_AT + (1.0f - TONE_SHOULDER_AT) *
-           (1.0f - std::exp(-(t - TONE_SHOULDER_AT) * TONE_SHOULDER_RATE));
-}
-
-// The reader was tuned on GDI captures, which are sRGB-encoded. Duplication's
-// float buffer is linear, so it has to be encoded back or every mid-tone would
-// land too dark and the digit thresholds would all be wrong.
-float encodeSrgb(float linear) {
-    if (linear <= 0.0031308f) return linear * 12.92f;
-    return 1.055f * std::pow(linear, 1.0f / 2.4f) - 0.055f;
-}
+using ToneMap::encodeSrgb;
+using ToneMap::toneMap;
 
 }  // namespace
 

@@ -1588,6 +1588,8 @@ void Application::lookForRock() {
     whole.autoDetect = false;
     const cv::Mat frame = screenCapture_.captureRegion(whole);
     if (frame.empty()) return;
+    // an HDR desktop comes tone mapped - see readLaserRange
+    const bool toneMapped = screenCapture_.lastSource() == ScreenCapture::Source::DxgiHdr;
 
     if (!rockOcrTried_) {
         rockOcrTried_ = true;
@@ -1618,7 +1620,8 @@ void Application::lookForRock() {
     // The laser's range, off the gauge the panel's labels place: on every
     // look that found them, whether or not its figures were read, and kept
     // for the rock on view - see laserRange
-    const LaserRangeLook range = panel.labels.x >= 0 ? readLaserRange(frame, panel) : LaserRangeLook();
+    const LaserRangeLook range =
+        panel.labels.x >= 0 ? readLaserRange(frame, panel, toneMapped) : LaserRangeLook();
     if (range.metres > 0) {
         rangeReadings_.emplace_back(now, range.metres);
         while (rangeReadings_.size() > 5) rangeReadings_.pop_front();
