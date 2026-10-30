@@ -1,0 +1,8 @@
+{
+  "id": "blackbox",
+  "name": "Blackbox",
+  "version": "1.0.0",
+  "description": "Keybinds, settings, characters",
+  "bedrock": "",
+  "access": ["game-files"]
+}
