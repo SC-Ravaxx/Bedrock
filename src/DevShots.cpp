@@ -20,6 +20,7 @@
 #include "Datarunner.h"
 #include "TextLineReader.h"
 #include "PluginHost.h"
+#include "GameFiles.h"
 #include "resource.h"
 #include <ctime>
 #include <memory>
@@ -35,6 +36,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <string>
 #include <vector>
 #include <dwmapi.h>
@@ -256,6 +258,242 @@ static std::vector<SCMiner::Datarunner::Row> shotDatarunnerRows(const std::vecto
         if (row.price < 0) row.priceSure = Certainty::Missing;
     }
     return rows;
+}
+
+// ---- Blackbox: a made-up game folder and backups ------------------------------
+// LIVE with five backups over a week - a layout saved by hand and kept,
+// keybinds and settings changed, a character added - and PTU, whose keybinds
+// fell back to the game's (a reset). Made-up binds, names and characters,
+// nothing from a player's PC.
+struct ShotBind {
+    const char* map;
+    const char* action;
+    const char* input;
+};
+
+static const char* const SHOT_JOYSTICK = " T.16000M  {B10A044F-0000-0000-0000-504944564944}";
+
+static std::string shotActionMaps(const std::vector<ShotBind>& binds, const char* indent) {
+    std::string s, map;
+    for (const ShotBind& b : binds) {
+        if (map != b.map) {
+            if (!map.empty()) s += std::string(indent) + "</actionmap>\n";
+            s += std::string(indent) + "<actionmap name=\"" + b.map + "\">\n";
+            map = b.map;
+        }
+        s += std::string(indent) + " <action name=\"" + b.action + "\">\n";
+        s += std::string(indent) + "  <rebind input=\"" + b.input + "\"/>\n";
+        s += std::string(indent) + " </action>\n";
+    }
+    if (!map.empty()) s += std::string(indent) + "</actionmap>\n";
+    return s;
+}
+
+static std::string shotKeybinds(const std::vector<ShotBind>& binds) {
+    return std::string("<ActionMaps>\n") +
+           " <ActionProfiles version=\"1\" optionsVersion=\"2\" rebindVersion=\"2\" profileName=\"default\">\n"
+           "  <options type=\"keyboard\" instance=\"1\" Product=\"Keyboard  {6F1D2B61-D5A0-11CF-BFC7-444553540000}\"/>\n"
+           "  <options type=\"joystick\" instance=\"1\" Product=\"" + SHOT_JOYSTICK + "\"/>\n"
+           "  <modifiers />\n" +
+           shotActionMaps(binds, "  ") + " </ActionProfiles>\n</ActionMaps>\n";
+}
+
+static std::string shotLayout(const std::string& name, const std::vector<ShotBind>& binds) {
+    return "<ActionMaps version=\"1\" optionsVersion=\"2\" rebindVersion=\"2\" profileName=\"" + name + "\">\n" +
+           " <CustomisationUIHeader label=\"" + name + "\" description=\"\" image=\"\">\n" +
+           "  <devices>\n   <keyboard instance=\"1\"/>\n   <mouse instance=\"1\"/>\n   <joystick instance=\"1\"/>\n"
+           "  </devices>\n </CustomisationUIHeader>\n"
+           " <options type=\"joystick\" instance=\"1\" Product=\"" + SHOT_JOYSTICK + "\"/>\n <modifiers />\n" +
+           shotActionMaps(binds, " ") + "</ActionMaps>\n";
+}
+
+static std::string shotSettings(const std::vector<std::pair<const char*, const char*>>& values) {
+    std::string s = "<Attributes Version=\"35\">\n";
+    for (const auto& v : values) s += std::string(" <Attr name=\"") + v.first + "\" value=\"" + v.second + "\"/>\n";
+    return s + "</Attributes>\n";
+}
+
+static std::string shotCharacter(const std::string& name, int seed) {
+    std::string b(4096, '\0');
+    b[0] = 1;
+    b.replace(4, name.size(), name);
+    for (int i = 64; i < 4096; i++) b[i] = static_cast<char>((i * 7 + seed) & 0xFF);
+    return b;
+}
+
+// `binds` with these set: a bind changed where its map and action are there,
+// else added after its map's last
+static std::vector<ShotBind> shotChanged(std::vector<ShotBind> binds, const std::vector<ShotBind>& changes) {
+    for (const ShotBind& c : changes) {
+        auto same = std::find_if(binds.begin(), binds.end(), [&](const ShotBind& b) {
+            return !std::strcmp(b.map, c.map) && !std::strcmp(b.action, c.action);
+        });
+        if (same != binds.end()) {
+            same->input = c.input;
+            continue;
+        }
+        size_t at = binds.size();
+        for (size_t i = 0; i < binds.size(); i++) {
+            if (!std::strcmp(binds[i].map, c.map)) at = i + 1;
+        }
+        binds.insert(binds.begin() + static_cast<std::ptrdiff_t>(at), c);
+    }
+    return binds;
+}
+
+struct BlackboxShot {
+    std::filesystem::path game;      // LIVE's folder
+    std::filesystem::path backups;
+    std::string liveNewest, liveKept;
+};
+
+// Writes the game folder (<base>/StarCitizen/LIVE and PTU) and the backups
+// (<base>/backups), each backup's age counted back from `now`
+static BlackboxShot blackboxShotFolders(const std::filesystem::path& base, long long now) {
+    namespace GF = SCMiner::GameFiles;
+    std::error_code ec;
+    std::filesystem::remove_all(base, ec);
+    const std::vector<ShotBind> mine = {
+        {"spaceship_movement", "v_strafe_up", "js1_hat1_up"},
+        {"spaceship_movement", "v_strafe_down", "js1_hat1_down"},
+        {"spaceship_movement", "v_strafe_left", "js1_button13"},
+        {"spaceship_movement", "v_strafe_right", "js1_button12"},
+        {"spaceship_movement", "v_strafe_forward", "kb1_r"},
+        {"spaceship_weapons", "v_weapon_preset_attack", "js1_button2"},
+        {"spaceship_weapons", "v_weapon_gimbals_state_toggle", "kb1_lalt+g"},
+        {"spaceship_missiles", "v_weapon_toggle_launch_missile", "js1_button2"},
+        {"spaceship_missiles", "v_weapon_cycle_missile_fwd", "js1_button3"},
+        {"spaceship_targeting", "v_target_toggle_lock_index_1", "js1_button4"},
+        {"spaceship_targeting", "v_target_unlock", "js1_button5"},
+        {"spaceship_power", "v_power_toggle", "kb1_ralt+u"},
+        {"spaceship_power", "v_power_toggle_shields", "kb1_ralt+o"},
+        {"spaceship_power", "v_power_toggle_weapons", "kb1_ralt+p"},
+        {"spaceship_mining", "v_toggle_mining_laser_fire", "js1_button6"},
+        {"spaceship_mining", "v_toggle_mining_laser_type", "js1_button7"},
+        {"spaceship_mining", "v_increase_mining_throttle", "js1_button8"},
+        {"spaceship_mining", "v_decrease_mining_throttle", "js1_button9"},
+        {"seat_general", "v_toggle_mining_mode", "kb1_n"},
+        {"seat_general", "v_eject", "kb1_ralt+e"},
+        {"seat_general", "v_emergency_exit", "kb1_ralt+x"},
+        {"spaceship_hud", "v_starmap", "kb1_f3"},
+        {"spaceship_hud", "visor_wipe", "kb1_v"},
+        {"spaceship_radar", "v_invoke_ping", "js1_button10"},
+    };
+    std::vector<std::pair<const char*, const char*>> settings = {
+        {"AudioMasterVolume", "1"}, {"AudioMusicVolume", "0.8"}, {"FOV", "90"},
+        {"HeadtrackingToggle", "0"}, {"MouseSensitivity", "0.5"}, {"SpeedThrottleDefaultFixedSpeed", "0"},
+    };
+    const std::string keybinds = "client\\0\\Profiles\\default\\actionmaps.xml";
+    const std::string attributes = "client\\0\\Profiles\\default\\attributes.xml";
+    const std::string layout = "client\\0\\controls\\mappings\\layout_T16000M_exported.xml";
+    const std::string pilot = "client\\0\\CustomCharacters\\Pilot.chf";
+    const std::string scout = "client\\0\\CustomCharacters\\Scout.chf";
+    using Files = std::map<std::string, std::string>;
+
+    std::vector<Files> live(5);
+    live[0] = {{keybinds, shotKeybinds(mine)}, {attributes, shotSettings(settings)}, {pilot, shotCharacter("Pilot", 3)}};
+    live[1] = live[0];
+    live[1][layout] = shotLayout("T16000M", mine);
+    const std::vector<ShotBind> mine3 = shotChanged(mine, {{"spaceship_mining", "v_increase_mining_throttle", "js1_hat1_right"},
+                                                           {"spaceship_mining", "v_decrease_mining_throttle", "js1_hat1_left"},
+                                                           {"seat_general", "v_toggle_mining_mode", "kb1_lalt+m"}});
+    settings[1].second = "0.4";
+    live[2] = live[1];
+    live[2][keybinds] = shotKeybinds(mine3);
+    live[2][attributes] = shotSettings(settings);
+    live[3] = live[2];
+    live[3][scout] = shotCharacter("Scout", 11);
+    const std::vector<ShotBind> mine5 = shotChanged(mine3, {{"spaceship_power", "v_power_toggle_shields", "kb1_ralt+s"},
+                                                            {"spaceship_targeting", "v_target_remove_all_pins", "js1_button11"}});
+    settings[2].second = "100";
+    live[4] = live[3];
+    live[4][keybinds] = shotKeybinds(mine5);
+    live[4][attributes] = shotSettings(settings);
+    settings[1].second = "0.8";
+    settings[2].second = "90";
+    std::vector<ShotBind> reset;
+    for (const ShotBind& b : mine) {
+        if (!std::strcmp(b.action, "v_strafe_forward") || !std::strcmp(b.action, "v_power_toggle")) reset.push_back(b);
+    }
+    const std::vector<Files> ptu = {{{keybinds, shotKeybinds(mine)}, {attributes, shotSettings(settings)}},
+                                    {{keybinds, shotKeybinds(reset)}, {attributes, shotSettings(settings)}}};
+
+    auto put = [&](const std::filesystem::path& user, const Files& files) {
+        for (const auto& f : files) {
+            std::string rel = f.first;
+            std::replace(rel.begin(), rel.end(), '\\', '/');
+            const std::filesystem::path p = user / rel;
+            std::filesystem::create_directories(p.parent_path(), ec);
+            std::ofstream(p, std::ios::binary) << f.second;
+        }
+    };
+    BlackboxShot out;
+    out.game = base / "StarCitizen" / "LIVE";
+    out.backups = base / "backups";
+    put(out.game / "user", live.back());
+    put(base / "StarCitizen" / "PTU" / "user", ptu.back());
+    // played last: LIVE 25 minutes ago, PTU before it
+    const auto written = std::filesystem::file_time_type::clock::now();
+    std::filesystem::last_write_time(out.game / "user/client/0/Profiles/default/actionmaps.xml",
+                                     written - std::chrono::minutes(25), ec);
+    std::filesystem::last_write_time(base / "StarCitizen/PTU/user/client/0/Profiles/default/actionmaps.xml",
+                                     written - std::chrono::minutes(50), ec);
+
+    // what Blackbox itself wrote into each backup-info.txt (its diff of the
+    // files against the backup before)
+    struct Made {
+        const char* channel;
+        const Files* files;
+        long long age;
+        const char *reason, *summary, *detail, *flag;
+        bool kept;
+        int binds;
+    };
+    const long long minute = 60 * 1000, hour = 60 * minute, day = 24 * hour;
+    const Made made[] = {
+        {"LIVE", &live[0], 6 * day + 2 * hour, "start", "First backup", "", "", false, 24},
+        {"LIVE", &live[1], 2 * day + 5 * hour, "manual", "1 layout", "Layout \"T16000M\" (new)", "", true, 24},
+        {"LIVE", &live[2], day + 3 * hour, "game-exit", "3 keybinds, 1 game setting",
+         "Decrease Mining Laser Power \xC2\xB7 T.16000M: Button 9 \xE2\x86\x92 Hat 1 left   (+3 more)", "", false, 24},
+        {"LIVE", &live[3], 3 * hour + 10 * minute, "change", "1 character", "Character \"Scout\" (new)", "", false, 24},
+        {"LIVE", &live[4], 25 * minute, "while-playing", "2 keybinds, 1 game setting",
+         "Toggle Power - Shields \xC2\xB7 Keyboard: Right Alt + O \xE2\x86\x92 Right Alt + S   (+2 more)", "", false, 25},
+        {"PTU", &ptu[0], 3 * day, "start", "First backup", "", "", false, 24},
+        {"PTU", &ptu[1], 50 * minute, "while-playing", "22 keybinds",
+         "Map \xC2\xB7 Keyboard: F3 \xE2\x86\x92 F2 (default)   (+21 more)", "reset", false, 2},
+    };
+    for (const Made& m : made) {
+        const long long at = now - m.age;
+        const std::time_t t = static_cast<std::time_t>(at / 1000);
+        std::tm local{}, utc{};
+        localtime_s(&local, &t);
+        gmtime_s(&utc, &t);
+        char id[32], created[48];
+        std::strftime(id, sizeof id, "%Y-%m-%d_%H-%M-%S", &local);
+        std::strftime(created, sizeof created, "%Y-%m-%dT%H:%M:%S", &utc);
+        const std::filesystem::path folder = out.backups / m.channel / id;
+        put(folder / "user", *m.files);
+        GF::Set set;
+        int characters = 0;
+        for (const auto& f : *m.files) {
+            set[f.first].data = f.second;
+            if (GF::kindOf(f.first) == GF::Kind::Character) characters++;
+        }
+        const GF::Hashes h = GF::hashesOf(set);
+        char ms[16];
+        std::snprintf(ms, sizeof ms, ".%03d0000Z", static_cast<int>(at % 1000));
+        std::ofstream info(folder / "backup-info.txt", std::ios::binary);
+        info << "# SC Blackbox. The game files are in the \"user\" folder next to this file.\r\n"
+             << "created=" << created << ms << "\r\nchannel=" << m.channel << "\r\nsource=\r\nreason=" << m.reason
+             << "\r\nrestoredfrom=\r\nrestoredparts=\r\nsummary=" << m.summary << "\r\ndetail=" << m.detail
+             << "\r\nflag=" << m.flag << "\r\nkept=" << (m.kept ? "1" : "0") << "\r\nbinds=" << m.binds
+             << "\r\nallhash=" << h.all << "\r\nkeybindhash=" << h.keybinds << "\r\ncharacters=" << characters << "\r\n";
+        if (!std::strcmp(m.channel, "LIVE")) {
+            out.liveNewest = id;
+            if (m.kept) out.liveKept = id;
+        }
+    }
+    return out;
 }
 
 // Photographs the windows into <dir>: main.png, overlay.png, planner.png.
@@ -531,13 +769,27 @@ int runScreenshots(const std::string& dir) {
                    "\"accepted\":" << now - 8 * day - hour << ",\"ended\":\"complete\",\"endedAt\":" << now - 8 * day
                 << ",\"parts\":{}}}}";
         }
+        // ...and Blackbox on a made-up game folder and backups of the run's own
+        const BlackboxShot blackbox = blackboxShotFolders(data / "blackbox", now);
         P::Host host(data / "plugins", data / "plugin_data", BEDROCK_VERSION, P::trustedKeys(), true);
+        host.setGameFolder(blackbox.game);
+        host.setBackupRoot(blackbox.backups);
         host.load();
+        // its first look at the files, as when Bedrock starts: nothing new to
+        // back up, PTU's reset noticed
+        host.runTimers(true);
+        std::string clickNext;   // a click in a plugin's window, for its next draw
         gui.setPluginCallbacks(
             [&](const std::string& id, P::UiState& state) {
                 SCMiner::MinerGUI::PluginView view;
                 P::Plugin* p = host.plugin(id);
                 if (!p) return view;
+                if (!clickNext.empty()) {
+                    // answered, and the window drawn once more, as after a real one
+                    state.clicked = clickNext;
+                    clickNext.clear();
+                    host.draw(id, state);
+                }
                 view.items = host.draw(id, state);
                 view.title = p->title();
                 view.subtitle = p->subtitle();
@@ -596,6 +848,32 @@ int runScreenshots(const std::string& dir) {
         gui.pluginStateForShot("wikelo", {"t:TheCollector_Vehicle_Medium_F7_MK2"}, {}, {{"find", "navy f7"}});
         pump();
         shoot(gui.windowHandle(), "main_page_wikelo_long.png");
+        // Blackbox: LIVE's backups, the newest open
+        if (host.plugin("blackbox")) {
+            const std::string newest = "b:" + blackbox.liveNewest, kept = "b:" + blackbox.liveKept;
+            gui.pluginStateForShot("blackbox", {newest}, {{"channel", 1}}, {});
+            gui.railPickForShot(Rail::Plugin, "blackbox");
+            pump();
+            shoot(gui.windowHandle(), "main_page_blackbox.png");
+            // ...what changed in it
+            clickNext = "show:" + blackbox.liveNewest;
+            gui.pluginStateForShot("blackbox", {newest}, {{"channel", 1}}, {});
+            pump();
+            shoot(gui.windowHandle(), "main_page_blackbox_changes.png");
+            clickNext = "show:" + blackbox.liveNewest;
+            gui.pluginStateForShot("blackbox", {newest}, {{"channel", 1}}, {});
+            // ...restoring the kept one: the part as first picked, before the button
+            clickNext = "restore:" + blackbox.liveKept;
+            gui.pluginStateForShot("blackbox", {kept}, {{"channel", 1}}, {});
+            pump();
+            shoot(gui.windowHandle(), "main_page_blackbox_restore.png");
+            clickNext = "cancel:" + blackbox.liveKept;
+            gui.pluginStateForShot("blackbox", {kept}, {{"channel", 1}}, {});
+            // ...and PTU, whose keybinds were reset
+            gui.pluginStateForShot("blackbox", {}, {{"channel", 2}}, {});
+            pump();
+            shoot(gui.windowHandle(), "main_page_blackbox_reset.png");
+        }
         gui.railPickForShot(Rail::Scan);
         pump();
         return 0;
