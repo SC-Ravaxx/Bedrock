@@ -11,6 +11,7 @@ local G, B = bedrock.game, bedrock.backups
 local E = {}
 
 E.SETTLE_MS = 6000        -- files unchanged this long before a backup
+E.QUIET_MS = 300000       -- ...while Star Citizen runs: a change left alone this long
 E.AFTER_EXIT_MS = 8000    -- after Star Citizen closes
 E.YIELD_MS = 20000        -- while SC Blackbox runs: it backs up first
 E.REFRESH_MS = 30000      -- the lists read again (SC Blackbox's backups)
@@ -20,8 +21,10 @@ local CHARS = { characters = true }
 
 -- ---- what is kept between runs of Bedrock -----------------------------------
 -- ignored  channel -> the id of the reset backup whose notice was ignored
+-- oldest   channel -> the id of its oldest backup, marked kept once
 local S = bedrock.load() or {}
 S.ignored = S.ignored or {}
+S.oldest = S.oldest or {}
 local function save() bedrock.save(S) end
 
 -- ---- channels ----------------------------------------------------------------
@@ -180,7 +183,9 @@ function E.run(name, reason, opt)
   }
   local looksReset = false
   if not latest then
+    -- the first backup of a channel is kept forever
     info.summary = "First backup"
+    info.kept = true
   else
     local ok = pcall(function()
       if not before then error("the latest backup can't be read") end
@@ -204,6 +209,10 @@ function E.run(name, reason, opt)
     return { status = "failed", message = why2 or "" }
   end
   B.log("Backup " .. name .. "/" .. id .. " (" .. reason .. "): " .. info.summary .. ", " .. info.binds .. " binds")
+  if not latest then
+    S.oldest[name] = id
+    save()
+  end
   E.prune(name)
   local backup = findBackup(E.list(name), id) or { id = id, created = now(), binds = info.binds, summary = info.summary }
   return { status = "created", backup = backup, previous = latest, looksReset = looksReset, info = info }
@@ -297,6 +306,28 @@ function E.ignore(name)
   setNotice(name, nil)
 end
 
+-- The oldest backup of each channel is kept forever: marked once, so a mark
+-- taken off by hand stays off
+function E.keepOldest()
+  for _, st in ipairs(E.states) do
+    if not S.oldest[st.name] then
+      local list = E.list(st.name, true)
+      local oldest = list[#list]
+      if oldest then
+        local ok = oldest.kept or B.mark(st.name, oldest.id, true)
+        if ok then
+          S.oldest[st.name] = oldest.id
+          save()
+          if not oldest.kept then
+            B.log("Kept forever: " .. st.name .. "/" .. oldest.id .. " (the oldest)")
+            E.list(st.name, true)
+          end
+        end
+      end
+    end
+  end
+end
+
 -- ---- watching (Watcher) --------------------------------------------------------
 
 function E.check(st, reason)
@@ -316,9 +347,11 @@ local startAt, gameStartAt, exitAt, refreshAt
 
 -- every 2 s: at the first after Bedrock started a backup ("start"); when
 -- Star Citizen starts ("game-start"), a moment after it closes ("game-exit"),
--- and when the files changed and then stayed quiet ("while-playing" or
--- "change"). While SC Blackbox runs, each waits YIELD_MS, so that it backs
--- up first and this finds nothing new.
+-- and when the files changed and were then left alone: QUIET_MS while the
+-- game runs ("while-playing"), so that a slider moved again and again makes
+-- one backup, SETTLE_MS when it does not ("change"). While SC Blackbox runs,
+-- each waits at least YIELD_MS, so that it backs up first and this finds
+-- nothing new.
 function E.tick()
   local t = now()
   local yield = G.blackbox()
@@ -336,6 +369,7 @@ function E.tick()
   elseif refreshAt and t >= refreshAt then
     refreshAt = t + E.REFRESH_MS
     E.refreshChannels()
+    E.keepOldest()
     for _, st in ipairs(E.states) do
       if st.fresh then
         st.fresh = nil
@@ -348,6 +382,8 @@ function E.tick()
   end
   if startAt and t >= startAt then
     startAt = nil
+    -- (before the first prune: the oldest stays)
+    E.keepOldest()
     E.checkAll("start")
     E.showOpenResets()
   end
@@ -372,14 +408,15 @@ function E.tick()
     E.checkAll("game-exit")
   end
 
-  local settle = yield and E.YIELD_MS or E.SETTLE_MS
+  local settle = (E.running and E.QUIET_MS) or (yield and E.YIELD_MS) or E.SETTLE_MS
   for _, st in ipairs(E.states) do
     local stamp = G.stamp(st.name)
     if stamp ~= st.stamp then
       st.stamp = stamp
       st.changedAt = t
       st.pending = true
-    elseif st.pending and t - st.changedAt >= settle then
+    elseif st.pending and not exitAt and t - st.changedAt >= settle then
+      -- (once the game closed, its exit check takes what is pending)
       E.check(st, E.running and "while-playing" or "change")
     end
   end
