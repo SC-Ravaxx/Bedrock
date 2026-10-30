@@ -71,7 +71,6 @@ BEDROCK_BLOB(bedrock_blob_tour_main, BEDROCK_RES_DIR "/tour_main.png")
 BEDROCK_BLOB(bedrock_blob_tour_plugin, BEDROCK_RES_DIR "/tour_plugin.png")
 BEDROCK_BLOB(bedrock_blob_tour_datarunner, BEDROCK_RES_DIR "/tour_datarunner.png")
 BEDROCK_BLOB(bedrock_blob_tour_phone, BEDROCK_RES_DIR "/tour_phone.png")
-BEDROCK_BLOB(bedrock_blob_tour_gauge, BEDROCK_RES_DIR "/tour_gauge.jpg")
 BEDROCK_BLOB(bedrock_blob_intro_terminal, BEDROCK_RES_DIR "/intro_terminal.jpg")
 BEDROCK_BLOB(bedrock_blob_intro_row, BEDROCK_RES_DIR "/intro_row.png")
 // ...and the faces the layout was measured in, or their metric twins: the
@@ -130,7 +129,6 @@ bool embeddedResource(const std::string& name, const unsigned char** data, size_
         {"TOUR_PLUGIN", bedrock_blob_tour_plugin_start, bedrock_blob_tour_plugin_end},
         {"TOUR_DATARUNNER", bedrock_blob_tour_datarunner_start, bedrock_blob_tour_datarunner_end},
         {"TOUR_PHONE", bedrock_blob_tour_phone_start, bedrock_blob_tour_phone_end},
-        {"TOUR_GAUGE", bedrock_blob_tour_gauge_start, bedrock_blob_tour_gauge_end},
         {"INTRO_TERMINAL", bedrock_blob_intro_terminal_start, bedrock_blob_intro_terminal_end},
         {"INTRO_ROW", bedrock_blob_intro_row_start, bedrock_blob_intro_row_end},
         {"APPICON", bedrock_blob_appicon_start, bedrock_blob_appicon_end},

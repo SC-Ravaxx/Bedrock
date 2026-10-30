@@ -23746,8 +23746,7 @@ void MinerGUI::paintTour(HDC hdc) {
     HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, memBitmap);
     {
         Gdiplus::Graphics g(memDC);
-        // smoothed like the main window: the rock view on the second page
-        // is the main window's own
+        // smoothed like the main window
         prepareGraphics(g);
         Gdiplus::SolidBrush bg(COL_BG);
         g.FillRectangle(&bg, 0, 0, cw, ch);
@@ -23872,40 +23871,7 @@ void MinerGUI::drawTour(Gdiplus::Graphics& g, int cw, int ch) {
                  bodyFont, dimBrush, 14, textW);
             picture("TOUR_MAIN", tourShots_[0], L"");
             break;
-        case 1: {
-            title(L"Distance to the rock");
-            para(L"Bedrock now reads the distance from LASER RANGE in the Prospector, MOLE and Golem, and uses it "
-                 L"for the laser power and the throttle on the rock card.",
-                 bodyFont, dimBrush, 14, textW);
-            para(L"If the rock is too far away, the card tells you.", bodyFont, dimBrush, 14, textW);
-            // ...and under the words the gauge it is read off, as the game
-            // draws it, at its own size: the same 26 m as the example
-            if (Gdiplus::Bitmap* gauge = carriedPicture("TOUR_GAUGE", tourShots_[TOUR_PAGES])) {
-                const float w = scaleF((float)gauge->GetWidth()), h = scaleF((float)gauge->GetHeight());
-                if (y + scaleF(10) + h + scaleF(26) <= by - scaleF(10)) {
-                    y += scaleF(10);
-                    const Gdiplus::RectF at(M, y, w, h);
-                    g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
-                    g.DrawImage(gauge, at);
-                    wchar_t gameWords[96];
-                    std::swprintf(gameWords, 96, L"In the game: LASER RANGE %.0f m", ROCK_DEMO_DISTANCE);
-                    g.DrawString(gameWords, -1, &smallFont, Gdiplus::RectF(M, y + h + scaleF(4), textW, scaleF(18)),
-                                 &leftMid, &faintBrush);
-                }
-            }
-            // The rock view itself, with the example in it
-            refplanGlassPane(g, pane, scaleF(R_CARD), scaleF(14), COL_BG);
-            const int demoW = scale(WINDOW_WIDTH);
-            const float demoX = pane.X + (pane.Width - (float)demoW) / 2.0f;
-            const float demoY = pane.Y + pad;
-            drawRockDemo(g, demoX, demoY, demoW, 1, by - scaleF(6));
-            wchar_t words[160];
-            std::swprintf(words, 160, L"Example: Prospector, %.0f m from a %ls kg tin deposit", ROCK_DEMO_DISTANCE,
-                          formatNumber(22593).c_str());
-            caption(words);
-            break;
-        }
-        case 2:
+        case 1:
             title(L"Plugins");
             para(L"Bedrock now has plugins. Install them under Plugins in the sidebar.", bodyFont, dimBrush, 14,
                  textW);
@@ -23914,9 +23880,9 @@ void MinerGUI::drawTour(Gdiplus::Graphics& g, int cw, int ch) {
             para(L"Blackbox backs up your keybinds, settings and characters, so you can restore them after a "
                  L"patch resets them.",
                  bodyFont, dimBrush, 14, textW);
-            picture("TOUR_PLUGIN", tourShots_[2], L"");
+            picture("TOUR_PLUGIN", tourShots_[1], L"");
             break;
-        case 3:
+        case 2:
             title(L"UEX Datarunner");
             para(L"Send commodity prices to UEX. At a terminal, Bedrock reads the price list when you hold it "
                  L"still or press Print Screen.",
@@ -23924,9 +23890,9 @@ void MinerGUI::drawTour(Gdiplus::Graphics& g, int cw, int ch) {
             para(L"You check every row before anything is sent. You need a datarunner account on UEX and your "
                  L"UEX key.",
                  bodyFont, dimBrush, 14, textW);
-            picture("TOUR_DATARUNNER", tourShots_[3], L"");
+            picture("TOUR_DATARUNNER", tourShots_[2], L"");
             break;
-        case 4:
+        case 3:
             title(L"Phone or tablet");
             para(L"Playing on a single screen? Put the overlay or the whole Bedrock window on your phone or "
                  L"tablet, so nothing covers the game.",
@@ -23936,7 +23902,7 @@ void MinerGUI::drawTour(Gdiplus::Graphics& g, int cw, int ch) {
                  bodyFont, dimBrush, 14, textW);
             para(L"View only shows it. With Control, a tap is a click and a long press is a right-click.",
                  bodyFont, dimBrush, 14, textW);
-            picture("TOUR_PHONE", tourShots_[4], L"");
+            picture("TOUR_PHONE", tourShots_[3], L"");
             break;
         default: {
             // The rest of 3.0, as the card names it: each a name and a line,

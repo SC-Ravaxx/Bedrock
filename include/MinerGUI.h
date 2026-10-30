@@ -619,7 +619,7 @@ public:
     void showTour();
     void showTourForShot();
     void tourPageForShot(int page);   // --screenshot only: page 0..TOUR_PAGES-1
-    static constexpr int TOUR_PAGES = 6;
+    static constexpr int TOUR_PAGES = 5;
     HWND newsHandle() const { return news_; }
     void paintNewsTo(HDC hdc);
     // The settings, a window of their own behind the gear in the header:
@@ -2001,7 +2001,7 @@ private:
     std::vector<TourHit> tourHits_;
     POINT hoverNews_ = {-1, -1};
     int tourHitAt(POINT at) const;               // index into tourHits_, -1 none
-    std::unique_ptr<Gdiplus::Bitmap> tourShots_[TOUR_PAGES + 1];   // + the LASER RANGE gauge
+    std::unique_ptr<Gdiplus::Bitmap> tourShots_[TOUR_PAGES];
     void paintTour(HDC hdc);
     void drawTour(Gdiplus::Graphics& g, int cw, int ch);
     void turnTour(int page);                     // to that page, within the six
