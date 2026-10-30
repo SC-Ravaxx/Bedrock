@@ -29,17 +29,17 @@ Getting started
 4. LIVE is already on at start: the app scans about three times a second, and
    the search frame follows the marker by itself. The LIVE button turns the
    scanning off and on again.
-   The header says where you are (LOCATION, "Pyro - Monox") and which ship
-   you sit in, both read off the game's own log: the route the ship computes
-   names the place it starts from, the arrival after a quantum jump names the
-   target, a gateway right after a jump point names the far side. The ore
-   candidates are then narrowed to the ores the tables list for that place -
-   at Monox only Monox's ores stay in the running, the rest are marked "not
-   at". On a planet or moon a 2,000 reads "Harvestable/Salvage", in space
+   The top of the scan page says where you are (LOCATION, "Pyro - Monox") and
+   which ship you sit in, both read off the game's own log: the route the ship
+   computes names the place it starts from, the arrival after a quantum jump
+   names the target, a gateway right after a jump point names the far side.
+   The ore candidates are then narrowed to the ores the tables list for that
+   place - at Monox only Monox's ores stay in the running, the rest are marked
+   "not at". On a planet or moon a 2,000 reads "Harvestable/Salvage", in space
    "Salvage" - there is no salvage on a body and no harvestable in space.
    (The three system buttons are gone with it: the log says which system you
    are in, and better than a button you forget to press.)
-5. TARGET ORES, under the header, is the list of ores you want to be told
+5. TARGET ORES, under LOCATION, is the list of ores you want to be told
    about. Open it, type a few letters to narrow the list, click as many ores
    as you like. A match then blinks red and carries the word TARGET, so
    you can watch the game rather than this window. Whatever a recipe on your
@@ -49,10 +49,10 @@ Getting started
    put it, and dragging its bottom-right corner makes it bigger or smaller.
    In the overlay, Ctrl+plus and Ctrl+minus make only its text bigger or
    smaller, and Ctrl+0 sets it back.
-   On Windows, clicks go through the overlay to the game; to use its
-   buttons, move it or resize it, Alt-Tab to Bedrock first. ORE FINDER (F)
-   opens the ore search, BLUEPRINTS (B) the crafting recipes, REFINERY (R)
-   the station table, NOTES (N) your own notebook.
+   On Windows, clicks go through the overlay to the game; to use its buttons,
+   move it or resize it, Alt-Tab to Bedrock first. In the main window, the
+   sidebar on the left opens the Ore Finder (F), the Blueprints (B), the
+   Refinery (R) and your Notes (N).
 7. SHIP, next to LOCATION, holds the ships you mine with and what they carry -
    heads, modules, crafted bonus - which is what the rock view works with.
    You can save several, also more than one of the same type, each under its
@@ -60,16 +60,15 @@ Getting started
    Pick a ship once while you're sitting in it, after that Bedrock recognizes
    it by itself. (The game's log names each ship by an id. When that id
    changes, pick the ship once more.)
-8. The gear beside the ? in the header opens the settings: the colours of
-   every window and the overlay - Bedrock's own, a set for protanopia,
-   deuteranopia or tritanopia, or your own - and the overlay's opacity,
-   text size and size. Click a colour to put it on the sliders for hue,
-   saturation and lightness, or type a hex code into its field; Ctrl+V
-   pastes one. The preview shows the overlay over a scene from the game
-   and the matches of the main window, and "Seen with" shows them the way
-   each kind of colour blindness sees them. Everything applies at once.
-   Your own colours are kept in colours.txt, and picking a set keeps them
-   to come back to.
+8. SETTINGS, at the bottom of the sidebar: the colours of every window and the
+   overlay - Bedrock's own, a set for protanopia, deuteranopia or tritanopia,
+   or your own - and the overlay's opacity, text size and size. Click a colour
+   to put it on the sliders for hue, saturation and lightness, or type a hex
+   code into its field; Ctrl+V pastes one. The preview shows the overlay over
+   a scene from the game and the matches of the main window, and "Seen with"
+   shows them the way each kind of colour blindness sees them. Everything
+   applies at once. Your own colours are kept in colours.txt, and picking a
+   set keeps them to come back to.
 9. PHONE OR TABLET, in the settings: with one screen, put the overlay or
    the whole window on a phone or tablet instead, in its browser - there is
    no app to install. It has to be on the same network. Pick View or
@@ -84,6 +83,10 @@ Getting started
    nothing any more. The page keeps the screen on while it is open; an
    iPhone or iPad wants one tap for that first, on the line that asks for
    it.
+10. PLUGINS, in the sidebar: install plugins there. Wikelo shows Wikelo's
+    trades, your inventory and your contracts. Blackbox backs up your
+    keybinds, settings and characters, so you can restore them after a patch
+    resets them.
 
 Refinery (key R)
 ----------------
@@ -95,8 +98,8 @@ work orders than the window has room for, the wheel scrolls the list.
 
 Work orders: when you use a refinery terminal (REFINEMENT CENTER), Bedrock
 reads your work orders off it and lists them under Work orders, the tab on
-the right: what comes out of each and when it's done. The Refinery button in
-the main window shows how many are done. Orders you collect at the terminal
+the right: what comes out of each and when it's done. Refinery in the
+sidebar shows how many are done. Orders you collect at the terminal
 come off the list by themselves, and "Collected" takes one off by hand.
 Bedrock only looks for the terminal while you're on foot, not while you're
 mining. Tested at Levski, Checkmate and Pyro Gateway.

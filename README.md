@@ -38,14 +38,18 @@ executable and start it. The app tells you when a newer version is out.
   game's own contract list.
 - **Refinery jobs to UEX (optional):** connect your UEX account and Bedrock
   adds the refinery jobs you start to it. Off unless you agree.
-- **UEX Datarunner (optional):** at a commodity terminal, take a picture with
-  the game's Print Screen key. Bedrock reads the terminal's list off it and
-  shows every row beside its part of the picture; you check the values, and
-  only your click on Send reports them to UEX, with that picture. If the game
-  saves it black (seen with HDR on), Bedrock reads and sends its own picture
-  of that moment instead. Off unless you switch it on.
-- **Colours:** the gear beside the ? sets the colours of every window and the
-  overlay - Bedrock's own, a set for protanopia, deuteranopia or tritanopia,
+- **UEX Datarunner (optional):** at a commodity terminal, Bedrock reads the
+  price list when you hold it still or press Print Screen, and shows every
+  row beside its part of the picture; you check the values, and only your
+  click on Send reports them to UEX, with that picture. If the game saves the
+  Print Screen picture black (seen with HDR on), Bedrock reads and sends its
+  own picture of that moment instead. Off unless you switch it on.
+- **Plugins:** install them under Plugins in the sidebar. Wikelo shows
+  Wikelo's trades, your inventory and your contracts. Blackbox backs up your
+  keybinds, settings and characters, so you can restore them after a patch
+  resets them.
+- **Colours:** Settings, at the bottom of the sidebar, sets the colours of
+  every window and the overlay - Bedrock's own, a set for protanopia, deuteranopia or tritanopia,
   or your own - with a preview that also shows how each kind of colour
   blindness sees them. The overlay's opacity, text size and size are set
   there too.
