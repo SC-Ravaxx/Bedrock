@@ -32,11 +32,13 @@ local function when(ms)
   return d
 end
 
+-- ...inside a line: "today 15:47"
 local function lowerWhen(ms)
   local w = when(ms)
   return (w:gsub("^Today", "today"):gsub("^Yesterday", "yesterday"))
 end
 
+-- SC Blackbox's words for why a backup was made
 local REASONS = {
   start = "App started",
   change = "Files changed",
@@ -68,19 +70,36 @@ end
 local PARTS = { "all", "keybinds", "settings", "characters" }
 local PART_WORDS = { all = "All", keybinds = "Keybinds", settings = "Settings", characters = "Characters" }
 
+local function fileNames(rels)
+  local names = {}
+  for _, rel in ipairs(rels or {}) do names[#names + 1] = rel:match("[^\\]+$") end
+  return (#names > 1 and "FILES DAMAGED" or "FILE DAMAGED") .. " - " .. table.concat(names, ", ")
+end
+
+-- A channel's notice in a line, and the word on its chip
+local function noticeLine(n)
+  if n.kind == "reset" then
+    return "KEYBINDS RESET - From " .. n.before.binds .. " custom binds to " .. n.after.binds
+  elseif n.kind == "nofiles" then
+    return "NO KEYBIND FILE"
+  end
+  return fileNames(n.files)
+end
+local NOTICE_WORDS = { reset = "RESET", nofiles = "NO FILE", damaged = "DAMAGED" }
+
 -- ---- what the window keeps ------------------------------------------------------
+-- showing and restoring are "<channel>/<backup id>" or "<channel>/notice"
 local V = {
-  showing = nil,      -- backup id whose changes are shown
+  showing = nil,      -- whose changes are shown
   lines = nil,        -- ...the lines
-  restoring = nil,    -- backup id being restored: parts picked, then confirmed
-  restoringAt = nil,  -- ...from its card or from the notice
-  parts = nil,        -- ...what it holds
-  message = nil,      -- { id = card or "page", text, tone }
+  restoring = nil,    -- what is being restored: the part picked, then confirmed
+  parts = nil,        -- ...what that backup holds
+  message = nil,      -- { channel, id = card or "page", text, tone, at }
   defaultChannel = nil,
 }
 
-local function say(id, text, tone)
-  V.message = { id = id, text = text, tone = tone }
+local function say(name, id, text, tone)
+  V.message = { channel = name, id = id, text = text, tone = tone, at = bedrock.now() }
 end
 
 local function pickDefaultChannel()
@@ -95,11 +114,39 @@ local function pickDefaultChannel()
 end
 
 -- ---- the timer -------------------------------------------------------------------
+-- Every 2 s the engine looks at the files. What it did goes to the foot of
+-- Bedrock's window: a backup made, and over it a notice.
+local lastError
 bedrock.every(2, function()
+  local had = {}
+  for name, n in pairs(E.notices) do had[name] = n end
+  local status = E.status
   local ok, err = pcall(E.tick)
-  if not ok then
-    B.log("Check failed: " .. tostring(err))
-    E.status = { kind = "error", text = tostring(err) }
+  if not ok and tostring(err) ~= lastError then
+    lastError = tostring(err)
+    B.log("Check failed: " .. lastError)
+    E.status = { kind = "error", text = lastError }
+    bedrock.redraw()
+  elseif ok then
+    lastError = nil
+  end
+  local s = E.status
+  if s ~= status and s then
+    if s.kind == "saved" then
+      bedrock.note("BLACKBOX" .. DOT .. s.channel .. " BACKED UP - " .. s.text)
+    elseif s.kind == "failed" then
+      bedrock.note("BLACKBOX" .. DOT .. s.channel .. " BACKUP FAILED - " .. s.text)
+    elseif s.kind == "error" then
+      bedrock.note("BLACKBOX" .. DOT .. "CHECK FAILED - " .. s.text)
+    end
+  end
+  for _, st in ipairs(E.states) do
+    local n = E.notices[st.name]
+    if n and n ~= had[st.name] then bedrock.note("BLACKBOX" .. DOT .. st.name .. " " .. noticeLine(n)) end
+  end
+  -- a message stands two minutes
+  if V.message and bedrock.now() - V.message.at > 120000 then
+    V.message = nil
     bedrock.redraw()
   end
 end)
@@ -130,40 +177,66 @@ local function showLines(ui, lines)
   end
 end
 
+-- What changed from `from` to `to` (nil: the files now), as lines
+local function changeLines(name, from, to)
+  if not from then return { { "note", "OLDEST BACKUP - Nothing before it", 0 } } end
+  local r = E.compare(name, from, to)
+  if not r then return { { "note", "CAN'T BE READ", 0 } } end
+  if #r.lines == 0 then return { { "note", "No differences", 0 } } end
+  return r.lines
+end
+
 local function restoreResult(r, b, part)
   if r.ok and r.nothingToDo then
     return "NOTHING TO RESTORE - Your files match this backup", "dim"
   elseif r.ok then
-    return "RESTORED - " .. PART_WORDS[part] .. " from " .. when(b.created) .. DOT .. r.written ..
-      (r.written == 1 and " file" or " files"), "good"
+    return "RESTORED - " .. (part == "all" and "From " or (PART_WORDS[part] .. " from ")) .. lowerWhen(b.created) ..
+      DOT .. r.written .. (r.written == 1 and " file" or " files"), "good"
   elseif r.problem == "running" then
     return "STAR CITIZEN IS RUNNING - Close it first", "warn"
   elseif r.problem == "empty" then
     return "NOT IN THIS BACKUP - Pick another part", "warn"
   elseif r.problem == "backup" then
-    return "NOTHING CHANGED - Your files could not be backed up first: " .. tostring(r.why), "bad"
+    return "NOT RESTORED - Your files could not be backed up first" .. DOT .. tostring(r.why), "bad"
   end
   return "RESTORE FAILED - " .. tostring(r.why), "bad"
 end
 
--- Restoring in two steps: the part, then the button
-local function restorePanel(ui, name, b)
-  if not V.parts then V.parts = E.partsOf(name, b.id) end
-  local labels, ids = {}, {}
+-- Restoring in two steps: the part, then the button. `at`: the card's id or
+-- "notice", where a problem is told. The part first picked as SC Blackbox
+-- has it: the keybinds, and with them the settings where the game has none.
+local function firstPart(name, parts)
+  local settingsThere = false
+  for rel in pairs(bedrock.game.files(name) or {}) do
+    if diff.lower(rel) == "client\\0\\profiles\\default\\attributes.xml" then settingsThere = true end
+  end
+  if parts.keybinds > 0 and parts.settings > 0 and not settingsThere then return "all" end
+  if parts.keybinds > 0 then return "keybinds" end
+  if parts.settings > 0 then return "settings" end
+  return "characters"
+end
+
+local function restorePanel(ui, name, b, at)
+  if not V.parts then
+    V.parts = E.partsOf(name, b.id)
+    V.firstPart = firstPart(name, V.parts)
+  end
+  local labels, ids, first = {}, {}, 1
   for _, p in ipairs(PARTS) do
     local n = p == "all" and (V.parts.keybinds + V.parts.settings + V.parts.characters) or V.parts[p]
     if n > 0 then
       labels[#labels + 1] = PART_WORDS[p]
       ids[#ids + 1] = p
+      if p == V.firstPart then first = #ids end
     end
   end
   if #ids == 0 then
-    ui.text("EMPTY - This backup holds no files", "dim")
+    ui.text("EMPTY - No files in this backup", "dim")
     return
   end
   ui.gap()
-  ui.text("RESTORE " .. name .. " - Your files now are backed up first", "warn")
-  local pick = ui.chips("part-" .. b.id, labels, 1)
+  ui.text("RESTORE TO " .. name .. " - Your current files are backed up first", "warn")
+  local pick = ui.chips("part-" .. b.id, labels, first)
   local part = ids[pick] or "all"
   local clicked = ui.buttons({
     { "do:" .. b.id, "Restore " .. PART_WORDS[part]:lower(), "danger" },
@@ -172,10 +245,13 @@ local function restorePanel(ui, name, b)
   if clicked == "do:" .. b.id then
     local r = E.restore(name, b.id, part)
     local text, tone = restoreResult(r, b, part)
-    local at = V.restoringAt == "notice" and "page" or ("b:" .. b.id)
     V.restoring, V.parts = nil, nil
-    say(r.ok and not r.nothingToDo and "page" or at, text, tone)
-    if r.ok and not r.nothingToDo then bedrock.note("BLACKBOX" .. DOT .. name .. " " .. text) end
+    local done = r.ok and not r.nothingToDo
+    say(name, done and "page" or at, text, tone)
+    if done then
+      V.showing, V.lines = nil, nil
+      bedrock.note("BLACKBOX" .. DOT .. name .. " " .. text)
+    end
     bedrock.redraw()
   elseif clicked == "cancel:" .. b.id then
     V.restoring, V.parts = nil, nil
@@ -195,47 +271,41 @@ local function backupCard(ui, name, list, i)
   end
   local sub = (b.summary ~= "" and b.summary or "Backup") .. DOT .. why(b)
   local key = "b:" .. b.id
+  local mine = name .. "/" .. b.id
   if not ui.card(key, when(b.created), { subtitle = sub, chip = chip, tone = tone }) then return end
   if b.detail ~= "" then ui.text(b.detail) end
   ui.row("Custom binds", b.binds >= 0 and tostring(b.binds) or "\u{2013}")
   if b.counted or b.characters > 0 then ui.row("Characters", tostring(b.characters)) end
-  if V.message and V.message.id == key then ui.text(V.message.text, V.message.tone) end
-  local showing = V.showing == b.id
+  local m = V.message
+  if m and m.channel == name and m.id == key then ui.text(m.text, m.tone) end
+  local showing = V.showing == mine
   local clicked = ui.buttons({
     { "show:" .. b.id, showing and "Hide changes" or "Show changes", "plain" },
     { "restore:" .. b.id, "Restore", "plain" },
-    { "keep:" .. b.id, b.kept and "Don't keep" or "Keep", "plain" },
+    { "keep:" .. b.id, b.kept and "Don't keep" or "Keep forever", "plain" },
   })
   if clicked == "show:" .. b.id then
     if showing then
       V.showing, V.lines = nil, nil
     else
-      V.showing = b.id
-      local prev = list[i + 1]
-      if prev then
-        local r = E.compare(name, prev, b)
-        V.lines = r and (#r.lines > 0 and r.lines or { { "note", "No differences", 0 } }) or
-          { { "note", "Can't be read", 0 } }
-      else
-        V.lines = { { "note", "The oldest backup - nothing before it", 0 } }
-      end
+      V.showing, V.lines = mine, changeLines(name, list[i + 1], b)
     end
     bedrock.redraw()
   elseif clicked == "restore:" .. b.id then
-    V.restoring = (V.restoring ~= b.id or V.restoringAt ~= "card") and b.id or nil
-    V.restoringAt, V.parts = "card", nil
+    V.restoring = V.restoring ~= mine and mine or nil
+    V.parts = nil
     bedrock.redraw()
   elseif clicked == "keep:" .. b.id then
     local ok, err = B.mark(name, b.id, not b.kept)
     if ok then
       E.list(name, true)
     else
-      say(key, "NOT CHANGED - " .. tostring(err), "bad")
+      say(name, key, "NOT CHANGED - " .. tostring(err), "bad")
     end
     bedrock.redraw()
   end
-  if V.restoring == b.id and V.restoringAt == "card" then restorePanel(ui, name, b) end
-  if V.showing == b.id and V.lines then
+  if V.restoring == mine then restorePanel(ui, name, b, key) end
+  if V.showing == mine and V.lines then
     ui.gap()
     showLines(ui, V.lines)
   end
@@ -246,53 +316,50 @@ local function noticeBlock(ui, name)
   local n = E.notices[name]
   if not n then return end
   local target = n.restoreTarget
-  local text
-  if n.kind == "reset" then
-    text = "KEYBINDS RESET - " .. n.before.binds .. " custom binds on " .. when(n.before.created) .. ", " ..
-      n.after.binds .. " now"
-  elseif n.kind == "nofiles" then
-    text = "NO KEYBIND FILE - Restore the backup of " .. lowerWhen(target.created)
-  else
-    local names = {}
-    for _, rel in ipairs(n.files or {}) do names[#names + 1] = rel:match("[^\\]+$") end
-    text = "FILE DAMAGED" .. DOT .. table.concat(names, ", ") .. " - Restore the backup of " .. lowerWhen(target.created)
-  end
-  ui.text(text, n.kind == "reset" and "bad" or "warn")
+  local mine = name .. "/notice"
+  ui.text(noticeLine(n), n.kind == "reset" and "bad" or "warn")
+  local showing = V.showing == mine
   local clicked = ui.buttons({
-    { "n:restore", "Restore " .. when(target.created), "primary" },
-    { "n:show", "Show changes", "plain" },
+    { "n:restore", "Restore " .. lowerWhen(target.created), "primary" },
+    { "n:show", showing and "Hide changes" or "Show changes", "plain" },
     { "n:ignore", "Ignore", "plain" },
   })
   if clicked == "n:restore" then
-    V.restoring = (V.restoring ~= target.id or V.restoringAt ~= "notice") and target.id or nil
-    V.restoringAt, V.parts = "notice", nil
+    V.restoring = V.restoring ~= mine and mine or nil
+    V.parts = nil
     bedrock.redraw()
   elseif clicked == "n:show" then
-    if V.showing == "notice" then
+    if showing then
       V.showing, V.lines = nil, nil
     else
-      local r = E.compare(name, n.diffFrom, n.diffTo)
-      V.showing = "notice"
-      V.lines = r and (#r.lines > 0 and r.lines or { { "note", "No differences", 0 } }) or { { "note", "Can't be read", 0 } }
+      V.showing, V.lines = mine, changeLines(name, n.diffFrom, n.diffTo)
     end
     bedrock.redraw()
   elseif clicked == "n:ignore" then
     E.ignore(name)
+    if V.showing == mine then V.showing, V.lines = nil, nil end
+    if V.restoring == mine then V.restoring, V.parts = nil, nil end
     bedrock.redraw()
+    return
   end
-  if V.restoring == target.id and V.restoringAt == "notice" then restorePanel(ui, name, target) end
-  if V.showing == "notice" and V.lines then showLines(ui, V.lines) end
+  local m = V.message
+  if m and m.channel == name and m.id == "notice" then ui.text(m.text, m.tone) end
+  if V.restoring == mine then restorePanel(ui, name, target, "notice") end
+  if V.showing == mine and V.lines then showLines(ui, V.lines) end
 end
 
 function draw(ui)
   if #E.states == 0 then E.refreshChannels() end
   if #E.states == 0 then
     subtitle = ""
-    ui.text("NO GAME FOLDER - Start Star Citizen once", "dim")
+    ui.text("STAR CITIZEN NOT FOUND - Start the game once", "dim")
     return
   end
   local labels = {}
-  for i, st in ipairs(E.states) do labels[i] = st.name .. (E.notices[st.name] and "  !" or "") end
+  for i, st in ipairs(E.states) do
+    local n = E.notices[st.name]
+    labels[i] = st.name .. (n and (DOT .. NOTICE_WORDS[n.kind]) or "")
+  end
   local pick = 1
   if #labels > 1 then pick = ui.chips("channel", labels, pickDefaultChannel()) end
   local st = E.states[pick] or E.states[1]
@@ -302,21 +369,31 @@ function draw(ui)
     (list[1] and (DOT .. "Last " .. lowerWhen(list[1].created)) or "")
 
   noticeBlock(ui, name)
+  local notice = E.notices[name]
+  if notice then ui.gap() end
 
-  if V.message and V.message.id == "page" then ui.text(V.message.text, V.message.tone) end
-  local clicked = ui.buttons({ { "backup", "Back up now", "primary" } })
+  local s = E.status
+  if s and s.kind == "failed" and s.channel == name then
+    ui.text("BACKUP FAILED - " .. s.text, "bad")
+  elseif s and s.kind == "error" then
+    ui.text("CHECK FAILED - " .. s.text, "bad")
+  end
+  local m = V.message
+  if m and m.channel == name and m.id == "page" then ui.text(m.text, m.tone) end
+  -- the notice's restore is the page's first button while it shows
+  local clicked = ui.buttons({ { "backup", "Back up now", notice and "plain" or "primary" } })
   if clicked == "backup" then
     local r = E.backupNow(name)
     if r.status == "created" then
-      say("page", "BACKED UP - " .. (r.backup.summary or ""), "good")
+      say(name, "page", "BACKED UP - " .. (r.backup.summary or ""), "good")
     elseif r.status == "unchanged" then
-      say("page", "NOTHING CHANGED - Last backup " .. lowerWhen(r.backup.created), "dim")
+      say(name, "page", "NOTHING CHANGED - Last backup " .. lowerWhen(r.backup.created), "dim")
     elseif r.status == "nofiles" then
-      say("page", "NO KEYBIND FILES - Nothing to back up", "warn")
+      say(name, "page", "NO KEYBIND FILE - Nothing to back up", "warn")
     elseif r.status == "damaged" then
-      say("page", "FILE DAMAGED - " .. r.message, "warn")
+      say(name, "page", fileNames(r.files) .. DOT .. "Not backed up", "warn")
     else
-      say("page", "BACKUP FAILED - " .. tostring(r.message), "bad")
+      say(name, "page", "BACKUP FAILED - " .. tostring(r.message), "bad")
     end
     list = E.list(name)
     bedrock.redraw()
