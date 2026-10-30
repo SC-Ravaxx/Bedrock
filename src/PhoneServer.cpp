@@ -706,10 +706,8 @@ const img=$('shot'),note=$('note'),stage=$('stage'),toastBox=$('toast'),root=doc
 // the view in the address (#window, #overlay), else the one last looked at
 const asked=location.hash.slice(1);
 let view=asked==='window'||asked==='overlay'?asked:localStorage.getItem('bedrock-view')==='window'?'window':'overlay';
-let shown=0,busy=false,loading=false,misses=0,gone=false,url=null,colours='',control=false,heard=-1,toastTimer=0;
+let shown=0,busy=false,loading=false,misses=0,gone=false,url=null,colours='',control=false;
 function say(t){note.textContent=t;note.hidden=!t;img.style.opacity=t&&!img.hidden?'.3':'1'}
-function toast(t){toastBox.textContent=t;toastBox.classList.remove('hint');toastBox.classList.add('on');clearTimeout(toastTimer);
- toastTimer=setTimeout(()=>toastBox.classList.remove('on'),2600)}
 function choose(v){view=v;localStorage.setItem('bedrock-view',v);history.replaceState(null,'','#'+v);shown=0;
  for(const b of document.querySelectorAll('.views button'))b.classList.toggle('on',b.dataset.view===v);poll()}
 for(const b of document.querySelectorAll('.views button'))b.onclick=()=>choose(b.dataset.view);
@@ -726,8 +724,6 @@ async function poll(){if(busy||gone)return;busy=true;const v=view;
   if(r.status===404){gone=true;say('This address no longer works. Scan the new code in Bedrock\u2019s settings.');return}
   const s=await r.json();misses=0;wear(s);
   control=!!s.control;document.body.classList.toggle('control',control);
-  // what Bedrock says about a tap - a word it has said before is not said again
-  if(typeof s.noteN==='number'){if(heard>=0&&s.noteN!==heard&&s.note)toast(s.note);heard=s.noteN}
   if(v!==view)return;
   if(!s.frame){if(!shown)say('Connecting to Bedrock\u2026');return}
   if(s.frame!==shown&&!loading)load(v,s.frame);else if(!loading&&shown)say('')}
@@ -795,7 +791,7 @@ for(const t of['pointerup','touchend','click','keydown'])addEventListener(t,touc
 // ...and kept on again on coming back to the page, where the browser had let go
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)keepOn().then(()=>{if(!woke)hinted=false})});
 function hint(){if(hinted||woke||!navigator.maxTouchPoints)return;hinted=true;
- clearTimeout(toastTimer);toastBox.textContent='Tap here to keep the screen on.';toastBox.classList.add('on','hint')}
+ toastBox.textContent='Tap here to keep the screen on.';toastBox.classList.add('on','hint')}
 const full=$('full'),ask=root.requestFullscreen||root.webkitRequestFullscreen;
 if(!ask)full.hidden=true;
 full.onclick=()=>{if(document.fullscreenElement||document.webkitFullscreenElement)(document.exitFullscreen||document.webkitExitFullscreen).call(document);else ask.call(root)};

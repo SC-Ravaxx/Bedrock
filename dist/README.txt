@@ -70,19 +70,20 @@ Getting started
    each kind of colour blindness sees them. Everything applies at once.
    Your own colours are kept in colours.txt, and picking a set keeps them
    to come back to.
-9. PHONE OR TABLET, in the settings, shows the overlay or the whole window
-   in the browser of a phone or tablet on the same network - nothing to
-   install. Pick View or Control and scan the code with the phone's camera.
-   At the top of the page you pick Overlay or Window, and the button beside
-   them makes it full screen. With View it is only to look at. With Control
-   a tap on it works like a click in Bedrock and a long press like a right
-   click; what opens a window of its own (the Ore Finder, Blueprints, Notes,
-   the Refinery, the settings), a file or the browser works on the PC only,
-   and so does typing. The first time, Windows asks whether Bedrock may use
-   the network; allow it for private networks. "New address" makes a new
-   code, and a device with the old one sees nothing any more. The page
-   keeps the screen on while it is open; an iPhone or iPad wants one tap
-   for that first, on the line that asks for it.
+9. PHONE OR TABLET, in the settings: with one screen, put the overlay or
+   the whole window on a phone or tablet instead, in its browser - there is
+   no app to install. It has to be on the same network. Pick View or
+   Control and scan the code with the phone's camera. At the top of the
+   page you pick Overlay or Window, and the button beside them makes it
+   full screen. With View it is only to look at. With Control a tap on it
+   works like a click in Bedrock and a long press like a right click; what
+   works at the PC only - windows of their own, files, the browser and
+   typing - is left out of the picture. The first time, Windows asks
+   whether Bedrock may use the network; allow it for private networks.
+   "New address" makes a new code, and a device with the old one sees
+   nothing any more. The page keeps the screen on while it is open; an
+   iPhone or iPad wants one tap for that first, on the line that asks for
+   it.
 
 Refinery (key R)
 ----------------

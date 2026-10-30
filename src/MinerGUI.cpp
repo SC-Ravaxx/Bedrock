@@ -3344,14 +3344,10 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 }
             }
             // The first start's UEX offer before anything: its buttons, and a
-            // click off it skips it
-            if (uexWelcome_.step) {
-                // (from the phone: answered at the PC, where the browser and
-                // the clipboard are)
-                if (phoneTapping_) {
-                    phoneSay(PHONE_WORKS_ON_PC);
-                    return 0;
-                }
+            // click off it skips it. (A tap from the phone is on the page
+            // under it: the phone's picture has the page, the offer is
+            // answered at the PC, where the browser and the clipboard are.)
+            if (uexWelcome_.step && !phoneTapping_) {
                 const float wx = (float)(short)LOWORD(lParam);
                 const float wy = (float)(short)HIWORD(lParam);
                 for (const auto& hit : uexWelcome_.hits) {
@@ -3364,12 +3360,9 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 return 0;
             }
             // The Datarunner's card: what lies on top first (a dropped list);
-            // a click beside a list or a figure being typed lets go of it
-            if (datarunnerOpen_) {
-                if (phoneTapping_) {
-                    phoneSay(PHONE_WORKS_ON_PC);
-                    return 0;
-                }
+            // a click beside a list or a figure being typed lets go of it.
+            // (Not in the phone's picture, as the UEX offer above.)
+            if (datarunnerOpen_ && !phoneTapping_) {
                 const float wx = (float)(short)LOWORD(lParam);
                 const float wy = (float)(short)HIWORD(lParam);
                 for (auto it = drHits_.rbegin(); it != drHits_.rend(); ++it) {
@@ -3402,15 +3395,15 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 const float ax = (float)(short)LOWORD(lParam);
                 const float ay = (float)(short)HIWORD(lParam);
                 // The one place in the app that opens a browser, and it
-                // takes a click on the line itself to do it
-                if (aboutKofiHit_.Width > 0 && aboutKofiHit_.Contains(ax, ay)) {
-                    if (phoneTapping_) phoneSay(PHONE_OPENS_ON_PC);
-                    else ShellExecuteW(hwnd, L"open", L"https://ko-fi.com/ravaxx", nullptr, nullptr, SW_SHOWNORMAL);
+                // takes a click on the line itself to do it. (A phone's
+                // picture has the card's words only: a tap closes it.)
+                if (!phoneTapping_ && aboutKofiHit_.Width > 0 && aboutKofiHit_.Contains(ax, ay)) {
+                    ShellExecuteW(hwnd, L"open", L"https://ko-fi.com/ravaxx", nullptr, nullptr, SW_SHOWNORMAL);
                     return 0;
                 }
                 // Discord has no address that can be opened, so the handle
                 // goes on the clipboard instead - the card says when it did
-                if (aboutDiscordHit_.Width > 0 && aboutDiscordHit_.Contains(ax, ay)) {
+                if (!phoneTapping_ && aboutDiscordHit_.Width > 0 && aboutDiscordHit_.Contains(ax, ay)) {
                     if (OpenClipboard(hwnd)) {
                         EmptyClipboard();
                         static const wchar_t handle[] = L".ravaxx";
@@ -3463,24 +3456,17 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             }
             const float px = (float)(short)LOWORD(lParam);
             const float py = (float)(short)HIWORD(lParam);
-            if (backupOpen_) {
+            if (backupOpen_ && !phoneTapping_) {
                 // The card takes the click, whatever lies under it. It stays
                 // open after either: the dialog is where the choice is made,
                 // and the card is the one place with room to say how it went.
+                // (Not in the phone's picture, as the UEX offer above.)
                 if (backupDoHit_.Width > 0 && backupDoHit_.Contains(px, py)) {
-                    if (phoneTapping_) {
-                        phoneSay(PHONE_WORKS_ON_PC);
-                        return 0;
-                    }
                     backUpData();
                     InvalidateRect(hwnd, nullptr, TRUE);
                     return 0;
                 }
                 if (restoreDoHit_.Width > 0 && restoreDoHit_.Contains(px, py)) {
-                    if (phoneTapping_) {
-                        phoneSay(PHONE_WORKS_ON_PC);
-                        return 0;
-                    }
                     restoreData();
                     InvalidateRect(hwnd, nullptr, TRUE);
                     return 0;
@@ -3499,7 +3485,7 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             // footer's Backup cannot be read, and a click meant to close a list
             // or pick from it would switch a head off instead
             const bool overPage = loadoutOpen_ || placePickerOpen_ || shipPickerOpen_ || lookingOpen_;
-            if (!overPage && backupHit_.Width > 0 && backupHit_.Contains(px, py)) {
+            if (!overPage && !phoneTapping_ && backupHit_.Width > 0 && backupHit_.Contains(px, py)) {
                 showBackup(true);
                 return 0;
             }
@@ -3511,10 +3497,7 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                     if (hit.kind != 6) endNameEditing(true);
                     if (hit.kind != 7) removeArmed_ = false;
                     if (hit.kind == 6) {
-                        if (phoneTapping_) {
-                            phoneSay(PHONE_TYPING_ON_PC);
-                            return 0;
-                        }
+                        if (phoneTapping_) return 0;
                         if (!nameEditing_) {
                             nameEditing_ = true;
                             nameEntry_ = fitTitle();
@@ -3559,10 +3542,7 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                     } else if (hit.kind == 2) {
                         pickGadget(&MINING_GADGETS[hit.value]);
                     } else if (hit.kind == 3) {
-                        if (phoneTapping_) {
-                            phoneSay(PHONE_TYPING_ON_PC);
-                            return 0;
-                        }
+                        if (phoneTapping_) return 0;
                         craftedEditing_ = true;
                         SetFocus(hwnd);   // the digits have to land here
                     } else if (hit.kind == 4) {
@@ -3680,15 +3660,11 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             // The tip line along the foot - the app's only other way out to
             // a browser, and it takes a click on the address itself
             if (footerKofiHit_.Width > 0 && footerKofiHit_.Contains(px, py)) {
-                if (phoneTapping_) phoneSay(PHONE_OPENS_ON_PC);
-                else ShellExecuteW(hwnd, L"open", L"https://ko-fi.com/ravaxx", nullptr, nullptr, SW_SHOWNORMAL);
+                if (!phoneTapping_) ShellExecuteW(hwnd, L"open", L"https://ko-fi.com/ravaxx", nullptr, nullptr, SW_SHOWNORMAL);
                 return 0;
             }
             if (datarunnerHit_.Width > 0 && datarunnerHit_.Contains(px, py)) {
-                if (phoneTapping_) {
-                    phoneSay(PHONE_WORKS_ON_PC);
-                    return 0;
-                }
+                if (phoneTapping_) return 0;
                 // the picture the line is about, where it is about one
                 for (size_t i = 0; i < datarunner_.shots.size(); i++) {
                     if (datarunner_.shots[i]->id == datarunnerHitShot_) drIndex_ = (int)i;
@@ -3697,10 +3673,7 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 return 0;
             }
             if (pluginNoteHit_.Width > 0 && pluginNoteHit_.Contains(px, py)) {
-                if (phoneTapping_) {
-                    phoneSay(PHONE_WORKS_ON_PC);
-                    return 0;
-                }
+                if (phoneTapping_) return 0;
                 const std::string id = pluginNoteId_;
                 pluginNote_.clear();
                 showPluginPage(id);   // its page, right of the rail
@@ -3708,10 +3681,7 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 return 0;
             }
             if (updateHit_.Width > 0 && updateHit_.Contains(px, py)) {
-                if (phoneTapping_) {
-                    phoneSay(PHONE_WORKS_ON_PC);
-                    return 0;
-                }
+                if (phoneTapping_) return 0;
                 updateAsked_ = true;
                 if (updateAction_) updateAction_();
                 return 0;
@@ -3978,8 +3948,13 @@ void MinerGUI::paintWindowBody(Gdiplus::Graphics& g, int cw, int ch) {
     // goes to the glass, not to what it covers - and so a pointer
     // moving over a sheet leaves the page under it as it was, and its
     // blur comes out of the cache (frostMain_).
-    const bool sheet =
-        keysOpen_ || aboutOpen_ || backupOpen_ || whatsNewOpen_ || loadoutOpen_ || uexWelcome_.step || datarunnerOpen_;
+    // The backup's card, the first start's UEX offer and the Datarunner's
+    // card are answered at the PC: a phone's picture has the page under
+    // them, and a tap there works on that page (WM_LBUTTONDOWN).
+    const bool pcCards = !phonePainting_;
+    const bool backupUp = backupOpen_ && pcCards, uexUp = uexWelcome_.step && pcCards,
+               datarunnerUp = datarunnerOpen_ && pcCards;
+    const bool sheet = keysOpen_ || aboutOpen_ || backupUp || whatsNewOpen_ || loadoutOpen_ || uexUp || datarunnerUp;
     const bool lists = !pluginPageUp() && (lookingOpen_ || shipPickerOpen_ || placePickerOpen_);
     if (sheet || lists) {
         Gdiplus::Bitmap base(cw, ch, PixelFormat32bppPARGB);
@@ -4000,7 +3975,7 @@ void MinerGUI::paintWindowBody(Gdiplus::Graphics& g, int cw, int ch) {
             // Keys, Overlay - where they are and in use, and they are
             // windows of their own that no blur reaches; the header
             // stays sharp with them rather than smeared beside them
-            if (loadoutOpen_ && !(keysOpen_ || aboutOpen_ || backupOpen_ || whatsNewOpen_)) {
+            if (loadoutOpen_ && !(keysOpen_ || aboutOpen_ || backupUp || whatsNewOpen_)) {
                 // ...the header only: above the card's top edge, and
                 // not the place and ship row the header also draws
                 const Gdiplus::RectF strip(0.0f, 0.0f, (float)cw, scaleF(52));
@@ -4022,13 +3997,13 @@ void MinerGUI::paintWindowBody(Gdiplus::Graphics& g, int cw, int ch) {
     // last, because it lies over the window
     if (keysOpen_) drawKeysCard(g, cw, ch);
     if (aboutOpen_) drawAboutCard(g, cw, ch);
-    if (backupOpen_) drawBackupCard(g, cw, ch);
+    if (backupUp) drawBackupCard(g, cw, ch);
     if (whatsNewOpen_) drawWhatsNewCard(g, cw, ch);
     if (loadoutOpen_) drawLoadoutCard(g, cw, ch);
-    if (datarunnerOpen_) drawDatarunnerCard(g, cw, ch);
+    if (datarunnerUp) drawDatarunnerCard(g, cw, ch);
     // (the UEX account card can be asked for from the Datarunner's
     // introduction, and lies over it then)
-    if (uexWelcome_.step) drawUexCard(g, cw, ch, uexWelcome_, hoverMain_);
+    if (uexUp) drawUexCard(g, cw, ch, uexWelcome_, hoverMain_);
 }
 
 // ---- the rail ---------------------------------------------------------------
@@ -4238,9 +4213,10 @@ void MinerGUI::drawHeader(Gdiplus::Graphics& g, int cw, bool stripOnly) {
     Gdiplus::SolidBrush accentBrush(COL_ACCENT);
 
     const float M = (float)scale(MARGIN);
-    // where the buttons begin, from the right: beside the rail the gear and
-    // the jigsaw piece are not among them
-    const float buttonsW = scaleF(railShown() ? 206 : 262);
+    // where the buttons begin, from the right: the gear and the jigsaw piece
+    // are not among them - beside the rail they are on it, and on a phone's
+    // picture they would open nothing
+    const float buttonsW = scaleF(206);
     // The words on the left end before the pulse and the LIVE button, or a
     // ship name behind the version runs in under them
     const float subRight = (float)cw - M - buttonsW - scaleF(10);
@@ -4614,7 +4590,8 @@ void MinerGUI::drawLookingPanel(Gdiplus::Graphics& g, int cw, int ch) {
     }
     float listH = groups.empty() ? rowH0 : 0;
     for (const auto& group : groups) listH += headH + (float)(((int)group.names.size() + 1) / 2) * rowH0;
-    const float wanted = scaleF(10) + scaleF(26) + scaleF(8) + listH + scaleF(34);
+    const bool typingLine = !phonePainting_ || !lookingSearch_.empty();   // (see below)
+    const float wanted = scaleF(10) + (typingLine ? scaleF(26) + scaleF(8) : 0.0f) + listH + scaleF(34);
     Gdiplus::RectF panel(M, top, (float)cw - 2 * M,
                          (std::max)(scaleF(120), (std::min)(wanted, bottom - top)));
     mainscanDropList(g, panel, scaleF(1.0f), frost_);
@@ -4625,27 +4602,31 @@ void MinerGUI::drawLookingPanel(Gdiplus::Graphics& g, int cw, int ch) {
     // What has been typed, and what it is for. The keys land here whatever
     // the pointer is doing, so the line wears the amber of a field in use
     // from the moment the list is open, and a lens says what it is for.
-    Gdiplus::RectF search(panel.X + pad, y, panel.Width - 2 * pad, scaleF(26));
-    fillRoundRect(g, search, scaleF(R_CONTROL), COL_BG);
-    strokeRoundRect(g, search, scaleF(R_CONTROL), tint(COL_ACCENT, 170));
-    {
-        Gdiplus::Pen lens(COL_TEXT_FAINT, scaleF(1.5f));
-        lens.SetStartCap(Gdiplus::LineCapRound);
-        lens.SetEndCap(Gdiplus::LineCapRound);
-        const float cx = search.X + scaleF(14), cy = search.Y + search.Height / 2 - scaleF(1);
-        g.DrawEllipse(&lens, cx - scaleF(4.5f), cy - scaleF(4.5f), scaleF(9), scaleF(9));
-        g.DrawLine(&lens, cx + scaleF(3.4f), cy + scaleF(3.4f), cx + scaleF(6.5f), cy + scaleF(6.5f));
-    }
+    // (A phone's picture has it only while there is something typed: the
+    // typing is the PC's.)
     Gdiplus::StringFormat oneLine;
     oneLine.SetLineAlignment(Gdiplus::StringAlignmentCenter);
     oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
-    Gdiplus::RectF typed(search.X + scaleF(28), search.Y, search.Width - scaleF(36), search.Height);
-    if (lookingSearch_.empty()) {
-        g.DrawString(L"Type to filter", -1, &rowFont, typed, &oneLine, &faintBrush);
-    } else {
-        g.DrawString((lookingSearch_ + L"|").c_str(), -1, &rowFont, typed, &oneLine, &textBrush);
+    if (typingLine) {
+        Gdiplus::RectF search(panel.X + pad, y, panel.Width - 2 * pad, scaleF(26));
+        fillRoundRect(g, search, scaleF(R_CONTROL), COL_BG);
+        strokeRoundRect(g, search, scaleF(R_CONTROL), tint(COL_ACCENT, 170));
+        {
+            Gdiplus::Pen lens(COL_TEXT_FAINT, scaleF(1.5f));
+            lens.SetStartCap(Gdiplus::LineCapRound);
+            lens.SetEndCap(Gdiplus::LineCapRound);
+            const float cx = search.X + scaleF(14), cy = search.Y + search.Height / 2 - scaleF(1);
+            g.DrawEllipse(&lens, cx - scaleF(4.5f), cy - scaleF(4.5f), scaleF(9), scaleF(9));
+            g.DrawLine(&lens, cx + scaleF(3.4f), cy + scaleF(3.4f), cx + scaleF(6.5f), cy + scaleF(6.5f));
+        }
+        Gdiplus::RectF typed(search.X + scaleF(28), search.Y, search.Width - scaleF(36), search.Height);
+        if (lookingSearch_.empty()) {
+            g.DrawString(L"Type to filter", -1, &rowFont, typed, &oneLine, &faintBrush);
+        } else {
+            g.DrawString((lookingSearch_ + L"|").c_str(), -1, &rowFont, typed, &oneLine, &textBrush);
+        }
+        y += search.Height + scaleF(8);
     }
-    y += search.Height + scaleF(8);
 
     // The ores themselves, by rarity as the Ore Finder has them: each group
     // under its name in its colour, two to a line, in the table's order
@@ -4695,10 +4676,10 @@ void MinerGUI::drawLookingPanel(Gdiplus::Graphics& g, int cw, int ch) {
                      Gdiplus::PointF(panel.X + pad, y + scaleF(4)), &faintBrush);
     }
 
-    // ...and the way out, along the bottom
+    // ...and the way out, along the bottom (Esc is the PC's)
     const float footY = panel.Y + panel.Height - scaleF(26);
-    g.DrawString(L"Click an ore to add it  \u00B7  Esc to close", -1, &subFont,
-                 Gdiplus::PointF(panel.X + pad, footY + scaleF(4)), &faintBrush);
+    g.DrawString(phonePainting_ ? L"Click an ore to add it" : L"Click an ore to add it  \u00B7  Esc to close", -1,
+                 &subFont, Gdiplus::PointF(panel.X + pad, footY + scaleF(4)), &faintBrush);
     if (!lookingFor_.empty()) {
         // red, like the ticks it throws away - and a neutral face would be
         // the list's own fill, which left a label floating on nothing
@@ -5495,33 +5476,43 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
         g.DrawString(L"CRAFTED BONUS", -1, &labelFont, Gdiplus::PointF(left, y), &faintBrush);
     }
     y += scaleF(17);
-    Gdiplus::RectF field(left, y, scaleF(110), scaleF(26));
-    const bool fieldHot = isHot(hoverMain_, field);
-    fillRoundRect(g, field, scaleF(R_CONTROL), fieldHot && !craftedEditing_ ? COL_HOVER : COL_CARD_HI);
-    strokeRoundRect(g, field, scaleF(R_CONTROL),
-                    craftedEditing_ ? tint(COL_ACCENT, 220) : (fieldHot ? tint(COL_TEXT, 40) : COL_BORDER));
-    std::wstring shown = toW(craftedEntry_);
-    if (craftedEditing_) shown += L"|";
-    else if (craftedEntry_.empty()) shown = L"0";
-    shown += L" %";
-    g.DrawString(shown.c_str(), -1, &rowFont,
-                 Gdiplus::PointF(field.X + scaleF(12), y + scaleF(5)),
-                 craftedEntry_.empty() && !craftedEditing_ ? &faintBrush : &textBrush);
-    loadoutHits_.push_back({field, 3, 0});
-    // beside the field, on as many lines as the card's width leaves it
-    {
-        const wchar_t* second = L"Second value shown on the item: \"Laser Power: +0.00 % → +28.84 %\"";
-        const Gdiplus::RectF room(left + scaleF(122), y + scaleF(1), wide - scaleF(122), scaleF(60));
-        Gdiplus::StringFormat wrapped;
-        wrapped.SetTrimming(Gdiplus::StringTrimmingEllipsisWord);
-        Gdiplus::RectF used;
-        g.MeasureString(second, -1, &noteFont, room, &wrapped, &used);
-        g.DrawString(second, -1, &noteFont, Gdiplus::RectF(room.X, room.Y, room.Width, used.Height), &wrapped,
-                     &dimBrush);
-        const float leaveY = room.Y + used.Height;
-        g.DrawString(L"Leave at 0 for a stock laser head", -1, &noteFont, Gdiplus::PointF(room.X, leaveY),
-                     &faintBrush);
-        y = (std::max)(y + scaleF(38), leaveY + scaleF(23));
+    if (phonePainting_) {
+        // A phone's picture has the figure, not the field: it is typed at
+        // the PC, and the words on how to read it off the item go with it
+        std::wstring shown = craftedEntry_.empty() ? std::wstring(L"0") : toW(craftedEntry_);
+        shown += L" %";
+        g.DrawString(shown.c_str(), -1, &rowFont, Gdiplus::PointF(left - scaleF(1), y + scaleF(1)),
+                     craftedEntry_.empty() ? &faintBrush : &textBrush);
+        y += scaleF(30);
+    } else {
+        Gdiplus::RectF field(left, y, scaleF(110), scaleF(26));
+        const bool fieldHot = isHot(hoverMain_, field);
+        fillRoundRect(g, field, scaleF(R_CONTROL), fieldHot && !craftedEditing_ ? COL_HOVER : COL_CARD_HI);
+        strokeRoundRect(g, field, scaleF(R_CONTROL),
+                        craftedEditing_ ? tint(COL_ACCENT, 220) : (fieldHot ? tint(COL_TEXT, 40) : COL_BORDER));
+        std::wstring shown = toW(craftedEntry_);
+        if (craftedEditing_) shown += L"|";
+        else if (craftedEntry_.empty()) shown = L"0";
+        shown += L" %";
+        g.DrawString(shown.c_str(), -1, &rowFont,
+                     Gdiplus::PointF(field.X + scaleF(12), y + scaleF(5)),
+                     craftedEntry_.empty() && !craftedEditing_ ? &faintBrush : &textBrush);
+        loadoutHits_.push_back({field, 3, 0});
+        // beside the field, on as many lines as the card's width leaves it
+        {
+            const wchar_t* second = L"Second value shown on the item: \"Laser Power: +0.00 % → +28.84 %\"";
+            const Gdiplus::RectF room(left + scaleF(122), y + scaleF(1), wide - scaleF(122), scaleF(60));
+            Gdiplus::StringFormat wrapped;
+            wrapped.SetTrimming(Gdiplus::StringTrimmingEllipsisWord);
+            Gdiplus::RectF used;
+            g.MeasureString(second, -1, &noteFont, room, &wrapped, &used);
+            g.DrawString(second, -1, &noteFont, Gdiplus::RectF(room.X, room.Y, room.Width, used.Height), &wrapped,
+                         &dimBrush);
+            const float leaveY = room.Y + used.Height;
+            g.DrawString(L"Leave at 0 for a stock laser head", -1, &noteFont, Gdiplus::PointF(room.X, leaveY),
+                         &faintBrush);
+            y = (std::max)(y + scaleF(38), leaveY + scaleF(23));
+        }
     }
 
     // --- the modules it has room for
@@ -14736,6 +14727,17 @@ void MinerGUI::drawAboutCard(Gdiplus::Graphics& g, int cw, int ch) {
     auto link = [&](const wchar_t* label, const wchar_t* tail, bool done) -> Gdiplus::RectF {
         Gdiplus::RectF measured;
         g.MeasureString(label, -1, &linkFont, Gdiplus::PointF(0, 0), &measured);
+        // (in a phone's picture the words alone: the clipboard and the
+        // browser are the PC's)
+        if (phonePainting_) {
+            g.DrawString(label, -1, &linkFont, Gdiplus::PointF(inner, y), &textBrush);
+            if (tail) {
+                g.DrawString(tail, -1, &subFont, Gdiplus::PointF(inner + measured.Width + scaleF(8), y + scaleF(3)),
+                             &faintBrush);
+            }
+            y += scaleF(24);
+            return Gdiplus::RectF();
+        }
         Gdiplus::RectF hit(inner - scaleF(4), y - scaleF(3), measured.Width + scaleF(8), scaleF(22));
         if (isHot(hoverMain_, hit)) fillRoundRect(g, hit, scaleF(R_CONTROL), COL_HOVER);
         g.DrawString(label, -1, &linkFont, Gdiplus::PointF(inner, y), &accentBrush);
@@ -14755,16 +14757,19 @@ void MinerGUI::drawAboutCard(Gdiplus::Graphics& g, int cw, int ch) {
     };
 
     float paneBottom = group(L"BUG REPORTS AND IDEAS", paneA, 7);
-    aboutDiscordHit_ = link(L".ravaxx",
-                            aboutCopied_ ? L"Copied - Paste it into Discord"
-                                         : L"Discord · Click to copy",
-                            aboutCopied_);
+    const Gdiplus::RectF discord = link(L".ravaxx",
+                                        phonePainting_  ? L"Discord"
+                                        : aboutCopied_ ? L"Copied - Paste it into Discord"
+                                                       : L"Discord · Click to copy",
+                                        aboutCopied_);
+    if (!phonePainting_) aboutDiscordHit_ = discord;
     note(L"Please report wrong readings. Ctrl+Alt+S saves a snapshot to debug\\");
     note(L"while the game runs, which makes the issue traceable.");
     y = paneBottom + scaleF(14);
 
     paneBottom = group(L"SUPPORT DEVELOPMENT", paneB, 7);
-    aboutKofiHit_ = link(L"ko-fi.com/ravaxx", L"Click to open", false);
+    const Gdiplus::RectF kofi = link(L"ko-fi.com/ravaxx", phonePainting_ ? nullptr : L"Click to open", false);
+    if (!phonePainting_) aboutKofiHit_ = kofi;
     note(L"Bedrock is free and will stay free, with no features held back. If you would");
     note(L"like to support its development and the server it gets its updates from, a");
     note(L"tip jar is available. Entirely optional.");
@@ -15539,6 +15544,10 @@ void MinerGUI::setUpdateStatus(int state, const std::string& version, const std:
 }
 
 void MinerGUI::drawFooter(Gdiplus::Graphics& g, int cw, int ch) {
+    // A phone's picture has no foot: all it holds works at the PC - the
+    // backup, an update, the Datarunner's pictures, a plugin's page, the
+    // tip jar. (The places the PC's clicks find stay as they are.)
+    if (phonePainting_) return;
     Gdiplus::Font footerFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::Font strongFont(&markFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
@@ -15701,6 +15710,7 @@ void MinerGUI::drawFooter(Gdiplus::Graphics& g, int cw, int ch) {
 void MinerGUI::drawCompactUpdateChip(Gdiplus::Graphics& g, int cw, float leftOf) {
     updateHit_ = Gdiplus::RectF(0, 0, 0, 0);
     if (!(updateState_ == 3 || updateState_ == 4 || updateState_ == 5)) return;
+    if (phonePainting_) return;   // (an update is fetched and installed at the PC)
     // A button of the same row as LIVE and FULL: their face, height and
     // corner, their words in sentence case. Amber ink and an amber hairline
     // because it is the one thing up here that asks to be pressed; while it
@@ -24174,12 +24184,10 @@ void MinerGUI::phoneTick() {
         phoneWatching_ = watching;
         if (settings_ && settingsVisible_) InvalidateRect(settings_, nullptr, FALSE);
     }
-    // the page round the picture wears the window's colours, and says what
-    // there is to say about a tap (phoneSay)
+    // the page round the picture wears the window's colours
     phone_->setStatus("\"bg\":\"" + hexColour(COL_BG) + "\",\"card\":\"" + hexColour(COL_CARD) + "\",\"text\":\"" +
                       hexColour(COL_TEXT) + "\",\"dim\":\"" + hexColour(COL_TEXT_DIM) + "\",\"accent\":\"" +
-                      hexColour(COL_ACCENT) + "\",\"note\":" + PhoneServer::jsonString(phoneNote_) +
-                      ",\"noteN\":" + std::to_string(phoneNoteN_));
+                      hexColour(COL_ACCENT) + "\"");
     // On screen, the window is drawn whenever anything in it changes, and
     // that is when its pictures are drawn again - and every few seconds
     // anyway. Minimised it is not drawn at all, and says nothing of what
@@ -24273,7 +24281,6 @@ PhoneServer::Picture MinerGUI::phonePicture(PhoneServer::View view, int devicePi
     drawn.k = dpi_ / 96.0f;
     drawn.width = w / drawn.k;
     drawn.height = h / drawn.k;
-    drawn.updateChip = Gdiplus::RectF();
     {
         // (premultiplied, as GDI+ draws fastest into it - and the same as
         // straight where everything is opaque, as here)
@@ -24286,15 +24293,11 @@ PhoneServer::Picture MinerGUI::phonePicture(PhoneServer::View view, int devicePi
             g.SetTextRenderingHint(Gdiplus::TextRenderingHintAntiAlias);
             Gdiplus::SolidBrush bg(COL_BG);
             g.FillRectangle(&bg, 0, 0, w, h);
-            if (overlay) {
-                drawCompact(g, w, h);
-                drawn.updateChip = updateHit_;   // (in the picture's pixels)
-            } else {
-                // the window as it was before the rail, the scan's page
-                phonePainting_ = true;
-                paintWindowBody(g, w, h);
-                phonePainting_ = false;
-            }
+            // (phonePainting_: what works at the PC only is left out)
+            phonePainting_ = true;
+            if (overlay) drawCompact(g, w, h);
+            else paintWindowBody(g, w, h);   // the window as the scan's page
+            phonePainting_ = false;
             drawPhoneButtons(g, overlay, w, h);
         }
         Gdiplus::BitmapData data{};
@@ -24326,15 +24329,17 @@ bool MinerGUI::phoneShowsButton(HWND b, bool overlay) const {
     if (!b) return false;
     // (Rows only for a rock's ores, as placeOreRowsButton has it)
     if (overlay) return b != btnOreRows_ || (rockInView_ && !rockContents_.parts.empty());
-    // ...and as layoutControls has them: under the first start's UEX offer
-    // none, under a panel not the four of the action row
-    if (uexWelcome_.step || datarunnerOpen_) return false;
-    const bool underPanel = lookingOpen_ || loadoutOpen_ || shipPickerOpen_ || placePickerOpen_;
-    return !(underPanel && (b == btnRefinery_ || b == btnPlan_ || b == btnCraft_ || b == btnNotes_));
+    // ...and in the window all four: the cards that hide them on the PC -
+    // the first start's UEX offer, the Datarunner's - are not in the
+    // phone's picture (paintWindowBody)
+    return true;
 }
 
+// A phone's picture has the buttons as beside the rail - Live, Keys,
+// Overlay and the ? - and no others: the gear, the jigsaw piece and the
+// action row open windows on the PC
 void MinerGUI::drawPhoneButtons(Gdiplus::Graphics& g, bool overlay, int cw, int ch) {
-    for (const ButtonPlace& place : buttonPlaces(overlay, cw, ch, 1.0f)) {
+    for (const ButtonPlace& place : buttonPlaces(overlay, cw, ch, 1.0f, true)) {
         const HWND b = place.button;
         if (!phoneShowsButton(b, overlay)) continue;
         const wchar_t* words = nullptr;
@@ -24349,11 +24354,6 @@ void MinerGUI::drawPhoneButtons(Gdiplus::Graphics& g, bool overlay, int cw, int 
         paintOwnerButton(g, &item, words, 1.0f);
         g.Restore(plain);
     }
-}
-
-void MinerGUI::phoneSay(const char* words) {
-    phoneNote_ = words;
-    phoneNoteN_++;
 }
 
 bool MinerGUI::phoneTaps() {
@@ -24397,10 +24397,9 @@ void MinerGUI::phoneLayOutWindow(int& cw, int& ch) {
 // A tap from the phone, as a click where it landed. On the picture it was
 // on, it is in that picture's pixels: unscaled first, then at the window's
 // own size. The window's buttons are windows of their own and are pressed
-// as such; those that open a window of their own on the PC - the Ore
-// Finder, Blueprints, Notes, the Refinery, the settings - are not, and the
-// phone is told so. In the window, WM_LBUTTONDOWN takes it (phoneTapping_
-// leaves out there what works at the PC only).
+// as such - those the picture has: Live, Keys, Overlay and the ?, Full and
+// Rows on the overlay. In the window, WM_LBUTTONDOWN takes it
+// (phoneTapping_ leaves out there what works at the PC only).
 void MinerGUI::phoneTap(const PhoneServer::Tap& tap) {
     if (!phoneControl_ || !hwnd_) return;
     const int v = (int)tap.view;
@@ -24417,7 +24416,7 @@ void MinerGUI::phoneTap(const PhoneServer::Tap& tap) {
     dpi_ = 96;   // (the places unscaled)
     uiScale_ = 100;
     const std::vector<ButtonPlace> places =
-        buttonPlaces(overlay, (int)std::lround(frame.width), (int)std::lround(frame.height), 1.0f);
+        buttonPlaces(overlay, (int)std::lround(frame.width), (int)std::lround(frame.height), 1.0f, true);
     dpi_ = keptDpi;
     uiScale_ = keptScale;
     for (const ButtonPlace& place : places) {
@@ -24431,18 +24430,10 @@ void MinerGUI::phoneTap(const PhoneServer::Tap& tap) {
             // Full on the overlay, Overlay on the window: what it says, where
             // that is not so already
             if (overlay == overlayMode_) toggleOverlayMode();
-        } else {
-            phoneSay(PHONE_OPENS_ON_PC);
         }
         return;
     }
-    if (overlay) {
-        // the one other thing in the overlay a click reaches
-        if (frame.updateChip.Width > 0 && frame.updateChip.Contains((float)tap.x, (float)tap.y)) {
-            phoneSay(PHONE_WORKS_ON_PC);
-        }
-        return;
-    }
+    if (overlay) return;   // (nothing else in the overlay takes a click)
     // (the window's foot has an update strip where the overlay has its
     // chip, in the same place: the overlay's own back after)
     const Gdiplus::RectF keptUpdateHit = updateHit_;
@@ -24478,7 +24469,7 @@ bool MinerGUI::phoneSpotForShot(PhoneServer::View view, const std::string& what,
         dpi_ = 96;
         uiScale_ = 100;
         const std::vector<ButtonPlace> places =
-            buttonPlaces(overlay, (int)std::lround(frame.width), (int)std::lround(frame.height), 1.0f);
+            buttonPlaces(overlay, (int)std::lround(frame.width), (int)std::lround(frame.height), 1.0f, true);
         dpi_ = keptDpi;
         uiScale_ = keptScale;
         for (const ButtonPlace& place : places) {
@@ -25539,7 +25530,7 @@ void MinerGUI::paintSettings(HDC hdc) {
                 g.DrawString(who.c_str(), -1, &labelFont, Gdiplus::PointF(qx, py), &whoBrush);
                 if (phoneControl_) {
                     py += scaleF(24);
-                    g.DrawString(L"Long press is a right click. Separate windows open on the PC only.", -1,
+                    g.DrawString(L"Long press is a right click.", -1,
                                  &noteFont, Gdiplus::RectF(qx, py, qw, scaleF(30)), nullptr, &dimBrush);
                 }
             } else if (phoneOn_) {

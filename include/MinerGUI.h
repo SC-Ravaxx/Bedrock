@@ -1126,8 +1126,10 @@ private:
     // title and Live, Keys, Overlay and the ?, and the action row is gone
     bool railShown() const { return !overlayMode_ && !phonePainting_; }
     int railWidth() const { return railShown() ? scale(RAIL_W) : 0; }
-    // ...so what was under the action row sits higher by the row
-    int scanShift() const { return railShown() ? scale(LY_SIGCARD - LY_CONTROLS) : 0; }
+    // ...so what was under the action row sits higher by the row - on a
+    // phone's picture too, which has no use for the row: what it opens opens
+    // on the PC
+    int scanShift() const { return railShown() || phonePainting_ ? scale(LY_SIGCARD - LY_CONTROLS) : 0; }
     bool pluginPageUp() const { return pluginPage_ && railShown(); }
     void drawRail(Gdiplus::Graphics& g, int rw, int ch);
     void railPick(RailItem item, const std::string& id);
@@ -2112,19 +2114,13 @@ private:
         int frame = 0;
         float k = 0.0f;
         float width = 0.0f, height = 0.0f;
-        Gdiplus::RectF updateChip;
     };
     PhoneFrame phoneDrawn_[2];                 // the last drawn of each view
     std::vector<PhoneFrame> phoneSent_[2];     // ...and the last sent
     // A tap from the phone being taken: WM_LBUTTONDOWN leaves out what
-    // only works at the PC (phoneSay says so on the phone)
+    // only works at the PC. A phone's picture shows none of it; where a card
+    // the PC has up holds some, a tap there does nothing.
     bool phoneTapping_ = false;
-    std::string phoneNote_;
-    int phoneNoteN_ = 0;
-    static constexpr const char* PHONE_OPENS_ON_PC = "Opens on the PC only";
-    static constexpr const char* PHONE_WORKS_ON_PC = "Available on the PC only";
-    static constexpr const char* PHONE_TYPING_ON_PC = "Typing available on the PC only";
-    void phoneSay(const char* words);
     bool phoneTaps();                          // true where there were any
     void phoneTap(const PhoneServer::Tap& tap);
     bool phoneShowsButton(HWND button, bool overlay) const;
@@ -2302,7 +2298,7 @@ private:
     // extraTop().
     static constexpr int LY_CONTEXT = 57;       // the context card: place, ship, ores
     static constexpr int CONTEXT_H = 120;       // ...-> 177
-    static constexpr int LY_CONTROLS = 187;     // the action row (a phone's picture only), 28 tall -> 215
+    static constexpr int LY_CONTROLS = 187;     // where the action row was, 28 tall -> 215 (scanShift)
     // The aim box has no card: it is worked out from the game window, and a
     // box nobody can move needs no display.
     static constexpr int LY_SIGCARD = 225;      // big signature readout card, 76 tall -> 301

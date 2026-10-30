@@ -981,6 +981,23 @@ int runScreenshots(const std::string& dir) {
             } else {
                 std::cout << "phone_window_tapped.png: no ores field to tap" << std::endl;
             }
+            // ...and what works at the PC alone is not in it: the ? card's
+            // links are words there, the ship's crafted bonus a figure, and
+            // a card the PC answers - the Datarunner's - leaves the page
+            // under it
+            gui.openAboutForShot();
+            pump();
+            shootPhone(PhoneServer::View::Window, 1170, "phone_window_about.png");
+            gui.openAboutForShot();   // (shut again)
+            gui.showLoadoutForShot(true);
+            pump();
+            shootPhone(PhoneServer::View::Window, 1170, "phone_window_loadout.png");
+            gui.showLoadoutForShot(false);
+            gui.railPickForShot(SCMiner::MinerGUI::RailItem::Datarunner);
+            pump();
+            shootPhone(PhoneServer::View::Window, 1170, "phone_window_pc_card.png");
+            gui.railPickForShot(SCMiner::MinerGUI::RailItem::Scan);
+            pump();
             // BEDROCK_SHOT_PHONE_HOLD=30 keeps it up that many seconds more,
             // drawing for a device as it does, for a browser on this machine
             // to be pointed at the address it prints
