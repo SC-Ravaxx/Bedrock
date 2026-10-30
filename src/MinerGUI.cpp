@@ -22562,12 +22562,14 @@ void MinerGUI::showNews() { openNews(false); }
 
 void MinerGUI::showThanks() { openNews(true); }
 
-void MinerGUI::openNews(bool thanks) {
+void MinerGUI::openNews(bool thanks, bool tour) {
     if (!news_ && !createNews()) return;
     newsVisible_ = true;
     newsThanks_ = thanks;
+    newsTour_ = tour;
     newsPage_ = 0;   // the newest first
-    SetWindowTextW(news_, thanks ? L"Bedrock " BEDROCK_VERSION_W : L"Bedrock 2.5");
+    tourPage_ = 0;
+    SetWindowTextW(news_, tour ? L"Bedrock 3.0" : thanks ? L"Bedrock " BEDROCK_VERSION_W : L"Bedrock 2.5");
     if (headless_) {
         SetWindowPos(news_, HWND_BOTTOM, -32000, -30000, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
     } else {
@@ -22597,20 +22599,38 @@ void MinerGUI::newsPageForShot(int page) {
 }
 
 // The 2.5 page's picture - a screenshot of a contract in the mobiGlas,
-// carried in the exe as NEWS_2_5 - decoded once. OpenCV decodes the JPEG
+// carried in the exe as NEWS_2_5 - decoded once
+Gdiplus::Bitmap* MinerGUI::newsPicture() { return carriedPicture("NEWS_2_5", newsShot_); }
+
+// A picture the exe carries, decoded once. OpenCV decodes the JPEG or PNG
 // and its rows are copied into a bitmap: the same on Windows and under the
-// Linux build's GDI+ shim, which has no COM stream to hand GDI+ a picture
-// in memory (<objbase.h> is not available there).
-Gdiplus::Bitmap* MinerGUI::newsPicture() {
-    if (newsShot_) return newsShot_.get();
+// Linux build's GDI+ shim, which has no COM stream to hand GDI+ a picture in
+// memory (<objbase.h> is not available there). A PNG's clear parts stay
+// clear (the phone's corners), premultiplied as the bitmap wants them.
+Gdiplus::Bitmap* MinerGUI::carriedPicture(const char* name, std::unique_ptr<Gdiplus::Bitmap>& kept) {
+    if (kept) return kept.get();
     const unsigned char* data = nullptr;
     size_t size = 0;
-    if (!embeddedResource("NEWS_2_5", &data, &size) || !data || size == 0) return nullptr;
-    const cv::Mat bgr = cv::imdecode(cv::Mat(1, (int)size, CV_8UC1, const_cast<unsigned char*>(data)),
-                                     cv::IMREAD_COLOR);
-    if (bgr.empty()) return nullptr;
+    if (!embeddedResource(name, &data, &size) || !data || size == 0) return nullptr;
+    const cv::Mat read = cv::imdecode(cv::Mat(1, (int)size, CV_8UC1, const_cast<unsigned char*>(data)),
+                                      cv::IMREAD_UNCHANGED);
+    if (read.empty() || read.depth() != CV_8U) return nullptr;
     cv::Mat bgra;
-    cv::cvtColor(bgr, bgra, cv::COLOR_BGR2BGRA);   // opaque, so plain and premultiplied are one
+    if (read.channels() == 4) {
+        bgra = read.clone();
+        for (int y = 0; y < bgra.rows; y++) {
+            cv::Vec4b* row = bgra.ptr<cv::Vec4b>(y);
+            for (int x = 0; x < bgra.cols; x++) {
+                for (int c = 0; c < 3; c++) row[x][c] = (uchar)((row[x][c] * row[x][3] + 127) / 255);
+            }
+        }
+    } else if (read.channels() == 3) {
+        cv::cvtColor(read, bgra, cv::COLOR_BGR2BGRA);   // opaque, so plain and premultiplied are one
+    } else if (read.channels() == 1) {
+        cv::cvtColor(read, bgra, cv::COLOR_GRAY2BGRA);
+    } else {
+        return nullptr;
+    }
     auto picture = std::make_unique<Gdiplus::Bitmap>(bgra.cols, bgra.rows, PixelFormat32bppPARGB);
     Gdiplus::Rect all(0, 0, bgra.cols, bgra.rows);
     Gdiplus::BitmapData bits;
@@ -22622,8 +22642,8 @@ Gdiplus::Bitmap* MinerGUI::newsPicture() {
                     (size_t)bgra.cols * 4);
     }
     picture->UnlockBits(&bits);
-    newsShot_ = std::move(picture);
-    return newsShot_.get();
+    kept = std::move(picture);
+    return kept.get();
 }
 
 // UEX's "Powered by UEX" lettering, carried in the exe as UEX_POWERED -
@@ -22695,9 +22715,13 @@ void MinerGUI::paintNewsTo(HDC hdc) {
 
 // The rock view with an example in it: a MOLE fitted the way one gets
 // fitted, twelve metres from a tin rock whose figures are real - they are
-// the ones off the scan panel in tests/scanpanel. The window's own state is
-// put aside while it draws and put back after; nothing is saved.
-void MinerGUI::drawRockDemo(Gdiplus::Graphics& g, float x, float y, int width) {
+// the ones off the scan panel in tests/scanpanel. 3.0's example is the ship
+// that picture was taken from, a Prospector with its Helix I and the two
+// modules it had on, and the rock ROCK_DEMO_DISTANCE off: past the 15 m the
+// Helix I reaches with all its power, short of the 45 m where it reaches
+// nothing. The window's own state is put aside while it draws and put back
+// after; nothing is saved.
+void MinerGUI::drawRockDemo(Gdiplus::Graphics& g, float x, float y, int width, int example, float bottom) {
     struct Kept {
         RockStats rock;
         MiningLoadout loadout;
@@ -22711,13 +22735,18 @@ void MinerGUI::drawRockDemo(Gdiplus::Graphics& g, float x, float y, int width) {
     MiningLoadout fit;
     fit.laser = laserById("thcn_helix_s1");
     fit.modules = {moduleById("passive_focus_mk3"), moduleById("passive_rieger_mk3")};
-    MiningLoadout wide;
-    wide.laser = laserById("shin_hofstede_s2");
-    MiningLoadout hard;
-    hard.laser = laserById("thcn_helix_s2");
-    hard.modules = {moduleById("active_surge")};
-    ship_ = shipById("mole");
-    heads_ = {fit, wide, hard};
+    if (example == 1) {
+        ship_ = shipById("prospector");
+        heads_ = {fit};
+    } else {
+        MiningLoadout wide;
+        wide.laser = laserById("shin_hofstede_s2");
+        MiningLoadout hard;
+        hard.laser = laserById("thcn_helix_s2");
+        hard.modules = {moduleById("active_surge")};
+        ship_ = shipById("mole");
+        heads_ = {fit, wide, hard};
+    }
     firing_.assign(heads_.size(), 1);
     headShown_ = 0;
     loadout_ = fit;
@@ -22728,14 +22757,16 @@ void MinerGUI::drawRockDemo(Gdiplus::Graphics& g, float x, float y, int width) {
     rock.resistance = 0;
     rock.instability = 3.52f;
     rock.scu = 30.21f;
-    rock.distance = 12.0f;
+    rock.distance = example == 1 ? ROCK_DEMO_DISTANCE : 12.0f;
     rock_ = rock;
     // ...and without the parts of whatever rock the window has in view
     const RockContents keptContents = rockContents_;
     rockContents_ = RockContents();
 
     const Gdiplus::GraphicsState state = g.Save();
-    g.SetClip(Gdiplus::RectF(x, y, (float)width, 4000.0f));
+    // down to `bottom` where one is given (the tour's pane ends above its
+    // buttons), else as far as the view runs
+    g.SetClip(Gdiplus::RectF(x, y, (float)width, bottom > y ? bottom - y : 4000.0f));
     // the view draws itself where it sits in the main window; moved so the
     // card's top lands at y
     const float top = (float)scale(LY_SIGCARD) + extraTop() - scanShift();
@@ -22761,6 +22792,10 @@ void MinerGUI::drawRockDemo(Gdiplus::Graphics& g, float x, float y, int width) {
 }
 
 void MinerGUI::paintNews(HDC hdc) {
+    if (newsTour_) {
+        paintTour(hdc);
+        return;
+    }
     RECT rc;
     GetClientRect(news_, &rc);
     const int cw = rc.right, ch = rc.bottom;
@@ -23052,8 +23087,34 @@ LRESULT MinerGUI::handleNewsMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM 
         case WM_SIZE:
             InvalidateRect(hwnd, nullptr, TRUE);
             return 0;
+        case WM_MOUSEMOVE:
+            // the tour's buttons and dots light under the pointer: drawn
+            // anew only when it comes onto one or leaves it
+            if (newsTour_) {
+                const POINT at = {(LONG)(short)LOWORD(lParam), (LONG)(short)HIWORD(lParam)};
+                TRACKMOUSEEVENT leave = {sizeof(leave), TME_LEAVE, hwnd, 0};
+                TrackMouseEvent(&leave);
+                const bool changed = tourHitAt(at) != tourHitAt(hoverNews_);
+                hoverNews_ = at;
+                if (changed) InvalidateRect(hwnd, nullptr, FALSE);
+                return 0;
+            }
+            break;
+        case WM_MOUSELEAVE:
+            if (newsTour_) {
+                const bool changed = tourHitAt(hoverNews_) >= 0;
+                hoverNews_ = {-1, -1};
+                if (changed) InvalidateRect(hwnd, nullptr, FALSE);
+                return 0;
+            }
+            break;
         case WM_LBUTTONDOWN: {
             const float px = (float)(short)LOWORD(lParam), py = (float)(short)HIWORD(lParam);
+            if (newsTour_) {
+                const int at = tourHitAt({(LONG)px, (LONG)py});
+                if (at >= 0) pressTour(tourHits_[(size_t)at]);
+                return 0;
+            }
             if (newsButton_.Contains(px, py)) {
                 closeNews();
                 return 0;
@@ -23067,6 +23128,23 @@ LRESULT MinerGUI::handleNewsMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM 
             return 0;
         }
         case WM_KEYDOWN:
+            // the tour: the arrows turn its pages, Enter is Next - and Done
+            // on the last page
+            if (newsTour_) {
+                if (wParam == VK_ESCAPE) {
+                    closeNews();
+                } else if (wParam == VK_LEFT || wParam == VK_PRIOR) {
+                    turnTour(tourPage_ - 1);
+                } else if (wParam == VK_RIGHT || wParam == VK_NEXT) {
+                    turnTour(tourPage_ + 1);
+                } else if (wParam == VK_RETURN) {
+                    if (tourPage_ >= TOUR_PAGES - 1) closeNews();
+                    else turnTour(tourPage_ + 1);
+                } else {
+                    break;
+                }
+                return 0;
+            }
             if (wParam == VK_ESCAPE || (newsThanks_ && wParam == VK_RETURN)) {
                 closeNews();
                 return 0;
@@ -23085,6 +23163,281 @@ LRESULT MinerGUI::handleNewsMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM 
             return 0;
     }
     return DefWindowProcW(hwnd, uMsg, wParam, lParam);
+}
+
+// ---------------------------------------------------------------------------
+// 3.0's tour, in the news window: six pages, each the words on the left and
+// on the right what they are about - a picture of Bedrock's own, or the rock
+// view itself, drawn live - on a pane of glass that stays put from page to
+// page, saying what it shows along the bottom, level with the buttons. Back
+// and Next turn the pages, as do the dots beside them and the arrow keys;
+// the last page leads to the "what's new" card.
+// ---------------------------------------------------------------------------
+void MinerGUI::showTour() { openNews(false, true); }
+
+void MinerGUI::showTourForShot() { showTour(); }
+
+void MinerGUI::tourPageForShot(int page) { turnTour(page); }
+
+void MinerGUI::turnTour(int page) {
+    page = std::clamp(page, 0, TOUR_PAGES - 1);
+    if (page == tourPage_) return;
+    tourPage_ = page;
+    if (news_) InvalidateRect(news_, nullptr, FALSE);
+}
+
+int MinerGUI::tourHitAt(POINT at) const {
+    if (at.x < 0) return -1;
+    for (size_t i = 0; i < tourHits_.size(); i++) {
+        if (tourHits_[i].rect.Contains((float)at.x, (float)at.y)) return (int)i;
+    }
+    return -1;
+}
+
+void MinerGUI::pressTour(const TourHit& hit) {
+    switch (hit.kind) {
+        case 1:   // Back
+        case 3:   // a page's dot
+            turnTour(hit.page);
+            break;
+        case 2:   // Next, or Done on the last page
+            if (tourPage_ >= TOUR_PAGES - 1) closeNews();
+            else turnTour(tourPage_ + 1);
+            break;
+        case 4:   // every change, on the main window's card
+            closeNews();
+            showWhatsNew();
+            break;
+        default:
+            break;
+    }
+}
+
+void MinerGUI::paintTour(HDC hdc) {
+    RECT rc;
+    GetClientRect(news_, &rc);
+    const int cw = rc.right, ch = rc.bottom;
+    HDC memDC = CreateCompatibleDC(hdc);
+    HBITMAP memBitmap = CreateCompatibleBitmap(hdc, cw, ch);
+    HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, memBitmap);
+    {
+        Gdiplus::Graphics g(memDC);
+        // smoothed like the main window: the rock view on the second page
+        // is the main window's own
+        prepareGraphics(g);
+        Gdiplus::SolidBrush bg(COL_BG);
+        g.FillRectangle(&bg, 0, 0, cw, ch);
+        drawTour(g, cw, ch);
+    }
+    BitBlt(hdc, 0, 0, cw, ch, memDC, 0, 0, SRCCOPY);
+    SelectObject(memDC, oldBitmap);
+    DeleteObject(memBitmap);
+    DeleteDC(memDC);
+}
+
+void MinerGUI::drawTour(Gdiplus::Graphics& g, int cw, int ch) {
+    tourHits_.clear();
+    // The titles as on the other pages of this window; the words a size up
+    // from them, as in the thank-you letter: a few lines a page, read at
+    // leisure
+    Gdiplus::Font titleFont(&markFamily(), scaleF(30), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font leadFont(&textFamily(), scaleF(16), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font bodyFont(&textFamily(), scaleF(14), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font itemFont(&markFamily(), scaleF(16), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font smallFont(&textFamily(), scaleF(10), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font buttonFont(&markFamily(), scaleF(12), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::SolidBrush textBrush(COL_TEXT);
+    Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
+    Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
+    Gdiplus::SolidBrush accentBrush(COL_ACCENT);
+    Gdiplus::StringFormat leftMid;
+    leftMid.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    leftMid.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    const POINT hover = hoverNews_;
+    const int page = tourPage_;
+    const bool last = page == TOUR_PAGES - 1;
+
+    // The way between the pages, in the same place on all of them - worked
+    // out first, because what stands on the right runs down to it. Back is
+    // there on the first page too, quiet, so Next never moves under the
+    // pointer; Next is Done on the last page.
+    const float M = scaleF(30);
+    const float bw = scaleF(110), bh = scaleF(34);
+    const float by = (float)ch - scaleF(30) - bh;
+    const Gdiplus::RectF back(M, by, bw, bh);
+    const Gdiplus::RectF next(back.GetRight() + scaleF(10), by, bw, bh);
+    drawButton(g, back, L"Back", buttonFont, page > 0 ? ButtonKind::Secondary : ButtonKind::Ghost,
+               page > 0 && isHot(hover, back), scaleF(R_CONTROL));
+    if (page > 0) tourHits_.push_back({back, 1, page - 1});
+    drawButton(g, next, last ? L"Done" : L"Next", buttonFont, ButtonKind::Primary, isHot(hover, next),
+               scaleF(R_CONTROL));
+    tourHits_.push_back({next, 2, page + 1});
+    // a dot for each page, the one shown in amber; a dot is a way to its page
+    float dx = next.GetRight() + scaleF(18);
+    const float dotW = scaleF(16), dotD = scaleF(8);
+    for (int i = 0; i < TOUR_PAGES; i++) {
+        const Gdiplus::RectF spot(dx, by, dotW, bh);
+        const bool on = i == page;
+        Gdiplus::SolidBrush dot(on ? COL_ACCENT : isHot(hover, spot) ? COL_TEXT_DIM : COL_TEXT_FAINT);
+        g.FillEllipse(&dot, spot.X + (dotW - dotD) / 2.0f, spot.Y + (bh - dotD) / 2.0f, dotD, dotD);
+        if (!on) tourHits_.push_back({spot, 3, i});
+        dx += dotW;
+    }
+    g.DrawString(L"Esc to close", -1, &smallFont, Gdiplus::RectF(dx + scaleF(14), by, scaleF(160), bh), &leftMid,
+                 &faintBrush);
+
+    // The words, on the left: the title - the first page's in two colours,
+    // as 2.5's was - then the paragraphs
+    const float textW = scaleF(420);
+    float y = scaleF(24);
+    const auto title = [&](const wchar_t* words) {
+        const Gdiplus::PointF at(M - scaleF(2), y);
+        if (page == 0) {
+            g.DrawString(L"Bedrock", -1, &titleFont, at, &textBrush);
+            Gdiplus::RectF name;
+            g.MeasureString(L"Bedrock", -1, &titleFont, at, &name);
+            g.DrawString(L"3.0", -1, &titleFont, Gdiplus::PointF(at.X + name.Width, y), &accentBrush);
+        } else {
+            g.DrawString(words, -1, &titleFont, at, &textBrush);
+        }
+        y += scaleF(48);
+    };
+    const auto para = [&](const wchar_t* text, const Gdiplus::Font& font, Gdiplus::Brush& brush, float after,
+                          float width) {
+        const Gdiplus::RectF box(M, y, width, 3000.0f);
+        Gdiplus::RectF measured;
+        g.MeasureString(text, -1, &font, box, &measured);
+        g.DrawString(text, -1, &font, box, nullptr, &brush);
+        y += measured.Height + scaleF(after);
+    };
+
+    // What the page is about, on the right: a pane of glass the same on
+    // every page, from the title's line down to the buttons' foot, with its
+    // caption along the bottom, level with the buttons
+    const float roomLeft = M + textW + scaleF(36);
+    const Gdiplus::RectF pane(roomLeft, scaleF(32), (float)cw - scaleF(30) - roomLeft, by + bh - scaleF(32));
+    const float pad = scaleF(14);
+    const auto caption = [&](const std::wstring& words) {
+        g.DrawString(words.c_str(), -1, &smallFont,
+                     Gdiplus::RectF(pane.X + pad + scaleF(2), by, pane.Width - 2 * pad, bh), &leftMid, &faintBrush);
+    };
+    // a picture of Bedrock's own, as large as the pane allows above its
+    // caption, in its middle
+    const auto picture = [&](const char* name, std::unique_ptr<Gdiplus::Bitmap>& kept, const wchar_t* words) {
+        refplanGlassPane(g, pane, scaleF(R_CARD), scaleF(14), COL_BG);
+        if (Gdiplus::Bitmap* shot = carriedPicture(name, kept)) {
+            const float maxW = pane.Width - 2 * pad, maxH = by - scaleF(10) - (pane.Y + pad);
+            const float k = (std::min)(maxW / (float)shot->GetWidth(), maxH / (float)shot->GetHeight());
+            const float w = (float)shot->GetWidth() * k, h = (float)shot->GetHeight() * k;
+            g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+            g.DrawImage(shot, Gdiplus::RectF(pane.X + (pane.Width - w) / 2.0f, pane.Y + pad + (maxH - h) / 2.0f, w, h));
+        }
+        caption(words);
+    };
+
+    switch (page) {
+        case 0:
+            title(nullptr);
+            para(L"A new main window.", leadFont, textBrush, 14, textW);
+            para(L"The rail on the left leads to Scan, Refinery, Ore Finder, Blueprints, Notes and your plugins. "
+                 L"Settings and the Datarunner are at its foot.",
+                 bodyFont, dimBrush, 14, textW);
+            para(L"The scan page shows location, ship and target ores at the top, the signature in large figures "
+                 L"and the best match with its probability. The other matches are folded away.",
+                 bodyFont, dimBrush, 14, textW);
+            picture("TOUR_MAIN", tourShots_[0], L"The scan page");
+            break;
+        case 1: {
+            title(L"Distance to the rock");
+            para(L"Bedrock now reads the distance off the LASER RANGE gauge of the Prospector, the MOLE\u2019s "
+                 L"turrets and the Golem. The laser power on the rock card and the throttle that holds the charge "
+                 L"steady take it into account.",
+                 bodyFont, dimBrush, 14, textW);
+            para(L"When the rock is too far, the card says NEAR END OF LASER RANGE or OUT OF RANGE. A distance "
+                 L"that cannot be read for sure is not used.",
+                 bodyFont, dimBrush, 14, textW);
+            // ...and under the words the gauge it is read off, as the game
+            // draws it, at its own size: the same 26 m as the example
+            if (Gdiplus::Bitmap* gauge = carriedPicture("TOUR_GAUGE", tourShots_[TOUR_PAGES])) {
+                const float w = scaleF((float)gauge->GetWidth()), h = scaleF((float)gauge->GetHeight());
+                if (y + scaleF(10) + h + scaleF(26) <= by - scaleF(10)) {
+                    y += scaleF(10);
+                    const Gdiplus::RectF at(M, y, w, h);
+                    g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+                    g.DrawImage(gauge, at);
+                    wchar_t gameWords[96];
+                    std::swprintf(gameWords, 96, L"In the game: LASER RANGE %.0f m", ROCK_DEMO_DISTANCE);
+                    g.DrawString(gameWords, -1, &smallFont, Gdiplus::RectF(M, y + h + scaleF(4), textW, scaleF(18)),
+                                 &leftMid, &faintBrush);
+                }
+            }
+            // The rock view itself, with the example in it
+            refplanGlassPane(g, pane, scaleF(R_CARD), scaleF(14), COL_BG);
+            const int demoW = scale(WINDOW_WIDTH);
+            const float demoX = pane.X + (pane.Width - (float)demoW) / 2.0f;
+            const float demoY = pane.Y + pad;
+            drawRockDemo(g, demoX, demoY, demoW, 1, by - scaleF(6));
+            wchar_t words[160];
+            std::swprintf(words, 160, L"Example: Prospector, %.0f m from a %ls kg tin deposit", ROCK_DEMO_DISTANCE,
+                          formatNumber(22593).c_str());
+            caption(words);
+            break;
+        }
+        case 2:
+            title(L"Plugins");
+            para(L"Plugins add pages of their own to Bedrock. Install them from Plugins in the rail. Every plugin "
+                 L"is signed by Ravaxx.",
+                 bodyFont, dimBrush, 14, textW);
+            para(L"The first is Wikelo: Wikelo\u2019s trades, your inventory and contracts, read from the game log.",
+                 bodyFont, dimBrush, 14, textW);
+            picture("TOUR_PLUGIN", tourShots_[2], L"The Wikelo plugin");
+            break;
+        case 3:
+            title(L"UEX Datarunner");
+            para(L"Report commodity terminal prices to UEX. At a terminal, hold the list still and Bedrock reads "
+                 L"it, or press Print Screen.",
+                 bodyFont, dimBrush, 14, textW);
+            para(L"You check every row before anything is sent. Reporting needs your UEX key and a datarunner "
+                 L"account on UEX.",
+                 bodyFont, dimBrush, 14, textW);
+            picture("TOUR_DATARUNNER", tourShots_[3], L"Checking a terminal\u2019s rows");
+            break;
+        case 4:
+            title(L"Phone or tablet");
+            para(L"A phone or tablet on the same network can show the overlay or the whole window in its browser. "
+                 L"Turn it on in the settings and scan the QR code.",
+                 bodyFont, dimBrush, 14, textW);
+            para(L"With View the picture is only shown. With Control a tap works like a click and a long press "
+                 L"like a right click.",
+                 bodyFont, dimBrush, 14, textW);
+            picture("TOUR_PHONE", tourShots_[4], L"The overlay on a phone");
+            break;
+        default: {
+            // The rest of 3.0, as the card names it: each a name and a line,
+            // across the window - nothing beside them to look at
+            title(L"Also in 3.0");
+            const float wide = (float)cw - 2 * M;
+            const auto item = [&](const wchar_t* name, const wchar_t* line) {
+                para(name, itemFont, textBrush, 4, wide);
+                para(line, bodyFont, dimBrush, 18, wide);
+            };
+            item(L"Wording", L"All texts follow one style: a short status in capitals, then what to do. "
+                             L"Thanks to andydsm!");
+            item(L"Long texts", L"Texts that were cut off now continue on a second line.");
+            item(L"Refinery and Ore Finder", L"The mouse wheel scrolls their lists.");
+            item(L"Ice and silicon", L"Work orders are read while they are processed. UEX prices for ice are shown.");
+            item(L"MOLE", L"A turret without a laser is no longer counted.");
+            // ...and every change, on the card
+            const wchar_t* all = L"See all changes";
+            Gdiplus::RectF w;
+            g.MeasureString(all, -1, &bodyFont, Gdiplus::PointF(0, 0), &w);
+            const Gdiplus::RectF link(M, y + scaleF(4), lineWidth(g, all, bodyFont), w.Height);
+            Gdiplus::SolidBrush linkBrush(isHot(hover, link) ? COL_ACCENT_HI : COL_ACCENT);
+            g.DrawString(all, -1, &bodyFont, Gdiplus::PointF(link.X, link.Y), &linkBrush);
+            tourHits_.push_back({link, 4, page});
+            break;
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

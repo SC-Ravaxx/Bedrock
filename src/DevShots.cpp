@@ -1696,6 +1696,15 @@ int runScreenshots(const std::string& dir) {
     if (gui.newsHandle()) shoot(gui.newsHandle(), "news_thanks.png", true);
     gui.hideNewsForShot();
     pump();
+    // ...and 3.0's tour: the same window, every page of it
+    gui.showTourForShot();
+    for (int page = 0; page < SCMiner::MinerGUI::TOUR_PAGES; page++) {
+        gui.tourPageForShot(page);
+        pump();
+        if (gui.newsHandle()) shoot(gui.newsHandle(), "tour_" + std::to_string(page + 1) + ".png", true);
+    }
+    gui.hideNewsForShot();
+    pump();
     gui.openLookingForShot();
     pump();
     shoot(gui.windowHandle(), "looking_for.png");

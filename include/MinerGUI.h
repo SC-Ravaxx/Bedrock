@@ -591,6 +591,12 @@ public:
     // closed, it puts up the "what's new" card
     void showThanks();
     void showThanksForShot();
+    // ...and 3.0's tour: the same window, six pages to turn with Back and
+    // Next; the last one leads to the "what's new" card
+    void showTour();
+    void showTourForShot();
+    void tourPageForShot(int page);   // --screenshot only: page 0..TOUR_PAGES-1
+    static constexpr int TOUR_PAGES = 6;
     HWND newsHandle() const { return news_; }
     void paintNewsTo(HDC hdc);
     // The settings, a window of their own behind the gear in the header:
@@ -1927,24 +1933,45 @@ private:
     HWND shot_ = nullptr;
     bool shotVisible_ = false;
     // The news window: 2.5 first, 2.0 a page on, a tab for each - or 2.6.7's
-    // thank-you, on its own
+    // thank-you, on its own - or 3.0's tour, page after page
     HWND news_ = nullptr;
     bool newsVisible_ = false;
     bool newsThanks_ = false;
+    bool newsTour_ = false;
     Gdiplus::RectF newsButton_;
     int newsPage_ = 0;                            // 0: 2.5, 1: 2.0
     Gdiplus::RectF newsTabs_[2];
     std::unique_ptr<Gdiplus::Bitmap> newsShot_;   // the 2.5 page's picture, once decoded
     Gdiplus::Bitmap* newsPicture();
+    // A picture the exe carries (embeddedResource), decoded once into `kept`;
+    // null where the build has none by that name
+    static Gdiplus::Bitmap* carriedPicture(const char* name, std::unique_ptr<Gdiplus::Bitmap>& kept);
+    // The tour: the page shown, what can be pressed (1 Back, 2 Next or Done,
+    // 3 a page's dot, 4 the way to the "what's new" card), where the pointer
+    // is over it; its pictures, once decoded
+    int tourPage_ = 0;
+    struct TourHit { Gdiplus::RectF rect; int kind; int page; };
+    std::vector<TourHit> tourHits_;
+    POINT hoverNews_ = {-1, -1};
+    int tourHitAt(POINT at) const;               // index into tourHits_, -1 none
+    std::unique_ptr<Gdiplus::Bitmap> tourShots_[TOUR_PAGES + 1];   // + the LASER RANGE gauge
+    void paintTour(HDC hdc);
+    void drawTour(Gdiplus::Graphics& g, int cw, int ch);
+    void turnTour(int page);                     // to that page, within the six
+    void pressTour(const TourHit& hit);
     // UEX's badge for the Ore Finder, made at the height it is drawn at
     std::unique_ptr<Gdiplus::Bitmap> uexBadge_;
     int uexBadgeHeight_ = 0;
     Gdiplus::Bitmap* uexBadge(int height);
     bool createNews();
-    void openNews(bool thanks);
+    void openNews(bool thanks, bool tour = false);
     void closeNews();
     void paintNews(HDC hdc);
-    void drawRockDemo(Gdiplus::Graphics& g, float x, float y, int width);
+    // The rock view with an example in it: 0 is 2.0's MOLE twelve metres
+    // from the rock, 1 is 3.0's Prospector at the end of its laser's range
+    // (ROCK_DEMO_DISTANCE); drawn down to `bottom` where one is given
+    void drawRockDemo(Gdiplus::Graphics& g, float x, float y, int width, int example = 0, float bottom = 0.0f);
+    static constexpr float ROCK_DEMO_DISTANCE = 26.0f;
     static LRESULT CALLBACK NewsProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
     LRESULT handleNewsMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
     static constexpr int NEWS_WIDTH = 1080;   // wide enough for the 2.5 page's picture

@@ -685,6 +685,13 @@ private:
     // The "what's new" card, once per version - see the definition for why
     // a first-ever run is not an update
     void maybeShowWhatsNew();
+public:
+    // ...and what it puts up, from the version last seen ("" for none) and
+    // this one: nothing, the card, the news window (2.5 and 2.0), 2.6.7's
+    // thank-you, or 3.0's tour
+    enum class WhatsNew { Nothing, Card, News, Thanks, Tour };
+    static WhatsNew whatsNewAfter(const std::string& seen, const std::string& version, bool firstEverRun);
+private:
     // Game.log: what the user pinned, else the running game's own folder,
     // else the folder the launcher last started from; empty when none
     std::filesystem::path locateGameLog() const;

@@ -66,6 +66,11 @@ BEDROCK_BLOB(bedrock_blob_selftest_marker_canopy, BEDROCK_TESTS_DIR "/canopy_mar
 BEDROCK_BLOB(bedrock_blob_appicon, BEDROCK_RES_DIR "/icon_256.png")
 BEDROCK_BLOB(bedrock_blob_news_2_5, BEDROCK_RES_DIR "/news_2_5.jpg")
 BEDROCK_BLOB(bedrock_blob_uex_powered, BEDROCK_RES_DIR "/uex_powered.png")
+BEDROCK_BLOB(bedrock_blob_tour_main, BEDROCK_RES_DIR "/tour_main.png")
+BEDROCK_BLOB(bedrock_blob_tour_plugin, BEDROCK_RES_DIR "/tour_plugin.png")
+BEDROCK_BLOB(bedrock_blob_tour_datarunner, BEDROCK_RES_DIR "/tour_datarunner.png")
+BEDROCK_BLOB(bedrock_blob_tour_phone, BEDROCK_RES_DIR "/tour_phone.png")
+BEDROCK_BLOB(bedrock_blob_tour_gauge, BEDROCK_RES_DIR "/tour_gauge.jpg")
 // ...and the faces the layout was measured in, or their metric twins: the
 // window is laid out in Segoe UI and sets its figures in Bahnschrift, and
 // neither is on a Linux machine. Selawik is Microsoft's own open Segoe UI
@@ -116,6 +121,11 @@ bool embeddedResource(const std::string& name, const unsigned char** data, size_
         {"SELFTEST_MARKER_CANOPY", bedrock_blob_selftest_marker_canopy_start, bedrock_blob_selftest_marker_canopy_end},
         {"NEWS_2_5", bedrock_blob_news_2_5_start, bedrock_blob_news_2_5_end},
         {"UEX_POWERED", bedrock_blob_uex_powered_start, bedrock_blob_uex_powered_end},
+        {"TOUR_MAIN", bedrock_blob_tour_main_start, bedrock_blob_tour_main_end},
+        {"TOUR_PLUGIN", bedrock_blob_tour_plugin_start, bedrock_blob_tour_plugin_end},
+        {"TOUR_DATARUNNER", bedrock_blob_tour_datarunner_start, bedrock_blob_tour_datarunner_end},
+        {"TOUR_PHONE", bedrock_blob_tour_phone_start, bedrock_blob_tour_phone_end},
+        {"TOUR_GAUGE", bedrock_blob_tour_gauge_start, bedrock_blob_tour_gauge_end},
         {"APPICON", bedrock_blob_appicon_start, bedrock_blob_appicon_end},
         {"FONT_SELAWIK", bedrock_blob_font_selawik_start, bedrock_blob_font_selawik_end},
         {"FONT_SELAWIK_BOLD", bedrock_blob_font_selawik_bold_start, bedrock_blob_font_selawik_bold_end},

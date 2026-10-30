@@ -3131,6 +3131,27 @@ int runSelfTest() {
                            "the same version is not an update");
         allPassed &= check(SCMiner::Updater::isNewer("4.8.1", "4.8.0"),
                            "...a patch release is");
+        // What comes up after an update: 3.0's tour for everyone coming from
+        // before it, never on a first start, and not twice
+        {
+            using SCMiner::Application;
+            using W = Application::WhatsNew;
+            allPassed &= check(Application::whatsNewAfter("2.7.0", "3.0.0", false) == W::Tour &&
+                                   Application::whatsNewAfter("2.4.1", "3.0.0", false) == W::Tour &&
+                                   Application::whatsNewAfter("", "3.0.0", false) == W::Tour &&
+                                   Application::whatsNewAfter("2.7.0", "3.0.1", false) == W::Tour,
+                               "2.7.0 -> 3.0.0 puts up the tour (from 2.4.1, from before the marker, "
+                               "straight to a hotfix too)");
+            allPassed &= check(Application::whatsNewAfter("3.0.0", "3.0.0", false) == W::Nothing &&
+                                   Application::whatsNewAfter("", "3.0.0", true) == W::Nothing &&
+                                   Application::whatsNewAfter("3.0.0", "3.0.1", false) == W::Card &&
+                                   Application::whatsNewAfter("3.0.1", "3.1.0", false) == W::Card,
+                               "...3.0.0 -> 3.0.0 and a first start nothing, 3.0.0 -> 3.0.1 and 3.1 the card");
+            allPassed &= check(Application::whatsNewAfter("2.4.0", "2.7.0", false) == W::News &&
+                                   Application::whatsNewAfter("2.6.6", "2.6.7", false) == W::Thanks &&
+                                   Application::whatsNewAfter("2.6.7", "2.7.0", false) == W::Card,
+                               "...and before 3.0 as before: news from before 2.5, 2.6.7's thanks, else the card");
+        }
         {
             SCMiner::Updater::Release r;
             const std::string hash(64, 'a');

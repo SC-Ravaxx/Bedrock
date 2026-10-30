@@ -3675,11 +3675,27 @@ void Application::maybeShowWhatsNew() {
         std::ofstream out(marker, std::ios::trunc);
         if (out.is_open()) out << BEDROCK_VERSION << std::endl;
     }
-    if (firstEverRun) return;
-    // Coming from anything before 2.5 (1.x, 2.0.x, or a build older than the
-    // marker): the news window, since the rock view and the game's contract
-    // texts change what the window is for and a scrolling card would bury
-    // them. From 2.5 on: the What's New card.
+    switch (whatsNewAfter(seen, BEDROCK_VERSION, firstEverRun)) {
+        case WhatsNew::Tour:
+            gui_->showTour();
+            break;
+        case WhatsNew::News:
+            gui_->showNews();
+            break;
+        case WhatsNew::Thanks:
+            gui_->showThanks();
+            break;
+        case WhatsNew::Card:
+            gui_->showWhatsNew();
+            break;
+        case WhatsNew::Nothing:
+            break;
+    }
+}
+
+Application::WhatsNew Application::whatsNewAfter(const std::string& seen, const std::string& version,
+                                                 bool firstEverRun) {
+    if (seen == version || firstEverRun) return WhatsNew::Nothing;
     int major = 0, minor = 0, patch = 0;
     {
         size_t at = 0;
@@ -3689,15 +3705,23 @@ void Application::maybeShowWhatsNew() {
         if (at < seen.size() && seen[at] == '.') at++;
         while (at < seen.size() && std::isdigit((unsigned char)seen[at])) patch = patch * 10 + (seen[at++] - '0');
     }
+    // 3.0 shows what it is, page by page in the news window, to everyone
+    // coming from before it; the card is a link on its last page. A hotfix
+    // of it does not show it twice, and the release after it no longer at all.
+    if ((version == "3.0" || version.rfind("3.0.", 0) == 0) && major < 3) return WhatsNew::Tour;
+    // Coming from anything before 2.5 (1.x, 2.0.x, or a build older than the
+    // marker): the news window, since the rock view and the game's contract
+    // texts change what the window is for and a scrolling card would bury
+    // them. From 2.5 on: the What's New card.
     const bool before25 = seen.empty() || major < 2 || (major == 2 && minor < 5);
     // 2.6.7 says thank you first, in the news window, to everyone coming
     // from before it - the card follows when that is closed. A hotfix of it
     // does not say it twice, and the release after it no longer at all.
-    const bool thanks = std::strncmp(BEDROCK_VERSION, "2.6.7", 5) == 0 &&
+    const bool thanks = version.rfind("2.6.7", 0) == 0 &&
                         (major < 2 || (major == 2 && (minor < 6 || (minor == 6 && patch < 7))));
-    if (before25) gui_->showNews();
-    else if (thanks) gui_->showThanks();
-    else gui_->showWhatsNew();
+    if (before25) return WhatsNew::News;
+    if (thanks) return WhatsNew::Thanks;
+    return WhatsNew::Card;
 }
 
 void Application::saveRegionConfig() {

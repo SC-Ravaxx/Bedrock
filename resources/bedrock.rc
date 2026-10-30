@@ -34,6 +34,13 @@ SELFTEST_MARKER_CANOPY RCDATA "../tests/canopy_marker_60000.png"
 NEWS_2_5 RCDATA "news_2_5.jpg"
 // UEX's "Powered by UEX" badge, in the Ore Finder beside the prices that are theirs
 UEX_POWERED RCDATA "uex_powered.png"
+// 3.0's tour: Bedrock's own pages, the phone page in a phone, and the
+// LASER RANGE gauge as the game draws it
+TOUR_MAIN RCDATA "tour_main.png"
+TOUR_PLUGIN RCDATA "tour_plugin.png"
+TOUR_DATARUNNER RCDATA "tour_datarunner.png"
+TOUR_PHONE RCDATA "tour_phone.png"
+TOUR_GAUGE RCDATA "tour_gauge.jpg"
 
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION BEDROCK_VERSION_MAJOR,BEDROCK_VERSION_MINOR,BEDROCK_VERSION_PATCH,BEDROCK_VERSION_BUILD
