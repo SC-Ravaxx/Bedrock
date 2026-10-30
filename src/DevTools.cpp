@@ -37,6 +37,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 SCMiner::TextLineReader* panelLines() {
@@ -961,6 +962,11 @@ int runPluginCheck(const std::string& folder, const std::string& gameFolder, con
                                                       : std::filesystem::path(stateFolder);
     if (stateFolder.empty()) std::filesystem::remove_all(state, ec);
     P::Host host(root.empty() ? std::filesystem::path(".") : root, state, BEDROCK_VERSION, P::trustedKeys(), true);
+    // a plugin with game-files access backs up into the state folder unless
+    // a folder is named: never into the player's own
+    if (!DEV_ENV("BEDROCK_BLACKBOX_ROOT")) host.setBackupRoot(state / "blackbox-backups");
+    // (the game's folder first, as Bedrock has it when a plugin starts)
+    host.setGameFolder(gameFolder);
     host.load();
     const std::string id = std::filesystem::path(folder).filename().string();
     P::Plugin* plugin = host.plugin(id);
@@ -973,7 +979,6 @@ int runPluginCheck(const std::string& folder, const std::string& gameFolder, con
     if (!plugin->running()) return 1;
     // the older logs, all of them, then the live one
     const auto t0 = std::chrono::steady_clock::now();
-    host.setGameFolder(gameFolder);
     int done = 0, all = 0;
     host.readingHistory(id, &done, &all);
     const int logs = all;
@@ -994,8 +999,62 @@ int runPluginCheck(const std::string& folder, const std::string& gameFolder, con
         std::cout << "Stopped: " << plugin->error() << std::endl;
         return 1;
     }
+    // ...and what it does by itself, once (bedrock.every)
+    if (host.runTimers(true)) std::cout << "its timers ran once" << std::endl;
+    if (!plugin->running()) {
+        std::cout << "Stopped: " << plugin->error() << std::endl;
+        return 1;
+    }
     std::string noteId, note;
     while (host.takeNote(noteId, note)) std::cout << "NOTE " << note << std::endl;
+    // BEDROCK_PLUGIN_CHECK_STEPS: what a player does, step by step, the
+    // window printed after each - open=<card>;close=<card>;click=<button or
+    // card>;pick=<tabs or chips>:<n>;type=<search>:<text>;sleep=<ms>;tick
+    if (const char* steps = DEV_ENV("BEDROCK_PLUGIN_CHECK_STEPS"); steps && *steps) {
+        P::UiState view;
+        int k = 0;
+        auto show = [&](const std::string& what) {
+            const std::vector<P::UiItem> items = host.draw(id, view);
+            std::cout << "\n---- step " << k << ": " << what << ", " << items.size() << " pieces ----\n";
+            std::cout << "TITLE " << plugin->title() << "  |  " << plugin->subtitle() << "\n";
+            printPieces(items);
+            std::string nid, n;
+            while (host.takeNote(nid, n)) std::cout << "NOTE " << n << std::endl;
+        };
+        show("as it opens");
+        const std::string list = steps;
+        size_t from = 0;
+        while (from < list.size()) {
+            size_t semi = list.find(';', from);
+            if (semi == std::string::npos) semi = list.size();
+            const std::string step = list.substr(from, semi - from);
+            from = semi + 1;
+            if (step.empty()) continue;
+            k++;
+            const size_t eq = step.find('=');
+            const std::string verb = step.substr(0, eq), arg = eq == std::string::npos ? "" : step.substr(eq + 1);
+            const size_t colon = arg.find(':');
+            const std::string key = arg.substr(0, colon), value = colon == std::string::npos ? "" : arg.substr(colon + 1);
+            if (verb == "open") view.open.insert(arg);
+            else if (verb == "close") view.open.erase(arg);
+            else if (verb == "click") view.clicked = arg;
+            else if (verb == "pick") view.picks[key] = std::atoi(value.c_str());
+            else if (verb == "type") view.typed[key] = value;
+            else if (verb == "sleep") std::this_thread::sleep_for(std::chrono::milliseconds(std::atoi(arg.c_str())));
+            else if (verb == "tick") host.runTimers(true);
+            else {
+                std::cout << "No such step: " << step << std::endl;
+                return 1;
+            }
+            show(step);
+            if (!plugin->running()) {
+                std::cout << "Stopped: " << plugin->error() << std::endl;
+                return 1;
+            }
+        }
+        std::cout << "\nState kept in " << state.string() << std::endl;
+        return 0;
+    }
     // every tab, every card open: the cards a draw shows are opened and it
     // draws again, until nothing new opens
     P::UiState ui;

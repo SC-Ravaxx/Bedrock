@@ -16,6 +16,7 @@
 #include "DevTools.h"
 #include "EmbeddedData.h"
 #include "GamePlaces.h"
+#include "GameFiles.h"
 #include "GameTextMarks.h"
 #include "GameTexts.h"
 #include "LaserRange.h"
@@ -6557,6 +6558,203 @@ end
                                "started again reads the backups new since; a plugin removed is gone (" + first + " / " +
                                    second + ")");
         }
+        std::filesystem::remove_all(root, ec);
+    }
+
+    // ---- The game's settings files and SC Blackbox's backups of them ----
+    {
+        namespace G = SCMiner::GameFiles;
+        namespace P = SCMiner::Plugins;
+        const std::filesystem::path root = std::filesystem::temp_directory_path() / "bedrock_selftest_gamefiles";
+        std::error_code ec;
+        std::filesystem::remove_all(root, ec);
+        auto write = [](const std::filesystem::path& file, const std::string& text) {
+            std::filesystem::create_directories(file.parent_path());
+            std::ofstream out(file, std::ios::binary | std::ios::trunc);
+            out << text;
+        };
+        auto readBack = [](const std::filesystem::path& file) {
+            std::ifstream in(file, std::ios::binary);
+            return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        };
+        using K = G::Kind;
+        const bool named =
+            G::kindOf("client\\0\\Profiles\\default\\actionmaps.xml") == K::Keybinds &&
+            G::kindOf("client\\1\\profiles\\DEFAULT\\attributes.xml") == K::Settings &&
+            G::kindOf("client\\0\\controls\\mappings\\layout_Pilot_exported.xml") == K::Layout &&
+            G::kindOf("client\\0\\CustomCharacters\\Pilot.chf") == K::Character &&
+            G::kindOf("client\\0\\Profiles\\default\\profile.xml") == K::None &&
+            G::kindOf("client\\..\\Profiles\\default\\actionmaps.xml") == K::None &&
+            G::kindOf("client\\0\\controls\\mappings\\..\\..\\x.xml") == K::None &&
+            G::kindOf("client/0/Profiles/default/actionmaps.xml") == K::None &&
+            G::kindOf("C:\\x\\client\\0\\Profiles\\default\\actionmaps.xml") == K::None &&
+            G::kindOf("client\\0\\CustomCharacters\\Pilot.xml") == K::None &&
+            G::kindOf("client\\0\\controls\\mappings\\a\\b.xml") == K::None && G::kindOf("") == K::None &&
+            G::sha256("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" &&
+            G::sha256("") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+        allPassed &= check(named, "the game's settings files by name: keybinds, settings, layouts and characters under "
+                                  "a client folder, nothing else and no way out of it; SHA-256");
+
+        // a game folder: LIVE and PTU are channels, Other is not
+        const std::filesystem::path live = root / "game" / "LIVE", user = live / "user";
+        const std::string am = "client\\0\\Profiles\\default\\actionmaps.xml",
+                          at = "client\\0\\Profiles\\default\\attributes.xml",
+                          lay = "client\\0\\controls\\mappings\\layout_Pilot_exported.xml",
+                          chf = "client\\0\\CustomCharacters\\Pilot.chf";
+        write(user / "client" / "0" / "Profiles" / "default" / "actionmaps.xml",
+              "<ActionMaps><ActionProfiles profileName=\"default\"/></ActionMaps>");
+        write(user / "client" / "0" / "Profiles" / "default" / "attributes.xml", "<Attributes Version=\"1\"/>");
+        write(user / "client" / "0" / "Profiles" / "default" / "profile.xml", "<Profile/>");
+        write(user / "client" / "0" / "controls" / "mappings" / "layout_Pilot_exported.xml", "<ActionMaps/>");
+        write(user / "client" / "0" / "CustomCharacters" / "Pilot.chf", std::string("\x01\x02" "chf"));
+        write(root / "game" / "PTU" / "Data.p4k", "");
+        std::filesystem::create_directories(root / "game" / "Other" / "user", ec);
+        const std::vector<G::Channel> chans = G::channels(live);
+        const G::Set set = G::read(user);
+        const G::Hashes h = G::hashesOf(set);
+        const std::vector<std::string> names = G::names(user);
+        allPassed &= check(chans.size() == 2 && chans[0].name == "LIVE" && chans[1].name == "PTU" && set.size() == 4 &&
+                               names.size() == 4 && names[0] == lay && names[1] == chf && names[3] == at &&
+                               set.count(lay) && set.at(chf).data == std::string("\x01\x02" "chf") &&
+                               h.all == "c349083686a3cc6da159cbd278de268b7031406b6ffa98a9ac88636e368ab385" &&
+                               h.keybinds == "682341efe0028d141e3afbc843eaf8b8c9c49249748ae513251acba7da15b2b5" &&
+                               h.characters == "d7ff7b4b1bb5b2734a8d8a21b6d1b95e45f4fbda9bf65457fa91f08814ca4922" &&
+                               !G::stamp(user).empty(),
+                           "a game folder's channels, LIVE first; its files read and hashed as SC Blackbox does - "
+                           "all but the characters, the keybinds alone (" + h.all.substr(0, 8) + ")");
+
+        // backups: written, listed, read, kept, removed
+        const std::filesystem::path backups = root / "backups";
+        G::Backup info;
+        info.reason = "change";
+        info.summary = "2 keybinds";
+        info.detail = "Fire \xE2\x86\x92 Shoot";
+        info.binds = 12;
+        std::string why1, why2, why3;
+        const long long before = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                     std::chrono::system_clock::now().time_since_epoch()).count();
+        const std::string id1 = G::writeBackup(backups, "LIVE", user, set, info, why1);
+        std::filesystem::create_directories(backups / "LIVE" / ".incomplete-left", ec);
+        const std::string id2 = G::writeBackup(backups, "LIVE", user, set, info, why2);
+        const bool cleaned = !std::filesystem::exists(backups / "LIVE" / ".incomplete-left");
+        std::vector<G::Backup> listed = G::backups(backups, "LIVE");
+        const G::Set again = G::backupFiles(backups, "LIVE", id1, why3);
+        bool sameFiles = again.size() == set.size();
+        for (const auto& [rel, f] : set) {
+            sameFiles &= again.count(rel) && again.at(rel).data == f.data && again.at(rel).time == f.time;
+        }
+        const std::string infoText = readBack(backups / "LIVE" / id1 / "backup-info.txt");
+        const bool written = id1.size() == 19 && id1[10] == '_' && !id2.empty() && id2 != id1 && cleaned &&
+                             listed.size() == 2 && listed[0].id == id2 && listed[1].id == id1 &&
+                             listed[1].reason == "change" && listed[1].detail == info.detail && listed[1].binds == 12 &&
+                             !listed[1].kept && listed[1].allHash == h.all && listed[1].keybindHash == h.keybinds &&
+                             listed[1].characters == 1 && listed[1].counted && listed[1].created >= before - 1000 &&
+                             listed[1].created <= before + 60000 && sameFiles &&
+                             infoText.rfind("# SC Blackbox.", 0) == 0 && infoText.find("\r\nchannel=LIVE\r\n") != std::string::npos &&
+                             infoText.find("\r\nsummary=2 keybinds\r\n") != std::string::npos &&
+                             !std::filesystem::exists(backups / "LIVE" / id1 / "user" / "client" / "0" / "Profiles" /
+                                                      "default" / "profile.xml");
+        std::string why4, why5, why6, why7;
+        const bool marked = G::markBackup(backups, "LIVE", id1, true, why4);
+        listed = G::backups(backups, "LIVE");
+        const bool kept = marked && listed.size() == 2 && listed[1].kept && listed[1].counted && listed[1].binds == 12;
+        const bool removed = G::removeBackup(backups, "LIVE", id2, why5) && !std::filesystem::exists(backups / "LIVE" / id2) &&
+                             !G::removeBackup(backups, "LIVE", "..", why6) && !G::removeBackup(backups, "LIVE", "nope", why7) &&
+                             G::backups(backups, "LIVE").size() == 1;
+        // ...and one SC Blackbox wrote
+        write(backups / "LIVE" / "2026-10-29_15-47-24" / "backup-info.txt",
+              "# SC Blackbox. The game files are in the \"user\" folder next to this file.\r\n"
+              "created=2026-10-29T15:47:24.5681841+01:00\r\nchannel=LIVE\r\nsource=X\r\nreason=while-playing\r\n"
+              "summary=1 game setting\r\nkept=0\r\nbinds=211\r\nallhash=a\r\nkeybindhash=b\r\n");
+        write(backups / "LIVE" / "2026-10-29_15-47-24" / "user" / "client" / "0" / "Profiles" / "default" /
+                  "actionmaps.xml", "<ActionMaps/>");
+        listed = G::backups(backups, "LIVE");
+        std::string why8;
+        const G::Set theirs = G::backupFiles(backups, "LIVE", "2026-10-29_15-47-24", why8);
+        const bool foreign = listed.size() == 2 && listed[1].id == "2026-10-29_15-47-24" &&
+                             listed[1].created == 1793285244568LL && !listed[1].counted && listed[1].characters == 0 &&
+                             listed[1].binds == 211 && theirs.size() == 1 && theirs.count(am);
+        allPassed &= check(written && kept && removed && foreign,
+                           "backups in SC Blackbox's form: written whole under the time's name, a second beside it, "
+                           "what a write left half done cleared, listed newest first, read back byte for byte with "
+                           "their times, kept, removed - and one of SC Blackbox's read (" + why1 + why2 + why3 + why4 +
+                               why5 + ")");
+
+        // files put back: whole, read-only kept so, nothing else touched
+        const std::filesystem::path amFile = user / "client" / "0" / "Profiles" / "default" / "actionmaps.xml";
+        std::filesystem::permissions(amFile, std::filesystem::perms::owner_write, std::filesystem::perm_options::remove, ec);
+#ifdef _WIN32
+        SetFileAttributesW(amFile.wstring().c_str(), GetFileAttributesW(amFile.wstring().c_str()) | FILE_ATTRIBUTE_READONLY);
+#endif
+        std::string why9, why10;
+        const int n = G::write(user, {{am, "<ActionMaps version=\"2\"/>"}, {"client\\0\\CustomCharacters\\Scout.chf", "c2"}},
+                               why9);
+        const std::filesystem::perms after = std::filesystem::status(amFile, ec).permissions();
+        const bool stillReadOnly = (after & std::filesystem::perms::owner_write) == std::filesystem::perms::none;
+        std::filesystem::permissions(amFile, std::filesystem::perms::owner_write, std::filesystem::perm_options::add, ec);
+#ifdef _WIN32
+        SetFileAttributesW(amFile.wstring().c_str(), GetFileAttributesW(amFile.wstring().c_str()) & ~FILE_ATTRIBUTE_READONLY);
+#endif
+        const bool refused = G::write(user, {{"client\\0\\..\\..\\evil.xml", "x"}}, why10) < 0 &&
+                             !std::filesystem::exists(user / "evil.xml");
+        allPassed &= check(n == 2 && readBack(amFile) == "<ActionMaps version=\"2\"/>" && stillReadOnly &&
+                               readBack(user / "client" / "0" / "CustomCharacters" / "Pilot.chf") ==
+                                   std::string("\x01\x02" "chf") &&
+                               readBack(user / "client" / "0" / "CustomCharacters" / "Scout.chf") == "c2" && refused,
+                           "files put back into the game's folder: each whole, a read-only one left read-only, the "
+                           "others as they were; a name out of the folder refused (" + why10 + ")");
+
+        // a plugin that asks for them, and one that does not
+        write(root / "hosted" / "gf" / "plugin.json",
+              "{\"id\":\"gf\",\"name\":\"GF\",\"version\":\"1\",\"access\":[\"game-files\"]}");
+        write(root / "hosted" / "gf" / "main.lua", R"LUA(
+local ticks = 0
+bedrock.every(1, function() ticks = ticks + 1 end)
+function draw(ui)
+  local names = {}
+  for _, c in ipairs(bedrock.game.channels()) do names[#names + 1] = c.name end
+  local files = bedrock.game.files("LIVE")
+  local n = 0
+  for _ in pairs(files) do n = n + 1 end
+  local h = bedrock.hashes(files)
+  local id = bedrock.backups.write("LIVE", files, {reason = "manual", summary = "s", binds = 3})
+  local list = bedrock.backups.list("LIVE")
+  local back = bedrock.backups.files("LIVE", id)
+  local am = "client\\0\\Profiles\\default\\actionmaps.xml"
+  ui.text(table.concat(names, ",") .. "|" .. n .. "|" .. list[1].reason .. "|" .. tostring(list[1].binds) .. "|" ..
+          (list[1].allhash == h.all and "same" or "other") .. "|" .. (back[am].data == files[am].data and "back" or "lost") ..
+          "|" .. ticks)
+  local ok, why = bedrock.game.restore("LIVE", {["client\\0\\Profiles\\default\\attributes.xml"] = "<Attributes Version=\"2\"/>"})
+  ui.text(tostring(ok) .. "|" .. tostring(why))
+  ui.text(pcall(bedrock.backups.write, "LIVE", {["client\\0\\..\\x.xml"] = "x"}, {}) and "took it" or "refused it")
+  local none, nowhy = bedrock.backups.list("NOPE")
+  ui.text(tostring(none) .. "|" .. tostring(nowhy))
+end
+)LUA");
+        write(root / "hosted" / "plain" / "plugin.json", "{\"id\":\"plain\",\"name\":\"Plain\",\"version\":\"1\"}");
+        write(root / "hosted" / "plain" / "main.lua",
+              "function draw(ui) ui.text(tostring(bedrock.game) .. '|' .. tostring(bedrock.backups) .. '|' .. "
+              "tostring(bedrock.hashes) .. '|' .. type(bedrock.every)) end\n");
+        std::string seenGf, seenPlain;
+        {
+            P::Host host(root / "hosted", root / "hoststate", "2.7.0", P::trustedKeys(), true);
+            host.setGameFolder(live);
+            host.setBackupRoot(root / "pluginbackups");
+            host.load();
+            const bool ran = host.runTimers(true);
+            P::UiState st;
+            for (const auto& item : host.draw("gf", st)) seenGf += item.text + "/";
+            P::UiState st2;
+            for (const auto& item : host.draw("plain", st2)) seenPlain += item.text + "/";
+            if (!ran) seenGf += "no timer";
+        }
+        const std::string restored = G::gameRunning() ? "nil|Star Citizen is running/" : "1|nil/";
+        allPassed &= check(seenGf == "LIVE,PTU|5|manual|3|same|back|1/" + restored + "refused it/nil|no such channel/" &&
+                               seenPlain == "nil|nil|nil|function/" &&
+                               std::filesystem::exists(root / "pluginbackups" / "LIVE"),
+                           "a plugin with game-files access: channels, files, hashes, backups written and read back, "
+                           "files put back unless the game runs, a bad name refused, its timer run; one without "
+                           "has none of it (" + seenGf + " / " + seenPlain + ")");
         std::filesystem::remove_all(root, ec);
     }
 

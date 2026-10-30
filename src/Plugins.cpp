@@ -1,5 +1,6 @@
 #include "Plugins.h"
 
+#include "GameFiles.h"
 #include "MiniJson.h"
 #include "PluginKeys.h"
 #include "Reputation.h"
@@ -460,6 +461,10 @@ std::string signatureOf(const std::string& manifest, const Key& seed) {
 
 // ---- the folders -------------------------------------------------------------
 
+bool Info::reaches(const std::string& what) const {
+    return std::find(access.begin(), access.end(), what) != access.end();
+}
+
 std::vector<Info> discover(const std::filesystem::path& root, const std::vector<Key>& keys, bool acceptUnsigned,
                            const std::string& bedrockVersion) {
     std::vector<Info> found;
@@ -484,6 +489,13 @@ std::vector<Info> discover(const std::filesystem::path& root, const std::vector<
         info.version = json.textOr("version");
         info.description = json.textOr("description");
         info.needs = json.textOr("bedrock");
+        if (const JsonValue* access = json.find("access")) {
+            if (access->kind == JsonValue::Kind::Array) {
+                for (const JsonValue& a : access->items) {
+                    if (a.kind == JsonValue::Kind::String) info.access.push_back(a.text);
+                }
+            }
+        }
         const std::string signature = readText(entry.path() / "plugin.sig", 4096);
         info.trusted = !signature.empty() && signedBy(manifestOf(entry.path()), signature, keys);
         if (!info.trusted && !acceptUnsigned) {
@@ -675,6 +687,335 @@ struct Api {
         return 1;
     }
 
+    static long long unixMs() {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::system_clock::now().time_since_epoch())
+            .count();
+    }
+
+    static int every(lua_State* L) {
+        Plugin* p = of(L);
+        const lua_Number seconds = luaL_checknumber(L, 1);
+        luaL_checktype(L, 2, LUA_TFUNCTION);
+        if (!(seconds >= 1 && seconds <= 3600)) return luaL_error(L, "bedrock.every: 1 to 3600 seconds");
+        if (p->timers_.size() >= 8) return luaL_error(L, "bedrock.every: 8 at most");
+        lua_pushvalue(L, 2);
+        Plugin::Timer t;
+        t.function = luaL_ref(L, LUA_REGISTRYINDEX);
+        t.everyMs = static_cast<long long>(seconds * 1000);
+        t.dueMs = unixMs() + t.everyMs;
+        p->timers_.push_back(t);
+        return 0;
+    }
+
+    // ---- the game's files and their backups (GameFiles.h) ----
+
+    // Bedrock's own file work: the time it takes is not the plugin's
+    struct Untimed {
+        Plugin* p;
+        std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+        explicit Untimed(Plugin* plugin) : p(plugin) {}
+        ~Untimed() { p->deadline_ += std::chrono::steady_clock::now() - t0; }
+        Untimed(const Untimed&) = delete;
+        Untimed& operator=(const Untimed&) = delete;
+    };
+
+    static int fail(lua_State* L, const std::string& why) {
+        lua_pushnil(L);
+        lua_pushlstring(L, why.data(), why.size());
+        return 2;
+    }
+
+    static bool channelOf(lua_State* L, int index, GameFiles::Channel& out) {
+        Plugin* p = of(L);
+        const std::string name = luaL_checkstring(L, index);
+        if (!p->places_) return false;
+        for (const GameFiles::Channel& c : GameFiles::channels(p->places_->gameFolder)) {
+            if (c.name == name) {
+                out = c;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static std::filesystem::path backupRoot(const Plugin* p) {
+        if (p->places_ && !p->places_->backupRoot.empty()) return p->places_->backupRoot;
+        return GameFiles::where().root;
+    }
+
+    static void pushText(lua_State* L, const char* key, const std::string& value) {
+        lua_pushlstring(L, value.data(), value.size());
+        lua_setfield(L, -2, key);
+    }
+
+    static void pushFiles(lua_State* L, const GameFiles::Set& set) {
+        lua_createtable(L, 0, static_cast<int>(set.size()));
+        for (const auto& [rel, f] : set) {
+            lua_createtable(L, 0, 2);
+            pushText(L, "data", f.data);
+            lua_pushinteger(L, static_cast<lua_Integer>(f.time));
+            lua_setfield(L, -2, "time");
+            lua_setfield(L, -2, rel.c_str());
+        }
+    }
+
+    // {[name] = {data = <bytes>, time = <ms>}} or {[name] = <bytes>}
+    static GameFiles::Set filesAt(lua_State* L, int index, const char* fn) {
+        index = lua_absindex(L, index);
+        luaL_checktype(L, index, LUA_TTABLE);
+        GameFiles::Set set;
+        lua_pushnil(L);
+        while (lua_next(L, index) != 0) {
+            if (lua_type(L, -2) != LUA_TSTRING) luaL_error(L, "%s: a file's name is text", fn);
+            size_t n = 0;
+            const char* k = lua_tolstring(L, -2, &n);
+            const std::string rel(k, n);
+            if (GameFiles::kindOf(rel) == GameFiles::Kind::None) {
+                luaL_error(L, "%s: '%s' is none of the game's settings files", fn, rel.c_str());
+            }
+            GameFiles::File f;
+            if (lua_type(L, -1) == LUA_TSTRING) {
+                size_t m = 0;
+                const char* d = lua_tolstring(L, -1, &m);
+                f.data.assign(d, m);
+            } else if (lua_istable(L, -1)) {
+                lua_getfield(L, -1, "data");
+                if (lua_type(L, -1) != LUA_TSTRING) luaL_error(L, "%s: %s has no data", fn, rel.c_str());
+                size_t m = 0;
+                const char* d = lua_tolstring(L, -1, &m);
+                f.data.assign(d, m);
+                lua_pop(L, 1);
+                lua_getfield(L, -1, "time");
+                f.time = lua_isinteger(L, -1) ? static_cast<long long>(lua_tointeger(L, -1)) : 0;
+                lua_pop(L, 1);
+            } else {
+                luaL_error(L, "%s: %s is neither bytes nor a file", fn, rel.c_str());
+            }
+            set[rel] = std::move(f);
+            lua_pop(L, 1);
+        }
+        return set;
+    }
+
+    static std::string fieldText(lua_State* L, int index, const char* key) {
+        lua_getfield(L, index, key);
+        std::string v;
+        if (lua_type(L, -1) == LUA_TSTRING || lua_type(L, -1) == LUA_TNUMBER) {
+            size_t n = 0;
+            const char* s = lua_tolstring(L, -1, &n);
+            v.assign(s, n);
+        }
+        lua_pop(L, 1);
+        return v;
+    }
+
+    static int gameChannels(lua_State* L) {
+        Plugin* p = of(L);
+        Untimed untimed(p);
+        const std::vector<GameFiles::Channel> list =
+            p->places_ ? GameFiles::channels(p->places_->gameFolder) : std::vector<GameFiles::Channel>{};
+        lua_createtable(L, static_cast<int>(list.size()), 0);
+        lua_Integer i = 1;
+        for (const GameFiles::Channel& c : list) {
+            lua_createtable(L, 0, 2);
+            pushText(L, "name", c.name);
+            lua_createtable(L, static_cast<int>(c.aliases.size()), 0);
+            lua_Integer k = 1;
+            for (const std::string& a : c.aliases) {
+                lua_pushlstring(L, a.data(), a.size());
+                lua_rawseti(L, -2, k++);
+            }
+            lua_setfield(L, -2, "aliases");
+            lua_rawseti(L, -2, i++);
+        }
+        return 1;
+    }
+
+    static int gameRunning(lua_State* L) {
+        Untimed untimed(of(L));
+        lua_pushboolean(L, GameFiles::gameRunning());
+        return 1;
+    }
+
+    static int gameBlackbox(lua_State* L) {
+        Untimed untimed(of(L));
+        lua_pushboolean(L, GameFiles::blackboxRunning());
+        return 1;
+    }
+
+    static int gameStamp(lua_State* L) {
+        Untimed untimed(of(L));
+        GameFiles::Channel c;
+        if (!channelOf(L, 1, c)) return fail(L, "no such channel");
+        const std::string s = GameFiles::stamp(c.user());
+        lua_pushlstring(L, s.data(), s.size());
+        return 1;
+    }
+
+    static int gameFiles(lua_State* L) {
+        Untimed untimed(of(L));
+        GameFiles::Channel c;
+        if (!channelOf(L, 1, c)) return fail(L, "no such channel");
+        pushFiles(L, GameFiles::read(c.user()));
+        return 1;
+    }
+
+    static int gamePlayed(lua_State* L) {
+        Untimed untimed(of(L));
+        GameFiles::Channel c;
+        if (!channelOf(L, 1, c)) return fail(L, "no such channel");
+        lua_pushinteger(L, static_cast<lua_Integer>(GameFiles::played(c.user())));
+        return 1;
+    }
+
+    static int gameRestore(lua_State* L) {
+        Untimed untimed(of(L));
+        GameFiles::Channel c;
+        if (!channelOf(L, 1, c)) return fail(L, "no such channel");
+        const GameFiles::Set set = filesAt(L, 2, "bedrock.game.restore");
+        // the game writes these files itself, over what was put in
+        if (GameFiles::gameRunning()) return fail(L, "Star Citizen is running");
+        std::map<std::string, std::string> files;
+        for (const auto& [rel, f] : set) files[rel] = f.data;
+        std::string why;
+        const int n = GameFiles::write(c.user(), files, why);
+        if (n < 0) return fail(L, why);
+        lua_pushinteger(L, n);
+        return 1;
+    }
+
+    static int backupsWhere(lua_State* L) {
+        Plugin* p = of(L);
+        Untimed untimed(p);
+        const GameFiles::Where w = GameFiles::where();
+        const std::filesystem::path root = p->places_ && !p->places_->backupRoot.empty() ? p->places_->backupRoot : w.root;
+        lua_createtable(L, 0, 3);
+        pushText(L, "folder", GameFiles::textOf(root));
+        lua_pushinteger(L, w.keep);
+        lua_setfield(L, -2, "keep");
+        lua_pushinteger(L, w.keepDistinct);
+        lua_setfield(L, -2, "keepdistinct");
+        return 1;
+    }
+
+    static int backupsList(lua_State* L) {
+        Plugin* p = of(L);
+        Untimed untimed(p);
+        GameFiles::Channel c;
+        if (!channelOf(L, 1, c)) return fail(L, "no such channel");
+        const std::vector<GameFiles::Backup> list = GameFiles::backups(backupRoot(p), c.name);
+        lua_createtable(L, static_cast<int>(list.size()), 0);
+        lua_Integer i = 1;
+        for (const GameFiles::Backup& b : list) {
+            lua_createtable(L, 0, 16);
+            pushText(L, "id", b.id);
+            lua_pushinteger(L, static_cast<lua_Integer>(b.created));
+            lua_setfield(L, -2, "created");
+            pushText(L, "reason", b.reason);
+            pushText(L, "restoredfrom", b.restoredFrom);
+            pushText(L, "restoredparts", b.restoredParts);
+            pushText(L, "summary", b.summary);
+            pushText(L, "detail", b.detail);
+            pushText(L, "flag", b.flag);
+            lua_pushboolean(L, b.kept);
+            lua_setfield(L, -2, "kept");
+            lua_pushinteger(L, b.binds);
+            lua_setfield(L, -2, "binds");
+            pushText(L, "allhash", b.allHash);
+            pushText(L, "keybindhash", b.keybindHash);
+            lua_pushinteger(L, b.characters);
+            lua_setfield(L, -2, "characters");
+            lua_pushboolean(L, b.counted);
+            lua_setfield(L, -2, "counted");
+            lua_rawseti(L, -2, i++);
+        }
+        return 1;
+    }
+
+    static int backupsFiles(lua_State* L) {
+        Plugin* p = of(L);
+        Untimed untimed(p);
+        GameFiles::Channel c;
+        if (!channelOf(L, 1, c)) return fail(L, "no such channel");
+        const std::string id = luaL_checkstring(L, 2);
+        std::string why;
+        const GameFiles::Set set = GameFiles::backupFiles(backupRoot(p), c.name, id, why);
+        if (!why.empty()) return fail(L, why);
+        pushFiles(L, set);
+        return 1;
+    }
+
+    static int backupsWrite(lua_State* L) {
+        Plugin* p = of(L);
+        Untimed untimed(p);
+        GameFiles::Channel c;
+        if (!channelOf(L, 1, c)) return fail(L, "no such channel");
+        const GameFiles::Set files = filesAt(L, 2, "bedrock.backups.write");
+        luaL_checktype(L, 3, LUA_TTABLE);
+        GameFiles::Backup info;
+        info.reason = fieldText(L, 3, "reason");
+        info.restoredFrom = fieldText(L, 3, "restoredfrom");
+        info.restoredParts = fieldText(L, 3, "restoredparts");
+        info.summary = fieldText(L, 3, "summary");
+        info.detail = fieldText(L, 3, "detail");
+        info.flag = fieldText(L, 3, "flag");
+        lua_getfield(L, 3, "kept");
+        info.kept = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 1);
+        lua_getfield(L, 3, "binds");
+        info.binds = lua_isinteger(L, -1) ? static_cast<int>(lua_tointeger(L, -1)) : -1;
+        lua_pop(L, 1);
+        if (files.empty()) return fail(L, "no files");
+        std::string why;
+        const std::string id = GameFiles::writeBackup(backupRoot(p), c.name, c.user(), files, info, why);
+        if (id.empty()) return fail(L, why);
+        lua_pushlstring(L, id.data(), id.size());
+        return 1;
+    }
+
+    static int backupsMark(lua_State* L) {
+        Plugin* p = of(L);
+        Untimed untimed(p);
+        GameFiles::Channel c;
+        if (!channelOf(L, 1, c)) return fail(L, "no such channel");
+        const std::string id = luaL_checkstring(L, 2);
+        const bool kept = lua_toboolean(L, 3) != 0;
+        std::string why;
+        if (!GameFiles::markBackup(backupRoot(p), c.name, id, kept, why)) return fail(L, why);
+        lua_pushboolean(L, 1);
+        return 1;
+    }
+
+    static int backupsRemove(lua_State* L) {
+        Plugin* p = of(L);
+        Untimed untimed(p);
+        GameFiles::Channel c;
+        if (!channelOf(L, 1, c)) return fail(L, "no such channel");
+        const std::string id = luaL_checkstring(L, 2);
+        std::string why;
+        if (!GameFiles::removeBackup(backupRoot(p), c.name, id, why)) return fail(L, why);
+        lua_pushboolean(L, 1);
+        return 1;
+    }
+
+    static int backupsLog(lua_State* L) {
+        Plugin* p = of(L);
+        Untimed untimed(p);
+        GameFiles::log(backupRoot(p), luaL_checkstring(L, 1));
+        return 0;
+    }
+
+    static int hashes(lua_State* L) {
+        Untimed untimed(of(L));
+        const GameFiles::Hashes h = GameFiles::hashesOf(filesAt(L, 1, "bedrock.hashes"));
+        lua_createtable(L, 0, 3);
+        pushText(L, "all", h.all);
+        pushText(L, "keybinds", h.keybinds);
+        pushText(L, "characters", h.characters);
+        return 1;
+    }
+
     // ---- ui ----
     static UiItem& add(lua_State* L, UiItem::Kind kind) {
         Plugin* p = of(L);
@@ -862,7 +1203,8 @@ void* Plugin::allocate(void* self, void* block, size_t oldSize, size_t newSize) 
     return moved;
 }
 
-Plugin::Plugin(Info info, std::filesystem::path stateFile) : info_(std::move(info)), stateFile_(std::move(stateFile)) {}
+Plugin::Plugin(Info info, std::filesystem::path stateFile, const Places* places)
+    : info_(std::move(info)), stateFile_(std::move(stateFile)), places_(places) {}
 
 Plugin::~Plugin() {
     if (lua_) lua_close(lua_);
@@ -874,6 +1216,7 @@ void Plugin::stop(const std::string& why) {
         lua_ = nullptr;
     }
     watches_.clear();
+    timers_.clear();
     used_ = 0;
     error_ = why;
     std::cout << "\nPlugin " << info_.id << " stopped: " << why << std::endl;
@@ -945,10 +1288,29 @@ bool Plugin::start() {
     const luaL_Reg bedrock[] = {{"data", &Api::data},     {"load", &Api::load},       {"save", &Api::save},
                                 {"watch", &Api::watch},   {"now", &Api::now},         {"time", &Api::time},
                                 {"note", &Api::note},     {"redraw", &Api::redraw},   {"require", &Api::require},
-                                {"copy", &Api::copy},     {"date", &Api::date},       {nullptr, nullptr}};
+                                {"copy", &Api::copy},     {"date", &Api::date},       {"every", &Api::every},
+                                {nullptr, nullptr}};
     luaL_newlib(lua_, bedrock);
     lua_pushstring(lua_, info_.id.c_str());
     lua_setfield(lua_, -2, "id");
+    // ...and for a plugin that asks for them, the game's settings files and
+    // their backups (GameFiles.h)
+    if (info_.reaches("game-files")) {
+        const luaL_Reg game[] = {{"channels", &Api::gameChannels}, {"running", &Api::gameRunning},
+                                 {"blackbox", &Api::gameBlackbox},   {"stamp", &Api::gameStamp},
+                                 {"files", &Api::gameFiles},         {"played", &Api::gamePlayed},
+                                 {"restore", &Api::gameRestore},     {nullptr, nullptr}};
+        luaL_newlib(lua_, game);
+        lua_setfield(lua_, -2, "game");
+        const luaL_Reg backups[] = {{"where", &Api::backupsWhere}, {"list", &Api::backupsList},
+                                    {"files", &Api::backupsFiles}, {"write", &Api::backupsWrite},
+                                    {"mark", &Api::backupsMark},   {"remove", &Api::backupsRemove},
+                                    {"log", &Api::backupsLog},     {nullptr, nullptr}};
+        luaL_newlib(lua_, backups);
+        lua_setfield(lua_, -2, "backups");
+        lua_pushcfunction(lua_, &Api::hashes);
+        lua_setfield(lua_, -2, "hashes");
+    }
     lua_setglobal(lua_, "bedrock");
     const luaL_Reg ui[] = {{"heading", &Api::heading}, {"text", &Api::text},       {"tabs", &Api::tabs},
                            {"chips", &Api::chips},     {"search", &Api::search},   {"card", &Api::card},
@@ -1044,6 +1406,21 @@ std::string Plugin::takeNote() {
     std::string n;
     n.swap(note_);
     return n;
+}
+
+bool Plugin::runTimers(long long nowMs, bool all) {
+    bool ran = false;
+    for (size_t i = 0; lua_ && i < timers_.size(); i++) {
+        if (!all && nowMs < timers_[i].dueMs) continue;
+        timers_[i].dueMs = nowMs + timers_[i].everyMs;
+        lua_rawgeti(lua_, LUA_REGISTRYINDEX, timers_[i].function);
+        ran = true;
+        if (!call(0, 0, CALL_MS)) {
+            changed_ = true;   // stopped: its window says so
+            break;
+        }
+    }
+    return ran;
 }
 
 std::string Plugin::takeCopy() {

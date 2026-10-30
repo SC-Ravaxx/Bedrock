@@ -308,7 +308,7 @@ void Host::startSlot(Slot& s) {
     s.backlog.clear();
     s.next = 0;
     s.historyDone = true;
-    s.plugin = std::make_unique<Plugin>(s.info, statePath(s.info.id, ".json"));
+    s.plugin = std::make_unique<Plugin>(s.info, statePath(s.info.id, ".json"), &places_);
     if (!s.plugin->start()) return;
     s.texts = s.plugin->oldWatches();
     queueHistory(s);
@@ -388,6 +388,7 @@ void Host::finishHistory(Slot& s) {
 void Host::setGameFolder(const std::filesystem::path& folder) {
     if (folder == gameFolder_) return;
     gameFolder_ = folder;
+    places_.gameFolder = folder;
     for (auto& s : slots_) {
         if (s->plugin && s->plugin->running() && s->historyDone && s->held.empty()) queueHistory(*s);
     }
@@ -404,7 +405,19 @@ void Host::liveLine(std::string_view line) {
     }
 }
 
+bool Host::runTimers(bool all) {
+    const long long now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                              std::chrono::system_clock::now().time_since_epoch())
+                              .count();
+    bool ran = false;
+    for (auto& s : slots_) {
+        if (s->plugin && s->plugin->running()) ran |= s->plugin->runTimers(now, all);
+    }
+    return ran;
+}
+
 bool Host::tick(int budgetMs) {
+    runTimers();
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(budgetMs);
     bool took = false;
     for (auto& sp : slots_) {

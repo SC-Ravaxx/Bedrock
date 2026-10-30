@@ -73,11 +73,17 @@ public:
 
     // The game's folder, whose logbackups hold the older logs
     void setGameFolder(const std::filesystem::path& folder);
+    // The backups' folder for the plugins with game-files access; "" for SC
+    // Blackbox's own (a test's or a picture's)
+    void setBackupRoot(const std::filesystem::path& root) { places_.backupRoot = root; }
     // A line of the live Game.log
     void liveLine(std::string_view line);
     // A while spent on the older logs, `budgetMs` at most; true where a
-    // plugin took lines of them
+    // plugin took lines of them. The plugins' bedrock.every functions that
+    // are due run first
     bool tick(int budgetMs = 8);
+    // ...those alone - or all of them, due or not; whether one ran
+    bool runTimers(bool all = false);
     // Whether a plugin still reads the older logs, and how far it is
     bool readingHistory(const std::string& id, int* done = nullptr, int* all = nullptr) const;
 
@@ -101,6 +107,7 @@ private:
     std::filesystem::path statePath(const std::string& id, const char* ending) const;
 
     std::filesystem::path root_, stateDir_, gameFolder_;
+    Places places_;
     std::string version_;
     std::vector<Key> keys_;
     bool acceptUnsigned_ = false;

@@ -255,6 +255,7 @@ set(CORE_SOURCES
     third_party/qrcodegen/qrcodegen.cpp
     src/Plugins.cpp
     src/PluginHost.cpp
+    src/GameFiles.cpp
     ${PLUGIN_RUNTIME_SOURCES}
 )
 

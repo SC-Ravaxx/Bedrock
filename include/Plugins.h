@@ -23,8 +23,37 @@
 //   bedrock.copy(text)           ...text onto the clipboard, from a click
 //   bedrock.redraw()             its window drawn again
 //   bedrock.require(name)        its own <name>.lua
+//   bedrock.every(seconds, f)    f() every `seconds` (1 to 3600, 8 at most),
+//                                the first time `seconds` from now
 //   title = "..."                its window's title
 //   function draw(ui) ... end    its window: see UiItem
+//
+// A plugin whose plugin.json says "access": ["game-files"] has the game's
+// settings files besides (GameFiles.h for the names and the backups' form) -
+// keybinds, saved layouts, game settings, characters, nothing else - and
+// SC Blackbox's backups of them. `ch` is a channel's name, `files` a table
+// {[name] = {data = <bytes>, time = <Unix ms>}}:
+//
+//   bedrock.game.channels()        {{name = "LIVE", aliases = {...}}, ...}
+//   bedrock.game.running()         whether Star Citizen runs
+//   bedrock.game.blackbox()        ...and the SC Blackbox app
+//   bedrock.game.stamp(ch)         a text that changes when one of its files does
+//   bedrock.game.files(ch)         its files as they are
+//   bedrock.game.played(ch)        when its keybinds were written, Unix ms; 0
+//   bedrock.game.restore(ch, {[name] = <bytes>})   files put in; n, or nil and
+//                                  why (not while the game runs)
+//   bedrock.backups.where()        {folder = ..., keep = 30, keepdistinct = 10}
+//   bedrock.backups.list(ch)       newest first: {id, created, reason, summary,
+//                                  detail, flag, kept, binds, allhash, keybindhash,
+//                                  restoredfrom, restoredparts, characters, counted}
+//   bedrock.backups.files(ch, id)  a backup's files; nil and why
+//   bedrock.backups.write(ch, files, info)  a new one: its id; nil and why
+//   bedrock.backups.mark(ch, id, kept)      true; nil and why
+//   bedrock.backups.remove(ch, id)          true; nil and why
+//   bedrock.backups.log(text)      a line in the folder's log.txt
+//   bedrock.hashes(files)          {all = ..., keybinds = ..., characters = ...}
+//
+// The time these take is Bedrock's, not counted against the plugin's.
 //
 // A table saved comes back as it went, but for one thing: the keys of a
 // table that is no list come back as text - t[5] as t["5"]. A plugin keeps
@@ -69,9 +98,19 @@ std::string signatureOf(const std::string& manifest, const Key& seed);
 struct Info {
     std::string id, name, version, description;
     std::string needs;                  // the oldest Bedrock it runs on; "" any
+    std::vector<std::string> access;    // what of the world it reaches: "game-files"
     std::filesystem::path folder;
     bool trusted = false;               // signed with one of the keys
     std::string problem;                // "" where it can run; else why not, in the window's words
+    bool reaches(const std::string& what) const;
+};
+
+// What the world is for the plugins that reach into it: the game's folder
+// Bedrock reads (a channel's, beside the others), and the backups' folder
+// ("" for SC Blackbox's own)
+struct Places {
+    std::filesystem::path gameFolder;
+    std::filesystem::path backupRoot;
 };
 
 // Whether version a is older than b: "2.10.1" against "2.9.0", by numbers
@@ -138,7 +177,7 @@ struct UiState {
 // A plugin running
 class Plugin {
 public:
-    Plugin(Info info, std::filesystem::path stateFile);
+    Plugin(Info info, std::filesystem::path stateFile, const Places* places = nullptr);
     ~Plugin();
     Plugin(const Plugin&) = delete;
     Plugin& operator=(const Plugin&) = delete;
@@ -162,6 +201,10 @@ public:
     // plugin stopped, where draw went wrong
     std::vector<UiItem> draw(UiState& state);
 
+    // Its bedrock.every functions that are due at `nowMs` (Unix ms) - or all
+    // of them, `all`; whether one ran
+    bool runTimers(long long nowMs, bool all = false);
+
     // What came of it since: a line it wants at the foot of the window; and
     // whether its window wants drawing anew - a watch of it ran, or it asked
     std::string takeNote();
@@ -180,16 +223,22 @@ private:
         int function = 0;   // its reference in the registry
         bool old = false;
     };
+    struct Timer {
+        int function = 0;
+        long long everyMs = 0, dueMs = 0;
+    };
     friend struct Api;
     bool call(int args, int results, int budgetMs);
     void stop(const std::string& why);
 
     Info info_;
     std::filesystem::path stateFile_;
+    const Places* places_ = nullptr;
     lua_State* lua_ = nullptr;
     size_t used_ = 0;
     std::chrono::steady_clock::time_point deadline_{};
     std::vector<Watch> watches_;
+    std::vector<Timer> timers_;
     std::string error_, note_, copy_;
     bool changed_ = false;
     // while draw runs: the window's state and the pieces so far
