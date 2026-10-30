@@ -2483,7 +2483,7 @@ float MinerGUI::rockStripHeight() const {
     if (rockContents_.parts.empty() || !everRead_) return 0.0f;
     // a third line, the SCU of every part, once the panel has said the rock's;
     // and under it what a player on UEX pays for a part of 900 or more
-    return (rock_.scu > 0 ? scaleF(54) : scaleF(40)) + (rockMarketLine().empty() ? 0.0f : scaleF(16));
+    return (rock_.scu > 0 ? scaleF(57) : scaleF(43)) + (rockMarketLine().empty() ? 0.0f : scaleF(16));
 }
 
 // How much of the rock a part is, in SCU: the rock's SCU off the panel times
@@ -6385,16 +6385,17 @@ void MinerGUI::drawRockCard(Gdiplus::Graphics& g, int cw) {
     // The mass, big, the way the signature number is. The panel's figure is
     // in kilograms: what it is and its unit stand beside it, on the lines
     // the other three figures use for theirs - their feet on the big
-    // number's line.
+    // number's line, the labels over them level with its top.
     float figuresFrom = left + scaleF(170);
     const float numberX = left - scaleF(8);
+    const float labelY = top + scaleF(37);
     if (rock_.mass > 0) {
         const std::wstring mass = formatNumber((int)rock_.mass);
         g.DrawString(mass.c_str(), -1, &valueFont, Gdiplus::PointF(numberX, top + scaleF(26)), &accentBrush);
         Gdiplus::RectF measured;
         g.MeasureString(mass.c_str(), -1, &valueFont, Gdiplus::PointF(0, 0), &measured);
         const float unitX = numberX + measured.Width;
-        g.DrawString(L"MASS", -1, &pillFont, Gdiplus::PointF(unitX, top + scaleF(40)), &faintBrush);
+        g.DrawString(L"MASS", -1, &pillFont, Gdiplus::PointF(unitX, labelY), &faintBrush);
         g.DrawString(L"kg", -1, &smallFont, Gdiplus::PointF(unitX, top + scaleF(54)), &dimBrush);
         Gdiplus::RectF unitW;
         g.MeasureString(L"MASS", -1, &pillFont, Gdiplus::PointF(0, 0), &unitW);
@@ -6406,7 +6407,7 @@ void MinerGUI::drawRockCard(Gdiplus::Graphics& g, int cw) {
         g.DrawString(L"—", -1, &valueFont, Gdiplus::PointF(numberX, top + scaleF(26)), &faintBrush);
         Gdiplus::RectF dashW;
         g.MeasureString(L"—", -1, &valueFont, Gdiplus::PointF(0, 0), &dashW);
-        g.DrawString(L"MASS", -1, &pillFont, Gdiplus::PointF(numberX + dashW.Width, top + scaleF(40)), &faintBrush);
+        g.DrawString(L"MASS", -1, &pillFont, Gdiplus::PointF(numberX + dashW.Width, labelY), &faintBrush);
     }
 
     // ...and the ore it is, in the corner where the signature card puts its pill
@@ -6448,7 +6449,7 @@ void MinerGUI::drawRockCard(Gdiplus::Graphics& g, int cw) {
     float fx = figuresFrom;
     const float step = (std::min)(scaleF(94), (card.GetRight() - scaleF(64) - fx) / 2);
     for (const Figure& f : figures) {
-        g.DrawString(f.label, -1, &pillFont, Gdiplus::PointF(fx, top + scaleF(40)), &faintBrush);
+        g.DrawString(f.label, -1, &pillFont, Gdiplus::PointF(fx, labelY), &faintBrush);
         Gdiplus::SolidBrush warnBrush(COL_YELLOW);
         g.DrawString(f.value.c_str(), -1, &figureFont, Gdiplus::PointF(fx - scaleF(1), top + scaleF(52)),
                      f.warn ? &warnBrush : &textBrush);
@@ -6482,9 +6483,10 @@ void MinerGUI::drawRockCard(Gdiplus::Graphics& g, int cw) {
         // The quality and the share beside it are two sizes of two faces on
         // one line: both stand on one baseline, on a whole pixel. Set from
         // their tops - 14 and 16 down - the share would stand four pixels
-        // under the quality.
+        // under the quality. (17 down from the strip's top: the name over
+        // them has room under it, as the labels above have.)
         const float figureAsc = fontAscent(figureFont), shareAsc = fontAscent(smallFont);
-        const float base = std::round(sy + scaleF(14) + figureAsc);
+        const float base = std::round(sy + scaleF(17) + figureAsc);
         float px = left;
         for (const RockPartRead* part : parts) {
             std::wstring name = toW(part->ore);
@@ -6534,7 +6536,7 @@ void MinerGUI::drawRockCard(Gdiplus::Graphics& g, int cw) {
         // what a player on the UEX marketplace pays for the best part of
         // quality 900 or more
         if (const std::wstring market = rockMarketLine(); !market.empty()) {
-            const float my = sy + (rock_.scu > 0 ? scaleF(54) : scaleF(40)) - scaleF(4);
+            const float my = sy + (rock_.scu > 0 ? scaleF(57) : scaleF(43)) - scaleF(4);
             Gdiplus::StringFormat trim;
             trim.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
             trim.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
