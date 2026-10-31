@@ -12479,9 +12479,13 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
         const float inset = scaleF(8);
 
         // A tick box first: filled when the library has it, empty when not,
-        // so the list reads as the checklist it is
+        // so the list reads as the checklist it is. A click on it ticks or
+        // unticks the blueprint, a click anywhere else in the row opens it -
+        // the box answers for the row's height up to the name.
         {
             Gdiplus::RectF box(rx + inset, ry + scaleF(4), scaleF(11), scaleF(11));
+            const Gdiplus::RectF tickHit(rx, ry, inset + scaleF(16), browH - scaleF(2));
+            craftHits_.push_back({tickHit, 17, index});
             if (isOwned(index)) {
                 fillRoundRect(g, box, scaleF(3), COL_ACCENT);
                 Gdiplus::Pen tick(COL_ACCENT_INK, scaleF(1.6f));
@@ -12494,7 +12498,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
                     Gdiplus::PointF(box.X + scaleF(8.3f), box.Y + scaleF(3.3f))};
                 g.DrawLines(&tick, mark, 3);
             } else {
-                strokeRoundRect(g, box, scaleF(3), tint(COL_TEXT, 50));
+                strokeRoundRect(g, box, scaleF(3), isHot(hoverCraft_, tickHit) ? COL_TEXT_DIM : tint(COL_TEXT, 50));
             }
         }
         const std::wstring name = toW(bp.name);
