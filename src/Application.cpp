@@ -4779,11 +4779,14 @@ void Application::pushPlugins() {
 
 void Application::fetchForPlugins(const std::string& id, const std::string& url) {
     pluginBusy_ = id;
-    pluginJob_ = std::async(std::launch::async, [id, url]() {
+    // A package goes with the install's number (none with stats=0), so that
+    // the server counts plugin downloads by install; the list goes without.
+    std::vector<std::string> headers = id.empty() ? std::vector<std::string>() : installHeader();
+    pluginJob_ = std::async(std::launch::async, [id, url, headers]() {
         PluginFetch f;
         f.id = id;
         if (url.rfind("https://", 0) == 0) {
-            f.ok = httpsGet(url, {}, f.body, f.why);
+            f.ok = httpsGet(url, headers, f.body, f.why);
             return f;
         }
 #ifdef BEDROCK_DEV_TOOLS
