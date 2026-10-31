@@ -24,8 +24,10 @@ struct ContractPayout;
 // blueprint had before the oldest log, or from somewhere that writes no
 // line. In 4.10 logs, 42 of 42 such completions paid while one was missing;
 // before 4.10 it does not hold, so logs of an older game are not looked at.
-// Which contracts, and which blueprints, is CONTRACT_PAYOUTS
-// (GameTextMarks.h): only titles every variant of which pays at 100 %, and
+// Which contracts, and which blueprints: where the log named the contract
+// as it was taken (the objective marker, see Running), that variant's own
+// pools - CONTRACT_VARIANT_PAYOUTS; otherwise CONTRACT_PAYOUTS by the title
+// (GameTextMarks.h), only titles every variant of which pays at 100 %, and
 // only what all their pools share.
 class ContractScan {
 public:
@@ -75,6 +77,9 @@ public:
     static std::string bareTitle(std::string_view logTitle);
     // The payout of a bare title, when exactly one entry matches it
     static const ContractPayout* payoutFor(const std::string& bare);
+    // The payout of the very contract, "generator/debug" as the objective
+    // marker names it; nullptr when it is not sure to pay
+    static const ContractPayout* payoutForContract(std::string_view contract);
     // A title of the table - {*} where the game fills in a place or a name -
     // against a bare one, case aside
     static bool titleMatches(const char* pattern, const std::string& bare);

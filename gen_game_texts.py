@@ -609,6 +609,41 @@ for pattern in list(payouts):
         report["payouts matching another title"] += 1
 report["sure payouts"] = len(payouts)
 
+# --- ...and by the very contract --------------------------------------------------
+# The log names the contract a mission runs on when it is taken:
+#   Creating objective marker: missionId [..], generator name
+#   [CitizensForProsperity_DestroyItems], contract
+#   [CFP_Pyro_RegionA_Rank0_VE_1AsteroidBase_Criminals_Sabotage], ...
+# With the variant known, what is sure is all of its own pools, not the
+# overlap of every variant of the title. Disable Outlaw Stronghold at ... pays
+# out of one pool in Pyro I, Monox and Bloom and out of another in Pyro IV,
+# Pyro V and Terminus, with nothing in common: by the title nothing is sure,
+# by the variant its whole pool is. The other rules stay: every pool at
+# 100 %, and a name the log cannot tell from one that pays nothing (the same
+# generator and debug name twice in a file) is not sure.
+records_of_contract = defaultdict(list)
+for r in all_records:
+    if r.get("contract"):
+        records_of_contract[r["contract"]].append(r)
+bp_of_contract = defaultdict(list)
+for r in bp_records:
+    if r.get("contract"):
+        bp_of_contract[r["contract"]].append(r)
+variant_payouts = OrderedDict()
+for key in sorted(bp_of_contract):
+    if any(not r["bp"] for r in records_of_contract.get(key, [])):
+        continue
+    sure = None
+    for v in bp_of_contract[key]:
+        if not v["pools"] or any(abs(float(pool.get("chance", 0)) - 1.0) > 1e-6 for pool in v["pools"]):
+            sure = None
+            break
+        rows = {row(t) for pool in v["pools"] for t in pool["items"]} - {None}
+        sure = rows if sure is None else sure & rows
+    if sure:
+        variant_payouts[key] = sorted(sure)
+report["sure payouts by contract"] = len(variant_payouts)
+
 
 # --- only additions of these kinds, and tokens GameTexts.cpp can read -------------
 TOKEN = re.compile(r"\{S\}|\{I-?\d+\|[^{}]*\}|\{[OA]\d+:[\d,]*\}|\{T\d+:[\d,]*\|[^{}]*\}")
@@ -644,7 +679,7 @@ with io.open(out_path, "w", encoding="utf-8", newline="\n") as f:
     w("// CRAFT_BLUEPRINTS every variant of it pays out of at 100 %. Completing it\n")
     w("// and getting no blueprint means they are all owned - see BlueprintLibrary.\n")
     w("struct ContractPayout {\n")
-    w("    const char* title;\n")
+    w("    const char* title;    // in CONTRACT_VARIANT_PAYOUTS the contract, \"generator/debug\"\n")
     w("    const char* rows;     // \"12,57,300\"\n")
     w("};\n\n")
     w("inline const ContractPayout CONTRACT_PAYOUTS[] = {\n")
@@ -652,5 +687,14 @@ with io.open(out_path, "w", encoding="utf-8", newline="\n") as f:
         w('    {"%s", "%s"},\n' % (esc(title), ",".join(str(r) for r in rows)))
     w("};\n")
     w("inline constexpr int CONTRACT_PAYOUT_COUNT = %d;\n\n" % len(payouts))
+    w("// The same by the very contract, as the objective marker in Game.log names\n")
+    w("// it when it is taken (\"generator/debug\", sorted byte by byte): the rows\n")
+    w("// all of its own pools pay out of, every pool at 100 %. Where the log names\n")
+    w("// the contract this counts, and the title only where it does not.\n")
+    w("inline const ContractPayout CONTRACT_VARIANT_PAYOUTS[] = {\n")
+    for key, rows in variant_payouts.items():
+        w('    {"%s", "%s"},\n' % (esc(key), ",".join(str(r) for r in rows)))
+    w("};\n")
+    w("inline constexpr int CONTRACT_VARIANT_PAYOUT_COUNT = %d;\n\n" % len(variant_payouts))
     w("}  // namespace SCMiner\n")
 print("%d marks: %s" % (len(marks), ", ".join("%d %s" % (v, k) for k, v in report.items())))

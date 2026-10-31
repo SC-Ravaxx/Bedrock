@@ -285,6 +285,57 @@ int runSelfTest() {
         allPassed &= check(older.assumedCount() == 0 && paid.assumedCount() == 0 && twice.assumedCount() == 0 &&
                                twice.finishFile(s3) == 0,
                            "nothing is assumed from a log of 4.9, a contract that paid, or two at once with one blueprint");
+
+        // The contract the objective marker names: Disable Outlaw Stronghold
+        // at ... pays out of one pool in Pyro I, Monox and Bloom and out of
+        // another in Pyro IV, Pyro V and Terminus. By the title nothing is
+        // sure, by the contract its whole pool is.
+        auto marker = [](const char* mission, const char* contract) {
+            return std::string("[Notice] <CLocalMissionPhaseMarker::CreateMarker> Creating objective marker: missionId [") +
+                   mission + "], generator name [CitizensForProsperity_DestroyItems], contract [" + contract +
+                   "], contractDefinitionId[8b18d982-1e25-41a5-b159-e7e4ea5c9620], objectiveId "
+                   "[2a2bd487-7482-5841-9a54-d616df63de71], markerEntityId [85661]";
+        };
+        auto completeOf = [](const char* title, const char* mission) {
+            return std::string("[Notice] <SHUDEvent_OnNotification> Added notification \"Contract Complete: ") + title +
+                   ": \" [235] to queue. New queue size: 1, MissionId: [" + mission + "], ObjectiveId: []";
+        };
+        auto pays = [](const SCMiner::ContractPayout* p, int row) {
+            if (!p || row < 0) return false;
+            const std::string rows = std::string(",") + p->rows + ",";
+            return rows.find("," + std::to_string(row) + ",") != std::string::npos;
+        };
+        const char* regionA = "CFP_Pyro_RegionA_Rank0_VE_1AsteroidBase_Criminals_Sabotage";
+        const auto* monox = ContractScan::payoutForContract(std::string("CitizensForProsperity_DestroyItems/") + regionA);
+        const auto* terminus = ContractScan::payoutForContract(
+            "CitizensForProsperity_DestroyItems/CFP_Pyro_RegionC_Rank0_VE_1AsteroidBase_Criminals_Sabotage");
+        const int legs = rowOf("ADP-mk4 Legs Woodland"), shotgun = rowOf("BR-2 Shotgun"), pab = rowOf("PAB-1 Arms");
+        allPassed &= check(ContractScan::payoutFor("Disable Outlaw Stronghold at Asteroid Base") == nullptr &&
+                               pays(monox, legs) && !pays(monox, pab) && pays(terminus, pab) && !pays(terminus, legs) &&
+                               ContractScan::payoutForContract("CitizensForProsperity_DestroyItems/nothing") == nullptr,
+                           "Disable Outlaw Stronghold at ... is sure by the contract, not by the title: one pool in "
+                           "Pyro I, Monox and Bloom, another in Pyro IV, Pyro V and Terminus");
+
+        BlueprintLibrary named, unnamed;
+        ContractScan s4, s5;
+        const char* mission = "8243b854-f258-4aef-8d1f-3cc19c43a756";
+        const char* title = "Disable Outlaw Stronghold at Asteroid Base <EM4>[BP]</EM4>";
+        named.feedLine(at("14:00:00") + v410, s4);
+        named.feedLine(at("14:47:50") + received("BR-2 Shotgun"), s4);
+        named.feedLine(at("14:52:47") + marker(mission, regionA), s4);
+        named.feedLine(at("15:00:43") + completeOf(title, mission), s4);
+        named.feedLine(at("15:01:30") + later, s4);
+        unnamed.feedLine(at("14:00:00") + v410, s5);
+        unnamed.feedLine(at("14:47:50") + received("BR-2 Shotgun"), s5);
+        unnamed.feedLine(at("15:00:43") + completeOf(title, mission), s5);
+        unnamed.feedLine(at("15:01:30") + later, s5);
+        allPassed &= check(legs >= 0 && named.owned(legs) &&
+                               named.sourceOf(legs) == "assumed: Disable Outlaw Stronghold at Asteroid Base" &&
+                               named.sourceOf(shotgun) == "log" && pab >= 0 && !named.owned(pab) &&
+                               named.assumedCount() == 13 && unnamed.assumedCount() == 0,
+                           "...completed in Monox, the marker in the log, no blueprint: the 13 of its pool not "
+                           "received are assumed owned, none of the other region's; without the marker none (" +
+                               std::to_string(named.assumedCount()) + ", " + std::to_string(unnamed.assumedCount()) + ")");
     }
 
     // --- The player's rank with each outfit: their own contracts

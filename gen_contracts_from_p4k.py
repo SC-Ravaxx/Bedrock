@@ -637,6 +637,10 @@ contract_pools = {}      # a contract's own id -> the pools it pays out of, in t
 contract_files = 0
 for path in walk(os.path.join("contracts", "contractgenerator")):
     text = read(path)
+    # The contract by the names Game.log gives it, "generator/debug" (see the
+    # ranks below): the generator is the file's own record
+    _gen = re.match(r"\s*<ContractGenerator\.(\w+)", text)
+    gen_name = _gen.group(1) if _gen else ""
     if "BlueprintRewards" not in text:
         for _blk in re.split(r"(?=<(?:Career)?Contract\s)", text):
             if not re.match(r"<(?:Career)?Contract\s", _blk):
@@ -651,8 +655,9 @@ for path in walk(os.path.join("contracts", "contractgenerator")):
                 if _tm:
                     _tk = template_titles.get(_tm.group(1), "")
             _md = re.search(r'<ContractStringParam param="Description" value="@?([\w]+)"', _blk)
+            _dbg = (re.search(r'debugName="([^"]*)"', _blk) or [None, ""])[1]
             all_records.append({"titleKey": _tk, "descKey": _md.group(1) if _md else "",
-                                "debug": (re.search(r'debugName="([^"]*)"', _blk) or [None, ""])[1],
+                                "debug": _dbg, "contract": gen_name + "/" + _dbg if gen_name and _dbg else "",
                                 "standing": standing_names.get((re.search(r'minStanding="([0-9a-f-]{36})"', _blk) or [None, ""])[1], ""),
                                 "bp": "blueprintPool" in _blk, "unreleased": 'notForRelease="1"' in _head})
     if "BlueprintRewards" not in text:
@@ -735,8 +740,9 @@ for path in walk(os.path.join("contracts", "contractgenerator")):
                 if _tm:
                     _tk = template_titles.get(_tm.group(1), "")
             _md = re.search(r'<ContractStringParam param="Description" value="@?([\w]+)"', block)
+            _dbg = (re.search(r'debugName="([^"]*)"', block) or [None, ""])[1]
             all_records.append({"titleKey": _tk, "descKey": _md.group(1) if _md else "",
-                                "debug": (re.search(r'debugName="([^"]*)"', block) or [None, ""])[1],
+                                "debug": _dbg, "contract": gen_name + "/" + _dbg if gen_name and _dbg else "",
                                 "standing": standing_names.get((re.search(r'minStanding="([0-9a-f-]{36})"', block) or [None, ""])[1], ""),
                                 "bp": "blueprintPool" in block, "unreleased": 'notForRelease="1"' in _head})
             if "blueprintPool" not in block:
@@ -847,6 +853,7 @@ for path in walk(os.path.join("contracts", "contractgenerator")):
                 _pools_here.append({"chance": float(_ch or 1), "poolName": _pname,
                                     "items": [guid_to_tag.get(g, "") for g, _w in _entries if guid_to_tag.get(g)]})
             contract_records.append({"debug": debug, "titleKey": title_key, "descKey": desc_key, "title": title,
+                                     "contract": gen_name + "/" + debug if gen_name and debug else "",
                                      "faction": faction_names.get(faction, "") or handler_contractor,
                                      "standing": standing_names.get(standing, ""), "pools": _pools_here,
                                      "intro": "intro" in (debug or "").lower() or "intro" in (title_key or "").lower(),

@@ -160,6 +160,19 @@ const ContractPayout* ContractScan::payoutFor(const std::string& bare) {
     return found;
 }
 
+const ContractPayout* ContractScan::payoutForContract(std::string_view contract) {
+    // CONTRACT_VARIANT_PAYOUTS is sorted byte by byte (gen_game_texts.py)
+    int lo = 0, hi = CONTRACT_VARIANT_PAYOUT_COUNT - 1;
+    while (lo <= hi) {
+        const int mid = (lo + hi) / 2;
+        const int c = std::string_view(CONTRACT_VARIANT_PAYOUTS[mid].title).compare(contract);
+        if (c == 0) return &CONTRACT_VARIANT_PAYOUTS[mid];
+        if (c < 0) lo = mid + 1;
+        else hi = mid - 1;
+    }
+    return nullptr;
+}
+
 void ContractScan::reset() {
     ruleHolds_ = false;
     versionSeen_ = false;
@@ -331,7 +344,18 @@ void ContractScan::line(std::string_view text, std::vector<Unpaid>& out) {
         return;
     }
     const std::string bare = bareTitle(text.substr(start, end - start));
-    const ContractPayout* payout = payoutFor(bare);
+    // The very contract, when its objective marker was in this log: what its
+    // own pools pay out of. The title only where the log did not name it -
+    // a title can stand for variants with other pools (Disable Outlaw
+    // Stronghold at ...: one in Pyro I, Monox and Bloom, another in Pyro IV,
+    // Pyro V and Terminus).
+    const ContractPayout* payout = nullptr;
+    const size_t id = text.find("MissionId: [", tail);
+    const auto named = (id == std::string_view::npos || id + 12 + 36 > text.size())
+                           ? contractOf_.end()
+                           : contractOf_.find(std::string(text.substr(id + 12, 36)));
+    if (named != contractOf_.end()) payout = payoutForContract(named->second);
+    else payout = payoutFor(bare);
     if (!payout) return;
     // Two completions inside one window: which of them a blueprint belongs to
     // cannot be told, and neither says anything
