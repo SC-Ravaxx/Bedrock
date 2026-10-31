@@ -775,6 +775,41 @@ int runSelfTest() {
                                    "level changed or it moved five points, else ten minutes on - and never one "
                                    "that says less than the last");
 
+        // "Cheapest": a capacity alone stands for its step (light under 100 %,
+        // moderate under 200, heavy under 300), a level read beats it; the
+        // lower surcharge goes first even at more aUEC per SCU, then the fewer
+        // aUEC per SCU, without cargo the newer reading; never read goes last
+        {
+            auto rank = [](int level, double perScu, long long observed) {
+                S::PriceRank p;
+                p.level = level;
+                p.perScu = perScu;
+                p.observed = observed;
+                return p;
+            };
+            const bool cheapest =
+                S::surchargeLevel(781, 3) == 3 && S::surchargeLevel(31, -1) == 0 && S::surchargeLevel(99, -1) == 0 &&
+                S::surchargeLevel(100, -1) == 1 && S::surchargeLevel(245, -1) == 2 &&
+                S::surchargeLevel(304, -1) == 3 && S::surchargeLevel(278, 1) == 1 && S::surchargeLevel(-1, 0) == 0 &&
+                S::surchargeLevel(-1, -1) == -1 &&
+                S::cheaperFirst(rank(0, 520.0, 0), rank(3, 480.0, 0), true) &&
+                !S::cheaperFirst(rank(3, 480.0, 0), rank(0, 520.0, 0), true) &&
+                S::cheaperFirst(rank(0, 518.0, 0), rank(0, 523.0, 0), true) &&
+                !S::cheaperFirst(rank(0, 523.0, 0), rank(0, 518.0, 0), true) &&
+                !S::cheaperFirst(rank(1, 518.001, 0), rank(1, 518.0, 0), true) &&
+                !S::cheaperFirst(rank(1, 518.0, 0), rank(1, 518.001, 0), true) &&
+                S::cheaperFirst(rank(3, 900.0, 0), rank(-1, 100.0, 0), true) &&
+                !S::cheaperFirst(rank(-1, 100.0, 0), rank(3, 900.0, 0), true) &&
+                S::cheaperFirst(rank(1, 0.0, 2000), rank(1, 0.0, 1000), false) &&
+                !S::cheaperFirst(rank(1, 0.0, 1000), rank(1, 0.0, 2000), false) &&
+                S::cheaperFirst(rank(0, 0.0, 1000), rank(1, 0.0, 2000), false) &&
+                !S::cheaperFirst(rank(-1, 0.0, 0), rank(-1, 0.0, 0), false) &&
+                !S::cheaperFirst(rank(2, 1e12, 0), rank(2, 1e12, 0), true);
+            allPassed &= check(cheapest, "refinery \"Cheapest\": the lighter workload first, even at more aUEC per "
+                                         "SCU refined, then the fewer aUEC per SCU (or the newer reading with nothing "
+                                         "ticked), a capacity alone by its step of 100 %, and never read last");
+        }
+
         // The bars over the panels, drawn the size and colour they have at
         // 5120x1440: a SETUP's red band under one, a PROCESSING's amber, the
         // station's own panel with its orange heading under it and no band,

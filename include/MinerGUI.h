@@ -841,7 +841,8 @@ public:
     void openAboutForShot();     // ...and the ? card, which has no key
     void openBackupForShot();    // ...and the backup card, with a line in it
     void paintRefineryTo(HDC hdc);
-    void pickForShot();
+    void pickForShot(bool withHold = true);   // ...a hold in it, or (false) nothing ticked
+    void setRefineryCheapestForShot(bool on);   // ...its stations by price
     void showRefineryOrdersForShot(bool on);   // ...and its work orders' view
     void openLookingForShot();   // --screenshot only: the ore pick, open
     void setPlanPulseForShot(bool on);   // ...and the Ore Finder's blink held on or off
@@ -1549,6 +1550,9 @@ private:
     // True while the list is down: every click then closes it, one on an
     // entry picks first; the arrows walk it, Enter and Esc close it.
     bool refineryMethodOpen_ = false;
+    // The stations by price instead of by yield ("Cheapest"): the lowest
+    // surcharge first, then the fewest aUEC per SCU refined
+    bool refineryCheapest_ = false;
     // The shopping list needs ONE station, not a ranking: it is answering
     // "how much do I have to mine", and that depends on where it is refined.
     int cartStation_ = 0;       // index into REFINERIES
@@ -1559,7 +1563,9 @@ private:
     // kind 0 material, 1 system, 2 clear the picks, 3 the method field,
     // 4 less of a material, 5 more of it, 6 its amount (typed in),
     // 7 an entry of the dropped method list, 8 the work orders' tab,
-    // 9 an order's "Collected" (value: its place in refineryOrders_)
+    // 9 an order's "Collected" (value: its place in refineryOrders_),
+    // 10 the box that shares the workloads, 11 the order of the stations
+    // (value 0 best yield, 1 cheapest)
     struct RefHit { Gdiplus::RectF rect; int kind; int value; };
     std::vector<RefHit> refHits_;
     static LRESULT CALLBACK RefineryProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);

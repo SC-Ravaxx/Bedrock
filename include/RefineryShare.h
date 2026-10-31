@@ -60,5 +60,26 @@ bool worthSending(int capacity, int workload, long long now, int lastCapacity, i
 constexpr long long RESEND_SECONDS = 600;
 constexpr int CHANGE_POINTS = 5;
 
+// "Cheapest" in the Refinery window. The game adds no surcharge to a new
+// work order at a light workload, a small one at moderate, a moderate one at
+// heavy and a large one at extreme; how much is not in the game files.
+//
+// A station's step on that ladder: the level as read, or, where only the
+// capacity was made out, the step it falls in. Of the 284 readings with
+// both by 31 October 2026, 279 had light under 100 %, moderate under 200
+// and heavy under 300. -1 where neither was read.
+int surchargeLevel(int capacity, int workload);
+
+// A station as "Cheapest" ranks it
+struct PriceRank {
+    int level = -1;            // surchargeLevel; -1 never read, ranked last
+    double perScu = 0;         // aUEC per SCU refined, before the surcharge
+    long long observed = 0;    // when its workload was read
+};
+// Whether `a` goes before `b`: the lower surcharge first; at the same step,
+// with cargo the fewer aUEC per SCU refined (so the yield counts), without
+// cargo the newer reading
+bool cheaperFirst(const PriceRank& a, const PriceRank& b, bool cargo);
+
 }  // namespace RefineryShare
 }  // namespace SCMiner

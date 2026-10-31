@@ -4,6 +4,7 @@
 #include "RefineryTerminal.h"
 #include "UexReports.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
@@ -77,6 +78,23 @@ bool worthSending(int capacity, int workload, long long now, int lastCapacity, i
     if ((workload < 0 && lastWorkload >= 0) || (capacity < 0 && lastCapacity >= 0)) return false;
     if ((workload >= 0 && lastWorkload < 0) || (capacity >= 0 && lastCapacity < 0)) return true;
     return now - lastSent >= RESEND_SECONDS;
+}
+
+int surchargeLevel(int capacity, int workload) {
+    if (workload >= 0 && workload <= 3) return workload;
+    if (capacity < 0) return -1;
+    return capacity < 100 ? 0 : capacity < 200 ? 1 : capacity < 300 ? 2 : 3;
+}
+
+bool cheaperFirst(const PriceRank& a, const PriceRank& b, bool cargo) {
+    // never read goes after extreme
+    const int stepA = a.level < 0 ? 4 : a.level, stepB = b.level < 0 ? 4 : b.level;
+    if (stepA != stepB) return stepA < stepB;
+    if (!cargo) return a.observed > b.observed;
+    // compared in whole cents, so that two stations a rounding apart stay
+    // in the order they came in
+    auto cents = [](double v) { return std::llround((std::min)((std::max)(v, 0.0), 1e12) * 100.0); };
+    return cents(a.perScu) < cents(b.perScu);
 }
 
 }  // namespace RefineryShare

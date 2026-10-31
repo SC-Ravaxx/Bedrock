@@ -2237,6 +2237,21 @@ int runScreenshots(const std::string& dir) {
         gui.setRefineryShare(true, true);
         pump();
         if (gui.refineryHandle()) shoot(gui.refineryHandle(), "refinery_workloads.png", true);
+        // ...sorted by price instead: the lowest surcharge first, then the
+        // fewest aUEC per SCU refined - a capacity read alone counts by its
+        // step - and the same with nothing ticked
+        seen["MIC-L5 Modern Icarus Station"] = {62, 0, now - 50 * 60, 1, false};
+        seen["Stanton Gateway (Nyx)"] = {30, -1, now - 5 * 60, 1, false};
+        seen["CRU-L1 Ambitious Dream Station"] = {304, -1, now - 2 * 3600, 1, false};
+        gui.setRefineryWorkloads(seen);
+        gui.setRefineryCheapestForShot(true);
+        pump();
+        if (gui.refineryHandle()) shoot(gui.refineryHandle(), "refinery_cheapest.png", true);
+        gui.pickForShot(false);
+        pump();
+        if (gui.refineryHandle()) shoot(gui.refineryHandle(), "refinery_cheapest_empty.png", true);
+        gui.pickForShot();
+        gui.setRefineryCheapestForShot(false);
         gui.setRefineryWorkloads({});
         gui.setRefineryShare(false, false);
     }

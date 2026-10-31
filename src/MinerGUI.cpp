@@ -11,6 +11,7 @@
 #include "CraftingData.h"
 #include "RefineryData.h"
 #include "RefiningData.h"
+#include "RefineryShare.h"
 #include "RefineryTerminal.h"
 #include "resource.h"
 #include <dwmapi.h>
@@ -22000,9 +22001,19 @@ void MinerGUI::showRefineryOrdersForShot(bool on) {
     if (refinery_) InvalidateRect(refinery_, nullptr, TRUE);
 }
 
-void MinerGUI::pickForShot() {
+void MinerGUI::setRefineryCheapestForShot(bool on) {
+    refineryCheapest_ = on;
+    refineryScroll_ = 0;
+    if (refinery_) InvalidateRect(refinery_, nullptr, TRUE);
+}
+
+void MinerGUI::pickForShot(bool withHold) {
     refineryPicked_.clear();
     refineryAmount_.assign(REFINERY_MATERIAL_COUNT, 0.0f);
+    if (!withHold) {
+        if (refinery_) InvalidateRect(refinery_, nullptr, TRUE);
+        return;
+    }
     const struct { const char* ore; float scu; } hold[] = {
         {"Titanium (Ore)", 12.0f}, {"Quartz (Raw)", 6.0f}, {"Quantainium (Raw)", 1.5f}};
     for (int m = 0; m < REFINERY_MATERIAL_COUNT; m++) {
@@ -22067,7 +22078,7 @@ LRESULT MinerGUI::handleRefineryMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
                 if (hit.kind != 6 || hit.value != refineryTyping_) refineryTypeCommit();
                 // What is ticked, or which system, ranks the stations anew:
                 // the list starts again at its best
-                if (hit.kind == 0 || hit.kind == 1 || hit.kind == 2) refineryScroll_ = 0;
+                if (hit.kind == 0 || hit.kind == 1 || hit.kind == 2 || hit.kind == 11) refineryScroll_ = 0;
                 if (hit.kind == 6) {
                     refineryTypeStart(hit.value);
                 } else if (hit.kind == 0) {
@@ -22106,6 +22117,8 @@ LRESULT MinerGUI::handleRefineryMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
                 } else if (hit.kind == 10) {
                     refineryShareOn_ = !refineryShareOn_;
                     if (onRefineryShare_) onRefineryShare_(refineryShareOn_);
+                } else if (hit.kind == 11) {
+                    refineryCheapest_ = (hit.value == 1);
                 }
                 InvalidateRect(hwnd, nullptr, TRUE);
                 return 0;
@@ -22321,7 +22334,9 @@ void MinerGUI::paintRefinery(HDC hdc) {
         }
         g.DrawString(refineryOrdersView_
                          ? L"Work orders read at refinery terminals · Output and completion time"
-                         : L"Tick the cargo, set the amount, select a method · Stations sorted by yield",
+                         : refineryCheapest_
+                               ? L"Tick the cargo, set the amount, select a method · Stations sorted by price"
+                               : L"Tick the cargo, set the amount, select a method · Stations sorted by yield",
                      -1, &subFont,
                      Gdiplus::RectF(M + scaleF(15), (float)scale(35), (std::max)(scaleF(40), subRight - M - scaleF(15)),
                                     scaleF(16)),
@@ -22562,13 +22577,15 @@ void MinerGUI::paintRefinery(HDC hdc) {
         struct Row {
             int station;
             float yieldScu, cost, seconds;
-            bool complete;   // every factor known, nothing assumed
+            bool complete;        // every factor known, nothing assumed
+            int level;            // its workload's surcharge step (RefineryShare); -1 never read
+            long long observed;   // when that was read
         };
         std::vector<Row> rows;
         for (int s = 0; s < REFINERY_COUNT; s++) {
             if (refinerySystem_ != "ALL" &&
                 _stricmp(REFINERIES[s].system, refinerySystem_.c_str()) != 0) continue;
-            Row row{s, 0.0f, 0.0f, 0.0f, true};
+            Row row{s, 0.0f, 0.0f, 0.0f, true, -1, 0};
             for (int m : refineryPicked_) {
                 const float cscu = refineryAmountOf(m) * CSCU_PER_SCU;
                 const RefiningResult r = refine(cscu, s, m, refineryMethod_);
@@ -22578,12 +22595,32 @@ void MinerGUI::paintRefinery(HDC hdc) {
                 row.seconds += r.seconds;
                 if (!r.complete) row.complete = false;
             }
+            const auto seen = refineryWorkloads_.find(REFINERIES[s].name);
+            if (seen != refineryWorkloads_.end()) {
+                row.level = RefineryShare::surchargeLevel(seen->second.capacity, seen->second.workload);
+                row.observed = seen->second.observed;
+            }
             rows.push_back(row);
         }
-        // With nothing in the hold there is nothing to rank by, so the order
-        // the data comes in stands - by system, then by name. Ranking an
-        // empty hold would only invent an order.
-        if (!refineryPicked_.empty()) {
+        if (refineryCheapest_) {
+            // By price: the lowest surcharge first, by the workload as last
+            // seen; then the fewest aUEC per SCU refined, or with nothing
+            // ticked the newest reading. Never read comes last.
+            const bool cargo = !refineryPicked_.empty();
+            auto rank = [](const Row& r) {
+                RefineryShare::PriceRank p;
+                p.level = r.level;
+                p.perScu = r.yieldScu > 0.0f ? (double)r.cost / r.yieldScu : 1e12;
+                p.observed = r.observed;
+                return p;
+            };
+            std::stable_sort(rows.begin(), rows.end(), [&](const Row& a, const Row& b) {
+                return RefineryShare::cheaperFirst(rank(a), rank(b), cargo);
+            });
+        } else if (!refineryPicked_.empty()) {
+            // By yield, the most refined first. With nothing in the hold
+            // there is nothing to rank by, so the order the data comes in
+            // stands - by system, then by name.
             std::stable_sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) {
                 if (std::abs(a.yieldScu - b.yieldScu) > 0.0005f) return a.yieldScu > b.yieldScu;
                 return a.cost < b.cost;   // same yield, cheaper wins
@@ -22611,9 +22648,26 @@ void MinerGUI::paintRefinery(HDC hdc) {
         g.DrawString(refineryPicked_.empty() ? L"STATION YIELDS"
                                              : L"CARGO RESULT",
                      -1, &smallFont, Gdiplus::PointF(rx, listTop), &faintBrush);
-        std::wstring scope = (refinerySystem_ == "ALL") ? L"All systems" : toW(refinerySystem_);
-        scope += L"  ·  " + std::to_wstring((int)rows.size()) + L" stations";
-        Gdiplus::RectF scopeRect(rx, listTop + scaleF(1), rw, scaleF(14));
+        // At the card's right the order, by yield or by price, and before it
+        // how many stations there are (the tabs say which system)
+        float scopeRight = rx + rw;
+        {
+            Segment byYield, byPrice;
+            byYield.text = L"Best yield";
+            byYield.on = !refineryCheapest_;
+            byPrice.text = L"Cheapest";
+            byPrice.on = refineryCheapest_;
+            const std::vector<Segment> order = {byYield, byPrice};
+            const float sc = scaleF(1.0f), segPad = scaleF(10), segH = scaleF(20);
+            const float segW = segmentedWidth(g, order, buttonFont, numFont, segPad, sc);
+            // as tall as Clear across the window, and on its line
+            const std::vector<Gdiplus::RectF> places = drawSegmented(
+                g, rx + rw - segW, listTop - scaleF(4), segH, order, buttonFont, numFont, segPad, sc, hoverRef_);
+            for (size_t k = 0; k < places.size(); k++) refHits_.push_back({places[k], 11, (int)k});
+            scopeRight = rx + rw - segW - scaleF(10);
+        }
+        const std::wstring scope = std::to_wstring((int)rows.size()) + L" stations";
+        Gdiplus::RectF scopeRect(rx, listTop + scaleF(1), (std::max)(0.0f, scopeRight - rx), scaleF(14));
         g.DrawString(scope.c_str(), -1, &subFont, scopeRect, &rightAlign, &faintBrush);
 
         for (int i = first; i < first + shown; i++) {
@@ -22621,8 +22675,10 @@ void MinerGUI::paintRefinery(HDC hdc) {
             const Refinery& st = REFINERIES[row.station];
             Gdiplus::RectF band(rx - scaleF(8), ry, rw + scaleF(16), srowH);
             // The station the hold does best at is the answer the window is
-            // for: a breath of amber under it, where its figure is amber too
-            const bool winner = (i == 0 && !refineryPicked_.empty());
+            // for: a breath of amber under it, where its figure is amber too.
+            // By price, the cheapest is the answer even with nothing ticked,
+            // once its workload is known.
+            const bool winner = (i == 0 && (!refineryPicked_.empty() || (refineryCheapest_ && row.level >= 0)));
             if (isHot(hoverRef_, band)) fillRoundRect(g, band, scaleF(R_CONTROL), COL_HOVER);
             else if (winner) fillRoundRect(g, band, scaleF(R_CONTROL), tint(COL_ACCENT, 16));
 
@@ -22632,14 +22688,16 @@ void MinerGUI::paintRefinery(HDC hdc) {
             const auto seen = refineryWorkloads_.find(st.name);
             if (seen != refineryWorkloads_.end() && (seen->second.capacity >= 0 || seen->second.workload >= 0)) {
                 const RefineryWorkload& w = seen->second;
+                const long long age = (std::max)(0LL, (long long)std::time(nullptr) - w.observed);
+                const std::wstring when = age < 60      ? std::wstring(L"Just now")
+                                          : age < 3600  ? std::to_wstring(age / 60) + L" min ago"
+                                          : age < 86400 ? std::to_wstring(age / 3600) + L" h ago"
+                                                        : std::to_wstring(age / 86400) + L" d ago";
+                const std::wstring level = w.workload >= 0 ? toW(refineryWorkloadName(w.workload)) : L"";
                 std::wstring words;
                 if (w.capacity >= 0) words = std::to_wstring(w.capacity) + L" %";
-                if (w.workload >= 0) words += (words.empty() ? L"" : L"  \u00B7  ") + toW(refineryWorkloadName(w.workload));
-                const long long age = (std::max)(0LL, (long long)std::time(nullptr) - w.observed);
-                words += L"  \u00B7  " + (age < 60      ? std::wstring(L"Just now")
-                                          : age < 3600   ? std::to_wstring(age / 60) + L" min ago"
-                                          : age < 86400  ? std::to_wstring(age / 3600) + L" h ago"
-                                                         : std::to_wstring(age / 86400) + L" d ago");
+                if (!level.empty()) words += (words.empty() ? L"" : L"  \u00B7  ") + level;
+                words += L"  \u00B7  " + when;
                 const Gdiplus::Color tone = age > 2 * 3600    ? COL_TEXT_FAINT
                                             : w.workload == 0 ? COL_GREEN
                                             : w.workload == 2 ? COL_YELLOW
@@ -22651,6 +22709,11 @@ void MinerGUI::paintRefinery(HDC hdc) {
                 const float from = rx + nameW.Width + scaleF(8);
                 const float to = rx + rw - (refineryPicked_.empty() ? scaleF(2) : scaleF(76));
                 if (to - from > scaleF(40)) {
+                    // Beside a long name the level and its age come first:
+                    // the surcharge goes by the level, not by the figure
+                    Gdiplus::RectF need;
+                    g.MeasureString(words.c_str(), -1, &subFont, Gdiplus::PointF(0, 0), &need);
+                    if (need.Width > to - from && !level.empty()) words = level + L"  \u00B7  " + when;
                     g.DrawString(words.c_str(), -1, &subFont, Gdiplus::RectF(from, ry + scaleF(1), to - from, scaleF(16)),
                                  &leftMid, &toneBrush);
                 }
@@ -22678,7 +22741,10 @@ void MinerGUI::paintRefinery(HDC hdc) {
             } else {
                 // The bill and the wait. The yield itself is the big figure
                 // on the right, because that is what the choice is about.
-                sub = money(row.cost) + L" aUEC   ·   " + duration(row.seconds);
+                // The bill is the work order's before the surcharge a busy
+                // refinery adds.
+                sub = money(row.cost) + L" aUEC" + (row.level >= 1 ? L" + surcharge" : L"") + L"   ·   " +
+                      duration(row.seconds);
                 if (!row.complete) {
                     // Eight of the twenty refineries have a published yield
                     // and nothing else. Saying so beats printing a cost that
