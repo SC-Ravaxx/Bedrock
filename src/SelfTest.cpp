@@ -423,6 +423,67 @@ int runSelfTest() {
                            "a Contractor contract taken proves Contractor, and what was finished after it adds on (" +
                                std::to_string(cfpStanding.reputation) + ")");
 
+        // A shared contract outlasts the game: after a restart the next log
+        // says "Contract Accepted" for it again, without the share. Read in
+        // order, or the later log first, it counts for nothing.
+        {
+            const std::string envLine = "[Trace] @env_session:  'pub-sc-alpha-4100-12519617'";
+            auto withShare = [&](BlueprintLibrary& into, ContractScan& s) {
+                into.feedLine(at("10:00:00") + envLine, s);
+                into.feedLine(at("10:02:00") + "[Notice] <MissionShared> Received share push message: ownerId[1] - "
+                                               "missionId[" + shared + "] [Team_GameServices][Missions]",
+                              s);
+                into.feedLine(at("10:02:01") + marker(shared), s);
+                into.feedLine(at("10:02:02") + note("Accepted", shared), s);
+                into.finishFile(s);
+            };
+            auto namedAgain = [&](BlueprintLibrary& into, ContractScan& s, bool finish) {
+                into.feedLine(at("11:00:00") + envLine, s);
+                into.feedLine(at("11:01:00") + marker(shared), s);
+                into.feedLine(at("11:01:00") + note("Accepted", shared), s);
+                if (!finish) return;
+                into.feedLine(at("11:30:00") + note("Complete", shared), s);
+                into.finishFile(s);
+            };
+            auto counted = [&](const BlueprintLibrary& of) {
+                int n = 0;
+                for (const auto& [k, e] : of.contracts()) {
+                    (void)k;
+                    n += e.mission == shared;
+                }
+                return n;
+            };
+            ContractScan one, two;
+            BlueprintLibrary inOrder;
+            withShare(inOrder, one);
+            namedAgain(inOrder, two, false);
+            const bool runsShared = two.running().size() == 1 && two.running()[0].shared;
+            two.reset();
+            namedAgain(inOrder, two, true);
+            allPassed &= check(counted(inOrder) == 0 && runsShared,
+                               "a shared contract the next log takes again is still not the player's own, and runs "
+                               "as shared (" + std::to_string(counted(inOrder)) + " counted)");
+
+            ContractScan three, four;
+            BlueprintLibrary laterFirst;
+            namedAgain(laterFirst, three, true);
+            const int before = counted(laterFirst);
+            withShare(laterFirst, four);
+            allPassed &= check(before == 2 && counted(laterFirst) == 0,
+                               "the later log read first: its share, found after, takes the contract back (" +
+                                   std::to_string(before) + " -> " + std::to_string(counted(laterFirst)) + ")");
+
+            BlueprintLibrary kept;
+            std::istringstream archive(std::string("accepted\t2026-10-01T11:01:00.000\t") + shared + "\t" + key +
+                                       "\t41000\ncompleted\t2026-10-01T11:30:00.000\t" + shared + "\t" + key +
+                                       "\t41000\naccepted\t2026-10-01T10:01:00.000\t" + own + "\t" + key +
+                                       "\t41000\nshared\t2026-10-01T10:02:00.000\t" + shared + "\n");
+            kept.readRankArchive(archive);
+            allPassed &= check(kept.contracts().size() == 1 && kept.contracts().begin()->second.mission == own,
+                               "contract_log_backup.txt: a share line below a contract's lines takes them back (" +
+                                   std::to_string(kept.contracts().size()) + " kept)");
+        }
+
         // The same, from before the wipe, counts for nothing; a rank set
         // later counts on from itself
         std::vector<SCMiner::RankEvent> events;

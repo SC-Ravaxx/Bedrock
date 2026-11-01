@@ -183,9 +183,19 @@ void ContractScan::reset() {
     version_ = 0;
     contractOf_.clear();
     shared_.clear();
+    shares_.clear();
     rankEvents_.clear();
     if (!running_.empty()) runningChanges_++;
     running_.clear();
+}
+
+void ContractScan::markShared(const std::string& mission) {
+    for (Running& r : running_) {
+        if (r.mission == mission && !r.shared) {
+            r.shared = true;
+            runningChanges_++;
+        }
+    }
 }
 
 void ContractScan::endRunning(std::string_view mission) {
@@ -200,7 +210,9 @@ void ContractScan::endRunning(std::string_view mission) {
 
 // The lines that make a RankEvent. All three kinds come in this order in the
 // game's logs - the marker before the notification in 3,461 of 3,462, the
-// share always before - so one pass down the file is enough.
+// share always before - so one pass down the file is enough. A shared
+// contract the game names again in a later log has its share in an earlier
+// one: the library hands those in (knownShared).
 void ContractScan::rankLine(std::string_view text) {
     static constexpr std::string_view MARKER = "Creating objective marker: missionId [";
     static constexpr std::string_view SHARE = "Received share push message:";
@@ -232,7 +244,11 @@ void ContractScan::rankLine(std::string_view text) {
         // ...ownerId[..] - missionId[M]
         size_t end = at;
         const std::string_view mission = bracketed("missionId[", at, end);
-        if (mission.size() == 36) shared_.insert(std::string(mission));
+        if (mission.size() == 36) {
+            shared_.insert(std::string(mission));
+            const bool stamped = text.size() >= 25 && text[11] == 'T';
+            shares_.emplace_back(stamped ? std::string(text.substr(1, 23)) : std::string(), std::string(mission));
+        }
         return;
     }
     static constexpr std::string_view END = "<EndMission> Ending mission for player. MissionId[";
@@ -257,7 +273,10 @@ void ContractScan::rankLine(std::string_view text) {
     if (mission.size() != 36) return;
     if (completed || failed) endRunning(mission);
     if (failed) return;
-    const bool shared = shared_.count(std::string(mission)) > 0;
+    // shared in this log, or in one before it: the game names a shared
+    // contract again after a restart, as "Contract Accepted", without the share
+    const std::string id(mission);
+    const bool shared = shared_.count(id) > 0 || (knownShared_ && knownShared_->count(id) > 0);
     const auto named = contractOf_.find(std::string(mission));
     if (named == contractOf_.end()) return;
     // <2026-10-02T16:39:32.688Z> at the front
@@ -453,6 +472,7 @@ void BlueprintLibrary::load() {
     legacyUntil_ = 0;
     payoutsRead_ = false;
     ranksRead_ = false;
+    sharesRead_ = false;
     tradesRead_ = false;
     checkingLogs_ = false;
     foreignLines_.clear();
@@ -467,6 +487,10 @@ void BlueprintLibrary::load() {
         }
         if (line == "ranks\t1") {
             ranksRead_ = true;
+            continue;
+        }
+        if (line == "shares\t1") {
+            sharesRead_ = true;
             continue;
         }
         if (line == "trades\t1") {
@@ -517,6 +541,14 @@ void BlueprintLibrary::load() {
     // of: the flag is written once the last of them has been read (see
     // finishLogCheck), so a reading cut short starts over
     if (!ranksRead_) {
+        historyUntil_.clear();
+        legacyUntil_ = 0;
+        checkingLogs_ = true;
+    }
+    // ...and for the contracts somebody shared, whose share a library of
+    // 3.0 forgot at the end of each log: the same reading, which finds the
+    // shares in the logs the launcher has kept (see finishLogCheck)
+    if (!sharesRead_) {
         historyUntil_.clear();
         legacyUntil_ = 0;
         checkingLogs_ = true;
@@ -592,6 +624,7 @@ void BlueprintLibrary::save() {
     if (!channel_.empty()) out << "# channel: " << channel_ << "\n";
     if (payoutsRead_) out << "payouts\t1\n";
     if (ranksRead_) out << "ranks\t1\n";
+    if (sharesRead_) out << "shares\t1\n";
     if (tradesRead_) out << "trades\t1\n";
     for (const auto& [folder, until] : historyUntil_) out << "history_until\t" << folder << "\t" << until << "\n";
     for (const auto& title : doubted_) out << "doubt\t" << title << "\n";
@@ -823,6 +856,7 @@ int BlueprintLibrary::feedLine(std::string_view line, ContractScan& scan) {
     // stays inside the line, or a quiet file would be rescanned per line
     if (line.empty() || line[0] != '<') return 0;
     if (byName_.empty()) buildIndex();
+    scan.knownShared(&sharedMissions_);
     int added = 0;
     if (line.find("Received Blueprint") != std::string_view::npos) {
         std::string text(line);
@@ -872,19 +906,32 @@ bool BlueprintLibrary::foreign(const ContractScan& scan) const {
 }
 
 void BlueprintLibrary::takeRankEvents(ContractScan& scan) {
+    std::vector<std::pair<std::string, std::string>>& shares = scan.shares();
     std::vector<RankEvent>& fresh = scan.rankEvents();
-    if (fresh.empty()) return;
+    if (shares.empty() && fresh.empty()) return;
     if (!foreign(scan)) {
+        // A share learnt now takes back what the same contract counted for
+        // until then: taken again in a later log that was read first, it
+        // passed for the player's own
+        for (const auto& [stamp, mission] : shares) {
+            if (!sharedMissions_.insert(mission).second) continue;
+            toRankArchive_.push_back("shared\t" + stamp + "\t" + mission);
+            if (rankEvents_.erase("a" + mission) + rankEvents_.erase("c" + mission) > 0) ranksChanged_ = true;
+            liveScan_.markShared(mission);
+            scan.markShared(mission);
+        }
         for (const RankEvent& e : fresh) {
             if (e.version <= 0 || !keepRankEvent(e)) continue;
             toRankArchive_.push_back(std::string(e.completed ? "completed" : "accepted") + "\t" + e.stamp + "\t" +
                                      e.mission + "\t" + e.contract + "\t" + std::to_string(e.version));
         }
     }
+    shares.clear();
     fresh.clear();
 }
 
 bool BlueprintLibrary::keepRankEvent(const RankEvent& e) {
+    if (sharedMissions_.count(e.mission)) return false;
     const std::string key = std::string(e.completed ? "c" : "a") + e.mission;
     if (!rankEvents_.emplace(key, e).second) return false;
     ranksChanged_ = true;
@@ -908,6 +955,7 @@ std::string BlueprintLibrary::channelFile(const char* base) const {
 // The contracts kept, and the ranks set, of this channel
 void BlueprintLibrary::loadRanks() {
     rankEvents_.clear();
+    sharedMissions_.clear();
     toRankArchive_.clear();
     rankSettings_.clear();
     auto fields = [](const std::string& line) {
@@ -919,13 +967,7 @@ void BlueprintLibrary::loadRanks() {
     };
     std::string line;
     std::ifstream kept(AppPaths::file(channelFile(RANK_ARCHIVE_NAME).c_str()));
-    while (std::getline(kept, line)) {
-        while (!line.empty() && line.back() == '\r') line.pop_back();
-        const std::vector<std::string> f = fields(line);
-        if (f.size() < 5 || (f[0] != "accepted" && f[0] != "completed")) continue;
-        RankEvent e{f[1], f[0] == "completed", f[2], f[3], std::atoi(f[4].c_str())};
-        keepRankEvent(e);
-    }
+    readRankArchive(kept);
     std::ifstream set(AppPaths::file(channelFile(RANK_FILE_NAME).c_str()));
     while (std::getline(set, line)) {
         while (!line.empty() && line.back() == '\r') line.pop_back();
@@ -933,6 +975,31 @@ void BlueprintLibrary::loadRanks() {
         const std::vector<std::string> f = fields(line);
         if (f.size() < 5 || f[0] != "set") continue;
         rankSettings_.push_back(RankSetting{f[1], f[2], std::atoll(f[3].c_str()), f[4]});
+    }
+    ranksChanged_ = true;
+}
+
+void BlueprintLibrary::readRankArchive(std::istream& in) {
+    std::string line;
+    while (std::getline(in, line)) {
+        while (!line.empty() && line.back() == '\r') line.pop_back();
+        std::vector<std::string> f;
+        std::stringstream ss(line);
+        std::string part;
+        while (std::getline(ss, part, '\t')) f.push_back(part);
+        // shared <TAB> when <TAB> MissionId - written after the contract's
+        // own lines where a later log was read first
+        if (f.size() >= 3 && f[0] == "shared") {
+            sharedMissions_.insert(f[2]);
+            continue;
+        }
+        if (f.size() < 5 || (f[0] != "accepted" && f[0] != "completed")) continue;
+        RankEvent e{f[1], f[0] == "completed", f[2], f[3], std::atoi(f[4].c_str())};
+        keepRankEvent(e);
+    }
+    for (const std::string& mission : sharedMissions_) {
+        rankEvents_.erase("a" + mission);
+        rankEvents_.erase("c" + mission);
     }
     ranksChanged_ = true;
 }
@@ -952,6 +1019,7 @@ void BlueprintLibrary::flushRankArchive() {
                "# names it: when, its MissionId, the contract's generator and name, the\n"
                "# game's version. What the Grind Planner reads your rank with each outfit\n"
                "# from; kept here because the launcher prunes its logbackups folder.\n"
+               "# 'shared' - a contract somebody else shared with you: it counts for nothing.\n"
                "# Lines are appended, never rewritten - delete the file to start over.\n";
     }
     for (const auto& line : toRankArchive_) out << line << "\n";
@@ -1022,6 +1090,7 @@ void BlueprintLibrary::setRank(int faction, int ladder, int rank) {
 void BlueprintLibrary::finishLogCheck() {
     checkingLogs_ = false;
     ranksRead_ = true;
+    sharesRead_ = true;
     if (!foreignLines_.empty()) {
         // the evidence file, without them
         std::vector<std::string> keep;

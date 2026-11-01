@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <iosfwd>
 #include <map>
 #include <set>
 #include <string>
@@ -52,6 +53,16 @@ public:
     // The player's own contracts, taken and finished, as their lines come in
     // (see RankEvent); the library takes them out as it goes
     std::vector<RankEvent>& rankEvents() { return rankEvents_; }
+    // The contracts somebody else shared with the player, as their share
+    // comes in - its time and MissionId - for the library to take out like
+    // the rank events. A shared contract still runs after a restart, and
+    // the next log says "Contract Accepted" for it again, without the share
+    // (191 such lines over 96 contracts in one player's logs, up to 4.10):
+    // the library keeps every share and hands them back to each scan.
+    std::vector<std::pair<std::string, std::string>>& shares() { return shares_; }
+    void knownShared(const std::set<std::string>* missions) { knownShared_ = missions; }
+    // A contract learnt to be shared after it was taken in this log
+    void markShared(const std::string& mission);
     // A contract taken in this log and not over yet - the player's own, or
     // one somebody shared with them - by the very contract the objective
     // marker names. Over with the line the game writes for every end,
@@ -104,6 +115,8 @@ private:
     int version_ = 0;
     std::map<std::string, std::string> contractOf_;   // MissionId -> "generator/debug", off the objective markers
     std::set<std::string> shared_;                    // MissionIds somebody else shared with the player
+    const std::set<std::string>* knownShared_ = nullptr;   // ...and those of the logs before (the library's)
+    std::vector<std::pair<std::string, std::string>> shares_;   // time, MissionId: not yet taken out
     std::vector<RankEvent> rankEvents_;
     std::vector<Running> running_;
     int runningChanges_ = 0;
@@ -229,6 +242,10 @@ public:
     // game holds the file open.
     long long liveLogEpoch() const { return liveEpoch_; }
     const std::map<std::string, RankEvent>& contracts() const { return rankEvents_; }
+    // contract_log_backup.txt's lines, the way loadRanks reads them: what
+    // a share line names counts for nothing, wherever it stands. Public for
+    // the self-test.
+    void readRankArchive(std::istream& in);
     // Whether every log has been read for the contracts and the game it came
     // from (see finishLogCheck)
     bool logsChecked() const { return ranksRead_; }
@@ -258,12 +275,17 @@ private:
     // on, the lines of the other game's logs are gathered, and at its end
     // they leave the evidence file and the library.
     bool ranksRead_ = false;
+    // ...and once more for the contracts somebody shared: a library of 3.0
+    // forgot a share at the end of its log, and kept the same contract as
+    // the player's own when the next log took it again
+    bool sharesRead_ = false;
     bool checkingLogs_ = false;
     std::set<std::string> foreignLines_;
     int foreignDropped_ = 0;
     void finishLogCheck();
     bool foreign(const ContractScan& scan) const;
     std::map<std::string, RankEvent> rankEvents_;  // 'a' or 'c', then the MissionId
+    std::set<std::string> sharedMissions_;         // every MissionId somebody shared, from any log
     std::vector<std::string> toRankArchive_;
     std::vector<RankSetting> rankSettings_;
     bool ranksChanged_ = false;
