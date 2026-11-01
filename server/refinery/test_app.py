@@ -168,29 +168,46 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(self.send(quote=salvage)[0], 201)
         self.assertEqual(self.rows()[0]["plausible"], 1)
 
-    def test_a_workload_level_is_taken_only_where_others_saw_it(self):
+    def test_a_workload_level_is_taken_only_at_its_capacities(self):
         # ten readings of "moderate" between 90 and 126 %, from five senders
         for i in range(10):
             self.send(address="198.51.100.%d" % (i % 5), station=HUR if i % 2 else "Checkmate",
                       capacity=90 + 4 * i, workload="moderate")
         self.assertEqual(self.store.ranges(self.now), {"moderate": (94, 122)})
+        # what was seen is no bound: 175 % is moderate all the same (MIC-L5, 1 November 2026)
         self.send(address="198.51.100.9", capacity=20, workload="moderate")
-        self.send(address="198.51.100.9", station=HUR, capacity=128, workload="moderate")
+        self.send(address="198.51.100.9", station=HUR, capacity=175, workload="moderate")
         rows = self.rows()
         self.assertEqual((rows[-2]["plausible"], rows[-1]["plausible"]), (0, 1))
-        self.assertIn("capacity 20 % where moderate was seen at 94-122 %", rows[-2]["reason"])
+        self.assertEqual(rows[-2]["reason"], "capacity 20 % where moderate is 100-199 %")
 
     def test_the_lowest_level_has_no_floor_and_the_highest_no_ceiling_near_what_was_seen(self):
         # the spans of 22 October 2026
         ranges = {"light": (26, 87), "moderate": (105, 162), "extreme": (317, 613)}
         at = lambda capacity, level: {"station": "Levski", "capacity": capacity, "workload": level, "quote": None}
-        self.assertEqual(app.judge(at(11, "light"), ranges), "")      # Nyx Gateway, quiet
+        self.assertEqual(app.judge(at(7, "light"), ranges), "")       # Stanton Gateway (Pyro), quiet
         self.assertEqual(app.judge(at(631, "extreme"), ranges), "")   # Levski, busy
         self.assertEqual(app.judge(at(1200, "extreme"), ranges), "")
-        self.assertIn("capacity 10796 %", app.judge(at(10796, "extreme"), ranges))
-        self.assertIn("capacity 100 %", app.judge(at(100, "light"), ranges))      # light where moderate is
-        self.assertIn("capacity 250 %", app.judge(at(250, "extreme"), ranges))    # extreme where it is not
-        self.assertIn("capacity 90 %", app.judge(at(90, "moderate"), ranges))
+        self.assertEqual(app.judge(at(10796, "extreme"), ranges), "capacity 10796 % where extreme was seen up to 613 %")
+        self.assertEqual(app.judge(at(10796, "extreme"), {}), "")     # nothing seen yet: no ceiling at all
+        self.assertEqual(app.judge(at(150, "light"), ranges), "capacity 150 % where light is under 100 %")
+        self.assertEqual(app.judge(at(250, "extreme"), ranges), "capacity 250 % where extreme is from 300 %")
+        self.assertEqual(app.judge(at(80, "moderate"), ranges), "capacity 80 % where moderate is 100-199 %")
+        self.assertIn("capacity 1 %", app.judge(at(1, "extreme"), ranges))   # Levski, misread on 25 October 2026
+
+    def test_what_others_saw_does_not_move_where_a_level_begins(self):
+        # 1 November 2026: Levski's 700 to 1000 % had put extreme's span at 421-908 %,
+        # and readings of Green Glade, Wide Forest and Ambitious Dream were turned away
+        ranges = {"light": (12, 87), "moderate": (105, 154), "heavy": (228, 278), "extreme": (421, 908)}
+        at = lambda capacity, level: {"station": HUR, "capacity": capacity, "workload": level, "quote": None}
+        for capacity, level in ((389, "extreme"), (303, "extreme"), (206, "heavy"), (175, "moderate"),
+                                (99, "moderate"), (290, "extreme"), (209, "moderate")):
+            self.assertEqual(app.judge(at(capacity, level), ranges), "", (capacity, level))
+        self.assertEqual(app.judge(at(278, "moderate"), ranges), "capacity 278 % where moderate is 100-199 %")
+        self.assertEqual(app.judge(at(289, "extreme"), ranges), "capacity 289 % where extreme is from 300 %")
+        self.assertEqual(app.judge(at(210, "moderate"), ranges), "capacity 210 % where moderate is 100-199 %")
+        self.assertEqual([app.level_of(c) for c in (0, 99, 100, 199, 200, 299, 300, 931)],
+                         ["light", "light", "moderate", "moderate", "heavy", "heavy", "extreme", "extreme"])
 
     def test_a_quote_may_cost_far_off_the_model_but_not_absurdly(self):
         # the model has 69.5 for this one; terminals asked 0.26 to 9.6 times the model in October 2026
@@ -214,10 +231,31 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual([(r["plausible"], r["reason"]) for r in self.rows()],
                          [(1, None), (0, "cost 5000 where the model has 69")])
 
+    def test_readings_the_learned_spans_turned_away_pass_when_judged_again(self):
+        self.send(station=HUR, capacity=389, workload="extreme")
+        self.send(station=HUR, capacity=1, workload="extreme")
+        db = sqlite3.connect(self.store.path)
+        try:
+            with db:   # as the spans of 1 November 2026 had it
+                db.execute("UPDATE observations SET plausible = 0,"
+                           " reason = 'capacity 389 % where extreme was seen at 421-908 %' WHERE capacity = 389")
+        finally:
+            db.close()
+        self.assertEqual(self.store.rejudge(self.now, really=True), (2, 1))
+        self.assertEqual([(r["capacity"], r["plausible"], r["reason"]) for r in self.rows()],
+                         [(389, 1, None), (1, 0, "capacity 1 % where extreme is from 300 %")])
+        self.assertEqual((self.stations()[HUR]["capacity"], self.stations()[HUR]["workload"]), (389, "extreme"))
+
     def test_levels_that_contradict_the_game_order_judge_nothing(self):
         for i in range(10):
             self.send(address="192.0.2.%d" % i, capacity=150, workload="light")
             self.send(address="192.0.2.%d" % i, station=HUR, capacity=50, workload="moderate")
+        db = sqlite3.connect(self.store.path)
+        try:
+            with db:   # taken, as rules before LEVEL_FROM could have
+                db.execute("UPDATE observations SET plausible = 1, reason = NULL")
+        finally:
+            db.close()
         self.assertEqual(self.store.ranges(self.now), {})
 
     # ---------------------------------------------------------------- layer 4: several senders
@@ -247,9 +285,22 @@ class ServiceTest(unittest.TestCase):
 
     def test_one_sender_counts_once_and_alone_does_not_confirm(self):
         self.send(address="10.0.0.1", capacity=100, observed=self.now - 600)
-        self.send(address="10.0.0.1", capacity=140, observed=self.now - 300, workload="heavy")
+        self.send(address="10.0.0.1", capacity=240, observed=self.now - 300, workload="heavy")
         s = self.stations()["Checkmate"]
-        self.assertEqual((s["capacity"], s["workload"], s["sources"], s["confirmed"]), (140, "heavy", 1, False))
+        self.assertEqual((s["capacity"], s["workload"], s["sources"], s["confirmed"]), (240, "heavy", 1, False))
+
+    def test_a_station_read_without_its_workload_shows_the_one_its_capacity_gives(self):
+        # Levski, 1 November 2026: 982 % extreme, then 931 % with the line under it not read
+        self.send(station="Levski", capacity=982, workload="extreme", observed=self.now - 2700)
+        self.send(station="Levski", capacity=931, workload=None, observed=self.now - 60)
+        s = self.stations()["Levski"]
+        self.assertEqual((s["capacity"], s["workload"], s["workload_read"]), (931, "extreme", False))
+        self.send(capacity=106)
+        s = self.stations()["Checkmate"]
+        self.assertEqual((s["capacity"], s["workload"], s["workload_read"]), (106, "moderate", True))
+        self.send(station=HUR, capacity=None, workload="heavy")
+        s = self.stations()[HUR]
+        self.assertEqual((s["capacity"], s["workload"], s["workload_read"]), (None, "heavy", True))
 
     def test_an_old_reading_shows_as_not_fresh(self):
         self.send(capacity=80, workload="light", observed=self.now - 4 * 3600)

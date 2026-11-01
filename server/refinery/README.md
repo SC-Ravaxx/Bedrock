@@ -55,12 +55,12 @@ nothing is taken on its word:
 2. **The game's rules.** A reading that does not fit is kept but marked
    implausible, and it is never handed out. The answer is the same as for
    a plausible reading.
-   - A workload level is accepted only at the capacities other senders saw
-     it at. The span is the 10th to the 90th percentile over 30 days, plus
-     10 points either side - except below light, which has no floor, and
-     above extreme, whose ceiling is twice its span's top. It is used once 10 readings from 3 senders are
-     in, and only while the levels' medians rise in the game's order
-     (light, moderate, heavy, extreme).
+   - A workload level is accepted only at its own capacities: light under
+     100 %, moderate 100 to 199 %, heavy 200 to 299 % and extreme from
+     300 %, with 10 points either side. Light has no floor, and extreme's
+     ceiling is twice the top of what other senders saw it at (the 90th
+     percentile over 30 days, once 10 readings from 3 senders are in, and
+     only while the levels' medians rise in the game's order).
    - A quote cannot yield more than was put in. Where Bedrock's refining
      model has the factors (`tables.json`), the yield has to match the
      model within 15 % (the model matched every work order measured), and
@@ -138,13 +138,15 @@ or the install is held back.
 
 Each station's current state. It is `fresh` when made from readings of the
 last three hours. Otherwise it is the newest plausible reading of the last
-seven days, with `sources` 0.
+seven days, with `sources` 0. Where that reading has the capacity but not
+the workload, `workload` is the level the capacity gives and
+`workload_read` is `false`.
 
 ```json
 {"generated": 1791710100, "days": 7, "window": 10800, "stations": [
   {"station": "Checkmate", "capacity": 106, "workload": "moderate",
-   "observed": 1791709800, "fresh": true, "sources": 2, "confirmed": true,
-   "seen_24h": 5, "quotes_24h": 2}
+   "workload_read": true, "observed": 1791709800, "fresh": true,
+   "sources": 2, "confirmed": true, "seen_24h": 5, "quotes_24h": 2}
 ]}
 ```
 

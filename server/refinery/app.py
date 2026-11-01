@@ -79,7 +79,7 @@ SOURCE_HOURS = 48             # how long a reading keeps the token that tells se
 RANGE_DAYS = 30               # a workload level's capacity span is learned over this long
 RANGE_MIN_READINGS = 10       # ...from this many readings
 RANGE_MIN_SOURCES = 3         # ...by this many senders
-RANGE_MARGIN = 10             # percentage points beyond the span that are still taken
+RANGE_MARGIN = 10             # percentage points beyond a level's capacities that are still taken
 YIELD_BAND = (0.85, 1.15)     # a quote's yield against the model, where its factors are known
 COST_BAND = (0.1, 20.0)       # cost and time far looser: what moves them is still to be learned - over
 TIME_BAND = (0.1, 20.0)       # the quotes of October 2026 the model's cost came out 0.26 to 9.6 times what
@@ -110,6 +110,11 @@ MISFIT_HOLD_SECONDS = int(os.environ.get("BEDROCK_API_MISFIT_HOLD_SECONDS", "600
 # The game's own four (refinery_ui_Capacity_Low/Medium/High/Extreme), in
 # order: light - no surcharge, moderate - small, heavy - moderate, extreme - large
 WORKLOADS = ("light", "moderate", "heavy", "extreme")
+# ...and the capacity each begins at, in per cent. The game files do not
+# say; the terminals do: of the 309 plausible readings with both, from 11
+# October to 1 November 2026, all but 2 fit, and so did the 28 the spans
+# learned before turned away (judge).
+LEVEL_FROM = (0, 100, 200, 300)
 CHANNELS = ("LIVE", "PTU", "EPTU", "TECH-PREVIEW", "HOTFIX")
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .'()\-]{0,63}$")
 METHOD = re.compile(r"^[A-Z][A-Z_]{2,39}$")
@@ -229,26 +234,46 @@ def validate(body, now):
     return out
 
 
+def level_of(capacity):
+    """The workload level a capacity puts a refinery at (LEVEL_FROM)"""
+    level = WORKLOADS[0]
+    for name, start in zip(WORKLOADS, LEVEL_FROM):
+        if capacity >= start:
+            level = name
+    return level
+
+
 def judge(r, ranges, tables=None):
     """'' where a reading fits what the game does, else what does not.
 
-    A workload level is taken only at the capacities other senders saw it
-    at (ranges, Store.ranges). A quote cannot yield more than was put in;
-    where Bedrock's model has the factors, its yield has to come out as the
+    A workload level is taken only at its capacities (LEVEL_FROM), and
+    extreme only up to twice what other senders saw it at (ranges,
+    Store.ranges). A quote cannot yield more than was put in; where
+    Bedrock's model has the factors, its yield has to come out as the
     model says - it did on every work order measured - and its cost and
     time within the bands the workload can move them."""
     tables = TABLES if tables is None else tables
     cap, level = r["capacity"], r["workload"]
-    if cap is not None and level is not None and level in ranges:
-        low, high = ranges[level]
-        # The lowest level has no floor - Nyx Gateway stood at 11 % - and the
-        # highest no ceiling near what was seen: Levski at 631 % is busy, not
-        # wrong. Only a capacity many times the busiest seen, 10796 % at
-        # HUR-L2 the same night, is more likely a misreading than a refinery.
-        floor = -1 if level == WORKLOADS[0] else low - RANGE_MARGIN
-        ceiling = 2 * high + RANGE_MARGIN if level == WORKLOADS[-1] else high + RANGE_MARGIN
-        if cap < floor or cap > ceiling:
-            return "capacity %d %% where %s was seen at %d-%d %%" % (cap, level, low, high)
+    if cap is not None and level is not None:
+        # Spans learned from the readings put extreme's floor at 421 % in
+        # October 2026: Levski's 700 to 1000 % outnumbered every other
+        # station's, and what was turned away never counted - 28 readings of
+        # 303 to 404 % extreme, 172 to 175 % moderate and 206 % heavy.
+        # The lowest level has no floor - Stanton Gateway (Pyro) stood at 7 % -
+        # and the highest no ceiling near what was seen: Levski at 1000 % is
+        # busy, not wrong. Only a capacity many times the busiest seen, 10796 %
+        # at HUR-L2, is more likely a misreading than a refinery.
+        i = WORKLOADS.index(level)
+        floor = LEVEL_FROM[i] - RANGE_MARGIN if i > 0 else None
+        ceiling = LEVEL_FROM[i + 1] + RANGE_MARGIN if i + 1 < len(WORKLOADS) else None
+        if floor is not None and cap < floor or ceiling is not None and cap >= ceiling:
+            if ceiling is None:
+                return "capacity %d %% where %s is from %d %%" % (cap, level, LEVEL_FROM[i])
+            if floor is None:
+                return "capacity %d %% where %s is under %d %%" % (cap, level, LEVEL_FROM[i + 1])
+            return "capacity %d %% where %s is %d-%d %%" % (cap, level, LEVEL_FROM[i], LEVEL_FROM[i + 1] - 1)
+        if ceiling is None and level in ranges and cap > 2 * ranges[level][1] + RANGE_MARGIN:
+            return "capacity %d %% where %s was seen up to %d %%" % (cap, level, ranges[level][1])
     q = r["quote"]
     if not q:
         return ""
@@ -406,8 +431,9 @@ class Store:
         """Each workload level's span of capacities over RANGE_DAYS - the
         10th to the 90th percentile of the plausible readings with it, where
         RANGE_MIN_READINGS of them came from RANGE_MIN_SOURCES senders - and
-        only while the levels' medians rise in the game's order; else {} and
-        nothing is judged by them"""
+        only while the levels' medians rise in the game's order; else {}.
+        judge takes only extreme's top from them; where each level begins
+        is LEVEL_FROM."""
         db = self._db()
         try:
             rows = db.execute(
@@ -565,7 +591,11 @@ class Store:
     def stations(self, now):
         """Each known station's state: from its readings of the last
         CONSENSUS_SECONDS where there are any (fresh), else its newest within
-        STATION_DAYS; confirmed once another sender saw the same in that time"""
+        STATION_DAYS; confirmed once another sender saw the same in that time.
+        Where that reading has the capacity only - the line under it was not
+        read, at Levski in 20 of 125 readings by 1 November 2026 - the
+        workload is the one the capacity gives (LEVEL_FROM), and
+        workload_read says so."""
         db = self._db()
         try:
             rows = db.execute(
@@ -595,7 +625,11 @@ class Store:
                 state = {"capacity": last["capacity"], "workload": last["workload"], "observed": last["observed"],
                          "sources": 0, "confirmed": False}
             seen, quotes = counts.get(name, (0, 0))
-            out.append({"station": name, "capacity": state["capacity"], "workload": state["workload"],
+            workload, read = state["workload"], state["workload"] is not None
+            if not read and state["capacity"] is not None:
+                workload = level_of(state["capacity"])
+            out.append({"station": name, "capacity": state["capacity"], "workload": workload,
+                        "workload_read": read,
                         "observed": state["observed"], "fresh": bool(recent), "sources": state["sources"],
                         "confirmed": state["confirmed"], "seen_24h": seen, "quotes_24h": quotes})
         return out
