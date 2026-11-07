@@ -244,6 +244,21 @@ private:
     static constexpr int OWN_READINGS = 3;
     void readLoadoutOnHud(const cv::Mat& frame, const ScanPanel& panel);
     void takeSeenLoadout(const SeenLoadout& seen, const MiningShip& kind);
+    // ...and on a MOLE, the turret the player sits in: the laser its HUD
+    // names (readTurretLaser), read every four seconds until two readings
+    // agree and every ten after, as a turret is changed without the log
+    // saying so - and handed to the window, whose rock view then speaks to
+    // that head. The pilot's seat, which the log does say, and a minute
+    // with no turret's HUD in view, take it back.
+    void readTurretOnHud(const cv::Mat& frame);
+    void takeTurretLaser(const MiningLaser* laser);
+    std::future<const MiningLaser*> turretJob_;
+    std::chrono::steady_clock::time_point lastTurretRead_{};
+    std::string turretSeen_;            // the last reading's laser, by id
+    int turretAgreeing_ = 0;            // readings in a row that said it
+    std::string turretSaid_;            // ...and the one the window was told
+    int turretMissing_ = 0;             // readings in a row with no turret's HUD
+    static constexpr int TURRET_GONE_READINGS = 6;
     std::future<SeenLoadout> loadoutJob_;   // a reading under way, off the window's thread
     std::string loadoutJobSeat_;            // ...and the seat it was asked for in
     const MiningShip* loadoutJobKind_ = nullptr;   // ...and whose HUD it was

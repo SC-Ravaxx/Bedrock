@@ -628,6 +628,57 @@ const MiningModule* moduleByHudLine(const std::string& line) {
                   [](const MiningModule&) { return true; });
 }
 
+const MiningLaser* turretLaserByHudLine(const std::string& line) {
+    const std::string f = folded(line, true);
+    const size_t at = f.find("MININGLASER");
+    if (at == std::string::npos) return nullptr;
+    return byName(f.substr(0, at), MINING_LASERS, MINING_LASER_COUNT, "Mining Laser",
+                  [](const MiningLaser& l) { return l.size == 2; });
+}
+
+namespace {
+
+// Where a turret's laser line can stand: low and left of the middle, like
+// the one-seat ships' table, and swaying with the view. At 1440 lines it
+// stood at 1136 to 1185 down, its first letter at 1360 to 1470 (5120 wide,
+// the middle at 2560). Sized by the screen's height, as the HUD is.
+cv::Rect turretBand(const cv::Size& frame) {
+    const double h = frame.height;
+    const double cx = frame.width / 2.0, cy = frame.height / 2.0;
+    const cv::Rect band((int)std::lround(cx - 0.95 * h), (int)std::lround(cy + 0.15 * h),
+                        (int)std::lround(0.65 * h), (int)std::lround(0.35 * h));
+    return band & cv::Rect(0, 0, frame.width, frame.height);
+}
+
+}  // namespace
+
+const MiningLaser* readTurretLaser(const cv::Mat& frame, TextLineReader& lines, std::string* read) {
+    if (frame.empty() || !lines.ready()) return nullptr;
+    cv::Mat bgr;
+    if (frame.channels() == 4) cv::cvtColor(frame, bgr, cv::COLOR_BGRA2BGR);
+    else if (frame.channels() == 1) cv::cvtColor(frame, bgr, cv::COLOR_GRAY2BGR);
+    else bgr = frame;
+    const cv::Rect band = turretBand(bgr.size());
+    if (band.width < 50 || band.height < 50) return nullptr;
+    const cv::Mat part = bgr(band);
+    const double s = bgr.rows / 1440.0;
+    // A laser's line is some twenty letters long - IMPACT II MINING LASER,
+    // KLEIN-S2 MINING LASER - and some 200 wide at size 1: shorter rows are
+    // the table's and the modules' effects, which are not read. Ten rows at
+    // most, at 50 ms a line.
+    int tried = 0;
+    for (const cv::Rect& row : textRows(part, s)) {
+        if (row.width < 150 * s) continue;
+        if (++tried > 10) break;
+        const std::string text = readRow(part, row, s, lines);
+        if (const MiningLaser* laser = turretLaserByHudLine(text)) {
+            if (read) *read = text;
+            return laser;
+        }
+    }
+    return nullptr;
+}
+
 const MiningModule* moduleByHudBlock(const std::string& nameLine, const std::vector<std::string>& below) {
     return moduleFromBlock(nameLine, below);
 }

@@ -1881,7 +1881,10 @@ void Application::readLoadoutOnHud(const cv::Mat& frame, const ScanPanel& panel)
         }
         if (loadoutJobSeat_ == loadoutSeat_ && loadoutJobKind_) takeSeenLoadout(seen, *loadoutJobKind_);
     }
-    if (!kind) return;
+    if (!kind) {
+        readTurretOnHud(frame);
+        return;
+    }
     // Every four seconds until the readings agree - the next one on this very
     // look, as soon as one has come in whole - then every three minutes,
     // which a reading that was wrong those times running gets put right by:
@@ -1913,6 +1916,8 @@ void Application::readLoadoutOnHud(const cv::Mat& frame, const ScanPanel& panel)
                       : loadoutUnsure_ >= 6 || loadoutDisagreeing_ >= 4 ? 15
                                                                        : 4;
     if (now - lastLoadoutRead_ < std::chrono::seconds(every)) return;
+    // (a turret's reading still under way reads the same lines)
+    if (turretJob_.valid() && turretJob_.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
     lastLoadoutRead_ = now;
     loadoutJobSeat_ = loadoutSeat_;
     loadoutJobKind_ = kind;
@@ -1932,6 +1937,72 @@ void Application::loadoutLookAgain() {
     loadoutSettled_ = false;
     loadoutDisagreeing_ = 0;
     lastLoadoutRead_ = {};
+}
+
+void Application::readTurretOnHud(const cv::Mat& frame) {
+    if (turretJob_.valid()) {
+        if (turretJob_.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+        const MiningLaser* laser = nullptr;
+        try {
+            laser = turretJob_.get();
+        } catch (const std::exception& e) {
+            std::cerr << "[turret] reading failed: " << e.what() << std::endl;
+        }
+        takeTurretLaser(laser);
+    }
+    // Only a fit with more than one head has turrets to tell apart, and in
+    // the pilot's seat the player flies none of them
+    if (gui_->headCount() < 2 || gameState_.inSeat()) {
+        if (!turretSaid_.empty()) {
+            gui_->setTurretLaser(nullptr);
+            std::cout << "\n[turret] out of the turret" << std::endl;
+        }
+        turretSaid_.clear();
+        turretSeen_.clear();
+        turretAgreeing_ = 0;
+        turretMissing_ = 0;
+        return;
+    }
+    // (a one-seat ship's reading still under way reads the same lines)
+    if (loadoutJob_.valid()) return;
+    const auto now = std::chrono::steady_clock::now();
+    const int every = turretSaid_.empty() && turretMissing_ < 3 ? 4 : 10;
+    if (now - lastTurretRead_ < std::chrono::seconds(every)) return;
+    lastTurretRead_ = now;
+    try {
+        turretJob_ = std::async(std::launch::async, [this, picture = frame.clone()]() {
+            return readTurretLaser(picture, textLines_);
+        });
+    } catch (const std::system_error&) {
+        // no thread to be had: the reading waits for the next look
+    }
+}
+
+void Application::takeTurretLaser(const MiningLaser* laser) {
+    if (!laser) {
+        if (++turretMissing_ >= TURRET_GONE_READINGS && !turretSaid_.empty()) {
+            gui_->setTurretLaser(nullptr);
+            turretSaid_.clear();
+            turretSeen_.clear();
+            turretAgreeing_ = 0;
+            std::cout << "\n[turret] no turret's HUD in view for a minute" << std::endl;
+        }
+        return;
+    }
+    turretMissing_ = 0;
+    const std::string id = laser->id;
+    turretAgreeing_ = id == turretSeen_ ? turretAgreeing_ + 1 : 1;
+    turretSeen_ = id;
+    if (turretAgreeing_ < 2) {
+        lastTurretRead_ = {};   // the next reading at once
+        return;
+    }
+    if (id == turretSaid_) return;
+    turretSaid_ = id;
+    const int head = gui_->setTurretLaser(laser);
+    std::cout << "\n[turret] the HUD shows " << laser->name
+              << (head >= 0 ? " - head " + std::to_string(head + 1) : std::string(" - no head of the fit has it"))
+              << std::endl;
 }
 
 // A new rock on view. A settled loadout is read again only every three

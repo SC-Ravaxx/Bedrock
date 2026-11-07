@@ -74,6 +74,15 @@ cv::Mat hudLetteringInk(const cv::Mat& bgr, double scale);
 // fits.
 const MiningLaser* laserByHudLine(const std::string& line);
 const MiningModule* moduleByHudLine(const std::string& line);
+// ...the laser of a MOLE's turret: size 2, the one size the MOLE takes
+const MiningLaser* turretLaserByHudLine(const std::string& line);
+
+// The laser a MOLE's turret fires, off the turret's mining HUD: the line
+// "HOFSTEDE-S2 MINING LASER" over its table, low and left of the middle.
+// That table stands over the turret's own gauges and does not match the
+// one-seat ships' by its shape, so the line is looked for row by row. Null
+// when no row there names a laser a turret takes; `read` gets the line.
+const MiningLaser* readTurretLaser(const cv::Mat& frame, TextLineReader& lines, std::string* read = nullptr);
 // A module's block in the HUD's list - its name, and the lines under it that
 // say what it does - matched as readSeenLoadout matches it. Public for the
 // self-test.

@@ -432,6 +432,13 @@ public:
     std::string setSeenLoadout(const MiningShip& kind, const MiningLaser& laser,
                                const std::vector<const MiningModule*>& modules, bool own = false,
                                bool* changed = nullptr);
+    // The laser of the MOLE turret the player sits in, off its HUD
+    // (readTurretLaser); null for none, or the pilot's seat. The rock view
+    // then speaks to that head: the solo advice, the gadget line and the
+    // resistance are its, where they were the safest head's or the card's.
+    // The head's place, or -1 where the fit carries no such laser.
+    int setTurretLaser(const MiningLaser* laser);
+    int headCount() const { return (int)heads_.size(); }
     // Where Game.log puts the player ("Pyro - Monox"), shown in the header
     // as "You are at: ...", and the ore location the results are narrowed
     // to ("Pyro II (Monox)", "" when they are not) for the "not at" notes
@@ -973,6 +980,16 @@ private:
     std::vector<int> headsThatHoldAlone() const;
     // The fewest heads that can hold it together, for when none can alone.
     std::vector<int> fewestHeadsNeeded() const;
+    // The head of the turret the player sits in (setTurretLaser), -1 where
+    // that is not known. Two heads with one laser - a MOLE's two Helix II -
+    // cannot be told apart by the HUD's line; the one taken stays taken.
+    const MiningLaser* turretLaser_ = nullptr;
+    mutable int turretHead_ = -1;
+    int ownHead() const;
+    // The head the advice speaks to: the player's own, or else the safest
+    // that holds the rock alone, or else the one closest to it. -1 on a ship
+    // with one head, or where none comes into it.
+    int soloHead() const;
     // What one head would have to be throttled to for this rock, as a share
     // of full: above 1 it cannot hold it alone at all.
     float shareForHead(int head) const;

@@ -4783,6 +4783,12 @@ LaserOutput MinerGUI::firingOutput() const {
 // through the head that coloured it (see rockOwnResistance).
 float MinerGUI::rockOwnResistanceBare() const {
     if (rock_.resistance <= 0) return 0.0f;     // none, or not read
+    // In a turret the panel is coloured by that turret's head alone
+    const int own = ownHead();
+    if (own >= 0) {
+        return rockOwnResistance(rock_.resistance, rock_.resistanceAdjusted,
+                                 outputOf(heads_[own], 0).resistance / 100.0f);
+    }
     float factor = 0;
     int counted = 0;
     for (const MiningLoadout& h : heads_) {
@@ -4813,14 +4819,13 @@ float MinerGUI::powerThroughOwn(float ownResistancePercent) const {
 }
 
 // ...and what the one head a miner flies alone puts through: on a MOLE the
-// head the rock view recommends, not the three together. The gadget advice
-// weighs this; with the sum of all three, a rock the recommended Hofstede
-// holds at 97 % looks comfortable and gets a BoreMax, where a Sabir takes
-// it to 86 %.
+// head the rock view speaks to (soloHead), not the three together. The gadget
+// advice weighs this; with the sum of all three, a rock the recommended
+// Hofstede holds at 97 % looks comfortable and gets a BoreMax, where a Sabir
+// takes it to 86 %.
 float MinerGUI::powerThroughSolo(float ownResistancePercent) const {
     if (heads_.size() < 2) return powerThroughOwn(ownResistancePercent);
-    int head = safestSingleHead();
-    if (head < 0) head = leastOverpoweredHead();
+    const int head = soloHead();
     if (head < 0 || !heads_[head].laser) return powerThroughOwn(ownResistancePercent);
     const LaserOutput one = outputOf(heads_[head], rock_.distance);
     return one.atRange * resistanceLetsThrough(ownResistancePercent, one.resistance);
@@ -4858,6 +4863,46 @@ LaserOutput MinerGUI::onRock(int head) const {
 int MinerGUI::safestSingleHead() const {
     const std::vector<int> able = headsThatHoldAlone();
     return able.empty() ? -1 : able.front();
+}
+
+int MinerGUI::ownHead() const {
+    if (!turretLaser_ || heads_.size() < 2) return -1;
+    const auto carries = [&](int i) {
+        return heads_[i].laser && std::strcmp(heads_[i].laser->id, turretLaser_->id) == 0;
+    };
+    if (turretHead_ >= 0 && turretHead_ < (int)heads_.size() && carries(turretHead_)) return turretHead_;
+    turretHead_ = -1;
+    for (int i = 0; i < (int)heads_.size(); i++) {
+        if (carries(i)) {
+            turretHead_ = i;
+            break;
+        }
+    }
+    return turretHead_;
+}
+
+// The rock view's own choice, the same as rockVerdict makes it: the player's
+// head where it holds the rock, would backing away, or is out of its reach,
+// else the safest head that holds it alone, else the one that comes closest.
+int MinerGUI::soloHead() const {
+    if (heads_.size() < 2) return -1;
+    const int own = ownHead();
+    if (own >= 0) {
+        if (rock_.distance > 0 && outputOf(heads_[own], rock_.distance).falloff <= 0.0f) return own;
+        const float share = shareForHead(own);
+        if (share > 0 && share <= BREAK_EDGE) return own;
+    }
+    const int safest = safestSingleHead();
+    return safest >= 0 ? safest : leastOverpoweredHead();
+}
+
+int MinerGUI::setTurretLaser(const MiningLaser* laser) {
+    if (laser != turretLaser_) {
+        turretLaser_ = laser;
+        turretHead_ = -1;
+        if (hwnd_) InvalidateRect(hwnd_, nullptr, TRUE);
+    }
+    return ownHead();
 }
 
 std::wstring MinerGUI::headPlace(int head) const {
@@ -6174,7 +6219,35 @@ MinerGUI::RockVerdict MinerGUI::rockVerdict() const {
     // One head, one person: the head that does it alone is the answer, and
     // the MOLE's three together only count with a person on each
     if (heads_.size() > 1) {
-        const std::vector<int> alone = headsThatHoldAlone();
+        std::vector<int> alone = headsThatHoldAlone();
+        // ...and in a turret, the player's own head first: the one the
+        // player can fly from there, other heads after it. Too strong for
+        // the rock, it is still the one, to be backed away with.
+        const int own = ownHead();
+        if (own >= 0) {
+            // out of its reach, whatever the other heads reach: the player's
+            // head is the one to close in with
+            if (rock_.distance > 0 && outputOf(heads_[own], rock_.distance).falloff <= 0.0f) {
+                v.kind = RockVerdict::OutOfRange;
+                v.head = own;
+                v.headline = L"OUT OF RANGE";
+                std::swprintf(text, 256, L"Maximum laser effective range %.0f meters - Rock currently at %.1f meters",
+                              heads_[own].laser->zeroRange, rock_.distance);
+                v.instruction = text;
+                return v;
+            }
+            const auto at = std::find(alone.begin(), alone.end(), own);
+            if (at != alone.end()) {
+                alone.erase(at);
+                alone.insert(alone.begin(), own);
+            } else {
+                const float share = shareForHead(own);
+                if (share > 0 && share <= BREAK_EDGE) {
+                    tooStrong(heads_[own], own, share);
+                    return v;
+                }
+            }
+        }
         if (!alone.empty()) {
             const int head = alone[0];
             const float share = shareForHead(head);
@@ -6962,7 +7035,10 @@ MinerGUI::GadgetWords MinerGUI::gadgetWords() const {
     balance.needs = rock_.mass * BREAK_DECAY_PER_MASS;
     balance.ownResistance = rockOwnResistanceBare();
     balance.powerThrough = [this](float own) { return powerThroughSolo(own); };
-    const GadgetAdvice advice = advise(rock_, loadout_, firingCount() > 0 && rock_.mass > 0 ? &balance : nullptr);
+    // the range is the head's the rock view speaks to, not the card's
+    const int solo = soloHead();
+    const MiningLoadout& fit = solo >= 0 ? heads_[solo] : loadout_;
+    const GadgetAdvice advice = advise(rock_, fit, firingCount() > 0 && rock_.mass > 0 ? &balance : nullptr);
     out.gadget = advice.gadget;
     if (!advice.gadget) {
         // (the line says it, in capitals: no pill beside it)

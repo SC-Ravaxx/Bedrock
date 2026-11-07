@@ -1137,6 +1137,57 @@ int runScreenshots(const std::string& dir) {
         pump();
         shoot(gui.windowHandle(), "rock_near.png");
 
+        // ...and in a MOLE's turret, the player's own head known by its HUD
+        // (setTurretLaser) and not: the MOLE fitted as it was flown - two
+        // crafted Helix II with three Rieger-C3 each, a crafted Hofstede-S2
+        // with FLTR-XL and Rieger-C3 - and two Stilerons it was at, one at
+        // 48 m from the Hofstede's turret, one at 27 m from a Helix II's
+        {
+            const SCMiner::MiningModule* rieger = SCMiner::moduleById("passive_rieger_mk3");
+            SCMiner::MiningLoadout helixTwo;
+            helixTwo.laser = SCMiner::laserById("thcn_helix_s2");
+            helixTwo.craftedPower = 28.84f;
+            helixTwo.modules = {rieger, rieger, rieger};
+            SCMiner::MiningLoadout hofstede;
+            hofstede.laser = SCMiner::laserById("shin_hofstede_s2");
+            hofstede.craftedPower = 21.72f;
+            hofstede.modules = {SCMiner::moduleById("passive_fltr_mk3"), rieger};
+            gui.setHeadForShot(0, helixTwo);
+            gui.setHeadForShot(1, hofstede);
+            gui.setHeadForShot(2, helixTwo);
+            SCMiner::RockStats stileron;
+            stileron.ore = "STILERON (ORE)";
+            stileron.mass = 4290;
+            stileron.resistance = 44;
+            stileron.resistanceAdjusted = true;
+            stileron.instability = 168.75f;
+            stileron.scu = 6.32f;
+            stileron.distance = 48.0f;
+            gui.updateRock(stileron);
+            pump();
+            shoot(gui.windowHandle(), "rock_turret_48_unknown.png");
+            gui.setTurretLaser(hofstede.laser);
+            pump();
+            shoot(gui.windowHandle(), "rock_turret_48_hofstede.png");
+            gui.setTurretLaser(nullptr);
+            stileron.mass = 5337;
+            stileron.instability = 209.92f;
+            stileron.scu = 7.86f;
+            stileron.distance = 27.0f;
+            gui.updateRock(stileron);
+            pump();
+            shoot(gui.windowHandle(), "rock_turret_27_unknown.png");
+            gui.setTurretLaser(helixTwo.laser);
+            pump();
+            shoot(gui.windowHandle(), "rock_turret_27_helix.png");
+            gui.setTurretLaser(nullptr);
+            gui.setHeadForShot(0, fit);
+            gui.setHeadForShot(1, wide);
+            gui.setHeadForShot(2, hard);
+            gui.updateRock(rock);
+            pump();
+        }
+
         // ...and what it holds, once the panel's composition list was read:
         // the Tin rock of tests/scanpanel part by part - the ore's own two
         // parts first, each with its quality and its share - in the window

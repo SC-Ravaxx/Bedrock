@@ -4547,6 +4547,50 @@ int runSelfTest() {
                                        names == std::vector<std::string>{"Focus III Module", "Rieger-C3 Module"},
                                    "...and a Prospector's HUD reads as Helix I with Focus III and Rieger-C3 (got " + got + ")");
             }
+            // ...and a MOLE turret's: the line over its table names the head
+            // the player flies, a laser of size 2. Two turrets' HUDs at 5120 x
+            // 1440, cut and put back where they were on a black screen - the
+            // Helix II's with a module's lines above it, read and passed over.
+            {
+                auto turretName = [](const char* line) {
+                    const SCMiner::MiningLaser* l = SCMiner::turretLaserByHudLine(line);
+                    return std::string(l ? l->name : "-");
+                };
+                allPassed &= check(turretName("HOFSTEDE-S2 MINING LASER") == "Hofstede-S2 Mining Laser" &&
+                                       turretName(" HOFSTEDE-S2 MINING LASER ") == "Hofstede-S2 Mining Laser" &&
+                                       turretName("HELIX II MINING LASER") == "Helix II Mining Laser" &&
+                                       turretName("IMPACT II MINING LASER") == "Impact II Mining Laser" &&
+                                       turretName("Laser Power (+25%)") == "-" &&
+                                       turretName("C\" RIEGER-C3 MODOLE") == "-" &&
+                                       turretName("PITMAN MINING LASER") == "-",
+                                   "a turret's laser line names a laser of size 2, and no other line does");
+                const struct {
+                    const char* file;
+                    const wchar_t* resource;
+                    int x, y;
+                    const char* laser;
+                } turrets[] = {
+                    {"scanpanel/turret_laser_hofstede.png", L"SELFTEST_TURRET_HOFSTEDE", 1310, 1100, "Hofstede-S2 Mining Laser"},
+                    {"scanpanel/turret_laser_helix.png", L"SELFTEST_TURRET_HELIX", 1320, 930, "Helix II Mining Laser"},
+                };
+                for (const auto& t : turrets) {
+                    const cv::Mat cut = testPicture(t.file, t.resource);
+                    allPassed &= check(!cut.empty(), std::string("the turret HUD's picture ") + t.file +
+                                                         " is beside the build or inside the exe");
+                    if (cut.empty() || !reader) continue;
+                    cv::Mat screen(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+                    cut.copyTo(screen(cv::Rect(t.x, t.y, cut.cols, cut.rows)));
+                    std::string line;
+                    const SCMiner::MiningLaser* laser = SCMiner::readTurretLaser(screen, *reader, &line);
+                    allPassed &= check(laser && std::string(laser->name) == t.laser,
+                                       std::string("...and a turret's HUD reads as ") + t.laser + " (got '" + line + "')");
+                }
+                if (reader) {
+                    const cv::Mat blank(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+                    allPassed &= check(SCMiner::readTurretLaser(blank, *reader) == nullptr,
+                                       "...and a screen with no turret's HUD names no laser");
+                }
+            }
         }
 
         // The LASER RANGE gauge: the figure beside its white triangle, read

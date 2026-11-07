@@ -4443,6 +4443,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 std::cout << "; columns " << seen.moduleColumns << (seen.iconPastList ? " past" : "") << "; head";
                 for (int r = 0; r < 6; r++) std::cout << (r ? "/" : " ") << seen.head[r];
                 std::cout << (seen.headAgrees ? " agrees" : " differs") << "; " << (int)ms << " ms" << std::endl;
+                // ...and a MOLE turret's laser, where no one-seat table is
+                if (!seen.tableFound) {
+                    std::string line;
+                    const auto turretStarted = std::chrono::steady_clock::now();
+                    const SCMiner::MiningLaser* turret = SCMiner::readTurretLaser(frame, *lines, &line);
+                    const double turretMs =
+                        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - turretStarted).count();
+                    std::cout << "  turret laser '" << line << "' -> " << (turret ? turret->name : "-") << "; "
+                              << (int)turretMs << " ms" << std::endl;
+                }
             }
             return 0;
         }
