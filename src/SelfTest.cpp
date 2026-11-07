@@ -6172,6 +6172,35 @@ int runSelfTest() {
             if (SCMiner::locationsFor(m.name, SCMiner::MiningFamily::Ship).empty()) orphans++;
         }
         allPassed &= check(orphans == 0, "Every ship ore has a known location (" + std::to_string(orphans) + " without)");
+        // A place in a list opens what else is mined there: Terminus has
+        // ship ores, a ROC deposit's gem and hand gems, listed in that order
+        // and each family best chance first
+        const std::string terminus = "Pyro VI (Terminus)";
+        const size_t ship = SCMiner::oresAt(terminus, SCMiner::MiningFamily::Ship).size();
+        const size_t roc = SCMiner::oresAt(terminus, SCMiner::MiningFamily::ROC).size();
+        const size_t hand = SCMiner::oresAt(terminus, SCMiner::MiningFamily::FPS).size();
+        allPassed &= check(ship > 0 && roc > 0 && hand > 0,
+                           "Terminus has ship ores, ROC gems and hand gems (" + std::to_string(ship) + ", " +
+                               std::to_string(roc) + ", " + std::to_string(hand) + ")");
+        const auto card = SCMiner::MinerGUI::minedAt(terminus);
+        bool inOrder = card.size() == ship + roc + hand;
+        for (size_t i = 1; inOrder && i < card.size(); i++) {
+            inOrder = (int)card[i - 1].family < (int)card[i].family ||
+                      (card[i - 1].family == card[i].family && card[i - 1].chance >= card[i].chance);
+        }
+        allPassed &= check(inOrder, "A place lists its ship ores, then ROC gems, then hand gems, best chance first");
+        // ...and every place a list names has the listed mineral on its own list
+        int unlisted = 0;
+        for (const auto& row : SCMiner::ORE_LOCATIONS) {
+            const auto there = SCMiner::MinerGUI::minedAt(row.location);
+            if (std::none_of(there.begin(), there.end(), [&](const SCMiner::OreLocation& o) {
+                    return o.family == row.family && std::strcmp(o.mineral, row.mineral) == 0;
+                })) {
+                unlisted++;
+            }
+        }
+        allPassed &= check(unlisted == 0, "Every place a list names has that mineral on its own list (" +
+                                              std::to_string(unlisted) + " missing)");
     }
 
     // --- refinery table ---

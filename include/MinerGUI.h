@@ -65,6 +65,7 @@ struct FrostCache {
 
 // Forward declaration
 class MinerGUI;
+struct OreLocation;   // MiningLocations.h
 
 // Global instance for the window procedure
 inline MinerGUI* g_guiInstance = nullptr;
@@ -780,6 +781,10 @@ public:
     // shows the thing rather than an empty pane
     void openOreForShot(const char* ore = "Laranite");     // --screenshot only: an ore worth looking at
     void openPlaceForShot();     // ...and the same list turned round
+    // ...and the pointer on one of its hits (kind and value as in
+    // planHits_), or that hit clicked, where the window paints it now:
+    // false when it paints no such hit, and the pointer off it then
+    bool pointInPlannerForShot(int kind, const std::string& value, bool click);
     void suggestForShot();       // ...and the suggestion list, which only
     HWND suggestHandle() const { return notesSuggest_; }   // lives while typing
     // --screenshot only: `typed` added at the end of the open note, and the
@@ -1417,7 +1422,8 @@ private:
     void showSystemFinderFor(const std::string& system);
     // kind 0 ore, 1 system, 2 family, 3 tick box, 4 a link, 5 Report to UEX,
     // 6 the UEX tab, 7 a listing (its page), 8 a gem in the UEX tab, 9 the
-    // listings' order ("price", "newest")
+    // listings' order ("price", "newest"), 10 a place in the list (what else
+    // is mined there)
     struct PlanHit { Gdiplus::RectF rect; int kind; std::string value; };
     std::vector<PlanHit> planHits_;
     static LRESULT CALLBACK PlannerProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -1858,6 +1864,10 @@ public:
     // rarely 553"). Public for the self-test.
     static std::array<double, 8> qualityOdds(const RockPart& part);
     static std::wstring rockPartQuality(const RockPart& part);
+    // What the Ore Finder lists for a place: the ship's ores mined there,
+    // then the gems of ROC deposits, then the hand-mined ones, each family
+    // best chance first. Public for the self-test.
+    static std::vector<OreLocation> minedAt(const std::string& place);
 private:
     bool anyWantedResult() const;   // ...for any match on screen, so the blink repaints
     // Whether a part of the rock on view is one the player is after: its

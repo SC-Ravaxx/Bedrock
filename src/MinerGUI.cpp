@@ -8794,6 +8794,25 @@ void MinerGUI::openPlaceForShot() {
     showPlaceFinderFor("Daymar");
 }
 
+bool MinerGUI::pointInPlannerForShot(int kind, const std::string& value, bool click) {
+    if (!planner_) return false;
+    hoverPlan_ = {-1, -1};
+    // painted first, so the hits are those of the window as it stands
+    if (HDC dc = GetDC(planner_)) {
+        paintPlanner(dc);
+        ReleaseDC(planner_, dc);
+    }
+    InvalidateRect(planner_, nullptr, FALSE);
+    for (const auto& hit : planHits_) {
+        if (hit.kind != kind || hit.value != value) continue;
+        const int x = (int)(hit.rect.X + hit.rect.Width / 2), y = (int)(hit.rect.Y + hit.rect.Height / 2);
+        if (click) SendMessageW(planner_, WM_LBUTTONDOWN, 0, MAKELPARAM(x, y));
+        else hoverPlan_ = {x, y};
+        return true;
+    }
+    return false;
+}
+
 // A name being typed into the open note, and what the notebook offers for
 // it, so the screenshot for the website shows the autocomplete. The letters
 // go in the way a paste would, the caret ends behind them, and the list is
@@ -10446,6 +10465,15 @@ void MinerGUI::showPlaceFinderFor(const std::string& place) {
         InvalidateRect(planner_, nullptr, TRUE);
         SetForegroundWindow(planner_);
     }
+}
+
+std::vector<OreLocation> MinerGUI::minedAt(const std::string& place) {
+    std::vector<OreLocation> out;
+    for (MiningFamily family : {MiningFamily::Ship, MiningFamily::ROC, MiningFamily::FPS}) {
+        const std::vector<OreLocation> rows = oresAt(place, family);
+        out.insert(out.end(), rows.begin(), rows.end());
+    }
+    return out;
 }
 
 LRESULT MinerGUI::handleNotesMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -16842,6 +16870,13 @@ LRESULT MinerGUI::handlePlannerMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                     InvalidateRect(hwnd, nullptr, FALSE);
                     return 0;
                 }
+                if (hit.kind == 10) {
+                    // a place in the list: what else is mined there, in the
+                    // system the tabs are on
+                    plannerPlace_ = hit.value;
+                    InvalidateRect(hwnd, nullptr, TRUE);
+                    return 0;
+                }
                 if (hit.kind == 1) {
                     plannerUex_ = false;
                     plannerSystem_ = hit.value;
@@ -16865,7 +16900,11 @@ LRESULT MinerGUI::handlePlannerMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                     ShellExecuteW(hwnd, L"open", toW(hit.value).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
                     return 0;
                 }
-                else plannerMineral_ = hit.value;
+                else {
+                    // an ore or a family: its places, the card of a place left
+                    plannerMineral_ = hit.value;
+                    plannerPlace_.clear();
+                }
                 InvalidateRect(hwnd, nullptr, TRUE);
                 return 0;
             }
@@ -19107,7 +19146,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
 
             const bool roc = (plannerMineral_ == "ROC deposits");
             const bool fps = (plannerMineral_ == "Hand minables");
-            std::vector<OreLocation> rows = byPlace ? oresAt(plannerPlace_, MiningFamily::Ship)
+            std::vector<OreLocation> rows = byPlace ? minedAt(plannerPlace_)
                                           : roc ? bestOfFamily(MiningFamily::ROC)
                                           : fps ? bestOfFamily(MiningFamily::FPS)
                                                 : locationsFor(plannerMineral_, MiningFamily::Ship);
@@ -19117,20 +19156,41 @@ void MinerGUI::paintPlanner(HDC hdc) {
                            }), rows.end());
             }
 
-            float ry = listTop + scaleF(28);
+            // The heading names what is asked about in the bright ink, after
+            // the quiet words that say which way round the list runs; on the
+            // right, the system and how many. Those go on a line under the
+            // heading where a long place's name would run into them (Breaker
+            // Stations Large Geode), as the market's count does.
+            const std::wstring label = byPlace ? L"MINED AT  \u00B7" : L"WHERE TO FIND  \u00B7";
+            std::wstring subject = toW(byPlace ? plannerPlace_ : plannerMineral_);
+            std::transform(subject.begin(), subject.end(), subject.begin(), ::towupper);
+            const size_t count = rows.size();
+            std::wstring scope = (plannerSystem_ == "ALL") ? L"All systems" : toW(plannerSystem_);
+            scope += L"  \u00B7  " + std::to_wstring(count) +
+                     (byPlace ? (count == 1 ? L" ore" : L" ores") : (count == 1 ? L" place" : L" places"));
+            Gdiplus::RectF labelW;
+            g.MeasureString(label.c_str(), -1, &smallFont, Gdiplus::PointF(0, 0), &labelW);
+            const bool scopeUnder =
+                labelW.Width + scaleF(3) + lineWidth(g, subject, smallFont) + scaleF(8) + lineWidth(g, scope, subFont) > rw;
+            const float scopeDown = scopeUnder ? scaleF(16) : 0.0f;
+
+            float ry = listTop + scaleF(28) + scopeDown;
             const float prowH = scaleF(27);
             // Each row's words: the name, and after it in the small face what
             // kind of place it is, which ones a generic name stands for, and the
             // system. Where the two do not fit beside the figure, the small words
             // take a second line under the name (Lagrange C names five points, the
-            // Pyro belt a sentence).
-            struct PlaceWords { std::wstring name, sub; bool twoLines = false; };
+            // Pyro belt a sentence). A place's gems follow its ship's ores, each
+            // family under its name and signature as on the left.
+            struct PlaceWords { std::wstring name, sub; bool twoLines = false, headed = false; };
             std::vector<PlaceWords> words;
             const float lineH = scaleF(14);   // the second line
+            const float headH = scaleF(26);   // a family's heading over its first gem
             {
                 Gdiplus::RectF pctW;
                 g.MeasureString(L"100.0 %", -1, &pctFont, Gdiplus::PointF(0, 0), &pctW);
                 const float room = rw - pctW.Width - scaleF(10);
+                MiningFamily before = MiningFamily::Ship;
                 for (const OreLocation& row : rows) {
                     PlaceWords w;
                     w.name = byPlace ? toW(row.mineral) : toW(row.location);
@@ -19139,6 +19199,8 @@ void MinerGUI::paintPlanner(HDC hdc) {
                     if (row.note[0]) w.sub += L"  ·  " + toW(row.note);
                     if (plannerSystem_ == "ALL") w.sub += L"  ·  " + toW(row.system);
                     if (byPlace) w.sub = toW(row.system) + L"  ·  " + toW(row.kind);
+                    w.headed = byPlace && row.family != before;
+                    before = row.family;
                     Gdiplus::RectF nameW, subW;
                     g.MeasureString(w.name.c_str(), -1, &placeFont, Gdiplus::PointF(0, 0), &nameW);
                     g.MeasureString(w.sub.c_str(), -1, &subFont, Gdiplus::PointF(0, 0), &subW);
@@ -19466,7 +19528,9 @@ void MinerGUI::paintPlanner(HDC hdc) {
                 plannerScrollList_ = listKey;
                 plannerScroll_ = 0;
             }
-            auto rowHeight = [&](int i) { return prowH + (words[i].twoLines ? lineH : 0.0f); };
+            auto rowHeight = [&](int i) {
+                return prowH + (words[i].twoLines ? lineH : 0.0f) + (words[i].headed ? headH : 0.0f);
+            };
             // the furthest it goes: its last rows filling the room (and, with
             // not even the last row fitting, nowhere)
             int lastFirst = (int)words.size();
@@ -19494,21 +19558,10 @@ void MinerGUI::paintPlanner(HDC hdc) {
             cardLight(g, card, scaleF(R_CARD), scaleF(44));
             cardEdge(g, card, scaleF(R_CARD));
 
-            // The heading names what is asked about in the bright ink, after
-            // the quiet words that say which way round the list runs
-            std::wstring label = byPlace ? L"MINED AT  \u00B7" : L"WHERE TO FIND  \u00B7";
-            std::wstring subject = toW(byPlace ? plannerPlace_ : plannerMineral_);
-            std::transform(subject.begin(), subject.end(), subject.begin(), ::towupper);
             g.DrawString(label.c_str(), -1, &smallFont, Gdiplus::PointF(rx, listTop + scaleF(4)), &faintBrush);
-            {
-                Gdiplus::RectF measured;
-                g.MeasureString(label.c_str(), -1, &smallFont, Gdiplus::PointF(0, 0), &measured);
-                g.DrawString(subject.c_str(), -1, &smallFont,
-                             Gdiplus::PointF(rx + measured.Width + scaleF(3), listTop + scaleF(4)), &textBrush);
-            }
-            std::wstring scope = (plannerSystem_ == "ALL") ? L"All systems" : toW(plannerSystem_);
-            scope += L"  \u00B7  " + std::to_wstring((int)rows.size()) + (byPlace ? L" ores" : L" places");
-            Gdiplus::RectF scopeRect(rx, listTop + scaleF(5), rw, scaleF(14));
+            g.DrawString(subject.c_str(), -1, &smallFont,
+                         Gdiplus::PointF(rx + labelW.Width + scaleF(3), listTop + scaleF(4)), &textBrush);
+            Gdiplus::RectF scopeRect(rx, listTop + scaleF(5) + scopeDown, rw, scaleF(14));
             g.DrawString(scope.c_str(), -1, &subFont, scopeRect, &rightAlign, &faintBrush);
 
             if (rows.empty()) {
@@ -19521,14 +19574,32 @@ void MinerGUI::paintPlanner(HDC hdc) {
             for (int i = first; i < first + shown; i++) {
                 const OreLocation& row = rows[i];
                 const PlaceWords& w = words[i];
-                const float rowH = prowH + (w.twoLines ? lineH : 0.0f);
-                {
-                    // the row the pointer is on, so the name and its figure stay
-                    // on one line for the eye
-                    Gdiplus::RectF band(rx - scaleF(8), ry, rw + scaleF(16), rowH);
-                    if (isHot(hoverPlan_, band)) fillRoundRect(g, band, scaleF(R_CONTROL), COL_HOVER);
+                if (w.headed) {
+                    // a ground family's first gem at the place: the family's
+                    // name and signature over it, as on the left, on one baseline
+                    const bool rocGems = row.family == MiningFamily::ROC;
+                    std::wstring head = toW(rocGems ? "ROC deposits" : "Hand minables");
+                    std::transform(head.begin(), head.end(), head.begin(), ::towupper);
+                    const float headY = ry + scaleF(10);
+                    const float sigY = headY + fontAscent(smallFont) - fontAscent(numFont);
+                    g.DrawString(head.c_str(), -1, &smallFont, Gdiplus::PointF(rx, headY), &faintBrush);
+                    g.DrawString(rocGems ? L"4,000 / node" : L"3,000 / node", -1, &numFont,
+                                 Gdiplus::RectF(rx, sigY, rw, scaleF(14)), &rightAlign, &faintBrush);
+                    ry += headH;
                 }
-                g.DrawString(w.name.c_str(), -1, &placeFont, Gdiplus::PointF(rx, ry + scaleF(3)), &textBrush);
+                const float rowH = prowH + (w.twoLines ? lineH : 0.0f);
+                // the row the pointer is on, so the name and its figure stay
+                // on one line for the eye. A click turns the list round: a
+                // place opens what is mined there, an ore of a place its
+                // places, a gem its family's.
+                const Gdiplus::RectF band(rx - scaleF(8), ry, rw + scaleF(16), rowH);
+                const bool hot = isHot(hoverPlan_, band);
+                if (hot) fillRoundRect(g, band, scaleF(R_CONTROL), COL_HOVER);
+                if (!byPlace) planHits_.push_back({band, 10, row.location});
+                else if (row.family == MiningFamily::Ship) planHits_.push_back({band, 0, row.mineral});
+                else planHits_.push_back({band, 2, row.family == MiningFamily::ROC ? "ROC deposits" : "Hand minables"});
+                g.DrawString(w.name.c_str(), -1, &placeFont, Gdiplus::PointF(rx, ry + scaleF(3)),
+                             hot ? &accentBrush : &textBrush);
                 if (w.twoLines) {
                     g.DrawString(w.sub.c_str(), -1, &subFont, Gdiplus::RectF(rx, ry + scaleF(22), rw, lineH),
                                  &trimmed, &dimBrush);

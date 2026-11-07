@@ -2230,6 +2230,34 @@ int runScreenshots(const std::string& dir) {
     gui.openPlaceForShot();
     pump();
     if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_place.png", true);
+    // ...and a place in an ore's list under the pointer, then clicked: what
+    // else is mined there, the ground's gems under the ship's ores, in the
+    // system on the tabs. Then back by the ore on the left.
+    {
+        const std::string terminus = "Pyro VI (Terminus)";
+        gui.openOreForShot("Stileron");
+        gui.pointInPlannerForShot(1, "PYRO", true);
+        pump();
+        const bool listed = gui.pointInPlannerForShot(10, terminus, false);
+        pump();
+        if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_hover.png", true);
+        gui.pointInPlannerForShot(10, terminus, true);
+        pump();
+        if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_place_gems.png", true);
+        const bool opened = !gui.pointInPlannerForShot(10, terminus, false);
+        gui.pointInPlannerForShot(0, "Stileron", true);
+        const bool back = gui.pointInPlannerForShot(10, terminus, false);
+        gui.pointInPlannerForShot(-1, "", false);
+        pump();
+        std::cout << "ore finder place: " << (listed ? "listed" : "NOT LISTED") << ", "
+                  << (opened ? "its card opened" : "CARD NOT OPENED") << ", "
+                  << (back ? "back by the ore" : "NOT BACK") << std::endl;
+        // ...and a place whose name leaves no room beside it for how many
+        gui.openOreForShot("Savrilium");
+        gui.pointInPlannerForShot(10, "Breaker Stations Large Geode", true);
+        pump();
+        if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_place_long.png", true);
+    }
     // ...and an ore with the longest rows there are: Lagrange C names five
     // points, the Pyro belt a sentence. Their small words take a second
     // line rather than running under the figure.
