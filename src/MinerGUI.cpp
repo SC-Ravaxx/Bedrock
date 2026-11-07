@@ -14389,12 +14389,20 @@ void MinerGUI::paintQualityInfo(Gdiplus::Graphics& g, int cw, const Gdiplus::Rec
     const float M = (float)scale(MARGIN);
     const float pad = scaleF(16), colGap = scaleF(20);
     const float boxW = (float)cw - 2 * M, innerW = boxW - 2 * pad;
-    const std::wstring title = L"HOW THE QUALITY IS WORKED OUT";
-    const std::wstring rule = L"Each value counts 3 when the item is made for it, 2 when it comes second and 1 "
-                              L"otherwise. Slots that move the same value share it by how far each moves it.";
-    const Fitted ruleFit = fitLines(g, rule, textFont, innerW);
+    const std::wstring title = L"HOW THE QUALITY IS CALCULATED";
+    // Why a value weighs what it does, in the game's terms, then the numbers
+    const std::wstring why = L"The values an item is made for weigh more than the others. On armor, damage "
+                             L"mitigation weighs more than temperature insulation. On a weapon, damage and fire "
+                             L"rate weigh more than recoil. On a ship component, what it is fitted for weighs more "
+                             L"than its Integrity: strength on a shield, speed and fuel consumption on a quantum "
+                             L"drive.";
+    const std::wstring how = L"Main values weigh 3, secondary values 2, all others 1. If several slots move the "
+                             L"same value, they share its weight by how much each one moves it. The quality is the "
+                             L"average of the slots' qualities, each slot counted by its weight.";
+    const Fitted whyFit = fitLines(g, why, textFont, innerW);
+    const Fitted howFit = fitLines(g, how, textFont, innerW);
     // the columns, as wide as their widest entry
-    const std::wstring heads[5] = {L"SLOT", L"MATERIAL", L"QUALITY", L"COUNTS", L"VALUES"};
+    const std::wstring heads[5] = {L"SLOT", L"MATERIAL", L"QUALITY", L"WEIGHT", L"VALUES"};
     float colW[4] = {width(heads[0], labelFont), width(heads[1], labelFont), width(heads[2], labelFont),
                      width(heads[3], labelFont)};
     for (const Row& r : rows) {
@@ -14412,7 +14420,9 @@ void MinerGUI::paintQualityInfo(Gdiplus::Graphics& g, int cw, const Gdiplus::Rec
 
     // the height first, then the drawing on the same steps
     const float titleH = scaleF(16), lineH = scaleF(17), headH = scaleF(18), rowH = scaleF(24);
-    float h = pad + titleH + scaleF(4) + lineH + ruleFit.more + scaleF(12) + headH;
+    const float paraGap = scaleF(7);
+    const float textH = lineH + whyFit.more + paraGap + lineH + howFit.more;
+    float h = pad + titleH + scaleF(4) + textH + scaleF(12) + headH;
     for (const Fitted& v : valueFits) h += rowH + v.more;
     h += scaleF(10) + scaleF(12) + rowH + lineH + pad;
     // under the pill, and below the line under the name
@@ -14423,10 +14433,14 @@ void MinerGUI::paintQualityInfo(Gdiplus::Graphics& g, int cw, const Gdiplus::Rec
     float y = box.Y + pad;
     g.DrawString(title.c_str(), -1, &labelFont, Gdiplus::PointF(colX[0], y), &faintBrush);
     y += titleH + scaleF(4);
-    g.DrawString(ruleFit.text.c_str(), -1, &textFont,
-                 Gdiplus::RectF(colX[0], y, innerW + scaleF(4), lineH + ruleFit.more + scaleF(4)), &wrapped,
+    g.DrawString(whyFit.text.c_str(), -1, &textFont,
+                 Gdiplus::RectF(colX[0], y, innerW + scaleF(4), lineH + whyFit.more + scaleF(4)), &wrapped,
                  &dimBrush);
-    y += lineH + ruleFit.more + scaleF(12);
+    y += lineH + whyFit.more + paraGap;
+    g.DrawString(howFit.text.c_str(), -1, &textFont,
+                 Gdiplus::RectF(colX[0], y, innerW + scaleF(4), lineH + howFit.more + scaleF(4)), &wrapped,
+                 &dimBrush);
+    y += lineH + howFit.more + scaleF(12);
     for (int c = 0; c < 5; c++) {
         g.DrawString(heads[c].c_str(), -1, &labelFont, Gdiplus::PointF(colX[c], y), &faintBrush);
     }
