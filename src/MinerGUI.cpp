@@ -11613,16 +11613,20 @@ void MinerGUI::openRecoilBlueprintForShot() {
     }
 }
 
-void MinerGUI::openParallaxForShot() {
-    // The case a player sent: Carinite 959, Gold 916, Tungsten 964 - his
-    // tool says 958, and so should the result line
+void MinerGUI::openQualityForShot(const std::string& blueprint,
+                                  const std::vector<std::pair<std::string, int>>& byMaterial) {
+    // A blueprint opened at the qualities a player sent, by material; a
+    // material not named stays at 500
     for (int b = 0; b < CRAFT_BLUEPRINT_COUNT; b++) {
-        if (std::string(CRAFT_BLUEPRINTS[b].name) != "Parallax Energy Assault Rifle") continue;
+        if (blueprint != CRAFT_BLUEPRINTS[b].name) continue;
         const CraftBlueprint& bp = CRAFT_BLUEPRINTS[b];
         openBlueprint(b);
         for (int s = 0; s < bp.count && s < CRAFT_MAX_SLOTS; s++) {
             const std::string mat = CRAFT_MATERIALS[CRAFT_SLOTS[bp.first + s].material].name;
-            craftQuality_[s] = mat == "Carinite" ? 959 : mat == "Gold" ? 916 : mat == "Tungsten" ? 964 : 500;
+            craftQuality_[s] = 500;
+            for (const auto& [name, quality] : byMaterial) {
+                if (name == mat) craftQuality_[s] = quality;
+            }
         }
         return;
     }
@@ -14193,8 +14197,8 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
         const float tRight = (float)cw - M;
         float tx = tLeft;
         float tyRow = ty;
-        // The item's quality as one number, the way the community tools
-        // print it (CraftQuality.h), ahead of what it moves
+        // The item's quality as one number, each slot counted by how far it
+        // moves the item (CraftQuality.h), ahead of what it moves
         if (const int avg = craftAverageQuality(bp, craftQuality_, CRAFT_MAX_SLOTS); avg > 0) {
             const std::wstring label = L"Avg. Q";
             const std::wstring value = L" " + std::to_wstring(avg);

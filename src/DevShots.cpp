@@ -2529,9 +2529,14 @@ int runScreenshots(const std::string& dir) {
     gui.openRecoilBlueprintForShot();
     pump();
     if (gui.craftingHandle()) shoot(gui.craftingHandle(), "blueprint_recoil.png", true);
-    gui.openParallaxForShot();
+    // Avg. Q: the case a player sent (his tool says 958), then one that
+    // mixes pieces and SCU - two Aphorite lenses that barely move the gun
+    gui.openQualityForShot("Parallax Energy Assault Rifle", {{"Carinite", 959}, {"Gold", 916}, {"Tungsten", 964}});
     pump();
     if (gui.craftingHandle()) shoot(gui.craftingHandle(), "blueprint_quality.png", true);
+    gui.openQualityForShot("Lumin V SMG", {{"Riccite", 965}, {"Copper", 958}, {"Aphorite", 523}});
+    pump();
+    if (gui.craftingHandle()) shoot(gui.craftingHandle(), "blueprint_quality_mixed.png", true);
     // ...the contracts that drop a recipe: the list of them, then one opened
     gui.openContractForShot(false);
     pump();

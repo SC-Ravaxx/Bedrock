@@ -3130,26 +3130,58 @@ int runSelfTest() {
         allPassed &= check(inRange, "every blueprint's contracts point into the source table");
     }
 
-    // --- One number for the crafted item: the slots by their amounts ---
+    // --- One number for the crafted item: each slot by how far it moves it ---
     {
-        int parallax = -1;
+        // A blueprint's Avg. Q from a quality per material - each a band
+        // value of its material - or -2 when the blueprint is not shaped so
+        const auto avgOf = [](const std::string& blueprint,
+                              const std::vector<std::pair<std::string, int>>& byMaterial) {
+            for (int b = 0; b < SCMiner::CRAFT_BLUEPRINT_COUNT; b++) {
+                const auto& bp = SCMiner::CRAFT_BLUEPRINTS[b];
+                if (blueprint != bp.name) continue;
+                if (bp.count != (int)byMaterial.size() || bp.count > 8) return -2;
+                int q[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+                for (int s = 0; s < bp.count; s++) {
+                    const auto& mat = SCMiner::CRAFT_MATERIALS[SCMiner::CRAFT_SLOTS[bp.first + s].material];
+                    int want = -1;
+                    for (const auto& [name, quality] : byMaterial) {
+                        if (name == mat.name) want = quality;
+                    }
+                    if (want < 0 || SCMiner::snapToBand(mat, want) != want) return -2;
+                    q[s] = want;
+                }
+                return SCMiner::craftAverageQuality(bp, q, 8);
+            }
+            return -2;
+        };
+        // The case a player sent: his tool says 958, by amount; here the
+        // Frame's three recoil values count most, and they are Tungsten
+        allPassed &= check(avgOf("Parallax Energy Assault Rifle",
+                                 {{"Carinite", 959}, {"Gold", 916}, {"Tungsten", 964}}) == 960,
+                           "Parallax from Carinite 959, Gold 916 and Tungsten 964 comes out at Avg. Q 960");
+        // Pieces and SCU in one recipe: two Aphorite lenses that barely move
+        // the item must not pull it to their 523 (by amount it was 532)
+        allPassed &= check(avgOf("Lumin V SMG", {{"Riccite", 965}, {"Copper", 958}, {"Aphorite", 523}}) == 941,
+                           "Lumin V SMG from Riccite 965, Copper 958 and Aphorite 523 comes out at Avg. Q 941");
+        // A value whose curve is not known hides the number, rather than
+        // weigh its slot as if any quality did
+        int unknownSeen = 0;
+        bool unknownHidden = true;
         for (int b = 0; b < SCMiner::CRAFT_BLUEPRINT_COUNT; b++) {
-            if (std::string(SCMiner::CRAFT_BLUEPRINTS[b].name) == "Parallax Energy Assault Rifle") parallax = b;
+            const auto& bp = SCMiner::CRAFT_BLUEPRINTS[b];
+            bool unknown = false;
+            for (int s = 0; s < bp.count; s++) {
+                const auto& slot = SCMiner::CRAFT_SLOTS[bp.first + s];
+                for (int k = 0; k < slot.effCount; k++) {
+                    if (SCMiner::effectCurveUnknown(SCMiner::CRAFT_EFFECTS[slot.effFirst + k])) unknown = true;
+                }
+            }
+            if (!unknown || bp.count > 8) continue;
+            unknownSeen++;
+            const int all[8] = {700, 700, 700, 700, 700, 700, 700, 700};
+            if (SCMiner::craftAverageQuality(bp, all, 8) != -1) unknownHidden = false;
         }
-        // The case a player sent, from his tool: Carinite 959, Gold 916,
-        // Tungsten 964 - each a band value of its material - is 958
-        int q[3] = {0, 0, 0};
-        bool shaped = parallax >= 0 && SCMiner::CRAFT_BLUEPRINTS[parallax].count == 3;
-        for (int s = 0; shaped && s < 3; s++) {
-            const auto& slot = SCMiner::CRAFT_SLOTS[SCMiner::CRAFT_BLUEPRINTS[parallax].first + s];
-            const auto& mat = SCMiner::CRAFT_MATERIALS[slot.material];
-            const std::string name = mat.name;
-            const int want = name == "Carinite" ? 959 : name == "Gold" ? 916 : name == "Tungsten" ? 964 : -1;
-            if (want < 0 || SCMiner::snapToBand(mat, want) != want) shaped = false;
-            q[s] = want;
-        }
-        allPassed &= check(shaped && SCMiner::craftAverageQuality(SCMiner::CRAFT_BLUEPRINTS[parallax], q, 3) == 958,
-                           "Parallax from Carinite 959, Gold 916 and Tungsten 964 comes out at Avg. Q 958");
+        allPassed &= check(unknownSeen > 0 && unknownHidden, "a blueprint with a curve not known shows no Avg. Q");
         // ...and a blueprint at one quality throughout is at that quality
         bool flat = true;
         for (int b = 0; b < SCMiner::CRAFT_BLUEPRINT_COUNT; b++) {

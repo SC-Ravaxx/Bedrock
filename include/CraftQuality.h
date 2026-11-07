@@ -1,18 +1,18 @@
 #pragma once
 
-// The quality a crafted item comes out at, as one number. The game draws
+// The quality a crafted item comes out at, as one number. The game shows
 // none: the bench shows each slot's quality and what it moves, and the item
 // keeps the qualities it was made of (CraftingGlobalParams'
-// defaultCompositionQuality, 500, stands in for an item nobody made). The
-// community tools print one all the same ("958/1000"), and players compare
-// against it.
+// defaultCompositionQuality, 500, stands in for an item nobody made).
 //
-// Theirs is the slots' qualities averaged by the amount each slot takes, as
-// the blueprint states the amount: SCU for a resource, a count for an item.
-// The one published case - a Parallax from Carinite 959, Gold 916 and
-// Tungsten 964, which is 958 - comes out at 958.4 that way. Averaged plainly
-// it is 946, by the item's own volume (Carinite 1000 microSCU) 948, by the
-// values each slot moves 953 and by how far it moves them 960.
+// Each slot's quality counts by how far the slot moves the item: the spans
+// of its values, |factor at the top - factor at the bottom|, added up. A
+// Frame that moves three recoil values from x1.40 to x0.60 counts 2.4,
+// Lenses that move Impact Force from x0.93 to x1.08 count 0.15, and a Lumin
+// V SMG of Riccite 965, Copper 958 and Aphorite 523 comes out at 941, as its
+// values do: recoil -37 %, fire rate +11 %, impact +0.35 %. By the amount
+// each slot takes it was 532 - two Aphorite pieces counted as 2 against
+// 0.03 and 0.01 SCU, and one blueprint in six mixes pieces and SCU.
 #include <cmath>
 
 #include "CraftingData.h"
@@ -20,17 +20,22 @@
 namespace SCMiner {
 
 // `quality` holds one value per slot of the blueprint, in its slot order,
-// `have` how many it holds. -1 when that is too few for the blueprint or
-// none of its slots takes an amount.
+// `have` how many it holds. -1 when that is too few for the blueprint, when
+// no slot moves anything, and when a value's curve is not known or not to be
+// trusted: counted at nothing, its slot would weigh as if any quality did.
 inline int craftAverageQuality(const CraftBlueprint& bp, const int* quality, int have) {
     if (bp.count > have) return -1;
     double sum = 0.0, weight = 0.0;
     for (int s = 0; s < bp.count; s++) {
         const CraftSlot& slot = CRAFT_SLOTS[bp.first + s];
-        const double amount = slot.scu > 0 ? (double)slot.scu : (double)slot.units;
-        if (amount <= 0) continue;
-        sum += amount * quality[s];
-        weight += amount;
+        double w = 0.0;
+        for (int k = 0; k < slot.effCount; k++) {
+            const CraftEffect& e = CRAFT_EFFECTS[slot.effFirst + k];
+            if (effectDataBroken(e) || effectCurveUnknown(e)) return -1;
+            if (effectMovesStat(e)) w += std::fabs((double)e.atMax - (double)e.atMin);
+        }
+        sum += w * quality[s];
+        weight += w;
     }
     if (weight <= 0) return -1;
     return (int)std::lround(sum / weight);

@@ -843,7 +843,8 @@ public:
     void grindWarningForShot(bool show);   // ...and the notice over it
     void grindRankMenuForShot(int source); // ...and the ranks under the pill of that mission's ladder, -1 shut
     void openRecoilBlueprintForShot();
-    void openParallaxForShot();
+    void openQualityForShot(const std::string& blueprint,
+                            const std::vector<std::pair<std::string, int>>& byMaterial);
 
     // Headless: every window stays outside all monitors, nothing is
     // activated - for --screenshot, which photographs the windows from their
