@@ -17,6 +17,7 @@
 #include <cmath>
 #include <initializer_list>
 #include <string_view>
+#include <vector>
 
 #include "CraftingData.h"
 
@@ -49,34 +50,56 @@ inline int craftStatImportance(const CraftBlueprint& bp, int stat) {
     return 1;
 }
 
-// `quality` holds one value per slot of the blueprint, in its slot order,
-// `have` how many it holds. -1 when that is too few for the blueprint, when
-// no slot moves anything, and when a value's curve is not known or not to be
-// trusted: counted at nothing, its slot would weigh as if any quality did.
-inline int craftAverageQuality(const CraftBlueprint& bp, const int* quality, int have) {
-    if (bp.count > have) return -1;
+// What one slot counts toward the quality: its share of each value it
+// moves (`share`, by stat; 0 for the values it leaves alone) and their sum
+struct CraftSlotCount {
+    double total = 0.0;
+    double share[CRAFT_STAT_COUNT] = {};
+};
+
+// Every slot's count, one per slot of the blueprint into `out`: each value
+// counts by craftStatImportance, and the slots that move it share that by
+// how far each moves it. False when a value's curve is not known or not to
+// be trusted: counted at nothing, its slot would weigh as if any quality did.
+inline bool craftSlotCounts(const CraftBlueprint& bp, CraftSlotCount* out) {
     // how far the slots together move each value...
     double moved[CRAFT_STAT_COUNT] = {};
     for (int s = 0; s < bp.count; s++) {
         const CraftSlot& slot = CRAFT_SLOTS[bp.first + s];
         for (int k = 0; k < slot.effCount; k++) {
             const CraftEffect& e = CRAFT_EFFECTS[slot.effFirst + k];
-            if (effectDataBroken(e) || effectCurveUnknown(e)) return -1;
+            if (effectDataBroken(e) || effectCurveUnknown(e)) return false;
             if (effectMovesStat(e)) moved[e.stat] += std::fabs((double)e.atMax - (double)e.atMin);
         }
     }
     // ...and each slot's share of every value it moves
-    double sum = 0.0, weight = 0.0;
     for (int s = 0; s < bp.count; s++) {
         const CraftSlot& slot = CRAFT_SLOTS[bp.first + s];
-        double w = 0.0;
+        CraftSlotCount& c = out[s];
+        c = CraftSlotCount{};
         for (int k = 0; k < slot.effCount; k++) {
             const CraftEffect& e = CRAFT_EFFECTS[slot.effFirst + k];
             if (!effectMovesStat(e)) continue;
-            w += craftStatImportance(bp, e.stat) * std::fabs((double)e.atMax - (double)e.atMin) / moved[e.stat];
+            const double part =
+                craftStatImportance(bp, e.stat) * std::fabs((double)e.atMax - (double)e.atMin) / moved[e.stat];
+            c.share[e.stat] += part;
+            c.total += part;
         }
-        sum += w * quality[s];
-        weight += w;
+    }
+    return true;
+}
+
+// `quality` holds one value per slot of the blueprint, in its slot order,
+// `have` how many it holds. -1 when that is too few for the blueprint, when
+// no slot moves anything, and when craftSlotCounts has no counts.
+inline int craftAverageQuality(const CraftBlueprint& bp, const int* quality, int have) {
+    if (bp.count > have) return -1;
+    std::vector<CraftSlotCount> counts(bp.count);
+    if (!craftSlotCounts(bp, counts.data())) return -1;
+    double sum = 0.0, weight = 0.0;
+    for (int s = 0; s < bp.count; s++) {
+        sum += counts[s].total * quality[s];
+        weight += counts[s].total;
     }
     if (weight <= 0) return -1;
     return (int)std::lround(sum / weight);

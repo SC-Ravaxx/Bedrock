@@ -11513,6 +11513,7 @@ void MinerGUI::openBlueprint(int index) {
     craftOpen_ = index;
     craftDrag_ = -1;
     craftSourceOpen_ = -1;
+    craftQualityInfo_ = false;
     craftSourceScroll_ = 0;
     craftSourceSystem_.clear();
     if (index >= 0) {
@@ -11630,6 +11631,11 @@ void MinerGUI::openQualityForShot(const std::string& blueprint,
         }
         return;
     }
+}
+
+void MinerGUI::showQualityInfoForShot(bool on) {
+    craftQualityInfo_ = on;
+    if (crafting_) InvalidateRect(crafting_, nullptr, TRUE);
 }
 
 bool MinerGUI::openCardForShot(const std::string& blueprint, const std::string& titleStart,
@@ -13577,6 +13583,8 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
 
     // Where the buttons on the right begin: the name stops short of them
     float headRight = (float)cw - M;
+    // ...and where the quality stands, for its calculation unfolded under it
+    Gdiplus::RectF qualityAnchor;
     // Owned or not, top right - and a click flips it, for what the log
     // never saw (a blueprint bought, traded, or received before the logs).
     // It carries the tick box the list does, so the two read as one switch.
@@ -13682,7 +13690,8 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
         }
     }
     // The name, and beside it the quality the item comes out at
-    // (CraftQuality.h), as a number and a grade. A name too long for both
+    // (CraftQuality.h), as a number and a grade, and an i that unfolds how
+    // it is worked out (paintQualityInfo). A name too long for all of it
     // ends in an ellipsis rather than under the buttons.
     {
         // How far a text's letters run: GDI+ measures a line 3 % wider than
@@ -13701,10 +13710,11 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
             avg >= 0 ? std::to_wstring(avg) + L" \u00B7 " + (wchar_t)craftQualityGrade(avg) : std::wstring();
         Gdiplus::Font wordFont(&textFamily(), wordEm, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
         const float pad = scaleF(8), between = scaleF(6), pillGap = scaleF(12);
+        const float infoS = scaleF(24), infoGap = scaleF(6);
         const float wordW = advance(word, wordFont, wordEm), valueW = advance(value, bigNumFont, valueEm);
         const float pillW = avg >= 0 ? pad + wordW + between + valueW + pad : 0.0f;
         const auto inkRight = [&](const std::wstring& s) { return x0 + titleEm / 6.0f + advance(s, markFont, titleEm); };
-        const float nameLimit = headRight - scaleF(12) - (avg >= 0 ? pillGap + pillW : 0.0f);
+        const float nameLimit = headRight - scaleF(12) - (avg >= 0 ? pillGap + pillW + infoGap + infoS : 0.0f);
         std::wstring name = toW(bp.name);
         if (inkRight(name) > nameLimit) {
             while (name.size() > 1 && inkRight(name + L"\u2026") > nameLimit) name.pop_back();
@@ -13716,13 +13726,34 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
             // on the middle of the name's capitals, each text by its letters
             const float middle = (float)scale(9) + inkMiddle(L"H", markFamily(), Gdiplus::FontStyleRegular, titleEm);
             const Gdiplus::RectF pill(inkRight(name) + pillGap, middle - scaleF(12), pillW, scaleF(24));
+            const Gdiplus::RectF info(pill.GetRight() + infoGap, pill.Y, infoS, infoS);
+            qualityAnchor = Gdiplus::RectF(pill.X, pill.Y, info.GetRight() - pill.X, pill.Height);
             fillRoundRect(g, pill, radius, tint(COL_ACCENT, 34));
-            const float wordTop = middle - inkMiddle(word, textFamily(), Gdiplus::FontStyleBold, wordEm);
-            g.DrawString(word.c_str(), -1, &wordFont, Gdiplus::PointF(pill.X + pad - wordEm / 6.0f, wordTop),
+            // The figure stands in the middle of the pill by its letters and
+            // the word on the figure's baseline: put in the middle as well,
+            // its smaller capitals sat two pixels above that line. Both tops
+            // on whole pixels - from a fractional top ClearType puts the
+            // smaller face's baseline a pixel higher at 125 %.
+            const float baseline = std::round(
+                middle - inkMiddle(value, numeralFamily(), Gdiplus::FontStyleBold, valueEm) + fontAscent(bigNumFont));
+            g.DrawString(word.c_str(), -1, &wordFont,
+                         Gdiplus::PointF(pill.X + pad - wordEm / 6.0f, std::round(baseline - fontAscent(wordFont))),
                          &accentBrush);
-            const float valueTop = middle - inkMiddle(value, numeralFamily(), Gdiplus::FontStyleBold, valueEm);
             g.DrawString(value.c_str(), -1, &bigNumFont,
-                         Gdiplus::PointF(pill.X + pad + wordW + between - valueEm / 6.0f, valueTop), &accentBrush);
+                         Gdiplus::PointF(pill.X + pad + wordW + between - valueEm / 6.0f,
+                                         std::round(baseline - fontAscent(bigNumFont))),
+                         &accentBrush);
+            // ...and the i that unfolds the calculation - a click on the pill
+            // does the same. Drawn as strokes: as a glyph it sits a pixel off
+            // the middle of its circle.
+            const bool lit = craftQualityInfo_ || isHot(hoverCraft_, qualityAnchor);
+            Gdiplus::SolidBrush infoFace(tint(COL_ACCENT, lit ? 62 : 34));
+            g.FillEllipse(&infoFace, info);
+            const float cx = info.X + infoS / 2.0f, cy = info.Y + infoS / 2.0f, dot = scaleF(1.5f);
+            g.FillEllipse(&accentBrush, cx - dot, cy - scaleF(5.5f) - dot, 2 * dot, 2 * dot);
+            Gdiplus::Pen stem(COL_ACCENT, scaleF(2.2f));
+            g.DrawLine(&stem, cx, cy - scaleF(2.0f), cx, cy + scaleF(6.0f));
+            craftHits_.push_back({qualityAnchor, 37, 0});
         }
     }
     {
@@ -14282,6 +14313,177 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
     Gdiplus::RectF fr(M, fy, (float)cw - 2 * M, scaleF(16));
     std::wstring src = L"Game data  \u00B7  " + toW(CRAFT_DATA_VERSION);
     g.DrawString(src.c_str(), -1, &subFont, fr, &rightAlign, &faintBrush);
+
+    // The quality's calculation lies over everything, so it is drawn last
+    if (craftQualityInfo_ && qualityAnchor.Width > 0) paintQualityInfo(g, cw, qualityAnchor);
+}
+
+// How the quality beside the name is worked out, for the recipe as its
+// sliders stand: what each slot counts and for which of its values, the sum,
+// and where the grades begin. It lies over the recipe under the pill; any
+// click closes it, as Esc does.
+void MinerGUI::paintQualityInfo(Gdiplus::Graphics& g, int cw, const Gdiplus::RectF& anchor) {
+    if (craftOpen_ < 0) return;
+    const CraftBlueprint& bp = CRAFT_BLUEPRINTS[craftOpen_];
+    CraftSlotCount counts[CRAFT_MAX_SLOTS];
+    if (bp.count > CRAFT_MAX_SLOTS || !craftSlotCounts(bp, counts)) return;
+    const int avg = craftAverageQuality(bp, craftQuality_, CRAFT_MAX_SLOTS);
+    if (avg < 0) return;
+
+    Gdiplus::Font labelFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font textFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font slotFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font smallFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font numFont(&numeralFamily(), scaleF(Type::BODY), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::SolidBrush textBrush(COL_TEXT);
+    Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
+    Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
+    Gdiplus::SolidBrush accentBrush(COL_ACCENT);
+    // lines broken by fitLines: drawn in a box without NoWrap and trimming
+    Gdiplus::StringFormat wrapped;
+
+    // a count as it reads: whole where it is whole, else to a tenth
+    const auto countText = [](double v) {
+        std::wostringstream s;
+        if (std::abs(v - std::round(v)) < 0.05) s << std::lround(v);
+        else s << std::fixed << std::setprecision(1) << v;
+        return s.str();
+    };
+    const auto width = [&](const std::wstring& s, const Gdiplus::Font& font) {
+        Gdiplus::RectF w;
+        g.MeasureString(s.c_str(), -1, &font, Gdiplus::PointF(0, 0), &w);
+        return w.Width;
+    };
+
+    // One row per slot: what it is, its quality, what it counts and for what
+    struct Row { std::wstring slot, material, quality, count, values; bool counts; };
+    std::vector<Row> rows;
+    std::wstring sum;   // "965 x 3 + 958 x 3 + ...", the slots that count
+    double total = 0.0;
+    for (int s = 0; s < bp.count; s++) {
+        const CraftSlot& slot = CRAFT_SLOTS[bp.first + s];
+        Row r;
+        r.slot = slot.slot >= 0 ? toW(CRAFT_SLOT_NAMES[slot.slot]) : L"Slot " + std::to_wstring(s + 1);
+        r.material = toW(CRAFT_MATERIALS[slot.material].name);
+        r.quality = std::to_wstring(craftQuality_[s]);
+        r.count = countText(counts[s].total);
+        r.counts = counts[s].total > 0;
+        // its values in the order the game lists them, each once
+        bool listed[CRAFT_STAT_COUNT] = {};
+        for (int k = 0; k < slot.effCount; k++) {
+            const CraftEffect& e = CRAFT_EFFECTS[slot.effFirst + k];
+            if (!effectMovesStat(e) || listed[e.stat]) continue;
+            listed[e.stat] = true;
+            if (!r.values.empty()) r.values += L"  \u00B7  ";
+            r.values += toW(CRAFT_STAT_NAMES[e.stat]) + L" " + countText(counts[s].share[e.stat]);
+        }
+        if (r.values.empty()) r.values = L"Moves nothing";
+        if (r.counts) {
+            if (!sum.empty()) sum += L" + ";
+            sum += r.quality + L" \u00D7 " + r.count;
+            total += counts[s].total;
+        }
+        rows.push_back(r);
+    }
+
+    const float M = (float)scale(MARGIN);
+    const float pad = scaleF(16), colGap = scaleF(20);
+    const float boxW = (float)cw - 2 * M, innerW = boxW - 2 * pad;
+    const std::wstring title = L"HOW THE QUALITY IS WORKED OUT";
+    const std::wstring rule = L"Each value counts 3 when the item is made for it, 2 when it comes second and 1 "
+                              L"otherwise. Slots that move the same value share it by how far each moves it.";
+    const Fitted ruleFit = fitLines(g, rule, textFont, innerW);
+    // the columns, as wide as their widest entry
+    const std::wstring heads[5] = {L"SLOT", L"MATERIAL", L"QUALITY", L"COUNTS", L"VALUES"};
+    float colW[4] = {width(heads[0], labelFont), width(heads[1], labelFont), width(heads[2], labelFont),
+                     width(heads[3], labelFont)};
+    for (const Row& r : rows) {
+        colW[0] = (std::max)(colW[0], width(r.slot, slotFont));
+        colW[1] = (std::max)(colW[1], width(r.material, textFont));
+        colW[2] = (std::max)(colW[2], width(r.quality, numFont));
+        colW[3] = (std::max)(colW[3], width(r.count, numFont));
+    }
+    float colX[5];
+    colX[0] = M + pad;
+    for (int c = 1; c < 5; c++) colX[c] = colX[c - 1] + colW[c - 1] + colGap;
+    const float valuesW = (std::max)(scaleF(80), M + boxW - pad - colX[4]);
+    std::vector<Fitted> valueFits;
+    for (const Row& r : rows) valueFits.push_back(fitLines(g, r.values, textFont, valuesW));
+
+    // the height first, then the drawing on the same steps
+    const float titleH = scaleF(16), lineH = scaleF(17), headH = scaleF(18), rowH = scaleF(24);
+    float h = pad + titleH + scaleF(4) + lineH + ruleFit.more + scaleF(12) + headH;
+    for (const Fitted& v : valueFits) h += rowH + v.more;
+    h += scaleF(10) + scaleF(12) + rowH + lineH + pad;
+    // under the pill, and below the line under the name
+    const Gdiplus::RectF box(M, (std::max)(anchor.GetBottom() + scaleF(8), (float)scale(58)), boxW, h);
+    dropShadow(g, box, scaleF(R_CARD), scaleF(12));
+    fillRoundRect(g, box, scaleF(R_CARD), COL_CARD_HI);
+
+    float y = box.Y + pad;
+    g.DrawString(title.c_str(), -1, &labelFont, Gdiplus::PointF(colX[0], y), &faintBrush);
+    y += titleH + scaleF(4);
+    g.DrawString(ruleFit.text.c_str(), -1, &textFont,
+                 Gdiplus::RectF(colX[0], y, innerW + scaleF(4), lineH + ruleFit.more + scaleF(4)), &wrapped,
+                 &dimBrush);
+    y += lineH + ruleFit.more + scaleF(12);
+    for (int c = 0; c < 5; c++) {
+        g.DrawString(heads[c].c_str(), -1, &labelFont, Gdiplus::PointF(colX[c], y), &faintBrush);
+    }
+    y += headH;
+    for (size_t i = 0; i < rows.size(); i++) {
+        const Row& r = rows[i];
+        // one baseline for the row's three faces, each top on a whole pixel
+        const float base = std::round(y + scaleF(3) + fontAscent(slotFont));
+        const float slotTop = std::round(base - fontAscent(slotFont));
+        const float textTop = std::round(base - fontAscent(textFont));
+        const float numTop = std::round(base - fontAscent(numFont));
+        g.DrawString(r.slot.c_str(), -1, &slotFont, Gdiplus::PointF(colX[0], slotTop), &textBrush);
+        g.DrawString(r.material.c_str(), -1, &textFont, Gdiplus::PointF(colX[1], textTop), &dimBrush);
+        g.DrawString(r.quality.c_str(), -1, &numFont, Gdiplus::PointF(colX[2], numTop),
+                     r.counts ? &textBrush : &faintBrush);
+        g.DrawString(r.count.c_str(), -1, &numFont, Gdiplus::PointF(colX[3], numTop),
+                     r.counts ? &accentBrush : &faintBrush);
+        g.DrawString(valueFits[i].text.c_str(), -1, &textFont,
+                     Gdiplus::RectF(colX[4], textTop, valuesW + scaleF(4),
+                                    rowH + valueFits[i].more),
+                     &wrapped, r.counts ? &dimBrush : &faintBrush);
+        y += rowH + valueFits[i].more;
+    }
+    y += scaleF(10);
+    hairline(g, colX[0], y, M + boxW - pad);
+    y += scaleF(12);
+    {
+        // the sum, and what it comes to
+        const std::wstring left = L"(" + sum + L") / " + countText(total) + L" =";
+        const std::wstring result = std::to_wstring(avg) + L" \u00B7 " + (wchar_t)craftQualityGrade(avg);
+        const float base = std::round(y + scaleF(3) + fontAscent(numFont));
+        g.DrawString(left.c_str(), -1, &textFont, Gdiplus::PointF(colX[0], std::round(base - fontAscent(textFont))),
+                     &dimBrush);
+        // where the "=" ends: a measured line runs 3 % and a third of an em
+        // wider than its letters
+        const float em = scaleF(Type::BODY);
+        const float leftEnd = colX[0] + em / 6.0f + (width(left, textFont) - em / 3.0f) / 1.03f;
+        g.DrawString(result.c_str(), -1, &numFont,
+                     Gdiplus::PointF(leftEnd + scaleF(5) - em / 6.0f, std::round(base - fontAscent(numFont))),
+                     &accentBrush);
+    }
+    y += rowH;
+    {
+        // where the grades begin, the one reached in amber
+        const wchar_t* bands[7] = {L"S from 950", L"A from 900", L"B from 800", L"C from 700",
+                                   L"D from 600", L"E from 400", L"F below 400"};
+        const wchar_t grade = (wchar_t)craftQualityGrade(avg);
+        float gx = colX[0];
+        for (int i = 0; i < 7; i++) {
+            if (i) {
+                g.DrawString(L"\u00B7", -1, &smallFont, Gdiplus::PointF(gx + scaleF(3), y), &faintBrush);
+                gx += width(L"\u00B7", smallFont) + scaleF(6);
+            }
+            g.DrawString(bands[i], -1, &smallFont, Gdiplus::PointF(gx, y), bands[i][0] == grade ? &accentBrush : &faintBrush);
+            gx += width(bands[i], smallFont);
+        }
+    }
 }
 
 // Within `reach` of a mark, the mark. The ends and 500 are the numbers
@@ -14370,6 +14572,13 @@ LRESULT MinerGUI::handleCraftingMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
                     else if (hit.kind == 34) refineryMethod_ = hit.value;
                 }
                 cartPickOpen_ = 0;
+                InvalidateRect(hwnd, nullptr, TRUE);
+                return 0;
+            }
+            // The quality's calculation lies over the recipe: a click anywhere
+            // closes it, on the pill as much as beside it
+            if (craftQualityInfo_ && craftOpen_ >= 0) {
+                craftQualityInfo_ = false;
                 InvalidateRect(hwnd, nullptr, TRUE);
                 return 0;
             }
@@ -14508,6 +14717,8 @@ LRESULT MinerGUI::handleCraftingMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
                         owned_[b] = now ? "by hand" : "";
                         if (ownedToggleCallback_) ownedToggleCallback_(b, now);
                     }
+                } else if (hit.kind == 37 && craftOpen_ >= 0) {
+                    craftQualityInfo_ = true;   // the quality's calculation, unfolded
                 } else if (hit.kind == 14) {
                     craftSourceOpen_ = -1;
                 } else if (hit.kind == 13) {
@@ -14627,7 +14838,8 @@ LRESULT MinerGUI::handleCraftingMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
             }
             if (wParam == VK_ESCAPE) {
                 // Esc walks back one step at a time: recipe, then search, then out
-                if (craftSourceOpen_ >= 0) craftSourceOpen_ = -1;
+                if (craftQualityInfo_ && craftOpen_ >= 0) craftQualityInfo_ = false;
+                else if (craftSourceOpen_ >= 0) craftSourceOpen_ = -1;
                 else if (craftOpen_ >= 0) craftOpen_ = -1;
                 else if (!craftSearch_.empty()) { craftSearch_.clear(); craftScroll_ = 0; }
                 else if (craftType_ >= 0 || craftMaterial_ >= 0 || craftGrade_ ||

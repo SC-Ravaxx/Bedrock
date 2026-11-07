@@ -3167,6 +3167,27 @@ int runSelfTest() {
         // A quantum drive is taken for its speed and fuel, not its Integrity
         allPassed &= check(avgOf("Agni", {{"Agricium", 588}, {"Tungsten", 964}, {"Beryl", 955}}) == 906,
                            "Agni with speed 964 and fuel 955 at Integrity 588 comes out at Avg. Q 906");
+        // ...and what each slot counts, as the i beside the quality lists
+        // it: Gold and Carinite share the Parallax's damage by how far each
+        // moves it, 1 and 2 of its 3
+        {
+            bool shared = false;
+            for (int b = 0; b < SCMiner::CRAFT_BLUEPRINT_COUNT; b++) {
+                const auto& bp = SCMiner::CRAFT_BLUEPRINTS[b];
+                if (std::string(bp.name) != "Parallax Energy Assault Rifle" || bp.count != 3) continue;
+                SCMiner::CraftSlotCount c[3];
+                if (!SCMiner::craftSlotCounts(bp, c)) break;
+                double tungsten = -1, gold = -1, carinite = -1;
+                for (int s = 0; s < 3; s++) {
+                    const std::string mat = SCMiner::CRAFT_MATERIALS[SCMiner::CRAFT_SLOTS[bp.first + s].material].name;
+                    if (mat == "Tungsten") tungsten = c[s].total;
+                    if (mat == "Gold") gold = c[s].total;
+                    if (mat == "Carinite") carinite = c[s].total;
+                }
+                shared = std::abs(tungsten - 3) < 0.01 && std::abs(gold - 1) < 0.01 && std::abs(carinite - 2) < 0.01;
+            }
+            allPassed &= check(shared, "Parallax: the Frame counts 3, Gold 1 and Carinite 2 - the two share the damage");
+        }
         // A value whose curve is not known hides the number, rather than
         // weigh its slot as if any quality did
         int unknownSeen = 0;

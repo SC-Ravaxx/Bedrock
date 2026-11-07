@@ -2534,9 +2534,18 @@ int runScreenshots(const std::string& dir) {
     gui.openQualityForShot("Parallax Energy Assault Rifle", {{"Carinite", 959}, {"Gold", 916}, {"Tungsten", 964}});
     pump();
     if (gui.craftingHandle()) shoot(gui.craftingHandle(), "blueprint_quality.png", true);
+    // ...its calculation unfolded: Gold and Carinite share the damage
+    gui.showQualityInfoForShot(true);
+    pump();
+    if (gui.craftingHandle()) shoot(gui.craftingHandle(), "blueprint_quality_info_shared.png", true);
+    gui.showQualityInfoForShot(false);
     gui.openQualityForShot("Lumin V SMG", {{"Riccite", 965}, {"Copper", 958}, {"Aphorite", 523}});
     pump();
     if (gui.craftingHandle()) shoot(gui.craftingHandle(), "blueprint_quality_mixed.png", true);
+    gui.showQualityInfoForShot(true);
+    pump();
+    if (gui.craftingHandle()) shoot(gui.craftingHandle(), "blueprint_quality_info.png", true);
+    gui.showQualityInfoForShot(false);
     gui.openQualityForShot("Parallax \"Shock Trooper\" Energy Assault Rifle",
                            {{"Carinite", 959}, {"Gold", 916}, {"Tungsten", 964}});
     pump();

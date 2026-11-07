@@ -845,6 +845,7 @@ public:
     void openRecoilBlueprintForShot();
     void openQualityForShot(const std::string& blueprint,
                             const std::vector<std::pair<std::string, int>>& byMaterial);
+    void showQualityInfoForShot(bool on);
 
     // Headless: every window stays outside all monitors, nothing is
     // activated - for --screenshot, which photographs the windows from their
@@ -1833,11 +1834,13 @@ private:
     bool craftDragOnMark_ = false;
     int craftSlider_ = 0;            // slot the arrow keys move
     int craftSourceOpen_ = -1;       // contract row whose briefing is unfolded
+    bool craftQualityInfo_ = false;  // the quality's calculation, unfolded under its pill
     bool craftCardApart_ = false;    // the recipe is being drawn under that card, without it
     int craftSourceScroll_ = 0;      // first contract row shown
     std::string craftSourceSystem_;  // "", "Stanton", "Pyro", "Nyx"
     std::vector<std::string> systemHits_;   // what the filter chips stand for
     void paintContractCard(Gdiplus::Graphics& g, int cw, int ch, const struct CraftSource& src);
+    void paintQualityInfo(Gdiplus::Graphics& g, int cw, const Gdiplus::RectF& anchor);
     bool craftSnap_ = true;          // sliders step instead of running free
     bool caretOn_ = true;            // the search caret, blinking on a timer
     std::vector<std::string> owned_; // per blueprint: when it was received, "" = not owned
