@@ -6852,9 +6852,11 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
     }
 
     // The balance under the rows: what reaches the rock at this distance,
-    // what its resistance holds back, and what it gives back
+    // what its resistance holds back, and what it gives back - in a turret,
+    // the player's own head's, which is the one fired from there
     if (v.kind != RockVerdict::HeadsOff && rock_.mass > 0) {
-        const LaserOutput out = firingOutput();
+        const int own = ownHead();
+        const LaserOutput out = own >= 0 ? onRock(own) : firingOutput();
         const float needs = rock_.mass * BREAK_DECAY_PER_MASS;
         wchar_t part[192];
         std::swprintf(part, 192, L"Effective power %s  ·  Required power %s", formatNumber((int)out.atRange).c_str(),
@@ -6879,7 +6881,9 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
         if (rock_.distance > 0) {
             float fullRange = 0, zeroRange = 0;
             for (size_t i = 0; i < heads_.size(); i++) {
-                if (i >= firing_.size() || !firing_[i] || !heads_[i].laser) continue;
+                if (own >= 0 && (int)i != own) continue;
+                if (own < 0 && (i >= firing_.size() || !firing_[i])) continue;
+                if (!heads_[i].laser) continue;
                 if (fullRange == 0 || heads_[i].laser->fullRange < fullRange) fullRange = heads_[i].laser->fullRange;
                 zeroRange = (std::max)(zeroRange, heads_[i].laser->zeroRange);
             }
