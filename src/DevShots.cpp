@@ -2640,6 +2640,13 @@ int runScreenshots(const std::string& dir) {
             gui.openGrindForSet(i);
             pump();
             if (gui.grindHandle()) shoot(gui.grindHandle(), "grind_rank_set.png", true);
+            // ...and its ranks open under its pill in the rank line, with
+            // the way back to the logs
+            gui.grindRankMenuForShot(i);
+            pump();
+            if (gui.grindHandle()) shoot(gui.grindHandle(), "grind_rank_menu.png", true);
+            gui.grindRankMenuForShot(-1);
+            pump();
             break;
         }
     }

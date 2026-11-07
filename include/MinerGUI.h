@@ -841,6 +841,7 @@ public:
     // ...or on a set by its place in poolGroups(), named after `source`
     void openGrindForGroup(int group, int source);
     void grindWarningForShot(bool show);   // ...and the notice over it
+    void grindRankMenuForShot(int source); // ...and the ranks under the pill of that mission's ladder, -1 shut
     void openRecoilBlueprintForShot();
     void openParallaxForShot();
 
@@ -1638,9 +1639,16 @@ private:
     POINT hoverGrind_ = {-1, -1};
     // 1 system chip, 2 a set, 3 the notice, 4 the finder, 5 a set the same
     // runs pay into, 6 a rank picked, 7 "Open to me", 8 back to the logs,
-    // 9 an outfit in the rank line
+    // 9 a pill in the rank line, (outfit << 8) | ladder
     struct GrindHit { Gdiplus::RectF rect; int kind; int value; };
     std::vector<GrindHit> grindHits_;
+    // The ranks of one ladder, open under its pill: (outfit << 8) | ladder,
+    // -1 shut. Where the pill and the list were last drawn, and where the
+    // list's entries begin in grindHits_.
+    int grindRankMenu_ = -1;
+    Gdiplus::RectF grindRankAnchor_;
+    Gdiplus::RectF grindRankList_;
+    size_t grindRankHitsFrom_ = 0;
     // The player's ranks, see setRanks
     std::vector<Standing> ranks_;
     bool ranksKnown_ = false;
@@ -1716,6 +1724,7 @@ private:
     void placeGrind();
     void paintGrind(HDC hdc);
     void paintGrindList(Gdiplus::Graphics& g, int cw, int ch);
+    void paintGrindRankMenu(Gdiplus::Graphics& g, int cw);
     static LRESULT CALLBACK GrindProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
     LRESULT handleGrindMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 

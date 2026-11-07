@@ -20682,6 +20682,7 @@ void MinerGUI::toggleGrind() {
     if (grindVisible_) {
         loadGrindWarned();
         grindScroll_ = 0;
+        grindRankMenu_ = -1;
         placeGrind();
         ShowWindow(grind_, headless_ ? SW_SHOWNOACTIVATE : SW_SHOW);
         InvalidateRect(grind_, nullptr, TRUE);
@@ -20692,6 +20693,15 @@ void MinerGUI::toggleGrind() {
 
 void MinerGUI::grindWarningForShot(bool show) {
     grindWarned_ = !show;
+    if (grind_) InvalidateRect(grind_, nullptr, TRUE);
+}
+
+void MinerGUI::grindRankMenuForShot(int source) {
+    grindRankMenu_ = -1;
+    if (source >= 0 && source < CRAFT_SOURCE_COUNT) {
+        const CraftSource& src = CRAFT_SOURCES[source];
+        if (src.repFaction >= 0 && src.repLadder >= 0) grindRankMenu_ = (src.repFaction << 8) | src.repLadder;
+    }
     if (grind_) InvalidateRect(grind_, nullptr, TRUE);
 }
 
@@ -20767,7 +20777,14 @@ void MinerGUI::paintGrind(HDC hdc) {
         grindHits_.clear();
         if (grindWarned_) {
             frostGrind_.clear();   // no glass up: its blur is not kept
+            // Under the open rank list nothing of the page lights up
+            const POINT hover = hoverGrind_;
+            if (grindRankMenu_ >= 0 && grindRankList_.Contains((float)hover.x, (float)hover.y)) {
+                hoverGrind_ = {-1, -1};
+            }
             paintGrindList(g, cw, ch);
+            hoverGrind_ = hover;
+            paintGrindRankMenu(g, cw);
         } else {
             // The notice lies over the list as frosted glass. Nothing under
             // it lights up, and the blur comes out of the cache (frostGrind_)
@@ -20785,6 +20802,8 @@ void MinerGUI::paintGrind(HDC hdc) {
             frostBackdrop(g, *frostOf(frostGrind_, base, cw, ch).blur, cw, ch);
             // Nothing under the notice may be clicked while it is up
             grindHits_.clear();
+            grindRankMenu_ = -1;
+            grindRankList_ = Gdiplus::RectF();
             drawGrindWarning(g, cw, ch);
         }
     }
@@ -21037,7 +21056,9 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
 
     // ---- the player's rank with the outfits of the list ----
     // Out of their own logs, one per outfit and ladder, in the order the
-    // list names them. A click narrows the list to that outfit's sets.
+    // list names them. A click opens the ladder's ranks under the pill, to
+    // set the one held (paintGrindRankMenu).
+    bool rankMenuAnchored = false;
     {
         const float ry = (float)scale(92);
         const float pillH = scaleF(20);
@@ -21070,18 +21091,26 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
                 Gdiplus::RectF ww, rw;
                 g.MeasureString(who.c_str(), -1, &subFont, Gdiplus::PointF(0, 0), &ww);
                 g.MeasureString(rank.c_str(), -1, &subFont, Gdiplus::PointF(0, 0), &rw);
-                const float pw = ww.Width + rw.Width + scaleF(22);
+                const float pw = ww.Width + rw.Width + scaleF(36);
                 const float reserve = (k + 1 < shown.size()) ? scaleF(62) : 0.0f;
                 if (rx + pw + reserve > edge) break;
                 const Gdiplus::RectF pill(rx, ry, pw, pillH);
+                const int key = (shown[k].first << 8) | shown[k].second;
+                const bool menuOpen = grindRankMenu_ == key;
                 const bool hot = isHot(hoverGrind_, pill);
-                fillRoundRect(g, pill, pillH / 2.0f, hot ? COL_HOVER : COL_CARD);
+                fillRoundRect(g, pill, pillH / 2.0f, (hot || menuOpen) ? COL_HOVER : COL_CARD);
                 g.DrawString(who.c_str(), -1, &subFont, Gdiplus::RectF(pill.X + scaleF(9), ry, ww.Width + scaleF(2), pillH),
                              &oneLine, &dimBrush);
                 g.DrawString(rank.c_str(), -1, &subFont,
                              Gdiplus::RectF(pill.X + scaleF(12) + ww.Width, ry, rw.Width + scaleF(2), pillH), &oneLine,
                              &textBrush);
-                grindHits_.push_back({pill, 9, shown[k].first});
+                drawChevron(g, pill.GetRight() - scaleF(13), ry + pillH / 2.0f, scaleF(1), menuOpen,
+                            (hot || menuOpen) ? COL_TEXT : COL_TEXT_DIM);
+                grindHits_.push_back({pill, 9, key});
+                if (menuOpen) {
+                    grindRankAnchor_ = pill;
+                    rankMenuAnchored = true;
+                }
                 rx += pw + scaleF(6);
             }
             if (k < shown.size()) {
@@ -21091,6 +21120,9 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
             }
         }
     }
+    // a list whose pill is gone - the list narrowed past it, the ranks not
+    // read yet - goes with it
+    if (!rankMenuAnchored) grindRankMenu_ = -1;
 
     // ---- column heads ----
     const float top = (float)scale(126);
@@ -21803,6 +21835,73 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
     }
 }
 
+// The ranks of one ladder, hung under its pill in the rank line: the one
+// held lit, a click sets another - the same as the rank pills of an open
+// set - and with a rank set by hand one more entry goes back to the logs.
+// Drawn over the page; its entries are the last hits, from
+// grindRankHitsFrom_ on, and the click handler asks them first.
+void MinerGUI::paintGrindRankMenu(Gdiplus::Graphics& g, int cw) {
+    grindRankHitsFrom_ = grindHits_.size();
+    grindRankList_ = Gdiplus::RectF();
+    if (grindRankMenu_ < 0) return;
+    const int f = grindRankMenu_ >> 8, l = grindRankMenu_ & 0xff;
+    if (f >= REP_FACTION_COUNT || l >= REP_LADDER_COUNT) {
+        grindRankMenu_ = -1;
+        return;
+    }
+    Gdiplus::Font textFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::SolidBrush textBrush(COL_TEXT);
+    Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
+    Gdiplus::SolidBrush accentBrush(COL_ACCENT);
+    Gdiplus::StringFormat oneLine;
+    oneLine.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+
+    const RepLadder& lad = REP_LADDERS[l];
+    const Standing mine = standingOn(f, l);
+    struct Entry { std::wstring label; int kind; int value; };
+    std::vector<Entry> entries;
+    for (int k = 0; k < lad.count; k++) {
+        entries.push_back({toW(REP_RANKS[lad.first + k].name), 6, (f << 16) | (l << 8) | k});
+    }
+    if (mine.set) entries.push_back({L"Reset to game logs", 8, (f << 16) | (l << 8)});
+
+    const float M = (float)scale(MARGIN);
+    const float entryH = scaleF(22), pad = scaleF(4), gap = scaleF(5);
+    float widest = 0;
+    for (const auto& e : entries) {
+        Gdiplus::RectF w;
+        g.MeasureString(e.label.c_str(), -1, &textFont, Gdiplus::PointF(0, 0), &w);
+        widest = (std::max)(widest, w.Width);
+    }
+    const float listW = (std::min)((float)cw - 2 * M, (std::max)(grindRankAnchor_.Width, widest + scaleF(28)));
+    const float listH = entryH * (float)entries.size() + 2 * pad + (mine.set ? gap : 0.0f);
+    const float lx = (std::max)(M, (std::min)(grindRankAnchor_.X, (float)cw - M - listW));
+    const float ly = grindRankAnchor_.GetBottom() + scaleF(4);
+    grindRankList_ = Gdiplus::RectF(lx, ly, listW, listH);
+    dropShadow(g, grindRankList_, scaleF(R_CONTROL), scaleF(10));
+    fillRoundRect(g, grindRankList_, scaleF(R_CONTROL), COL_CARD_HI);
+
+    float ey = ly + pad;
+    for (const auto& e : entries) {
+        if (e.kind == 8) {
+            hairline(g, lx + scaleF(8), ey + gap / 2.0f, lx + listW - scaleF(8));
+            ey += gap;
+        }
+        const Gdiplus::RectF entry(lx + pad, ey, listW - 2 * pad, entryH);
+        const bool held = e.kind == 6 && (e.value & 0xff) == mine.rank;
+        const bool hot = isHot(hoverGrind_, entry);
+        if (held) fillRoundRect(g, entry, scaleF(4), tint(COL_ACCENT, hot ? 62 : 44));
+        else if (hot) fillRoundRect(g, entry, scaleF(4), COL_HOVER);
+        g.DrawString(e.label.c_str(), -1, &textFont,
+                     Gdiplus::RectF(entry.X + scaleF(8), entry.Y, entry.Width - scaleF(16), entry.Height), &oneLine,
+                     held ? &accentBrush : (hot || e.kind == 6 ? &textBrush : &dimBrush));
+        grindHits_.push_back({entry, e.kind, e.value});
+        ey += entryH;
+    }
+}
+
 LRESULT CALLBACK MinerGUI::GrindProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     if (g_guiInstance) return g_guiInstance->handleGrindMessage(hwnd, uMsg, wParam, lParam);
     return DefWindowProcW(hwnd, uMsg, wParam, lParam);
@@ -21838,6 +21937,27 @@ LRESULT MinerGUI::handleGrindMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
             // window's shortcuts; a click in it takes them
             const bool wasTyping = grindTyping_;
             grindTyping_ = false;
+            // The rank list under a pill answers first: a rank in it is
+            // set, and a click anywhere else shuts it and goes on to what
+            // lies there
+            const int menuWas = grindRankMenu_;
+            if (grindRankMenu_ >= 0) {
+                grindRankMenu_ = -1;
+                if (grindRankList_.Contains(px, py)) {
+                    for (size_t i = grindRankHitsFrom_; i < grindHits_.size(); i++) {
+                        const auto& hit = grindHits_[i];
+                        if (!hit.rect.Contains(px, py) || (hit.kind != 6 && hit.kind != 8)) continue;
+                        if (rankSetCallback_) {
+                            rankSetCallback_(hit.value >> 16, (hit.value >> 8) & 0xff,
+                                             hit.kind == 8 ? -1 : hit.value & 0xff);
+                        }
+                        break;
+                    }
+                    InvalidateRect(hwnd, nullptr, TRUE);
+                    return 0;
+                }
+                InvalidateRect(hwnd, nullptr, TRUE);
+            }
             for (const auto& hit : grindHits_) {
                 if (!hit.rect.Contains(px, py)) continue;
                 if (hit.kind == 4) {
@@ -21873,13 +21993,9 @@ LRESULT MinerGUI::handleGrindMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                     grindScroll_ = 0;
                     grindOpen_ = -1;
                 } else if (hit.kind == 9) {
-                    // an outfit in the rank line: the list narrowed to its sets
-                    if (hit.value >= 0 && hit.value < REP_FACTION_COUNT) {
-                        grindQuery_ = toW(REP_FACTIONS[hit.value].name);
-                        grindGroup_ = -1;
-                        grindScroll_ = 0;
-                        grindOpen_ = -1;
-                    }
+                    // a pill in the rank line: its ladder's ranks open under
+                    // it, or shut again
+                    grindRankMenu_ = (menuWas == hit.value) ? -1 : hit.value;
                 }
                 InvalidateRect(hwnd, nullptr, TRUE);
                 return 0;
@@ -21925,10 +22041,16 @@ LRESULT MinerGUI::handleGrindMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
             }
             switch (wParam) {
                 case VK_ESCAPE:
-                    // Esc lets go of what the finder holds first, then folds
-                    // the open row, then closes: a list narrowed or a row
-                    // opened on purpose is not worth losing to a stray key
+                    // Esc shuts the rank list first, lets go of what the
+                    // finder holds next, then folds the open row, then
+                    // closes: a list narrowed or a row opened on purpose is
+                    // not worth losing to a stray key
                     if (!grindWarned_) return 0;      // the notice is read first
+                    if (grindRankMenu_ >= 0) {
+                        grindRankMenu_ = -1;
+                        InvalidateRect(hwnd, nullptr, TRUE);
+                        return 0;
+                    }
                     if (!grindQuery_.empty() || grindGroup_ >= 0) {
                         grindQuery_.clear();
                         grindGroup_ = -1;
