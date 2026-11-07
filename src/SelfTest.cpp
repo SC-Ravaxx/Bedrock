@@ -6170,6 +6170,33 @@ int runSelfTest() {
         allPassed &= check(titanium >= 0 && icarus >= 0 &&
                            SCMiner::refineryYield(icarus, titanium) == 13,
                            "MIC-L5 still refines Titanium at +13");
+        // ...and the three the extract leaves out and the terminal shows
+        // (gen_refineries.py CORRECTIONS): Lindinium is best at MIC-L5, not
+        // at Levski's +4
+        {
+            auto material = [](const char* name) {
+                for (int m = 0; m < SCMiner::REFINERY_MATERIAL_COUNT; m++) {
+                    if (std::string(SCMiner::REFINERY_MATERIALS[m]) == name) return m;
+                }
+                return -1;
+            };
+            const int lindinium = material("Lindinium (Ore)"), savrilium = material("Savrilium (Ore)"),
+                      torite = material("Torite (Ore)");
+            int best = -1, bestValue = SCMiner::REFINERY_NONE;
+            for (int s = 0; s < SCMiner::REFINERY_COUNT && lindinium >= 0; s++) {
+                const int v = SCMiner::refineryYield(s, lindinium);
+                if (v != SCMiner::REFINERY_NONE && (bestValue == SCMiner::REFINERY_NONE || v > bestValue)) {
+                    bestValue = v;
+                    best = s;
+                }
+            }
+            allPassed &= check(icarus >= 0 && lindinium >= 0 && savrilium >= 0 && torite >= 0 &&
+                                   SCMiner::refineryYield(icarus, lindinium) == 7 &&
+                                   SCMiner::refineryYield(icarus, savrilium) == 6 &&
+                                   SCMiner::refineryYield(icarus, torite) == 8 && best == icarus,
+                               "MIC-L5 refines Lindinium +7, Savrilium +6, Torite +8 as its terminal does, and is "
+                               "the best for Lindinium");
+        }
         // Every Pyro station runs one profile - the shape that says these
         // are the game's own numbers rather than somebody's measurements
         int pyroProfile = -1, pyroOdd = 0;

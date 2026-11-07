@@ -141,6 +141,15 @@ byname = {r["name"]: r for r in scm["refineries"]}
 refs = [byname[n] for n, _system, _p in names]
 if len(mats) < 20 or len(refs) < 10:
     raise SystemExit("could not read the lists out of %s" % REFINERY_H)
+# ...and the percentages with them: RefineryData.h carries the extract's
+# profiles plus what gen_refineries.py corrects from the terminal (MIC-L5),
+# and a yield here that left the correction out would plan with the old one
+yield_rows = [[None if v.strip() == "REFINERY_NONE" else int(v) for v in row.split(",")]
+              for row in re.findall(r"\{([^{}]+)\}",
+                                    between("[REFINERY_MATERIAL_COUNT] = {", "\n};"))]
+profile_of = {n: int(p) for n, _system, p in names}
+if any(len(row) != len(mats) for row in yield_rows) or max(profile_of.values()) >= len(yield_rows):
+    raise SystemExit("could not read the yields out of %s" % REFINERY_H)
 
 lines = [
     "#pragma once",
@@ -262,7 +271,7 @@ for r, isfull in zip(refs, full_flags):
             # factors it does not carry. A material no profile mentions at all
             # lands here too, at the standard rate - which is what an absent
             # entry means, confirmed against Regolith on all 60 blanks.
-            pct = prof[r["profileId"]].get(m, 0)
+            pct = yield_rows[profile_of[r["name"]]][mats.index(m)] or 0
             cells.append("{%s,1.0f,1.0f}" % flt(1.0 + pct / 100.0))
     lines.append("    {%s},  // %s" % (", ".join(cells), r["name"]))
 lines += ["};", "",

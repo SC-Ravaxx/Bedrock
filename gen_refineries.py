@@ -22,6 +22,25 @@ stations = d["refineries"]
 # blank). They are listed so the shopping list can say something about them.
 NO_PROFILE = ["Aslarite (Raw)", "Ouratite (Raw)", "Riccite (Ore)", "Stileron (Ore)"]
 
+# What the terminal shows and the extract leaves out. MIC-L5's profile lists
+# seven materials in scmdb's 4.10.0 and 4.10.2 extracts; the terminal there
+# lists ten - these three on top - in every report UEX has of it (4.10.2,
+# Lindinium "Last Yield 7 %, Avg Yield (30d) 7 %"). The other 377 numbers of
+# UEX's table agree with the extract. A correction that finds the extract
+# already carrying the material stops the script: then the extract caught up.
+CORRECTIONS = {
+    "MIC-L5 Modern Icarus Station": {"Lindinium (Ore)": 7, "Savrilium (Ore)": 6, "Torite (Ore)": 8},
+}
+for station, fixes in CORRECTIONS.items():
+    pid = next(s["profileId"] for s in stations if s["name"] == station)
+    sharing = [s["name"] for s in stations if s["profileId"] == pid]
+    if sharing != [station]:
+        sys.exit("%s shares its profile with %s - a correction would move them too" % (station, sharing))
+    for material, value in fixes.items():
+        if material in profiles[pid]:
+            sys.exit("%s already has %s at %d - drop the correction" % (station, material, profiles[pid][material]))
+        profiles[pid][material] = value
+
 mats = sorted({m for p in profiles.values() for m in p} | set(NO_PROFILE))
 order = list(profiles.keys())
 NONE = 127
@@ -43,6 +62,11 @@ lines = [
     "// every Pyro refinery runs the same one. REFINERY_NONE means the profile",
     "// lists no modifier for that material - which is not the same as zero,",
     "// and the window says so rather than printing a nought.",
+    "//",
+    "// Corrected where the terminal shows more than the extract (CORRECTIONS",
+    "// in the script): %s." % "; ".join(
+        "%s %s" % (station.split(" ")[0], ", ".join("%s %+d" % (m.split(" (")[0], v) for m, v in fixes.items()))
+        for station, fixes in CORRECTIONS.items()),
     "#include <cstdint>",
     "",
     "namespace SCMiner {",
