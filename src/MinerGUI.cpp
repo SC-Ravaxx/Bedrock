@@ -13681,8 +13681,9 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
             g.DrawString(when.c_str(), -1, &subFont, r, &rightAlign, &faintBrush);
         }
     }
-    // The name, and beside it the result's Avg. Q as a letter. A name too
-    // long for both ends in an ellipsis rather than under the buttons.
+    // The name, and beside it the quality the item comes out at
+    // (CraftQuality.h), as a number and a grade. A name too long for both
+    // ends in an ellipsis rather than under the buttons.
     {
         // How far a text's letters run: GDI+ measures a line 3 % wider than
         // it draws it, plus a sixth of an em on each side
@@ -13692,14 +13693,16 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
             return std::max(0.0f, (box.Width - em / 3.0f) / 1.03f);
         };
         const float x0 = M + scaleF(84);
-        const float titleEm = scaleF(Type::TITLE), wordEm = scaleF(Type::MICRO), letterEm = scaleF(Type::NUMBER);
+        const float titleEm = scaleF(Type::TITLE), wordEm = scaleF(Type::MICRO), valueEm = scaleF(Type::NUMBER);
         const int avg = craftAverageQuality(bp, craftQuality_, CRAFT_MAX_SLOTS);
         const std::wstring word = L"QUALITY";
-        const std::wstring letter(1, avg >= 0 ? (wchar_t)craftQualityGrade(avg) : L'F');
+        // the number from 0 to 1000, then its grade from S to F
+        const std::wstring value =
+            avg >= 0 ? std::to_wstring(avg) + L" \u00B7 " + (wchar_t)craftQualityGrade(avg) : std::wstring();
         Gdiplus::Font wordFont(&textFamily(), wordEm, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-        const float pad = scaleF(8), between = scaleF(5), pillGap = scaleF(12);
-        const float wordW = advance(word, wordFont, wordEm), letterW = advance(letter, bigNumFont, letterEm);
-        const float pillW = avg >= 0 ? pad + wordW + between + letterW + pad : 0.0f;
+        const float pad = scaleF(8), between = scaleF(6), pillGap = scaleF(12);
+        const float wordW = advance(word, wordFont, wordEm), valueW = advance(value, bigNumFont, valueEm);
+        const float pillW = avg >= 0 ? pad + wordW + between + valueW + pad : 0.0f;
         const auto inkRight = [&](const std::wstring& s) { return x0 + titleEm / 6.0f + advance(s, markFont, titleEm); };
         const float nameLimit = headRight - scaleF(12) - (avg >= 0 ? pillGap + pillW : 0.0f);
         std::wstring name = toW(bp.name);
@@ -13717,9 +13720,9 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
             const float wordTop = middle - inkMiddle(word, textFamily(), Gdiplus::FontStyleBold, wordEm);
             g.DrawString(word.c_str(), -1, &wordFont, Gdiplus::PointF(pill.X + pad - wordEm / 6.0f, wordTop),
                          &accentBrush);
-            const float letterTop = middle - inkMiddle(letter, numeralFamily(), Gdiplus::FontStyleBold, letterEm);
-            g.DrawString(letter.c_str(), -1, &bigNumFont,
-                         Gdiplus::PointF(pill.X + pad + wordW + between - letterEm / 6.0f, letterTop), &accentBrush);
+            const float valueTop = middle - inkMiddle(value, numeralFamily(), Gdiplus::FontStyleBold, valueEm);
+            g.DrawString(value.c_str(), -1, &bigNumFont,
+                         Gdiplus::PointF(pill.X + pad + wordW + between - valueEm / 6.0f, valueTop), &accentBrush);
         }
     }
     {
@@ -14239,19 +14242,7 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
         const float tRight = (float)cw - M;
         float tx = tLeft;
         float tyRow = ty;
-        // The item's quality as one number, each value counted by what the
-        // item is for (CraftQuality.h), ahead of what it moves
-        if (const int avg = craftAverageQuality(bp, craftQuality_, CRAFT_MAX_SLOTS); avg > 0) {
-            const std::wstring label = L"Avg. Q";
-            const std::wstring value = L" " + std::to_wstring(avg);
-            Gdiplus::RectF lw, vw;
-            g.MeasureString(label.c_str(), -1, &statFont, Gdiplus::PointF(0, 0), &lw);
-            g.MeasureString(value.c_str(), -1, &statFont, Gdiplus::PointF(0, 0), &vw);
-            g.DrawString(label.c_str(), -1, &statFont, Gdiplus::PointF(tx, tyRow - scaleF(3)), &textBrush);
-            g.DrawString(value.c_str(), -1, &statFont, Gdiplus::PointF(tx + lw.Width, tyRow - scaleF(3)),
-                         &accentBrush);
-            tx += lw.Width + vw.Width + scaleF(24);
-        }
+        // (the item's quality as one number stands beside its name)
         for (const auto& [stat, factor] : totals) {
             const double pct = (factor - 1.0) * 100.0;
             std::wstringstream line;
