@@ -1525,7 +1525,7 @@ void Application::lookForRock() {
     // A panel the face reader read counts as up too: in the MOLE's turrets
     // that is the only reader of the figures, and at a look every second and
     // a half the rock comes in late and goes out late.
-    const bool panelUp = rockMisses_ < 4 && (rockSteadier_.looks() > 0 || !rockReadings_.empty());
+    const bool panelUp = rockHold_.misses() < 4 && (rockSteadier_.looks() > 0 || !rockReadings_.empty());
     // Only where a rock panel can come up: in a ship that mines, or before the
     // log has named a ship at all. A full look with nothing on screen costs
     // 216 ms of the whole viewport every second and a half - for nothing in a
@@ -1627,12 +1627,12 @@ void Application::lookForRock() {
         while (rangeReadings_.size() > 5) rangeReadings_.pop_front();
     }
     logRockLook(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - now).count(), sinceLastMs,
-                waitMs, panelUp, quick, rockMisses_, glance, panel, range);
+                waitMs, panelUp, quick, rockHold_.misses(), glance, panel, range);
 
     // The shape reader's looks go to the steadier, which says when the
     // figures are settled; until then the view keeps what it had
     if (panel.found && !panel.figures[0].likeness.empty()) {
-        rockMisses_ = 0;
+        rockHold_.read();
         rockReadings_.clear();
         RockStats rock;
         const bool settled = rockSteadier_.add(panel, rock);
@@ -1677,7 +1677,7 @@ void Application::lookForRock() {
     // panel leaves the view stuck on a rock that is no longer in front of the
     // ship.
     if (panel.found && panel.figuresRead >= 3) {
-        rockMisses_ = 0;
+        rockHold_.read();
         // A panel the face reader read and the shapes did not see at all is
         // the one picture worth keeping: the shapes are what the app is fast
         // with, and the only way to find out why they miss the MOLE's pilot
@@ -1737,6 +1737,7 @@ void Application::lookForRock() {
     // as misses those looks would send the view back to the signatures
     // between two readings.
     if (panel.labels.x >= 0) {
+        rockHold_.seen();
         // ...unless its mass - white on every HUD, and read here - says
         // another rock is in front of the ship than the one on view, twice
         // running. While its laser is on the Golem prints a rock's
@@ -1799,19 +1800,25 @@ void Application::lookForRock() {
     // Eight misses - twelve seconds - before the view goes back: fewer made
     // the window flick between the two layouts whenever a reading was
     // missed. Nobody scans a new rock inside twelve seconds, and a layout
-    // that changes under the eye is worse than one that is late.
-    if (++rockMisses_ >= 8) {
-        if (rockSeen_) {
-            rockSeen_ = false;
-            std::cout << "\n[rock] gone" << std::endl;
-        }
-        rockReadings_.clear();
-        rockSteadier_.clear();
-        rockUnsettled_ = 0;
-        rangeReadings_.clear();
-        clearRockView();
-        shownMass_ = 0;
+    // that changes under the eye is worse than one that is late. A signature
+    // read after a miss takes it back sooner - see RockViewHold.
+    if (rockHold_.missed()) rockGone("");
+}
+
+// The rock is off the screen: the view goes back to the signatures, and
+// what was read of the rock goes with it
+void Application::rockGone(const char* why) {
+    if (rockSeen_) {
+        rockSeen_ = false;
+        std::cout << "\n[rock] gone" << why << std::endl;
     }
+    rockReadings_.clear();
+    rockSteadier_.clear();
+    rockUnsettled_ = 0;
+    rangeReadings_.clear();
+    clearRockView();
+    shownMass_ = 0;
+    rockHold_.gone();
 }
 
 // The loadout a one-seat ship's mining HUD shows: the laser at the bottom
@@ -2824,6 +2831,10 @@ void Application::processScanWithGUI() {
     g_scanMs = msSince(scanStart);
     logScan(debugSlot, singleFrameProof ? "accepted-flash" : "accepted",
             scannedValue, confidence, agreement);
+
+    // A signature read while the window shows a rock whose panel the last
+    // look did not find: the player is scanning again
+    if (gui_ && rockSeen_ && rockHold_.signatureRead()) rockGone(" - a signature was read");
 
     // Has the lock settled on something that never moves? Then it is cockpit
     // furniture wearing a marker's clothes, and holding on to it costs every

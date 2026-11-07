@@ -128,6 +128,41 @@ private:
     int offLooks_ = 0;             // ...and for how many looks in a row
 };
 
+// When the window goes back from a rock to the signatures. Eight looks in a
+// row that find nothing on screen, so that a look that misses a panel still
+// there does not flick the window between the two layouts - or at once, when
+// a signature is read after a look that found nothing: the player is
+// scanning again. While the panel or its labels are on screen, no signature
+// takes the rock off.
+class RockViewHold {
+public:
+    static constexpr int MISSES = 8;
+    // A look that read the panel's figures
+    void read() {
+        misses_ = 0;
+        empty_ = false;
+    }
+    // ...that found its labels and read none of them: the panel is there
+    void seen() { empty_ = false; }
+    // ...that found nothing to read. True: the view goes back.
+    bool missed() {
+        empty_ = true;
+        return ++misses_ >= MISSES;
+    }
+    // A signature was read. True: the view goes back now.
+    bool signatureRead() const { return empty_; }
+    // The view went back
+    void gone() {
+        if (misses_ < MISSES) misses_ = MISSES;
+        empty_ = true;
+    }
+    int misses() const { return misses_; }
+
+private:
+    int misses_ = 0;
+    bool empty_ = false;
+};
+
 // Every pair of rules in the frame that could be the panel, best-matched
 // first. There is more than one: a cockpit is full of long horizontal lines,
 // and a pair up in the power management readout can match at 99 % and hold

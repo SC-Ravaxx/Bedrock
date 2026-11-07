@@ -5079,6 +5079,30 @@ int runSelfTest() {
                                "...and so is one at another size, as the HUD comes back from a firing run");
         }
 
+        // From the rock back to the signatures: a signature read after a look
+        // that found nothing takes the window back at once. In a session of
+        // 7 rocks the first signature came 2.5 to 7 s after the last panel,
+        // the eight looks took some 10 s.
+        {
+            SCMiner::RockViewHold hold;
+            hold.read();
+            const bool early = hold.missed();
+            allPassed &= check(!early && hold.signatureRead(),
+                               "a signature read after a look that found no panel takes the window back at once");
+            hold.read();
+            allPassed &= check(!hold.signatureRead(), "...not while the last look read the panel");
+            hold.missed();
+            hold.seen();
+            allPassed &= check(!hold.signatureRead(), "...nor once a look found its labels again");
+            hold.read();
+            int back = 0;
+            for (int i = 1; i <= 10 && back == 0; i++) {
+                if (hold.missed()) back = i;
+            }
+            allPassed &= check(back == 8, "...and without a signature, eight looks that find nothing take it back (" +
+                                              std::to_string(back) + ")");
+        }
+
         // Too strong up close: where to stand. A Helix I (minimum 20 %, full
         // power to 15 m, none from 45 m) on a rock that needs 5 % of it holds
         // at 45 % where it puts out a ninth of its power - 41.7 m on the

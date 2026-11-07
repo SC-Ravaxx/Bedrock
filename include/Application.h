@@ -203,7 +203,7 @@ private:
     // Whether the rock view is fed at all; see the definition
     static bool rockViewWanted();
     std::chrono::steady_clock::time_point lastRockLook_{};
-    int rockMisses_ = 0;          // panels missed in a row; the view waits
+    RockViewHold rockHold_;       // when the view goes back to the signatures
     OCREngine rockOcr_;
     bool rockOcrTried_ = false;
     bool rockOcrReady_ = false;
@@ -272,6 +272,7 @@ private:
     void readContentsOnHud(const cv::Mat& frame, const ScanPanel& panel, const RockStats& rock);
     void takeRockContents(const RockContents& read, const RockStats& rock);
     void clearRockView();                    // the rock off the view, and its list with it
+    void rockGone(const char* why);          // ...and what was read of it: the view is the signatures'
     std::future<RockContents> contentsJob_;  // a reading under way
     float contentsJobMass_ = 0;              // ...and the rock it was asked for
     float contentsFor_ = 0;                  // the mass of the rock the view's list is of; 0: it has none
