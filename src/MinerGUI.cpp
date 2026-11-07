@@ -13575,8 +13575,8 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
         craftHits_.push_back({back, 4, 0});
     }
 
-    g.DrawString(toW(bp.name).c_str(), -1, &markFont,
-                 Gdiplus::PointF(M + scaleF(84), (float)scale(9)), &textBrush);
+    // Where the buttons on the right begin: the name stops short of them
+    float headRight = (float)cw - M;
     // Owned or not, top right - and a click flips it, for what the log
     // never saw (a blueprint bought, traded, or received before the logs).
     // It carries the tick box the list does, so the two read as one switch.
@@ -13623,6 +13623,7 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
             // three are one stepper, the minus and the plus its two ends.
             const float wide = n ? (step + gap + bw + gap + step + gap + step) : bw;
             float bx = b.X - wide - scaleF(8);
+            headRight = bx;
             if (n) {
                 Gdiplus::RectF minus(bx, (float)scale(14), step, step);
                 Gdiplus::RectF plus(bx + step + gap + bw + gap, (float)scale(14), step, step);
@@ -13678,6 +13679,47 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
                                       stamp.substr(0, 10) + L"  \u00B7  Click to untick";
             Gdiplus::RectF r(M, b.GetBottom() + scaleF(3), (float)cw - 2 * M, scaleF(14));
             g.DrawString(when.c_str(), -1, &subFont, r, &rightAlign, &faintBrush);
+        }
+    }
+    // The name, and beside it the result's Avg. Q as a letter. A name too
+    // long for both ends in an ellipsis rather than under the buttons.
+    {
+        // How far a text's letters run: GDI+ measures a line 3 % wider than
+        // it draws it, plus a sixth of an em on each side
+        const auto advance = [&](const std::wstring& s, const Gdiplus::Font& font, float em) {
+            Gdiplus::RectF box;
+            g.MeasureString(s.c_str(), -1, &font, Gdiplus::PointF(0, 0), &box);
+            return std::max(0.0f, (box.Width - em / 3.0f) / 1.03f);
+        };
+        const float x0 = M + scaleF(84);
+        const float titleEm = scaleF(Type::TITLE), wordEm = scaleF(Type::MICRO), letterEm = scaleF(Type::NUMBER);
+        const int avg = craftAverageQuality(bp, craftQuality_, CRAFT_MAX_SLOTS);
+        const std::wstring word = L"QUALITY";
+        const std::wstring letter(1, avg >= 0 ? (wchar_t)craftQualityGrade(avg) : L'F');
+        Gdiplus::Font wordFont(&textFamily(), wordEm, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+        const float pad = scaleF(8), between = scaleF(5), pillGap = scaleF(12);
+        const float wordW = advance(word, wordFont, wordEm), letterW = advance(letter, bigNumFont, letterEm);
+        const float pillW = avg >= 0 ? pad + wordW + between + letterW + pad : 0.0f;
+        const auto inkRight = [&](const std::wstring& s) { return x0 + titleEm / 6.0f + advance(s, markFont, titleEm); };
+        const float nameLimit = headRight - scaleF(12) - (avg >= 0 ? pillGap + pillW : 0.0f);
+        std::wstring name = toW(bp.name);
+        if (inkRight(name) > nameLimit) {
+            while (name.size() > 1 && inkRight(name + L"\u2026") > nameLimit) name.pop_back();
+            while (name.size() > 1 && name.back() == L' ') name.pop_back();
+            name += L"\u2026";
+        }
+        g.DrawString(name.c_str(), -1, &markFont, Gdiplus::PointF(x0, (float)scale(9)), &textBrush);
+        if (avg >= 0) {
+            // on the middle of the name's capitals, each text by its letters
+            const float middle = (float)scale(9) + inkMiddle(L"H", markFamily(), Gdiplus::FontStyleRegular, titleEm);
+            const Gdiplus::RectF pill(inkRight(name) + pillGap, middle - scaleF(12), pillW, scaleF(24));
+            fillRoundRect(g, pill, radius, tint(COL_ACCENT, 34));
+            const float wordTop = middle - inkMiddle(word, textFamily(), Gdiplus::FontStyleBold, wordEm);
+            g.DrawString(word.c_str(), -1, &wordFont, Gdiplus::PointF(pill.X + pad - wordEm / 6.0f, wordTop),
+                         &accentBrush);
+            const float letterTop = middle - inkMiddle(letter, numeralFamily(), Gdiplus::FontStyleBold, letterEm);
+            g.DrawString(letter.c_str(), -1, &bigNumFont,
+                         Gdiplus::PointF(pill.X + pad + wordW + between - letterEm / 6.0f, letterTop), &accentBrush);
         }
     }
     {

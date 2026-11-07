@@ -41,4 +41,18 @@ inline int craftAverageQuality(const CraftBlueprint& bp, const int* quality, int
     return (int)std::lround(sum / weight);
 }
 
+// The same as a letter, S to F, along the game's quality bands - 0-399,
+// 400-599, 600-699, 700-799, 800-899, 900-949, 950-998 and 999-1000 for
+// every material (records/crafting/qualityquantization), the top two as S.
+// The game shows no letter; the bands are the steps it hands quality out in.
+inline char craftQualityGrade(int quality) {
+    if (quality >= 950) return 'S';
+    if (quality >= 900) return 'A';
+    if (quality >= 800) return 'B';
+    if (quality >= 700) return 'C';
+    if (quality >= 600) return 'D';
+    if (quality >= 400) return 'E';
+    return 'F';
+}
+
 } // namespace SCMiner

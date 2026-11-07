@@ -3182,6 +3182,15 @@ int runSelfTest() {
             if (SCMiner::craftAverageQuality(bp, all, 8) != -1) unknownHidden = false;
         }
         allPassed &= check(unknownSeen > 0 && unknownHidden, "a blueprint with a curve not known shows no Avg. Q");
+        // ...and as a letter along the game's quality bands, the top two as S
+        bool letters = true;
+        const std::pair<int, char> edges[] = {{1000, 'S'}, {950, 'S'}, {949, 'A'}, {900, 'A'}, {899, 'B'},
+                                              {800, 'B'},  {799, 'C'}, {700, 'C'}, {699, 'D'}, {600, 'D'},
+                                              {599, 'E'},  {400, 'E'}, {399, 'F'}, {0, 'F'}};
+        for (const auto& [quality, want] : edges) {
+            if (SCMiner::craftQualityGrade(quality) != want) letters = false;
+        }
+        allPassed &= check(letters, "Avg. Q as a letter: S from 950, A from 900, then one band each down to F below 400");
         // ...and a blueprint at one quality throughout is at that quality
         bool flat = true;
         for (int b = 0; b < SCMiner::CRAFT_BLUEPRINT_COUNT; b++) {

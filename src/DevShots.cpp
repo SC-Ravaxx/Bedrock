@@ -2537,6 +2537,10 @@ int runScreenshots(const std::string& dir) {
     gui.openQualityForShot("Lumin V SMG", {{"Riccite", 965}, {"Copper", 958}, {"Aphorite", 523}});
     pump();
     if (gui.craftingHandle()) shoot(gui.craftingHandle(), "blueprint_quality_mixed.png", true);
+    gui.openQualityForShot("Parallax \"Shock Trooper\" Energy Assault Rifle",
+                           {{"Carinite", 959}, {"Gold", 916}, {"Tungsten", 964}});
+    pump();
+    if (gui.craftingHandle()) shoot(gui.craftingHandle(), "blueprint_quality_long.png", true);
     // ...the contracts that drop a recipe: the list of them, then one opened
     gui.openContractForShot(false);
     pump();
