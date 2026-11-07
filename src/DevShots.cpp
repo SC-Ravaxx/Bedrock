@@ -2486,6 +2486,9 @@ int runScreenshots(const std::string& dir) {
     gui.openRecoilBlueprintForShot();
     pump();
     if (gui.craftingHandle()) shoot(gui.craftingHandle(), "blueprint_recoil.png", true);
+    gui.openParallaxForShot();
+    pump();
+    if (gui.craftingHandle()) shoot(gui.craftingHandle(), "blueprint_quality.png", true);
     // ...the contracts that drop a recipe: the list of them, then one opened
     gui.openContractForShot(false);
     pump();

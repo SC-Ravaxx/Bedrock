@@ -12,6 +12,7 @@
 #include "BlueprintLibrary.h"
 #include "ColourScheme.h"
 #include "CraftingData.h"
+#include "CraftQuality.h"
 #include "DataBackup.h"
 #include "DevTools.h"
 #include "EmbeddedData.h"
@@ -3038,6 +3039,37 @@ int runSelfTest() {
             if (bp.srcCount && bp.srcFirst + bp.srcCount > SCMiner::CRAFT_SOURCE_COUNT) inRange = false;
         }
         allPassed &= check(inRange, "every blueprint's contracts point into the source table");
+    }
+
+    // --- One number for the crafted item: the slots by their amounts ---
+    {
+        int parallax = -1;
+        for (int b = 0; b < SCMiner::CRAFT_BLUEPRINT_COUNT; b++) {
+            if (std::string(SCMiner::CRAFT_BLUEPRINTS[b].name) == "Parallax Energy Assault Rifle") parallax = b;
+        }
+        // The case a player sent, from his tool: Carinite 959, Gold 916,
+        // Tungsten 964 - each a band value of its material - is 958
+        int q[3] = {0, 0, 0};
+        bool shaped = parallax >= 0 && SCMiner::CRAFT_BLUEPRINTS[parallax].count == 3;
+        for (int s = 0; shaped && s < 3; s++) {
+            const auto& slot = SCMiner::CRAFT_SLOTS[SCMiner::CRAFT_BLUEPRINTS[parallax].first + s];
+            const auto& mat = SCMiner::CRAFT_MATERIALS[slot.material];
+            const std::string name = mat.name;
+            const int want = name == "Carinite" ? 959 : name == "Gold" ? 916 : name == "Tungsten" ? 964 : -1;
+            if (want < 0 || SCMiner::snapToBand(mat, want) != want) shaped = false;
+            q[s] = want;
+        }
+        allPassed &= check(shaped && SCMiner::craftAverageQuality(SCMiner::CRAFT_BLUEPRINTS[parallax], q, 3) == 958,
+                           "Parallax from Carinite 959, Gold 916 and Tungsten 964 comes out at Avg. Q 958");
+        // ...and a blueprint at one quality throughout is at that quality
+        bool flat = true;
+        for (int b = 0; b < SCMiner::CRAFT_BLUEPRINT_COUNT; b++) {
+            const int all[8] = {700, 700, 700, 700, 700, 700, 700, 700};
+            if (SCMiner::CRAFT_BLUEPRINTS[b].count > 8) continue;
+            const int avg = SCMiner::craftAverageQuality(SCMiner::CRAFT_BLUEPRINTS[b], all, 8);
+            if (avg != 700 && avg != -1) flat = false;
+        }
+        allPassed &= check(flat, "a blueprint made of quality 700 throughout averages 700");
     }
 
     // --- The contract card: the wait after a run comes from respawnTime ---

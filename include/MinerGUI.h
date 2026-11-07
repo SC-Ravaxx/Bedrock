@@ -837,6 +837,7 @@ public:
     void openGrindForGroup(int group, int source);
     void grindWarningForShot(bool show);   // ...and the notice over it
     void openRecoilBlueprintForShot();
+    void openParallaxForShot();
 
     // Headless: every window stays outside all monitors, nothing is
     // activated - for --screenshot, which photographs the windows from their
