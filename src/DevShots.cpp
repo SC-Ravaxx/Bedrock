@@ -2541,6 +2541,10 @@ int runScreenshots(const std::string& dir) {
                            {{"Carinite", 959}, {"Gold", 916}, {"Tungsten", 964}});
     pump();
     if (gui.craftingHandle()) shoot(gui.craftingHandle(), "blueprint_quality_long.png", true);
+    // ...and a quantum drive, its speed and fuel high and its Integrity low
+    gui.openQualityForShot("Agni", {{"Agricium", 588}, {"Tungsten", 964}, {"Beryl", 955}});
+    pump();
+    if (gui.craftingHandle()) shoot(gui.craftingHandle(), "blueprint_quality_qdrive.png", true);
     // ...the contracts that drop a recipe: the list of them, then one opened
     gui.openContractForShot(false);
     pump();

@@ -14239,8 +14239,8 @@ void MinerGUI::paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch) {
         const float tRight = (float)cw - M;
         float tx = tLeft;
         float tyRow = ty;
-        // The item's quality as one number, each slot counted by how far it
-        // moves the item (CraftQuality.h), ahead of what it moves
+        // The item's quality as one number, each value counted by what the
+        // item is for (CraftQuality.h), ahead of what it moves
         if (const int avg = craftAverageQuality(bp, craftQuality_, CRAFT_MAX_SLOTS); avg > 0) {
             const std::wstring label = L"Avg. Q";
             const std::wstring value = L" " + std::to_wstring(avg);

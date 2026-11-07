@@ -3130,7 +3130,7 @@ int runSelfTest() {
         allPassed &= check(inRange, "every blueprint's contracts point into the source table");
     }
 
-    // --- One number for the crafted item: each slot by how far it moves it ---
+    // --- One number for the crafted item: each value by what the item is for ---
     {
         // A blueprint's Avg. Q from a quality per material - each a band
         // value of its material - or -2 when the blueprint is not shaped so
@@ -3154,15 +3154,19 @@ int runSelfTest() {
             }
             return -2;
         };
-        // The case a player sent: his tool says 958, by amount; here the
-        // Frame's three recoil values count most, and they are Tungsten
+        // The case a player sent (his tool says 958, by amount): damage 3,
+        // shared by Gold and Carinite by how far each moves it, the three
+        // recoil values 1 each
         allPassed &= check(avgOf("Parallax Energy Assault Rifle",
-                                 {{"Carinite", 959}, {"Gold", 916}, {"Tungsten", 964}}) == 960,
-                           "Parallax from Carinite 959, Gold 916 and Tungsten 964 comes out at Avg. Q 960");
-        // Pieces and SCU in one recipe: two Aphorite lenses that barely move
-        // the item must not pull it to their 523 (by amount it was 532)
-        allPassed &= check(avgOf("Lumin V SMG", {{"Riccite", 965}, {"Copper", 958}, {"Aphorite", 523}}) == 941,
-                           "Lumin V SMG from Riccite 965, Copper 958 and Aphorite 523 comes out at Avg. Q 941");
+                                 {{"Carinite", 959}, {"Gold", 916}, {"Tungsten", 964}}) == 954,
+                           "Parallax from Carinite 959, Gold 916 and Tungsten 964 comes out at Avg. Q 954");
+        // Pieces and SCU in one recipe, and damage that quality moves 7.5 %
+        // against recoil's 40 %: the lenses still count as much as the frame
+        allPassed &= check(avgOf("Lumin V SMG", {{"Riccite", 965}, {"Copper", 958}, {"Aphorite", 523}}) == 815,
+                           "Lumin V SMG from Riccite 965, Copper 958 and Aphorite 523 comes out at Avg. Q 815");
+        // A quantum drive is taken for its speed and fuel, not its Integrity
+        allPassed &= check(avgOf("Agni", {{"Agricium", 588}, {"Tungsten", 964}, {"Beryl", 955}}) == 906,
+                           "Agni with speed 964 and fuel 955 at Integrity 588 comes out at Avg. Q 906");
         // A value whose curve is not known hides the number, rather than
         // weigh its slot as if any quality did
         int unknownSeen = 0;
