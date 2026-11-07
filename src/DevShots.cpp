@@ -2405,6 +2405,21 @@ int runScreenshots(const std::string& dir) {
         gui.setRefineryOrders(orders);
         pump();
         shoot(gui.refineryHandle(), "refinery_orders.png", true);
+        // ...the calendar code of a running one unfolded for the phone, by
+        // clicks on the buttons: the one at Levski, then the one at Checkmate,
+        // which folds the first - one at a time - and once more, which folds it
+        {
+            const bool first = gui.openRefineryCalendarForShot(1);
+            pump();
+            const bool second = gui.openRefineryCalendarForShot(2);
+            pump();
+            if (second) shoot(gui.refineryHandle(), "refinery_orders_qr.png", true);
+            const bool folded = !gui.openRefineryCalendarForShot(2);
+            pump();
+            std::cout << "refinery calendar code: " << (first ? "unfolded" : "NOT UNFOLDED") << ", "
+                      << (second ? "the other unfolded instead" : "NOT UNFOLDED") << ", "
+                      << (folded ? "folded" : "NOT FOLDED") << std::endl;
+        }
         // ...where the box in the header still takes a click: along its row
         // from the right edge in, until it answers
         {

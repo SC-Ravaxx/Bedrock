@@ -42,6 +42,14 @@ struct RefineryOrder {
     bool complete() const;
 };
 
+// The order as a calendar entry for a phone's camera to take off a QR code:
+// an iCalendar VEVENT from the moment it is done, in UTC, for a quarter of
+// an hour, with a reminder at its start. "Levski: Iron, Gold ready" as its
+// summary - as many of its materials as fit in 64 characters, the rest
+// counted - so the code stays small enough to read off the screen. Lines
+// end in CRLF, the last without.
+std::string refineryOrderEvent(const RefineryOrder& order);
+
 // The refinery at the place the log puts the player - "Levski", or "Pyro
 // Gateway" in Nyx as the tables' "Pyro Gateway (Nyx)" - or "" where there is
 // none

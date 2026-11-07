@@ -7,6 +7,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <fstream>
 #include <sstream>
 
@@ -142,6 +143,77 @@ int RefineryOrder::yieldTotal() const {
     int total = 0;
     for (const Part& p : parts) total += (std::max)(0, p.yield);
     return total;
+}
+
+namespace {
+
+// A moment as iCalendar writes it in UTC, "20261107T124400Z". An order's
+// times are UTC already (seconds since 1970): neither this PC's time zone
+// nor its summer time comes into it.
+std::string icalUtc(long long t) {
+    const std::time_t at = (std::time_t)t;
+    std::tm utc = {};
+#ifdef _WIN32
+    if (gmtime_s(&utc, &at) != 0) return "";
+#else
+    if (!gmtime_r(&at, &utc)) return "";
+#endif
+    char buf[24];
+    return std::strftime(buf, sizeof buf, "%Y%m%dT%H%M%SZ", &utc) ? std::string(buf) : std::string();
+}
+
+// A TEXT value as RFC 5545 has it: backslash, semicolon, comma and line
+// breaks escaped
+std::string icalText(const std::string& s) {
+    std::string out;
+    for (char c : s) {
+        if (c == '\\' || c == ';' || c == ',') {
+            out += '\\';
+            out += c;
+        } else if (c == '\n') {
+            out += "\\n";
+        } else if (c != '\r') {
+            out += c;
+        }
+    }
+    return out;
+}
+
+}  // namespace
+
+std::string refineryOrderEvent(const RefineryOrder& order) {
+    // What comes out, without the bracket ("Iron (Ore)": "Iron"), each once
+    std::vector<std::string> names;
+    for (const RefineryOrder::Part& p : order.parts) {
+        const std::string name = p.material.substr(0, p.material.find(" ("));
+        if (!name.empty() && std::find(names.begin(), names.end(), name) == names.end()) names.push_back(name);
+    }
+    // ...as many as fit, the first always, the rest counted: "Levski: Iron,
+    // Gold +2 ready"
+    const size_t ROOM = 64;
+    const std::string head = order.station.empty() ? std::string() : order.station + ": ";
+    std::string what;
+    size_t shown = 0;
+    for (; shown < names.size(); shown++) {
+        const std::string longer = what + (what.empty() ? "" : ", ") + names[shown];
+        const size_t rest = names.size() - shown - 1;
+        const std::string counted = rest > 0 ? " +" + std::to_string(rest) : std::string();
+        if (shown > 0 && icalText(head + longer + counted + " ready").size() > ROOM) break;
+        what = longer;
+    }
+    if (shown < names.size()) what += " +" + std::to_string(names.size() - shown);
+    const std::string summary = icalText(head + (what.empty() ? std::string("Refinery") : what) + " ready");
+    const std::string crlf = "\r\n";
+    return "BEGIN:VEVENT" + crlf +
+           "SUMMARY:" + summary + crlf +
+           "DTSTART:" + icalUtc(order.due) + crlf +
+           "DTEND:" + icalUtc(order.due + 15 * 60) + crlf +
+           "BEGIN:VALARM" + crlf +
+           "TRIGGER:PT0M" + crlf +
+           "ACTION:DISPLAY" + crlf +
+           "DESCRIPTION:Refinery work order" + crlf +
+           "END:VALARM" + crlf +
+           "END:VEVENT";
 }
 
 bool RefineryOrderBook::usable(const RefineryPanel& panel) {

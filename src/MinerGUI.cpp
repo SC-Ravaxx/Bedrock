@@ -1378,6 +1378,32 @@ void chevron(Gdiplus::Graphics& g, float cx, float cy, float half, float width,
     g.DrawLines(&pen, pts, 3);
 }
 
+// A QR code to read off the screen: dark modules on a light square, a
+// margin `quiet` modules wide round them, which a camera needs to find it,
+// and whole pixels to a module, so the edges come out sharp. (x, y) is the
+// square's top left, on whole pixels; it is (size + 2 * quiet) * m a side.
+void drawQrCode(Gdiplus::Graphics& g, const std::vector<bool>& modules, int size, float x, float y, int m, int quiet,
+                float radius) {
+    const float side = (float)(m * (size + 2 * quiet));
+    fillRoundRect(g, Gdiplus::RectF(x, y, side, side), radius, COL_TEXT);
+    Gdiplus::SolidBrush dark(COL_BG);
+    const Gdiplus::SmoothingMode was = g.GetSmoothingMode();
+    g.SetSmoothingMode(Gdiplus::SmoothingModeNone);
+    for (int r = 0; r < size; r++) {
+        for (int c = 0; c < size; c++) {
+            if (!modules[(size_t)r * (size_t)size + (size_t)c]) continue;
+            g.FillRectangle(&dark, x + (float)((quiet + c) * m), y + (float)((quiet + r) * m), (float)m, (float)m);
+        }
+    }
+    g.SetSmoothingMode(was);
+}
+
+// A work order as the Refinery window tells it from the others while the
+// list changes under it: its station and its number on the terminal
+std::string orderKey(const RefineryOrder& o) {
+    return o.station + "#" + std::to_string(o.number);
+}
+
 } // namespace
 
 MinerGUI::MinerGUI() {
@@ -22007,13 +22033,16 @@ void MinerGUI::paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float t
     Gdiplus::Font buttonFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush textBrush(COL_TEXT), dimBrush(COL_TEXT_DIM), faintBrush(COL_TEXT_FAINT);
     Gdiplus::SolidBrush accentBrush(COL_ACCENT), goodBrush(COL_GREEN);
-    Gdiplus::StringFormat leftMid, rightMid;
+    Gdiplus::StringFormat leftMid, rightMid, centredMid;
     leftMid.SetLineAlignment(Gdiplus::StringAlignmentCenter);
     leftMid.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
     leftMid.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
     rightMid.SetAlignment(Gdiplus::StringAlignmentFar);
     rightMid.SetLineAlignment(Gdiplus::StringAlignmentCenter);
     rightMid.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    centredMid.SetAlignment(Gdiplus::StringAlignmentCenter);
+    centredMid.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    centredMid.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
 
     const float M = (float)scale(MARGIN);
     const long long now = (long long)std::time(nullptr);
@@ -22047,6 +22076,7 @@ void MinerGUI::paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float t
     const float footY = (float)ch - scaleF(24);
     g.DrawString(L"YOUR WORK ORDERS", -1, &smallFont, Gdiplus::PointF(M, y), &faintBrush);
     if (refineryOrders_.empty()) {
+        refineryQrOrder_.clear();
         Gdiplus::RectF text(M, y + scaleF(24), (float)cw - 2 * M, scaleF(60));
         g.DrawString(L"No work orders yet. Open a refinery's REFINEMENT CENTER while Bedrock is running: the work orders "
                      L"shown there are read from the screen and listed here with output and completion time.",
@@ -22060,16 +22090,57 @@ void MinerGUI::paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float t
                      &faintBrush);
         y += scaleF(22);
         const float cardH = scaleF(70), gap = scaleF(8);
-        // As many cards as stand above the footer; with more orders than
-        // that, the wheel walks them and the line under the last card says so
         const int total = (int)refineryOrders_.size();
-        const int fit = (std::max)(1, (int)((footY - scaleF(18) - y + gap) / (cardH + gap)));
-        refineryOrdersScroll_ = std::clamp(refineryOrdersScroll_, 0, (std::max)(0, total - fit));
+        // The running order whose calendar code is unfolded under its card -
+        // folded again once it is done or gone - and the code, made again
+        // only when the entry it carries changes
+        int unfolded = -1;
+        for (int i = 0; i < total && !refineryQrOrder_.empty(); i++) {
+            if (refineryOrders_[i].due > now && orderKey(refineryOrders_[i]) == refineryQrOrder_) unfolded = i;
+        }
+        if (unfolded < 0) refineryQrOrder_.clear();
+        const int qrQuiet = 3, qrModule = (std::max)(2, (int)std::lround(scaleF(3)));
+        float qrH = 0;
+        if (unfolded >= 0) {
+            const std::string entry = refineryOrderEvent(refineryOrders_[unfolded]);
+            if (entry != refineryQrOf_) {
+                refineryQr_ = PhoneServer::qrCode(entry, refineryQrSize_);
+                refineryQrOf_ = entry;
+            }
+            if (refineryQrSize_ > 0) qrH = (float)(qrModule * (refineryQrSize_ + 2 * qrQuiet)) + scaleF(16);
+        }
+        auto cardHeight = [&](int i) { return cardH + (i == unfolded ? qrH : 0.0f); };
+        // As many cards as stand above the footer; with more orders than
+        // that, the wheel walks them and the line under the last card says
+        // so. The list goes as far as its last card at the foot, and a card
+        // just unfolded comes into view whole.
+        const float room = footY - scaleF(18) - y + gap;
+        auto fitFrom = [&](int from) {
+            int n = 0;
+            float used = 0;
+            for (int i = from; i < total; i++) {
+                used += cardHeight(i) + gap;
+                if (n > 0 && used > room) break;
+                n++;
+            }
+            return n;
+        };
+        int lastFirst = total - 1;
+        for (float used = cardHeight(lastFirst) + gap; lastFirst > 0 && used + cardHeight(lastFirst - 1) + gap <= room;) {
+            lastFirst--;
+            used += cardHeight(lastFirst) + gap;
+        }
+        refineryOrdersScroll_ = std::clamp(refineryOrdersScroll_, 0, lastFirst);
+        if (refineryQrReveal_ && unfolded >= 0) {
+            refineryOrdersScroll_ = (std::min)(refineryOrdersScroll_, unfolded);
+            while (refineryOrdersScroll_ + fitFrom(refineryOrdersScroll_) <= unfolded) refineryOrdersScroll_++;
+        }
+        refineryQrReveal_ = false;
         const int first = refineryOrdersScroll_;
-        const int last = (std::min)(total, first + fit);
+        const int last = first + fitFrom(first);
         for (int i = first; i < last; i++) {
             const RefineryOrder& o = refineryOrders_[i];
-            const Gdiplus::RectF card(M, y, (float)cw - 2 * M, cardH);
+            const Gdiplus::RectF card(M, y, (float)cw - 2 * M, cardHeight(i));
             const bool done = o.due <= now;
             fillRoundRect(g, card, scaleF(R_CARD), COL_CARD);
             if (done) markedSurface(g, card, scaleF(R_CARD), scaleF(1.0f), COL_GREEN);
@@ -22119,15 +22190,46 @@ void MinerGUI::paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float t
             }
             if (o.placed > 0) how += (how.empty() ? L"" : L"  ·  ") + std::wstring(L"placed ") + clock(o.placed);
             if (how.empty()) how = L"Read at terminal, " + clock(o.seen);
-            g.DrawString(how.c_str(), -1, &subFont, Gdiplus::RectF(x0, card.Y + scaleF(48), w - scaleF(96), scaleF(16)),
-                         &leftMid, &dimBrush);
             const Gdiplus::RectF collected(card.X + card.Width - in - scaleF(82), card.Y + scaleF(46), scaleF(82), scaleF(20));
             drawButton(g, collected, L"Collected", buttonFont, ButtonKind::Ghost, isHot(hoverRef_, collected),
                        scaleF(R_CONTROL));
             refHits_.push_back({collected, 9, i});
-            y += cardH + gap;
+            // ...and while it runs, its calendar entry for the phone: a code
+            // to scan, unfolded under the card by the button beside it
+            float buttonsLeft = collected.X;
+            if (!done) {
+                const bool open = (i == unfolded);
+                const wchar_t* label = L"Calendar";
+                const float arrow = scaleF(14);
+                const float bw = lineWidth(g, label, buttonFont) + scaleF(16) + arrow;
+                const Gdiplus::RectF calendar(collected.X - scaleF(6) - bw, collected.Y, bw, collected.Height);
+                const bool hot = isHot(hoverRef_, calendar);
+                drawButton(g, calendar, L"", buttonFont, open ? ButtonKind::Selected : ButtonKind::Ghost, hot,
+                           scaleF(R_CONTROL));
+                const Gdiplus::Color ink = open ? COL_ACCENT : (hot ? COL_TEXT : COL_TEXT_DIM);
+                Gdiplus::SolidBrush inkBrush(ink);
+                g.DrawString(label, -1, &buttonFont,
+                             Gdiplus::RectF(calendar.X, calendar.Y, calendar.Width - arrow, calendar.Height), &centredMid,
+                             &inkBrush);
+                chevron(g, calendar.GetRight() - scaleF(12), calendar.Y + calendar.Height / 2, scaleF(3.5f), scaleF(1.5f),
+                        ink, open);
+                refHits_.push_back({calendar, 12, i});
+                buttonsLeft = calendar.X;
+                if (open && qrH > 0) {
+                    const float side = (float)(qrModule * (refineryQrSize_ + 2 * qrQuiet));
+                    const float qx = std::round(x0), qy = std::round(card.Y + cardH + scaleF(2));
+                    drawQrCode(g, refineryQr_, refineryQrSize_, qx, qy, qrModule, qrQuiet, scaleF(R_CONTROL));
+                    g.DrawString(L"Scan with the phone's camera", -1, &subFont,
+                                 Gdiplus::RectF(qx + side + scaleF(14), qy, x0 + w - (qx + side + scaleF(14)), side),
+                                 &leftMid, &dimBrush);
+                }
+            }
+            g.DrawString(how.c_str(), -1, &subFont,
+                         Gdiplus::RectF(x0, card.Y + scaleF(48), buttonsLeft - scaleF(14) - x0, scaleF(16)), &leftMid,
+                         &dimBrush);
+            y += card.Height + gap;
         }
-        if (total > fit) {
+        if (first > 0 || last < total) {
             const std::wstring more = L"Showing " + std::to_wstring(first + 1) + L"\u2013" + std::to_wstring(last) +
                                       L"  \u00B7  Scroll with mouse wheel";
             g.DrawString(more.c_str(), -1, &subFont, Gdiplus::RectF(M, y, (float)cw - 2 * M, scaleF(14)), &rightMid,
@@ -22150,6 +22252,7 @@ void MinerGUI::toggleRefinery() {
     if (refineryVisible_) {
         refineryScroll_ = 0;
         refineryOrdersScroll_ = 0;
+        refineryQrOrder_.clear();
         placeRefinery();
         ShowWindow(refinery_, headless_ ? SW_SHOWNOACTIVATE : SW_SHOW);
         InvalidateRect(refinery_, nullptr, TRUE);
@@ -22185,6 +22288,17 @@ void MinerGUI::setRefineryCheapestForShot(bool on) {
     refineryCheapest_ = on;
     refineryScroll_ = 0;
     if (refinery_) InvalidateRect(refinery_, nullptr, TRUE);
+}
+
+bool MinerGUI::openRefineryCalendarForShot(int index) {
+    if (!refinery_) return false;
+    for (const auto& hit : refHits_) {
+        if (hit.kind != 12 || hit.value != index) continue;
+        SendMessageW(refinery_, WM_LBUTTONDOWN, 0,
+                     MAKELPARAM((int)(hit.rect.X + hit.rect.Width / 2), (int)(hit.rect.Y + hit.rect.Height / 2)));
+        return index >= 0 && index < (int)refineryOrders_.size() && refineryQrOrder_ == orderKey(refineryOrders_[index]);
+    }
+    return false;
 }
 
 void MinerGUI::pickForShot(bool withHold) {
@@ -22286,6 +22400,14 @@ LRESULT MinerGUI::handleRefineryMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
                     if (hit.value >= 0 && hit.value < (int)refineryOrders_.size() && onRefineryOrderDone_) {
                         const RefineryOrder done = refineryOrders_[hit.value];
                         onRefineryOrderDone_(done);
+                    }
+                } else if (hit.kind == 12) {
+                    // a running order's calendar code, unfolded or folded
+                    // again; unfolding one folds any other
+                    if (hit.value >= 0 && hit.value < (int)refineryOrders_.size()) {
+                        const std::string key = orderKey(refineryOrders_[hit.value]);
+                        refineryQrOrder_ = (refineryQrOrder_ == key) ? std::string() : key;
+                        refineryQrReveal_ = !refineryQrOrder_.empty();
                     }
                 } else if (hit.kind == 2) {
                     refineryPicked_.clear();
@@ -25759,17 +25881,7 @@ void MinerGUI::paintSettings(HDC hdc) {
                 const int m = (std::max)(1, (int)std::floor(qw / (float)modules));
                 const float side = (float)(m * modules);
                 const float x0 = std::round(phoneX + (pw - side) / 2), y0 = std::round(py);
-                fillRoundRect(g, Gdiplus::RectF(x0, y0, side, side), scaleF(R_CONTROL), COL_TEXT);
-                Gdiplus::SolidBrush dark(COL_BG);
-                g.SetSmoothingMode(Gdiplus::SmoothingModeNone);
-                for (int y = 0; y < phoneQrSize_; y++) {
-                    for (int x = 0; x < phoneQrSize_; x++) {
-                        if (!phoneQr_[(size_t)y * (size_t)phoneQrSize_ + (size_t)x]) continue;
-                        g.FillRectangle(&dark, x0 + (float)((quiet + x) * m), y0 + (float)((quiet + y) * m), (float)m,
-                                        (float)m);
-                    }
-                }
-                g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+                drawQrCode(g, phoneQr_, phoneQrSize_, x0, y0, m, quiet, scaleF(R_CONTROL));
                 py += side + scaleF(10);
                 g.DrawString(L"Scan with the phone's camera. The phone must be on the same network as this PC.", -1,
                              &noteFont, Gdiplus::RectF(qx, py, qw, scaleF(30)), nullptr, &dimBrush);

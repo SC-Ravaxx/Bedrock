@@ -1195,6 +1195,95 @@ int runSelfTest() {
                            "with its handover to UEX, loaded and one ticked off");
     }
 
+    // --- A work order as a calendar entry for the phone's camera
+    //     (refineryOrderEvent, the Refinery window's QR code): the moment it
+    //     is done in UTC, a reminder then, small enough to scan ---
+    {
+        SCMiner::RefineryOrder order;
+        order.station = "Checkmate";
+        order.number = 1;
+        order.parts = {{"Quantainium (Raw)", 612, 312}, {"Gold (Ore)", 553, 41}};
+        order.due = 1794055440;   // 7 November 2026, 12:44:00 UTC: 13:44 in Berlin, winter time
+        const std::string entry = SCMiner::refineryOrderEvent(order);
+        const bool exact = entry == "BEGIN:VEVENT\r\n"
+                                    "SUMMARY:Checkmate: Quantainium\\, Gold ready\r\n"
+                                    "DTSTART:20261107T124400Z\r\n"
+                                    "DTEND:20261107T125900Z\r\n"
+                                    "BEGIN:VALARM\r\n"
+                                    "TRIGGER:PT0M\r\n"
+                                    "ACTION:DISPLAY\r\n"
+                                    "DESCRIPTION:Refinery work order\r\n"
+                                    "END:VALARM\r\n"
+                                    "END:VEVENT";
+        // summer time, and a quarter of an hour into the next day, month, year
+        SCMiner::RefineryOrder summer = order;
+        summer.station = "Levski";
+        summer.parts = {{"Iron (Ore)", 874, 235}};
+        summer.due = 1785541800;   // 31 July 2026, 23:50 UTC: 1:50 on 1 August in Berlin, summer time
+        const std::string july = SCMiner::refineryOrderEvent(summer);
+        SCMiner::RefineryOrder newYear = order;
+        newYear.due = 1798761570;  // 31 December 2026, 23:59:30 UTC
+        const std::string december = SCMiner::refineryOrderEvent(newYear);
+        const bool utc =
+            july.find("\r\nSUMMARY:Levski: Iron ready\r\nDTSTART:20260731T235000Z\r\nDTEND:20260801T000500Z\r\n") !=
+                std::string::npos &&
+            december.find("\r\nDTSTART:20261231T235930Z\r\nDTEND:20270101T001430Z\r\n") != std::string::npos;
+        // many materials: as many named as fit, the rest counted - for the
+        // longest station's name eight long ones, one of them named
+        SCMiner::RefineryOrder many = summer;
+        many.parts.clear();
+        for (const char* m : {"Agricium (Ore)", "Beryl (Raw)", "Gold (Ore)", "Laranite (Raw)", "Taranite (Raw)",
+                              "Bexalite (Raw)", "Borase (Ore)"}) {
+            many.parts.push_back({m, 500, 100});
+        }
+        const std::string seven = SCMiner::refineryOrderEvent(many);
+        SCMiner::RefineryOrder longest = many;
+        longest.station = "MIC-L1 Shallow Frontier Station";
+        longest.parts.clear();
+        for (const char* m : {"Construction Salvage", "Construction Rubble", "Hephaestanite", "Quantainium (Raw)",
+                              "Lindinium (Ore)", "Savrilium (Ore)", "Stileron (Ore)", "Aslarite (Raw)"}) {
+            longest.parts.push_back({m, 500, 100});
+        }
+        const std::string eight = SCMiner::refineryOrderEvent(longest);
+        const bool counted =
+            seven.find("\r\nSUMMARY:Levski: Agricium\\, Beryl\\, Gold\\, Laranite\\, Taranite +2 ready\r\n") !=
+                std::string::npos &&
+            eight.find("\r\nSUMMARY:MIC-L1 Shallow Frontier Station: Construction Salvage +7 ready\r\n") !=
+                std::string::npos;
+        // every line ended by CRLF but the last, none longer than 75 octets
+        // (RFC 5545 folds longer ones), no stray CR or LF
+        bool lines = true;
+        size_t count = 0;
+        for (const std::string& e : {entry, july, december, seven, eight}) {
+            size_t start = 0;
+            while (true) {
+                const size_t end = e.find("\r\n", start);
+                const std::string line = e.substr(start, end == std::string::npos ? std::string::npos : end - start);
+                lines = lines && !line.empty() && line.size() <= 75 && line.find_first_of("\r\n") == std::string::npos;
+                count++;
+                if (end == std::string::npos) break;
+                start = end + 2;
+            }
+        }
+        // ...and a code a camera reads off the screen at ECC MEDIUM: 57
+        // modules a side for the example (version 10), 61 at most (11)
+        int n = 0, most = 0;
+        SCMiner::PhoneServer::qrCode(entry, n);
+        for (const std::string& e : {seven, eight}) {
+            int side = 0;
+            SCMiner::PhoneServer::qrCode(e, side);
+            most = (side > 0 && most >= 0) ? (std::max)(most, side) : -1;
+        }
+        allPassed &= check(exact, "a work order as a calendar entry for the phone: a VEVENT done at its moment, a quarter "
+                                  "of an hour long, a reminder at its start");
+        allPassed &= check(utc, "...its times in UTC, whatever the clock here: in summer time, and a quarter of an hour "
+                                "into the next day, month and year");
+        allPassed &= check(counted && lines && count == 50 && eight.size() <= 251 && n == 57 && most > 0 && most <= 61,
+                           "...as many materials named as fit, the rest counted; lines in CRLF, none over 75 octets; a "
+                           "QR code of " + std::to_string(n) + " modules a side, " + std::to_string(most) +
+                               " at most (" + std::to_string(eight.size()) + " bytes)");
+    }
+
     // --- The panel's composition list: what the reader makes of
     //     a share and a quality, which line is which ore, and when a list
     //     hangs together ---

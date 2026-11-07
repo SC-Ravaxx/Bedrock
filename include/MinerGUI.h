@@ -857,6 +857,9 @@ public:
     void pickForShot(bool withHold = true);   // ...a hold in it, or (false) nothing ticked
     void setRefineryCheapestForShot(bool on);   // ...its stations by price
     void showRefineryOrdersForShot(bool on);   // ...and its work orders' view
+    // ...and the calendar code of the order at `index` unfolded, by a click
+    // on its button the way the mouse does it; false when there is none
+    bool openRefineryCalendarForShot(int index);
     void openLookingForShot();   // --screenshot only: the ore pick, open
     void setPlanPulseForShot(bool on);   // ...and the Ore Finder's blink held on or off
     void openUexCardForShot(int step);  // ...and its UEX card: 0 shut, 1 the account, 3 send refinery jobs?
@@ -1589,7 +1592,8 @@ private:
     // 7 an entry of the dropped method list, 8 the work orders' tab,
     // 9 an order's "Collected" (value: its place in refineryOrders_),
     // 10 the box that shares the workloads, 11 the order of the stations
-    // (value 0 best yield, 1 cheapest)
+    // (value 0 best yield, 1 cheapest), 12 a running order's calendar code,
+    // unfolded or folded (the same)
     struct RefHit { Gdiplus::RectF rect; int kind; int value; };
     std::vector<RefHit> refHits_;
     static LRESULT CALLBACK RefineryProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -1604,6 +1608,15 @@ private:
     // are more than the window has room for; the wheel walks them
     int refineryScroll_ = 0;
     int refineryOrdersScroll_ = 0;
+    // The running order whose calendar code is unfolded under its card, by
+    // its station and number ("" none; one at a time), and the code, made
+    // again only when the entry it carries changes. Reveal: the next paint
+    // scrolls the unfolded card into view.
+    std::string refineryQrOrder_;
+    std::string refineryQrOf_;
+    std::vector<bool> refineryQr_;
+    int refineryQrSize_ = 0;
+    bool refineryQrReveal_ = false;
     std::function<void(const RefineryOrder&)> onRefineryOrderDone_;
     void paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float top);
     // The finished ones, shown as a badge on the main window's Refinery
