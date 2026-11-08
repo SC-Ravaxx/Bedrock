@@ -27,6 +27,7 @@
 #include "FrameRecorder.h"
 #include "UexPrices.h"
 #include "UexReports.h"
+#include "WhereToBuy.h"
 #include "Datarunner.h"
 #include "RefineryShare.h"
 #include "UexMarket.h"
@@ -454,6 +455,26 @@ private:
     // ...and after a failure, again only after this long, and only while
     // the Ore Finder is still open
     static constexpr int UEX_RETRY_MINUTES = 10;
+    // The shops that sell the mining gear (WhereToBuy.h): UEX's items_prices
+    // of category 28 (gadgets), 29 (laser heads) and 30 (modules), kept in
+    // uex\ and fetched again once half a day old - asked for only while the
+    // GUI wants them (gearListsWanted). One that cannot be fetched leaves
+    // the one kept in place, however old.
+public:
+    struct UexShopsOutcome {
+        std::shared_ptr<const UexShops> shops;   // null where there is nothing to show
+        std::string note;                        // why not, or why not fresh; "" when all went well
+    };
+    // (static, and of the folder given: the self-test reads one it has kept)
+    static UexShopsOutcome loadUexShops(const std::filesystem::path& folder);
+private:
+    void serviceUexShops();
+    std::future<UexShopsOutcome> uexShopsJob_;
+    std::shared_ptr<const UexShops> uexShops_;
+    std::string uexShopsNote_;
+    bool uexShopsTried_ = false;
+    std::chrono::steady_clock::time_point uexShopsTriedAt_{};
+    static constexpr int UEX_SHOPS_HOURS = 12;
     // Reporting to UEX (UexReports.h), opt-in: uexreport= in
     // region_config.txt is 0, or the Unix second the player agreed. What goes
     // is the player's refinery jobs, to their own account there. The key is

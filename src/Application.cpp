@@ -4312,6 +4312,8 @@ void Application::applyGameState() {
             analyzer_.setGround(ground);
             if (gui_) {
                 gui_->setPlace(line, analyzer_.placeFilter(), ground == Ground::Space);
+                // ...and the place itself, for the gear's shops, nearest first
+                gui_->setWhereAt(place.known() ? place.name : std::string(), pretty);
                 if (lastRecognizedSignature_ > 0) {
                     auto results = analyzer_.analyzeSignature(lastRecognizedSignature_);
                     gui_->updateResults(lastRecognizedSignature_, results, -1.0, analyzer_.outOfPlace());
@@ -4950,6 +4952,7 @@ void Application::pollLibrary() {
     serviceUexReports();
     serviceDatarunner();
     serviceUexMarket();
+    serviceUexShops();
     // The same log, read for where the player is and what they fly
     if (gameState_.gameLog() != library_.gameLog()) {
         gameState_.setGameLog(library_.gameLog());
@@ -5373,6 +5376,66 @@ void Application::serviceUexMarket() {
     const std::filesystem::path folder = AppPaths::data() / "uex";
     const auto items = uexMarketItems_;
     uexMarketJob_ = std::async(std::launch::async, [folder, next, items]() { return loadUexMarket(folder, next, items); });
+}
+
+// The shops of the gadgets, the laser heads and the modules, off the UI
+// thread: three lists of UEX's (a tenth, a quarter and four tenths of a
+// megabyte), each the one kept in uex\ while it is younger than half a day.
+// A list that cannot be fetched is the one kept, however old; with one of
+// them neither, nothing and why - a shop list short of a category would
+// say its items are sold nowhere.
+Application::UexShopsOutcome Application::loadUexShops(const std::filesystem::path& folder) {
+    UexShopsOutcome out;
+    std::error_code ec;
+    std::filesystem::create_directories(folder, ec);
+    auto shops = std::make_shared<UexShops>();
+    for (const int category : {28, 29, 30}) {
+        const std::string number = std::to_string(category);
+        const std::string endpoint = "items_prices?id_category=" + number;
+        std::string why;
+        const std::string list = uexListCached(folder / ("items_prices_" + number + ".json"), endpoint.c_str(),
+                                               UEX_SHOPS_HOURS * 3600ll, why);
+        if (list.empty()) {
+            out.note = why.empty() ? "UEX sent nothing" : why;
+            return out;
+        }
+        if (!shops->read(list, why)) {
+            out.note = why;
+            return out;
+        }
+        if (!why.empty()) out.note = why;   // not fetched: the one kept was read
+    }
+    out.shops = shops;
+    return out;
+}
+
+// Collects the shops that have come, and asks while the GUI wants them
+// (gearListsWanted): at once the first time, again once what came is half
+// a day old - and after a failure every UEX_RETRY_MINUTES
+void Application::serviceUexShops() {
+    if (!gui_) return;
+    if (uexShopsJob_.valid() && uexShopsJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        UexShopsOutcome done = uexShopsJob_.get();
+        if (done.shops) uexShops_ = done.shops;
+        uexShopsNote_ = done.note;
+        std::cout << "\nUEX shops: "
+                  << (uexShops_ ? std::to_string(uexShops_->itemCount()) + " items" : std::string("none"))
+                  << (uexShopsNote_.empty() ? "" : " - " + uexShopsNote_) << std::endl;
+        gui_->setGearShops(uexShops_, uexShopsNote_);
+    }
+    if (!uexWanted_ || uexShopsJob_.valid() || !gui_->gearListsWanted()) return;
+    const auto now = std::chrono::steady_clock::now();
+    if (uexShopsTried_) {
+        const bool fresh = uexShops_ && uexShopsNote_.empty();
+        if (now - uexShopsTriedAt_ < (fresh ? std::chrono::minutes(UEX_SHOPS_HOURS * 60)
+                                            : std::chrono::minutes(UEX_RETRY_MINUTES))) {
+            return;
+        }
+    }
+    uexShopsTried_ = true;
+    uexShopsTriedAt_ = now;
+    const std::filesystem::path folder = AppPaths::data() / "uex";
+    uexShopsJob_ = std::async(std::launch::async, [folder]() { return loadUexShops(folder); });
 }
 
 // UEX's ids for what is reported, off the UI thread: its terminals,

@@ -46,6 +46,7 @@
 #include "CommodityTerminal.h"
 #include "Datarunner.h"
 #include "UexPrices.h"
+#include "WhereToBuy.h"
 #include "UexReports.h"
 #include "UexMarket.h"
 #include "Updater.h"
@@ -1653,6 +1654,321 @@ int runSelfTest() {
                            "full terminals, month-old prices, nought and the raw ore left out; a gateway goes by its "
                            "system, Levski by Delamar; Aluminium is UEX's Aluminum, ice its Pressurized Ice (got " +
                                std::to_string(q.size()) + " for Quantainium" + (why.empty() ? "" : ", " + why) + ")");
+    }
+
+    // --- The gear's shops: where places stand (NavPlaces, out of the game's
+    //     containers), UEX's shops for the gadgets, laser heads and modules,
+    //     and the order they are listed in - the player's system first,
+    //     nearest first, the other systems through their gateways ---
+    {
+        using SCMiner::NavPoint;
+        using SCMiner::ShopInOrder;
+        using SCMiner::UexShops;
+        auto at = [](const std::string& name, const std::string& system, NavPoint& p) {
+            return SCMiner::navPoint(name, system, p);
+        };
+        auto gm = [](const NavPoint& a, const NavPoint& b) { return SCMiner::travelMetres(a, b) / 1e9; };
+        auto tenths = [](double v) {
+            char text[32];
+            std::snprintf(text, sizeof(text), "%.2f", v);
+            return std::string(text);
+        };
+        NavPoint hurston, arccorp, hurL1, arcL1, area18;
+        const bool found = at("Hurston", "", hurston) && at("ArcCorp", "Stanton", arccorp) &&
+                           at("HUR-L1 Green Glade Station", "", hurL1) && at("arc l1", "Stanton", arcL1) &&
+                           at("Area 18", "", area18);
+        const bool spaced = found && std::abs(gm(hurston, arccorp) - 22.88) < 0.01 &&
+                         std::abs(gm(hurston, hurL1) - 1.29) < 0.01 && std::abs(gm(arccorp, arcL1) - 2.89) < 0.01 &&
+                         gm(arccorp, area18) == 0.0;
+        allPassed &= check(spaced, "places stand where the game's containers put them: Hurston to ArcCorp 22.88 Gm, "
+                                "Hurston to HUR-L1 1.29, ArcCorp to ARC-L1 2.89, Area 18 on ArcCorp (got " +
+                                    (found ? tenths(gm(hurston, arccorp)) + ", " + tenths(gm(hurston, hurL1)) + ", " +
+                                                 tenths(gm(arccorp, arcL1))
+                                           : std::string("a place not found")) +
+                                    ")");
+
+        // by the names the log, GamePlaces and UEX give them
+        NavPoint p, q;
+        const bool names =
+            at("Pyro Gateway (Nyx)", "Stanton", p) && p.system == "Nyx" && !at("Stanton Gateway", "", p) &&
+            at("Stanton Gateway", "Pyro", p) && p.system == "Pyro" && at("PYR2-L4", "", p) &&
+            at("Checkmate Station", "Pyro", q) && p.x == q.x && p.y == q.y && at("Stanton-Pyro Jump Point", "", p) &&
+            at("Pyro Gateway", "Stanton", q) && p.x == q.x && p.system == "Stanton" &&
+            at("Nyx Gateway (Stanton system)", "", p) && at("Magnus Gateway", "Stanton", q) && p.x == q.x &&
+            at("MicroTech", "Stanton", p) && at("Delamar", "Nyx", q) && !at("Aaron Halo", "Stanton", p) &&
+            !at("Glaciem Ring", "Nyx", p) && !at("", "Stanton", p) && !at("Rustbucket", "Pyro", p) &&
+            !at("HUR-L12", "Stanton", p) && !at("ARC-L1x", "Stanton", p);
+        std::vector<SCMiner::GamePlace> logged;
+        for (const char* name : {"Hurston", "Aberdeen", "Arial", "Ita", "Magda", "Crusader", "Cellin", "Daymar", "Yela",
+                                 "ArcCorp", "Lyria", "Wala", "microTech", "Calliope", "Clio", "Euterpe", "Lorville",
+                                 "Area18", "Orison", "New Babbage", "Everus Harbor", "Seraphim Station",
+                                 "Port Tressler", "Baijini Point", "Grim HEX", "Yela Asteroid Belt", "Pyro I", "Monox",
+                                 "Bloom", "Pyro IV", "Pyro V", "Ignis", "Vatra", "Adir", "Fairo", "Fuego", "Vuur",
+                                 "Terminus", "Checkmate", "Ruin Station", "Orbituary", "Gaslight", "Patch City",
+                                 "Rod's Fuel 'N Supplies", "Dudley & Daughters", "Starlight Service Station",
+                                 "Megumi Refueling", "Endgame", "Shepherd's Rest", "Terminus Ring", "Levski",
+                                 "Delamar", "People's Service Station Alpha", "PYR2 L4", "PYR6-L5",
+                                 "MIC-L5 Modern Icarus Station"}) {
+            logged.push_back(SCMiner::placeByLogName(name, ""));
+        }
+        for (const char* planet : {"HUR", "CRU", "ARC", "MIC"}) {
+            for (int n = 1; n <= 5; n++) logged.push_back(SCMiner::placeByLogName(std::string(planet) + "-L" + std::to_string(n), ""));
+        }
+        for (const char* code : {"RR_JP_StantonPyro", "RR_JP_StantonMagnus", "RR_JP_StantonTerra", "RR_JP_PyroStanton",
+                                 "RR_JP_PyroNyx", "RR_JP_NyxPyro", "RR_JP_NyxCastra", "RR_P2_L4", "RR_P6_LEO",
+                                 "RR_HUR_LEO", "Nyx_Levski", "Stanton1_Lorville"}) {
+            logged.push_back(SCMiner::placeByLocationCode(code, ""));
+        }
+        logged.push_back(SCMiner::placeByDestination("rs_ext_nyx-pyro_jp1", ""));
+        logged.push_back(SCMiner::placeByDestination("levski_all-001", ""));
+        std::string unplaced;
+        for (const SCMiner::GamePlace& place : logged) {
+            if (!place.known() || !at(place.name, place.system, p)) unplaced += (unplaced.empty() ? "" : ", ") + place.name;
+        }
+        allPassed &= check(names && unplaced.empty(),
+                           "a place has its point by every name it goes by: a station by its Lagrange point, a gateway "
+                           "by its system in brackets or the jump point it stands at - Magnus and Castra being the "
+                           "Nyx and Stanton gateways -, Checkmate by PYR2 L4; a belt, a ring, a gateway of two "
+                           "systems without one say none (" +
+                               (unplaced.empty() ? std::string("every place the log names placed") : "unplaced: " + unplaced) + ")");
+
+        // UEX's items_prices, as it sends them
+        struct Row {
+            const char* item;
+            double price;
+            const char* terminal;
+            const char* system;
+            const char* planet;
+            const char* orbit;
+            const char* station;
+            const char* city;
+            const char* outpost;
+            long long modified;
+        };
+        auto answer = [](const std::vector<Row>& rows) {
+            auto text = [](const char* s) {
+                if (!s) return std::string("null");
+                std::string out = "\"";
+                for (const char* c = s; *c; c++) out += (*c == '"' ? std::string("\\\"") : std::string(1, *c));
+                return out + "\"";
+            };
+            std::string json = "{\"status\":\"ok\",\"data\":[";
+            for (size_t i = 0; i < rows.size(); i++) {
+                const Row& r = rows[i];
+                json += std::string(i ? "," : "") + "{\"id_category\":29,\"item_name\":" + text(r.item) +
+                        ",\"price_buy\":" + std::to_string((long long)r.price) + ",\"terminal_name\":" + text(r.terminal) +
+                        ",\"star_system_name\":" + text(r.system) + ",\"planet_name\":" + text(r.planet) +
+                        ",\"orbit_name\":" + text(r.orbit) + ",\"moon_name\":null,\"space_station_name\":" +
+                        text(r.station) + ",\"city_name\":" + text(r.city) + ",\"outpost_name\":" + text(r.outpost) +
+                        ",\"date_modified\":" + std::to_string(r.modified) + ",\"game_version\":\"4.10.2\"}";
+            }
+            return json + "]}";
+        };
+        // every place UEX sold a laser head, a module or a gadget at (8 November 2026)
+        const std::vector<Row> everywhere = {
+            {"Head", 1, "Refinery Shop - Levski", "Nyx", nullptr, "Delamar", nullptr, "Levski", nullptr, 1},
+            {"Head", 1, "Refinery Shop - Pyro Gateway (Nyx)", "Nyx", nullptr, "Pyro Gateway (Nyx system)", "Pyro Gateway (Nyx)", nullptr, nullptr, 1},
+            {"Head", 1, "Refinery Shop - Stanton Gateway (Nyx)", "Nyx", nullptr, "Stanton Gateway (Nyx system)", "Stanton Gateway (Nyx)", nullptr, nullptr, 1},
+            {"Head", 1, "Tools & Supplies - Levski", "Nyx", nullptr, "Delamar", nullptr, "Levski", nullptr, 1},
+            {"Head", 1, "Tools & Supplies - People's Service Station Alpha", "Nyx", nullptr, "People's Service Station Alpha", "People's Service Station Alpha", nullptr, nullptr, 1},
+            {"Head", 1, "Tools & Supplies - People's Service Station Delta", "Nyx", nullptr, "People's Service Station Delta", "People's Service Station Delta", nullptr, nullptr, 1},
+            {"Head", 1, "Tools & Supplies - People's Service Station Lambda", "Nyx", nullptr, "People's Service Station Lambda", "People's Service Station Lambda", nullptr, nullptr, 1},
+            {"Head", 1, "Tools & Supplies - People's Service Station Theta", "Nyx", nullptr, "People's Service Station Theta", "People's Service Station Theta", nullptr, nullptr, 1},
+            {"Head", 1, "Refinery Shop - Checkmate", "Pyro", "Monox", "Monox Lagrange Point 4", "Checkmate Station", nullptr, nullptr, 1},
+            {"Head", 1, "Refinery Shop - Nyx Gateway (Pyro)", "Pyro", nullptr, "Nyx Gateway (Pyro system)", "Nyx Gateway (Pyro)", nullptr, nullptr, 1},
+            {"Head", 1, "Refinery Shop - Orbituary", "Pyro", "Bloom", "Bloom", "Orbituary", nullptr, nullptr, 1},
+            {"Head", 1, "Refinery Shop - Ruin Station", "Pyro", "Terminus", "Terminus", "Ruin Station", nullptr, nullptr, 1},
+            {"Head", 1, "Refinery Shop - Stanton Gateway (Pyro)", "Pyro", nullptr, "Stanton Gateway (Pyro system)", "Stanton Gateway (Pyro)", nullptr, nullptr, 1},
+            {"Head", 1, "Shop Terminal - Bueno Ravine", "Pyro", "Bloom", "Bloom", nullptr, nullptr, "Bueno Ravine", 1},
+            {"Head", 1, "Shop Terminal - Carver's Ridge", "Pyro", "Bloom", "Bloom", nullptr, nullptr, "Carver's Ridge", 1},
+            {"Head", 1, "Shop Terminal - Ostler's Claim", "Pyro", "Monox", "Monox", nullptr, nullptr, "Ostler's Claim", 1},
+            {"Head", 1, "Shop Terminal - Stag's Rut", "Pyro", "Pyro I", "Pyro I", nullptr, nullptr, "Stag's Rut", 1},
+            {"Head", 1, "Shop Terminal - Yang's Place", "Pyro", "Monox", "Monox", nullptr, nullptr, "Yang's Place", 1},
+            {"Head", 1, "Dumper's Depot - Area 18", "Stanton", "ArcCorp", "ArcCorp", nullptr, "Area 18", nullptr, 1},
+            {"Head", 1, "Dumper's Depot - GrimHEX", "Stanton", "Crusader", "Crusader", "Green Imperial Housing Exchange", nullptr, nullptr, 1},
+            {"Head", 1, "Refinery Shop - ARC-L1", "Stanton", "ArcCorp", "ArcCorp Lagrange Point 1", "ARC-L1 Wide Forest Station", nullptr, nullptr, 1},
+            {"Head", 1, "Refinery Shop - ARC-L2", "Stanton", "ArcCorp", "ArcCorp Lagrange Point 2", "ARC-L2 Lively Pathway Station", nullptr, nullptr, 1},
+            {"Head", 1, "Refinery Shop - ARC-L4", "Stanton", "ArcCorp", "ArcCorp Lagrange Point 4", "ARC-L4 Faint Glen Station", nullptr, nullptr, 1},
+            {"Head", 1, "Refinery Shop - CRU-L1", "Stanton", "Crusader", "Crusader Lagrange Point 1", "CRU-L1 Ambitious Dream Station", nullptr, nullptr, 1},
+            {"Head", 1, "Refinery Shop - HUR-L1", "Stanton", "Hurston", "Hurston Lagrange Point 1", "HUR-L1 Green Glade Station", nullptr, nullptr, 1},
+            {"Head", 1, "Refinery Shop - HUR-L2", "Stanton", "Hurston", "Hurston Lagrange Point 2", "HUR-L2 Faithful Dream Station", nullptr, nullptr, 1},
+            {"Head", 1, "Refinery Shop - MIC-L1", "Stanton", "MicroTech", "microTech Lagrange Point 1", "MIC-L1 Shallow Frontier Station", nullptr, nullptr, 1},
+            {"Head", 1, "Refinery Shop - MIC-L2", "Stanton", "MicroTech", "microTech Lagrange Point 2", "MIC-L2 Long Forest Station", nullptr, nullptr, 1},
+            {"Head", 1, "Refinery Shop - MIC-L5", "Stanton", "MicroTech", "microTech Lagrange Point 5", "MIC-L5 Modern Icarus Station", nullptr, nullptr, 1},
+            {"Head", 1, "Refinery Shop - Nyx Gateway (Stanton)", "Stanton", nullptr, "Nyx Gateway (Stanton system)", "Nyx Gateway (Stanton)", nullptr, nullptr, 1},
+            {"Head", 1, "Refinery Shop - Pyro Gateway (Stanton)", "Stanton", nullptr, "Pyro Gateway (Stanton system)", "Pyro Gateway (Stanton)", nullptr, nullptr, 1},
+            {"Head", 1, "Refinery Shop - Terra Gateway (Stanton)", "Stanton", nullptr, "Terra Gateway (Stanton system)", "Terra Gateway (Stanton)", nullptr, nullptr, 1},
+            {"Head", 1, "Shubin Interstellar - Commons - New Babbage", "Stanton", "MicroTech", "MicroTech", nullptr, "New Babbage", nullptr, 1},
+            {"Head", 1, "Tammany and Sons - Metro Center - Lorville", "Stanton", "Hurston", "Hurston", nullptr, "Lorville", nullptr, 1},
+        };
+        UexShops all;
+        std::string why;
+        const bool readAll = all.read(answer(everywhere), why);
+        std::string lost;
+        for (const SCMiner::ShopOffer& o : all.offersFor("Head")) {
+            if (!o.located) lost += (lost.empty() ? "" : ", ") + o.where;
+        }
+        const auto& heads = all.offersFor("Head");
+        auto shopAt = [&](const std::string& where, const std::string& system) -> const SCMiner::ShopOffer* {
+            for (const SCMiner::ShopOffer& o : heads) {
+                if (o.where == where && o.system == system) return &o;
+            }
+            return nullptr;
+        };
+        const SCMiner::ShopOffer* lorville = shopAt("Lorville", "Stanton");
+        const SCMiner::ShopOffer* gateway = shopAt("Pyro Gateway", "Nyx");
+        const SCMiner::ShopOffer* outpost = shopAt("Stag's Rut", "Pyro");
+        const bool split = lorville && lorville->shop == "Tammany and Sons - Metro Center" && gateway &&
+                           gateway->shop == "Refinery Shop" && outpost && outpost->shop == "Shop Terminal" &&
+                           shopAt("ARC-L1", "Stanton") && shopAt("GrimHEX", "Stanton");
+        allPassed &= check(readAll && heads.size() == everywhere.size() && lost.empty() && split,
+                           "every one of the 34 places UEX sells mining gear at has its point - an outpost by its "
+                           "planet -, and a terminal's name gives the shop and the place (" +
+                               std::to_string(heads.size()) + " read" + (lost.empty() ? "" : ", no point: " + lost) +
+                               (why.empty() ? "" : ", " + why) + ")");
+
+        // ...and in order: a Helix II at eight places, one of them three times
+        const std::vector<Row> helix = {
+            {"Helix II Mining Laser", 108000, "Refinery Shop - Levski", "Nyx", nullptr, "Delamar", nullptr, "Levski", nullptr, 1788000000},
+            {"Helix II Mining Laser", 99000, "Dumper's Depot - Area 18", "Stanton", "ArcCorp", "ArcCorp", nullptr, "Area 18", nullptr, 1780000000},
+            {"Helix II Mining Laser", 108000, "Dumper's Depot - Area 18", "Stanton", "ArcCorp", "ArcCorp", nullptr, "Area 18", nullptr, 1788000000},
+            {"Helix II Mining Laser", 97000, "Dumper's Depot - Area 18", "Stanton", "ArcCorp", "ArcCorp", nullptr, "Area 18", nullptr, 1770000000},
+            {"Helix II Mining Laser", 108000, "Refinery Shop - HUR-L1", "Stanton", "Hurston", "Hurston Lagrange Point 1", "HUR-L1 Green Glade Station", nullptr, nullptr, 1788000000},
+            {"Helix II Mining Laser", 108000, "Admin - Everus Harbor", "Stanton", "Hurston", "Hurston", "Everus Harbor", nullptr, nullptr, 1788000000},
+            {"Helix II Mining Laser", 102600, "Tammany and Sons - Metro Center - Lorville", "Stanton", "Hurston", "Hurston", nullptr, "Lorville", nullptr, 1788000000},
+            {"Helix II Mining Laser", 108000, "Refinery Shop - Stanton Gateway (Pyro)", "Pyro", nullptr, "Stanton Gateway (Pyro system)", "Stanton Gateway (Pyro)", nullptr, nullptr, 1788000000},
+            {"Helix II Mining Laser", 108000, "Refinery Shop - Nyx Gateway (Pyro)", "Pyro", nullptr, "Nyx Gateway (Pyro system)", "Nyx Gateway (Pyro)", nullptr, nullptr, 1788000000},
+            {"Helix II Mining Laser", 108000, "Refinery Shop - Pyro Gateway (Nyx)", "Nyx", nullptr, "Pyro Gateway (Nyx system)", "Pyro Gateway (Nyx)", nullptr, nullptr, 1788000000},
+            {"Helix II Mining Laser", 0, "Refinery Shop - MIC-L1", "Stanton", "MicroTech", "microTech Lagrange Point 1", "MIC-L1 Shallow Frontier Station", nullptr, nullptr, 1788000000},
+            {"Rieger-C3 Module", 57000, "Refinery Shop - Levski", "Nyx", nullptr, "Delamar", nullptr, "Levski", nullptr, 1788000000},
+        };
+        UexShops shops;
+        std::string shopsWhy;
+        const bool readHelix = shops.read(answer(helix), shopsWhy);
+        auto order = [&](const std::string& system, const std::string& place) {
+            std::string out;
+            for (const ShopInOrder& s : SCMiner::nearestFirst(shops.offersFor("Helix II Mining Laser"), system, place)) {
+                out += (out.empty() ? "" : " | ") + s.offer.where + (s.home ? "" : " (" + s.offer.system + ")");
+                if (s.metres >= 0) out += " " + tenths(s.metres / 1e9);
+            }
+            return out;
+        };
+        const auto atArc = SCMiner::nearestFirst(shops.offersFor("Helix II Mining Laser"), "Stanton",
+                                                 "ARC-L1 Wide Forest Station");
+        std::string sequence;
+        for (const ShopInOrder& s : atArc) sequence += (sequence.empty() ? "" : ", ") + s.offer.where;
+        // the way to Levski: to the Nyx Gateway in Stanton, on from the Stanton Gateway in Nyx
+        NavPoint nyxOut, nyxIn, levski;
+        const bool through = at("Nyx Gateway", "Stanton", nyxOut) && at("Stanton Gateway", "Nyx", nyxIn) &&
+                             at("Levski", "Nyx", levski);
+        double viaGateways = -1, toLevski = -2;
+        if (through) viaGateways = gm(arcL1, nyxOut) + gm(nyxIn, levski);
+        for (const ShopInOrder& s : atArc) {
+            if (s.offer.where == "Levski") toLevski = s.metres / 1e9;
+        }
+        const bool nearest = readHelix && atArc.size() == 8 &&
+                          sequence == "Area 18, Lorville, Everus Harbor, HUR-L1, Stanton Gateway, Levski, Nyx Gateway, "
+                                      "Pyro Gateway" &&
+                          atArc[0].offer.price == 108000 && std::abs(atArc[0].metres / 1e9 - 2.89) < 0.01 &&
+                          atArc[1].offer.price == 102600 && atArc[3].home && !atArc[4].home && through &&
+                          std::abs(toLevski - viaGateways) < 1e-6 && std::abs(toLevski - 104.89) < 0.01;
+        allPassed &= check(nearest, "at ARC-L1 the shops come nearest first: Stanton's (Lorville before Everus Harbor at "
+                                 "the same Hurston, being cheaper), then Pyro's and Nyx's by the way through their "
+                                 "gateways (Levski 104.89 Gm); of one terminal reported twice the newer price; "
+                                 "a price of nought left out (got " +
+                                     order("Stanton", "ARC-L1 Wide Forest Station") + ")");
+        // without a place: the player's system first, then by price - and
+        // without even that, by price alone; no distances either way
+        const auto inPyro = SCMiner::nearestFirst(shops.offersFor("Helix II Mining Laser"), "Pyro", "");
+        const auto nowhere = SCMiner::nearestFirst(shops.offersFor("Helix II Mining Laser"), "", "");
+        bool unmeasured = !inPyro.empty() && !nowhere.empty();
+        for (const auto* list : {&inPyro, &nowhere}) {
+            for (const ShopInOrder& s : *list) unmeasured = unmeasured && s.metres < 0;
+        }
+        const bool byPrice = unmeasured && inPyro.size() == 8 && inPyro[0].home && inPyro[1].home && !inPyro[2].home &&
+                             inPyro[0].offer.where == "Nyx Gateway" && inPyro[2].offer.where == "Lorville" &&
+                             nowhere[0].offer.where == "Lorville" && !nowhere[0].home &&
+                             order("Nyx", "Levski").rfind("Levski 0.00 | Pyro Gateway 32.36 |", 0) == 0;
+        allPassed &= check(byPrice && shops.offersFor("Rieger-C3 Module").size() == 1 &&
+                               shops.offersFor("Pitman Mining Laser").empty(),
+                           "where the player's place has no point, their system first and then the cheaper; from "
+                           "Levski its own gateway at 32.36 Gm; an item UEX lists nowhere has no shop (got " +
+                               order("Pyro", "") + " / " + order("Nyx", "Levski") + ")");
+        UexShops refused;
+        std::string refusedWhy;
+        allPassed &= check(!refused.read("{\"status\":\"error\",\"message\":\"x\"}", refusedWhy) && !refusedWhy.empty() &&
+                               !refused.read("<html>", refusedWhy) && refused.empty(),
+                           "a shop list UEX refused, or no list at all, is no list");
+
+        // UEX's names for the gear (8 November 2026) are Bedrock's: each of
+        // Bedrock's but four is one UEX sells under that very name
+        const std::vector<std::string> uexNames = {
+            "BoreMax", "Okunis", "OptiMax", "Sabir", "Stalwart", "Waveshift",
+            "Arbor MH1 Mining Laser", "Arbor MH2 Mining Laser", "Arbor MHV Mining Laser", "Helix I Mining Laser",
+            "Helix II Mining Laser", "Hofstede-S1 Mining Laser", "Hofstede-S2 Mining Laser", "Impact I Mining Laser",
+            "Impact II Mining Laser", "Klein-S1 Mining Laser", "Klein-S2 Mining Laser", "Lancet MH1 Mining Laser",
+            "Lancet MH2 Mining Laser", "Lawson Mining Laser", "S0 Helix", "S00 Hofstede",
+            "Brandt Module", "FLTR Module", "FLTR-L Module", "FLTR-XL Module", "Focus II Module", "Focus III Module",
+            "Focus Module", "Forel Module", "Lifeline Module", "Optimum Module", "Rieger Module", "Rieger-C2 Module",
+            "Rieger-C3 Module", "Rime Module", "Stampede Module", "Surge Module", "Torpid Module", "Torrent II Module",
+            "Torrent III Module", "Torrent Module", "Vaux Module", "Vaux-C2 Module", "Vaux-C3 Module", "XTR Module",
+            "XTR-L Module", "XTR-XL Module"};
+        std::vector<std::string> notSold;
+        int named = 0;
+        auto sold = [&](const char* name) {
+            named++;
+            if (std::find(uexNames.begin(), uexNames.end(), name) == uexNames.end()) notSold.push_back(name);
+        };
+        for (const SCMiner::MiningLaser& l : SCMiner::MINING_LASERS) sold(l.name);
+        for (const SCMiner::MiningModule& m : SCMiner::MINING_MODULES) sold(m.name);
+        for (const SCMiner::MiningGadget& g : SCMiner::MINING_GADGETS) sold(g.name);
+        std::sort(notSold.begin(), notSold.end());
+        std::string notSoldText;
+        for (const std::string& name : notSold) notSoldText += (notSoldText.empty() ? "" : ", ") + name;
+        allPassed &= check(named == 48 &&
+                               notSoldText == "Clearcut Module, Deluge Module, Overrun Module, Pitman Mining Laser",
+                           "Bedrock names its 48 heads, modules and gadgets as UEX does - all but the four UEX "
+                           "lists no shop for (" + std::to_string(named) + " named; not UEX's: " + notSoldText + ")");
+
+        // The three lists as the app keeps them in uex\, read again while
+        // young without asking UEX: a gadget's, a head's, a module's - and
+        // with one of them a refusal, nothing and why
+        {
+            namespace fs = std::filesystem;
+            std::error_code ec;
+            const fs::path folder = fs::temp_directory_path(ec) / "bedrock-gear-shops-selftest";
+            fs::remove_all(folder, ec);
+            fs::create_directories(folder, ec);
+            auto keep = [&](int category, const std::string& text) {
+                const fs::path file = folder / ("items_prices_" + std::to_string(category) + ".json");
+                std::ofstream(file, std::ios::binary) << text;
+                return fs::file_size(file, ec) == text.size();
+            };
+            const bool kept =
+                keep(28, answer({{"OptiMax", 5650, "Refinery Shop - HUR-L1", "Stanton", "Hurston",
+                                  "Hurston Lagrange Point 1", "HUR-L1 Green Glade Station", nullptr, nullptr, 1}})) &&
+                keep(29, answer({{"Helix II Mining Laser", 108000, "Dumper's Depot - Area 18", "Stanton", "ArcCorp",
+                                  "ArcCorp", nullptr, "Area 18", nullptr, 1}})) &&
+                keep(30, answer({{"Rieger-C3 Module", 57000, "Refinery Shop - Levski", "Nyx", nullptr, "Delamar",
+                                  nullptr, "Levski", nullptr, 1}}));
+            // (only once all three are there: a list missing would be asked for)
+            SCMiner::Application::UexShopsOutcome fromKept, refusedOne;
+            if (kept) fromKept = SCMiner::Application::loadUexShops(folder);
+            if (kept && keep(29, "{\"status\":\"error\",\"message\":\"x\"}")) {
+                refusedOne = SCMiner::Application::loadUexShops(folder);
+            }
+            fs::remove_all(folder, ec);
+            const auto gadget = fromKept.shops ? SCMiner::nearestFirst(fromKept.shops->offersFor("OptiMax"), "Stanton", "HUR-L1")
+                                           : std::vector<ShopInOrder>();
+            allPassed &= check(kept && fromKept.shops && fromKept.note.empty() && fromKept.shops->itemCount() == 3 &&
+                                   gadget.size() == 1 && gadget[0].home && gadget[0].metres == 0.0 &&
+                                   fromKept.shops->offersFor("Rieger-C3 Module").size() == 1 && !refusedOne.shops &&
+                                   !refusedOne.note.empty(),
+                               "the gadgets', heads' and modules' shops kept in uex\\ are read as one list without "
+                               "asking UEX while young; one of them refused leaves no list, and why (" +
+                                   (fromKept.shops ? std::to_string(fromKept.shops->itemCount()) + " items" : "none: " + fromKept.note) +
+                                   ", refused: " + (refusedOne.note.empty() ? std::string("no reason") : refusedOne.note) + ")");
+        }
     }
 
     // --- Reporting to UEX: the refinery a job was placed at - only where

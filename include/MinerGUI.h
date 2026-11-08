@@ -26,6 +26,7 @@
 #include "Datarunner.h"
 #include "UexPrices.h"
 #include "UexMarket.h"
+#include "WhereToBuy.h"
 #include "NoteBook.h"
 #include "Plugins.h"
 #include "Reputation.h"
@@ -127,6 +128,23 @@ public:
                       long long fetchedAt, const std::string& note);
     // The ore the Ore Finder's UEX tab shows the marketplace for; "" while it shows none
     std::string uexMarketWanted() const;
+    // The shops that sell the mining gear - laser heads, modules, gadgets -
+    // as UEX lists them (WhereToBuy.h). Whether the lists are wanted: UEX is
+    // only asked for them while something shows them, and nothing does yet.
+    bool gearListsWanted() const { return gearListsWanted_; }
+    // ...the lists that came - null while none has - and what went wrong the
+    // last time they were asked for ("" when nothing did)
+    void setGearShops(std::shared_ptr<const UexShops> shops, const std::string& note) {
+        gearShops_ = std::move(shops);
+        gearShopsNote_ = note;
+    }
+    // Where the player is, for the order of those shops (nearestFirst): the
+    // place as GamePlaces names it ("ARC-L1", "Levski"; "" in open space or
+    // before the log has named one) and its system ("Stanton"; "" unknown)
+    void setWhereAt(const std::string& place, const std::string& system) {
+        wherePlace_ = place;
+        whereSystem_ = system;
+    }
     // The player's own conversations there (read with their key): a listing
     // they are talking about says so, and opens at their thread
     void setUexThreads(std::shared_ptr<const UexThreads> threads);
@@ -382,6 +400,12 @@ public:
     }
     void stopRenameForShot() { endNameEditing(false); }   // ...and let go, the name as it was
     void showLoadoutForShot(bool open) { showLoadout(open); }
+    // The gear's shop lists wanted, as a page showing them wants them
+    // (gearListsWanted) - and what the GUI holds of them and of the player's
+    // place, as such a page would read it
+    void wantGearListsForShot(bool wanted) { gearListsWanted_ = wanted; }
+    std::shared_ptr<const UexShops> gearShopsForShot() const { return gearShops_; }
+    std::string whereAtForShot() const { return whereSystem_ + " - " + wherePlace_; }
     // Types into the crafted-% field the way a keyboard does: real key
     // messages posted to the window, so they travel the whole path the
     // shortcuts and IsDialogMessage sit on. WM_CHAR delivered straight to
@@ -1473,6 +1497,12 @@ private:
     };
     std::map<std::string, MarketEntry> uexMarket_;   // by ore
     std::shared_ptr<const UexThreads> uexThreads_;
+    // The gear's shops (gearListsWanted, setGearShops) and where the player
+    // is, to list them nearest first (setWhereAt)
+    bool gearListsWanted_ = false;
+    std::shared_ptr<const UexShops> gearShops_;
+    std::string gearShopsNote_;
+    std::string wherePlace_, whereSystem_;
     std::string marketOre() const;                    // the ore or gem the UEX tab is on
     void paintMarketColumn(Gdiplus::Graphics& g, int cw, int ch, float cardX, float top);
     // The rock view's line: what a player on UEX pays for the best part of

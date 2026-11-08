@@ -248,6 +248,7 @@ set(CORE_SOURCES
     src/GameTexts.cpp
     src/MiniJson.cpp
     src/UexPrices.cpp
+    src/WhereToBuy.cpp
     src/UexReports.cpp
     src/UexMarket.cpp
     src/ColourScheme.cpp
@@ -308,6 +309,8 @@ set(HEADERS
     include/CommodityData.h
     include/MiniJson.h
     include/UexPrices.h
+    include/WhereToBuy.h
+    include/NavPlaces.h
     include/UexReports.h
     include/UexMarket.h
     include/ColourScheme.h
