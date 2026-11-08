@@ -8,6 +8,7 @@ defaultProfile.xml and global.ini) has one line per name, tab-separated:
     M  map  label
     A  map  action  label  keyboard  mouse  gamepad  joystick   (defaults)
     O  device-type  option  label
+    S  attribute  label  kind  faint                            (game settings)
 
 names.json keeps them keyed in lower case, the first of a name winning, as
 SC Blackbox looks them up (without regard to case):
@@ -15,7 +16,11 @@ SC Blackbox looks them up (without regard to case):
     {"game": "<build from the header>",
      "maps": {map: label},
      "actions": {map: {action: [label, keyboard, mouse, gamepad, joystick]}},
-     "options": {device-type: {option: label}}}
+     "options": {device-type: {option: label}},
+     "settings": {attribute: [label, kind, faint]}}
+
+A setting's kind is pct, onoff, num or device; faint 1 where it is no
+setting of the game's menus.
 """
 import io, json, re, sys
 
@@ -23,7 +28,7 @@ source, out = sys.argv[1], sys.argv[2]
 text = io.open(source, encoding="utf-8-sig").read()
 
 game = ""
-maps, actions, options = {}, {}, {}
+maps, actions, options, settings = {}, {}, {}, {}
 for line in re.split(r"\r\n|\r|\n", text):
     if line.startswith("#"):
         m = re.search(r"game files \(([^)]*)\)", line)
@@ -37,6 +42,8 @@ for line in re.split(r"\r\n|\r|\n", text):
         actions.setdefault(f[1].lower(), {}).setdefault(f[2].lower(), f[3:8])
     elif f[0] == "O" and len(f) >= 4:
         options.setdefault(f[1].lower(), {}).setdefault(f[2].lower(), f[3])
+    elif f[0] == "S" and len(f) >= 5:
+        settings.setdefault(f[1].lower(), [f[2], f[3], int(f[4] or 0)])
 
 
 def q(s):
@@ -61,9 +68,13 @@ for d, opts in options.items():
     lines[-1] = lines[-1].rstrip(",")
     lines.append("  },")
 lines[-1] = lines[-1].rstrip(",")
+lines += [" },", ' "settings": {']
+lines += ["  " + q(k) + ": [" + q(v[0]) + ", " + q(v[1]) + ", " + str(v[2]) + "]," for k, v in settings.items()]
+lines[-1] = lines[-1].rstrip(",")
 lines += [" }", "}", ""]
 io.open(out, "w", encoding="utf-8", newline="\n").write("\n".join(lines))
 
 json.loads(io.open(out, encoding="utf-8").read())
 n = sum(len(v) for v in actions.values())
-print("%s: %d maps, %d actions, %d options (%s)" % (out, len(maps), n, sum(len(v) for v in options.values()), game))
+print("%s: %d maps, %d actions, %d options, %d settings (%s)" % (
+    out, len(maps), n, sum(len(v) for v in options.values()), len(settings), game))
