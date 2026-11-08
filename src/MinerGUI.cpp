@@ -28106,7 +28106,11 @@ float MinerGUI::paintPluginPieces(Gdiplus::Graphics& g, const std::vector<Plugin
                 const float chipLeft = chipText.empty() ? edge : edge - chipW - scaleF(12);
                 const Fitted title = fit(toW(it.text), nameFont, chipLeft - left);
                 const Fitted sub = fit(toW(it.value), subFont, chipLeft - left);
-                const float headH = scaleF(46) + title.more + sub.more;
+                // ...and the note, a third line and fainter, where there is one
+                // (in the subtitle's place where that is empty)
+                const Fitted note = fit(toW(it.note), subFont, chipLeft - left);
+                const float noteH = note.text.empty() ? 0.0f : (it.value.empty() ? 0.0f : scaleF(16)) + note.more;
+                const float headH = scaleF(46) + title.more + sub.more + noteH;
                 const Gdiplus::RectF head(M, y - scaleF(4), right - M, headH);
                 if (draw) {
                     if (open) {
@@ -28127,13 +28131,21 @@ float MinerGUI::paintPluginPieces(Gdiplus::Graphics& g, const std::vector<Plugin
                         Gdiplus::SolidBrush ink(colour);
                         g.DrawString(chipText.c_str(), -1, &chipFont, pill, &centre, &ink);
                     }
+                    // a faint card, one that matters less, a step dimmer throughout
                     g.DrawString(title.text.c_str(), -1, &nameFont,
                                  Gdiplus::RectF(left, y, chipLeft - left, scaleF(22) + title.more),
-                                 title.more > 0 ? &lines : &oneLine, &textBrush);
+                                 title.more > 0 ? &lines : &oneLine, it.faint ? &dimBrush : &textBrush);
+                    const float subY = y + scaleF(21) + title.more;
                     if (!sub.text.empty()) {
                         g.DrawString(sub.text.c_str(), -1, &subFont,
-                                     Gdiplus::RectF(left, y + scaleF(21) + title.more, chipLeft - left, scaleF(16) + sub.more),
-                                     sub.more > 0 ? &lines : &oneLine, &dimBrush);
+                                     Gdiplus::RectF(left, subY, chipLeft - left, scaleF(16) + sub.more),
+                                     sub.more > 0 ? &lines : &oneLine, it.faint ? &faintBrush : &dimBrush);
+                    }
+                    if (!note.text.empty()) {
+                        const float noteY = sub.text.empty() ? subY : subY + scaleF(16) + sub.more;
+                        g.DrawString(note.text.c_str(), -1, &subFont,
+                                     Gdiplus::RectF(left, noteY, chipLeft - left, scaleF(16) + note.more),
+                                     note.more > 0 ? &lines : &oneLine, &faintBrush);
                     }
                     // a fold mark at the left edge, where a plugin's card opens and shuts
                     if (!pluginShown_.empty()) {

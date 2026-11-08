@@ -1101,7 +1101,11 @@ struct Api {
             if (lua_isstring(L, -1)) item.chip = lua_tostring(L, -1);
             lua_getfield(L, 3, "tone");
             item.tone = toneOf(L, -1);
-            lua_pop(L, 3);
+            lua_getfield(L, 3, "note");
+            if (lua_isstring(L, -1)) item.note = lua_tostring(L, -1);
+            lua_getfield(L, 3, "faint");
+            item.faint = lua_toboolean(L, -1) != 0;
+            lua_pop(L, 5);
         }
         item.open = of(L)->drawing_->open.count(id) > 0;
         lua_pushboolean(L, item.open);
@@ -1318,6 +1322,13 @@ bool Plugin::start() {
                            {"buttons", &Api::buttons}, {"progress", &Api::progress}, {"gap", &Api::gap},
                            {nullptr, nullptr}};
     luaL_newlib(lua_, ui);
+    // ...and what this Bedrock draws beyond the pieces 3.0 knew (Plugins.h)
+    lua_newtable(lua_);
+    lua_pushboolean(lua_, 1);
+    lua_setfield(lua_, -2, "note");
+    lua_pushboolean(lua_, 1);
+    lua_setfield(lua_, -2, "faint");
+    lua_setfield(lua_, -2, "features");
     lua_setfield(lua_, LUA_REGISTRYINDEX, "bedrock.ui");
 
     const std::string text = readText(info_.folder / "main.lua");

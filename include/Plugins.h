@@ -137,8 +137,8 @@ std::vector<Info> discover(const std::filesystem::path& root, const std::vector<
 //   ui.tabs(id, {labels}, picked)          -> the tab picked, 1 up
 //   ui.chips(id, {labels}, picked)         -> the chip picked, 1 up
 //   ui.search(id, hint)                    -> what is typed in it
-//   ui.card(id, title, {subtitle, chip, tone}) -> whether it is open; then
-//       its rows, and ui.close()
+//   ui.card(id, title, {subtitle, note, chip, tone, faint}) -> whether it is
+//       open; then its rows, and ui.close()
 //   ui.row(label, value, tone)             a line of a card: left and right
 //   ui.counter(id, label, value)           -> the value, changed by - and +
 //                                             or typed
@@ -147,7 +147,11 @@ std::vector<Info> discover(const std::filesystem::path& root, const std::vector<
 //   ui.gap()                               a little room
 //
 // tone: "good", "warn", "bad", "dim" or nil; kind: "primary", "plain" or
-// "danger".
+// "danger". A card's note is a third line under its subtitle, fainter; a
+// faint card is one that matters less, its title and lines drawn dimmer.
+// Bedrocks before 3.0.2 leave both out: ui.features (nil there) says what
+// this one draws - {note = true, faint = true} - so that a plugin can put
+// the note's text elsewhere where it would be lost.
 struct UiItem {
     enum class Kind { Heading, Text, Tabs, Chips, Search, Card, CardEnd, Row, Counter, Buttons, Progress, Gap };
     enum class Tone { Plain, Good, Warn, Bad, Dim };
@@ -156,12 +160,14 @@ struct UiItem {
     std::string text;                   // heading, paragraph, card title, row and counter label
     std::string value;                  // row's right side, card subtitle, counter's value, search's hint
     std::string chip;                   // a card's
+    std::string note;                   // a card's third line
     Tone tone = Tone::Plain;
     std::vector<std::string> options;   // tabs', chips' and buttons' labels
     std::vector<std::string> optionIds; // buttons' ids
     std::vector<std::string> kinds;     // buttons' kinds
     int picked = 0;                     // tabs and chips: which, 1 up
     bool open = false;                  // a card's
+    bool faint = false;                 // a card's: drawn dimmer
     double fraction = 0;                // a bar's
 };
 

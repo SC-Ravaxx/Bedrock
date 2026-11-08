@@ -7434,7 +7434,8 @@ function draw(ui)
   ui.text("saved " .. n)
   local tab = ui.tabs("tabs", {"ONE", "TWO"}, 1)
   ui.text("tab " .. tab)
-  if ui.card("c1", "CARD", {chip = "READY", tone = "good"}) then
+  if ui.card("c1", "CARD", {chip = "READY", tone = "good", note = "NOTE", faint = true,
+                            subtitle = ui.features and ui.features.note and ui.features.faint and "FEATURES" or ""}) then
     ui.row("left", "right", "bad")
     ui.close()
   end
@@ -7554,6 +7555,11 @@ end
         allPassed &= check(runs, "a plugin runs: no io, os, load or bytecode; its data and saved state; the log "
                                  "lines it watches, old and new; its window with tabs, cards, counters and buttons, "
                                  "a click counting once");
+        bool noted = false;
+        for (const P::UiItem& item : first) {
+            noted |= item.kind == P::UiItem::Kind::Card && item.note == "NOTE" && item.faint && item.value == "FEATURES";
+        }
+        allPassed &= check(noted, "...a card's note and faint reach the window, and ui.features names both");
         // ...and stops alone: a loop that never ends, memory without end,
         // an error; saved state read again on the next start
         P::Plugin again(info("probe"), root / "state" / "probe.json");

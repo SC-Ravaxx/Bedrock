@@ -1007,7 +1007,8 @@ void printPieces(const std::vector<SCMiner::Plugins::UiItem>& items) {
             case UiItem::Kind::Search: std::cout << pad << "SEARCH " << it.id << ": '" << it.text << "' (" << it.value << ")\n"; break;
             case UiItem::Kind::Card:
                 std::cout << pad << (it.open ? "v " : "> ") << it.text << "  |  " << it.value
-                          << (it.chip.empty() ? "" : "  |  " + it.chip) << tone << "\n";
+                          << (it.note.empty() ? "" : "  |  note: " + it.note) << (it.chip.empty() ? "" : "  |  " + it.chip)
+                          << tone << (it.faint ? " (faint)" : "") << "\n";
                 break;
             case UiItem::Kind::CardEnd: break;
             case UiItem::Kind::Row: std::cout << pad << "  " << it.text << " .... " << it.value << tone << "\n"; break;
