@@ -17,6 +17,7 @@
 #include "CraftingData.h"
 #include "UexPrices.h"
 #include "UexMarket.h"
+#include "WhereToBuy.h"
 #include "Datarunner.h"
 #include "TextLineReader.h"
 #include "PluginHost.h"
@@ -37,6 +38,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <dwmapi.h>
@@ -139,6 +141,196 @@ static std::shared_ptr<const SCMiner::UexPrices> shotPrices(long long now) {
     auto out = std::make_shared<SCMiner::UexPrices>();
     std::string why;
     if (!out->read(list, places, now, why)) std::cerr << "shot prices: " << why << std::endl;
+    return out;
+}
+
+// UEX's shops of the mining gear for the Gear page's pictures: items_prices
+// of categories 28 (gadgets), 29 (laser heads) and 30 (modules) as UEX
+// answered on 8 November 2026, cut down to the items Bedrock knows - the
+// terminals once, then each item with its shops as "terminal:price" pairs -
+// and read back through UexShops::read, the way the app reads the answer
+struct ShotTerminal {
+    const char* terminal;
+    const char* system;
+    const char* planet;
+    const char* orbit;
+    const char* moon;
+    const char* station;
+    const char* city;
+    const char* outpost;
+};
+struct ShotGear {
+    int category;
+    const char* item;
+    const char* shops;
+};
+static const ShotTerminal SHOT_TERMINALS[] = {
+    {"Dumper's Depot - Area 18", "Stanton", "ArcCorp", "ArcCorp", nullptr, nullptr, "Area 18", nullptr},
+    {"Shubin Interstellar - Commons - New Babbage", "Stanton", "MicroTech", "MicroTech", nullptr, nullptr, "New Babbage", nullptr},
+    {"Tammany and Sons - Metro Center - Lorville", "Stanton", "Hurston", "Hurston", nullptr, nullptr, "Lorville", nullptr},
+    {"Refinery Shop - ARC-L1", "Stanton", "ArcCorp", "ArcCorp Lagrange Point 1", nullptr, "ARC-L1 Wide Forest Station", nullptr, nullptr},
+    {"Refinery Shop - ARC-L2", "Stanton", "ArcCorp", "ArcCorp Lagrange Point 2", nullptr, "ARC-L2 Lively Pathway Station", nullptr, nullptr},
+    {"Refinery Shop - ARC-L4", "Stanton", "ArcCorp", "ArcCorp Lagrange Point 4", nullptr, "ARC-L4 Faint Glen Station", nullptr, nullptr},
+    {"Refinery Shop - MIC-L2", "Stanton", "MicroTech", "microTech Lagrange Point 2", nullptr, "MIC-L2 Long Forest Station", nullptr, nullptr},
+    {"Refinery Shop - MIC-L1", "Stanton", "MicroTech", "microTech Lagrange Point 1", nullptr, "MIC-L1 Shallow Frontier Station", nullptr, nullptr},
+    {"Refinery Shop - MIC-L5", "Stanton", "MicroTech", "microTech Lagrange Point 5", nullptr, "MIC-L5 Modern Icarus Station", nullptr, nullptr},
+    {"Refinery Shop - Terra Gateway (Stanton)", "Stanton", nullptr, "Terra Gateway (Stanton system)", nullptr, "Terra Gateway (Stanton)", nullptr, nullptr},
+    {"Refinery Shop - HUR-L1", "Stanton", "Hurston", "Hurston Lagrange Point 1", nullptr, "HUR-L1 Green Glade Station", nullptr, nullptr},
+    {"Refinery Shop - CRU-L1", "Stanton", "Crusader", "Crusader Lagrange Point 1", nullptr, "CRU-L1 Ambitious Dream Station", nullptr, nullptr},
+    {"Refinery Shop - HUR-L2", "Stanton", "Hurston", "Hurston Lagrange Point 2", nullptr, "HUR-L2 Faithful Dream Station", nullptr, nullptr},
+    {"Refinery Shop - Pyro Gateway (Stanton)", "Stanton", nullptr, "Pyro Gateway (Stanton system)", nullptr, "Pyro Gateway (Stanton)", nullptr, nullptr},
+    {"Dumper's Depot - GrimHEX", "Stanton", "Crusader", "Crusader", "Yela", "Green Imperial Housing Exchange", nullptr, nullptr},
+    {"Refinery Shop - Nyx Gateway (Stanton)", "Stanton", nullptr, "Nyx Gateway (Stanton system)", nullptr, "Nyx Gateway (Stanton)", nullptr, nullptr},
+    {"Refinery Shop - Ruin Station", "Pyro", "Terminus", "Terminus", nullptr, "Ruin Station", nullptr, nullptr},
+    {"Refinery Shop - Checkmate", "Pyro", "Monox", "Monox Lagrange Point 4", nullptr, "Checkmate Station", nullptr, nullptr},
+    {"Refinery Shop - Orbituary", "Pyro", "Bloom", "Bloom", nullptr, "Orbituary", nullptr, nullptr},
+    {"Shop Terminal - Yang's Place", "Pyro", "Monox", "Monox", nullptr, nullptr, nullptr, "Yang's Place"},
+    {"Shop Terminal - Ostler's Claim", "Pyro", "Monox", "Monox", nullptr, nullptr, nullptr, "Ostler's Claim"},
+    {"Shop Terminal - Bueno Ravine", "Pyro", "Bloom", "Bloom", nullptr, nullptr, nullptr, "Bueno Ravine"},
+    {"Refinery Shop - Stanton Gateway (Pyro)", "Pyro", nullptr, "Stanton Gateway (Pyro system)", nullptr, "Stanton Gateway (Pyro)", nullptr, nullptr},
+    {"Shop Terminal - Carver's Ridge", "Pyro", "Bloom", "Bloom", nullptr, nullptr, nullptr, "Carver's Ridge"},
+    {"Shop Terminal - Stag's Rut", "Pyro", "Pyro I", "Pyro I", nullptr, nullptr, nullptr, "Stag's Rut"},
+    {"Tools & Supplies - Levski", "Nyx", nullptr, "Delamar", nullptr, nullptr, "Levski", nullptr},
+    {"Refinery Shop - Levski", "Nyx", nullptr, "Delamar", nullptr, nullptr, "Levski", nullptr},
+    {"Refinery Shop - Stanton Gateway (Nyx)", "Nyx", nullptr, "Stanton Gateway (Nyx system)", nullptr, "Stanton Gateway (Nyx)", nullptr, nullptr},
+    {"Refinery Shop - Pyro Gateway (Nyx)", "Nyx", nullptr, "Pyro Gateway (Nyx system)", nullptr, "Pyro Gateway (Nyx)", nullptr, nullptr},
+    {"Refinery Shop - Nyx Gateway (Pyro)", "Pyro", nullptr, "Nyx Gateway (Pyro system)", nullptr, "Nyx Gateway (Pyro)", nullptr, nullptr},
+    {"Tools & Supplies - People's Service Station Alpha", "Nyx", nullptr, "People's Service Station Alpha", nullptr, "People's Service Station Alpha", nullptr, nullptr},
+    {"Tools & Supplies - People's Service Station Theta", "Nyx", nullptr, "People's Service Station Theta", nullptr, "People's Service Station Theta", nullptr, nullptr},
+    {"Tools & Supplies - People's Service Station Lambda", "Nyx", nullptr, "People's Service Station Lambda", nullptr, "People's Service Station Lambda", nullptr, nullptr},
+    {"Tools & Supplies - People's Service Station Delta", "Nyx", nullptr, "People's Service Station Delta", nullptr, "People's Service Station Delta", nullptr, nullptr},
+};
+static const ShotGear SHOT_GEAR[] = {
+    {28, "BoreMax", "25:12750 26:12750 30:12750 31:12750 32:12750 33:12750"},
+    {28, "Okunis",
+     "1:23250 3:23250 4:23250 6:23250 7:23250 9:23250 10:23250 13:22088 15:23250 18:23250 22:23250 "
+     "26:23250 27:23250 28:23250 29:23250"},
+    {28, "OptiMax",
+     "1:27625 4:27625 5:27625 9:27265 11:27625 12:27625 13:26244 15:27625 16:27625 17:27625 25:27625 "
+     "28:27625 30:27625 31:27625 32:27625 33:27625"},
+    {28, "Sabir",
+     "0:13815 1:13815 2:13125 3:13815 4:13815 5:13815 6:13815 7:13815 8:13815 9:13815 10:13815 11:13815 "
+     "12:13815 13:13125 14:13815 15:13815 16:13815 18:13815 19:13815 20:13815 21:13815 22:13815 23:13815 "
+     "24:13815 25:13815 26:13815 27:13815 28:13815 29:13815 30:13815 31:13815 32:13815 33:13815"},
+    {28, "Stalwart", "26:20190"},
+    {28, "Waveshift",
+     "0:19125 2:18169 6:19125 8:19125 11:19125 12:19125 14:19125 16:19125 17:19125 19:19125 20:19125 "
+     "21:19125 23:19125 24:19125"},
+    {29, "Arbor MH1 Mining Laser", "0:11363 1:11363 2:10795 7:11363 11:11363 14:11363"},
+    {29, "Arbor MH2 Mining Laser", "1:21450 2:20378 5:21450 8:21450 14:21450"},
+    {29, "Helix I Mining Laser",
+     "0:58000 1:58000 2:55100 4:58000 6:58000 7:58000 9:58000 11:58000 12:58000 13:55100 14:58000 15:58000 "
+     "16:58000 28:58000"},
+    {29, "Helix II Mining Laser",
+     "0:108000 1:108000 2:102600 6:108000 7:108000 8:108000 10:108000 11:108000 18:108000 22:108000 "
+     "26:108000 27:108000 29:108000"},
+    {29, "Hofstede-S1 Mining Laser", "0:12750 1:12750 2:12113 8:12750 10:12750 11:12750 17:12750 26:12750 27:12750"},
+    {29, "Hofstede-S2 Mining Laser",
+     "1:22750 2:21613 3:22750 4:22750 5:22750 6:22750 7:22750 9:22750 12:22750 13:21613 14:22750 15:22750 "
+     "16:22750 28:22750"},
+    {29, "Impact I Mining Laser", "0:57750 1:57750 2:54863 3:57750 8:57750 14:57750 16:57750"},
+    {29, "Impact II Mining Laser",
+     "0:57750 1:57750 2:54863 4:57750 5:57750 9:57750 10:57750 11:57750 12:57750 13:54863 15:57750 "
+     "17:57750 26:57750 27:57750 28:57750"},
+    {29, "Klein-S1 Mining Laser", "1:10150 26:10150"},
+    {29, "Klein-S2 Mining Laser", "1:20150 26:20150"},
+    {29, "Lancet MH1 Mining Laser",
+     "1:23500 2:22325 3:23500 4:23500 5:23500 6:23500 7:23500 9:23500 11:23500 12:23500 13:22325 15:23500 "
+     "16:23500 18:23500 22:23500 28:23500 29:23500"},
+    {29, "Lancet MH2 Mining Laser",
+     "0:94000 1:94000 2:89300 7:94000 8:94000 10:94000 14:94000 18:94000 22:94000 26:94000 27:94000 "
+     "29:94000"},
+    {30, "Brandt Module", "1:2250 2:2138 3:2250 11:2250 16:2250 17:2250 18:2250 22:2250 29:2250"},
+    {30, "FLTR Module",
+     "3:6000 4:6000 5:6000 6:6000 7:6000 8:6000 9:6000 11:6000 13:5700 15:6000 16:6000 17:6000 28:6000"},
+    {30, "FLTR-L Module",
+     "1:18000 4:18000 8:18000 9:18000 11:18000 12:18000 13:17100 15:18000 18:18000 22:18000 28:18000 "
+     "29:18000"},
+    {30, "FLTR-XL Module",
+     "1:60000 3:60000 4:60000 5:60000 6:60000 7:60000 9:60000 10:60000 13:57000 15:60000 16:60000 26:60000 "
+     "27:60000 28:60000"},
+    {30, "Focus II Module",
+     "1:12000 3:12000 4:12000 5:12000 6:12000 9:12000 10:12000 11:12000 12:12000 13:11400 15:12000 "
+     "26:12000 27:12000 28:12000"},
+    {30, "Focus III Module", "1:40000 5:40000 6:40000 7:40000 8:40000 10:40000 11:40000 12:40000 26:40000 27:40000"},
+    {30, "Focus Module",
+     "0:4000 3:4000 4:4000 5:4000 7:4000 8:4000 9:4000 10:4000 11:4000 12:4000 13:3800 14:4000 15:4000 "
+     "18:4000 22:4000 26:4000 27:4000 28:4000 29:4000"},
+    {30, "Forel Module",
+     "1:1950 3:1950 4:1950 5:1950 6:1950 7:1950 8:1950 9:1950 10:1950 11:1950 12:1950 13:1853 15:1950 "
+     "26:1950 27:1950 28:1950"},
+    {30, "Lifeline Module",
+     "1:800 2:760 3:800 4:800 5:800 6:800 7:800 8:800 9:800 10:800 11:800 12:800 13:760 15:800 18:800 "
+     "22:800 26:800 27:800 28:800 29:800"},
+    {30, "Optimum Module", "1:3000 3:3000 5:3000 7:3000 8:3000 12:3000 16:3000 17:3000"},
+    {30, "Rieger Module", "26:5700"},
+    {30, "Rieger-C2 Module", "26:17100"},
+    {30, "Rieger-C3 Module", "26:57000"},
+    {30, "Rime Module",
+     "1:1100 3:1100 4:1100 5:1100 6:1100 7:1100 8:1100 9:1100 10:1100 11:1100 12:1100 13:1045 15:1100 "
+     "16:1100 18:1100 22:1100 26:1100 27:1100 28:1100 29:1100"},
+    {30, "Stampede Module",
+     "1:1400 3:1400 4:1400 5:1400 6:1400 7:1400 8:1400 9:1400 10:1400 11:1400 12:1400 13:1330 15:1400 "
+     "16:1400 26:1400 27:1400 28:1400"},
+    {30, "Surge Module", "26:1400"},
+    {30, "Torpid Module",
+     "1:1950 3:1950 4:1950 5:1950 6:1950 7:1950 8:1950 9:1950 10:1950 11:1950 12:1950 13:1853 15:1950 "
+     "18:1950 22:1950 26:1950 27:1950 28:1950 29:1950"},
+    {30, "Torrent II Module",
+     "1:12000 3:12000 4:12000 6:12000 7:12000 8:12000 9:12000 10:12000 11:12000 13:11400 15:12000 26:15000 "
+     "27:12000 28:12000"},
+    {30, "Torrent III Module",
+     "1:40000 3:40000 4:40000 5:40000 7:40000 8:40000 9:40000 11:40000 12:40000 13:38000 15:40000 17:40000 "
+     "28:40000"},
+    {30, "Torrent Module", "0:4000 3:4000 5:4000 6:4000 7:4000 10:4000 12:4000 17:4000 26:4000 27:4000"},
+    {30, "Vaux Module",
+     "0:2000 1:2000 3:2000 4:2000 5:2000 6:2000 7:2000 9:2000 11:2000 12:2000 13:1900 14:2000 15:2000 "
+     "16:2000 18:2000 22:2000 28:2000 29:2000"},
+    {30, "Vaux-C2 Module",
+     "0:6000 3:6000 4:6000 5:6000 7:6000 8:6000 9:6000 10:6000 11:6000 13:5700 14:6000 15:6000 17:6000 "
+     "26:6000 27:6000 28:6000"},
+    {30, "Vaux-C3 Module", "0:20000 3:20000 6:20000 7:20000 8:20000 10:20000 12:20000 26:20000 27:20000"},
+    {30, "XTR Module",
+     "0:2000 1:2000 4:2000 7:2000 8:2000 9:2000 10:2000 11:2000 12:2000 13:1900 14:2000 15:2000 26:2000 "
+     "27:2000 28:2000"},
+    {30, "XTR-L Module",
+     "0:6000 3:6000 4:6000 5:6000 8:6000 9:6000 10:6000 11:6000 12:6000 13:5700 14:6000 15:6000 16:6000 "
+     "26:6000 27:6000 28:6000"},
+    {30, "XTR-XL Module",
+     "0:20000 3:20000 5:20000 7:20000 8:20000 10:20000 11:20000 12:20000 14:20000 16:20000 26:20000 "
+     "27:20000"},
+};
+
+static std::shared_ptr<const SCMiner::UexShops> shotGearShops() {
+    auto out = std::make_shared<SCMiner::UexShops>();
+    for (const int category : {28, 29, 30}) {
+        std::string list = "{\"status\":\"ok\",\"data\":[";
+        bool first = true;
+        for (const ShotGear& item : SHOT_GEAR) {
+            if (item.category != category) continue;
+            std::istringstream pairs(item.shops);
+            std::string pair;
+            while (pairs >> pair) {
+                const size_t colon = pair.find(':');
+                const ShotTerminal& t = SHOT_TERMINALS[std::stoi(pair.substr(0, colon))];
+                list += first ? "{" : ",{";
+                first = false;
+                list += "\"item_name\":\"" + std::string(item.item) + "\",\"price_buy\":" + pair.substr(colon + 1) +
+                        ",\"date_modified\":1794096000";
+                const std::pair<const char*, const char*> fields[] = {
+                    {"terminal_name", t.terminal}, {"star_system_name", t.system}, {"planet_name", t.planet},
+                    {"orbit_name", t.orbit},       {"moon_name", t.moon},          {"space_station_name", t.station},
+                    {"city_name", t.city},         {"outpost_name", t.outpost}};
+                for (const auto& field : fields) {
+                    if (field.second) list += ",\"" + std::string(field.first) + "\":\"" + field.second + "\"";
+                }
+                list += "}";
+            }
+        }
+        list += "]}";
+        std::string why;
+        if (!out->read(list, why)) std::cerr << "shot gear shops: " << why << std::endl;
+    }
     return out;
 }
 
@@ -1687,6 +1879,104 @@ int runScreenshots(const std::string& dir) {
         gui.showLoadoutForShot(false);
         pump();
 
+        // The Gear page, as the rail opens it: the MOLE as its player fits it
+        // - a Helix II with three Rieger-C3 on the left, a Hofstede-S2 in
+        // the middle, a Helix II on the right - at Checkmate in Pyro, the
+        // shops UEX listed on 8 November 2026 (shotGearShops)
+        {
+            using Rail = SCMiner::MinerGUI::RailItem;
+            const SCMiner::MiningModule* rieger = SCMiner::moduleById("passive_rieger_mk3");
+            SCMiner::MiningLoadout portHead;
+            portHead.laser = SCMiner::laserById("thcn_helix_s2");
+            portHead.modules = {rieger, rieger, rieger};
+            SCMiner::MiningLoadout middleHead;
+            middleHead.laser = SCMiner::laserById("shin_hofstede_s2");
+            SCMiner::MiningLoadout starboardHead;
+            starboardHead.laser = SCMiner::laserById("thcn_helix_s2");
+            gui.setHeadForShot(0, portHead);
+            gui.setHeadForShot(1, middleHead);
+            gui.setHeadForShot(2, starboardHead);
+            gui.setWhereAt("Checkmate", "Pyro");
+            const int lancet = (int)(SCMiner::laserById("grin_lancet_s2") - SCMiner::MINING_LASERS);
+            const int focus = (int)(SCMiner::moduleById("passive_focus_mk3") - SCMiner::MINING_MODULES);
+            const int boreMax = (int)(SCMiner::gadgetById("thcn_boremax") - SCMiner::MINING_GADGETS);
+            // the lists not there yet - and UEX asked for them, the page being up
+            gui.railPickForShot(Rail::Gear);
+            pump();
+            std::cout << "  the Gear page wants UEX's lists: " << (gui.gearListsWanted() ? "yes" : "NO") << std::endl;
+            shoot(gui.windowHandle(), "gear_loading.png");
+            // ...not to be had, and none kept
+            gui.setGearShops(nullptr, "Server responded 503");
+            pump();
+            shoot(gui.windowHandle(), "gear_unreachable.png");
+            // ...and with them: the heads the MOLE takes, its own framed green
+            gui.setGearShops(shotGearShops(), "");
+            gui.gearStateForShot(0, "");
+            pump();
+            shoot(gui.windowHandle(), "gear_heads.png");
+            // ...a head's shops unfolded by a click on its line, and folded
+            // again by a click on the list
+            const bool unfolded = gui.clickGearForShot(5, lancet);
+            pump();
+            shoot(gui.windowHandle(), "gear_heads_open.png");
+            const bool folded = gui.clickGearForShot(6, lancet) && !gui.clickGearForShot(6, lancet);
+            std::cout << "  the Lancet's shops unfolded by a click on its line: " << (unfolded ? "yes" : "NO")
+                      << ", folded by a click on them: " << (folded ? "yes" : "NO") << std::endl;
+            // ...Edit ship over the page
+            gui.showLoadoutForShot(true);
+            pump();
+            shoot(gui.windowHandle(), "gear_edit_ship.png");
+            gui.showLoadoutForShot(false);
+            // the modules, a slot free on the left head
+            portHead.modules = {rieger, rieger};
+            gui.setHeadForShot(0, portHead);
+            gui.gearStateForShot(1, "");
+            pump();
+            shoot(gui.windowHandle(), "gear_modules.png");
+            // ...three notches of the wheel further down
+            SendMessageW(gui.windowHandle(), WM_MOUSEWHEEL, MAKEWPARAM(0, (WORD)(short)(-3 * WHEEL_DELTA)), 0);
+            pump();
+            shoot(gui.windowHandle(), "gear_modules_scrolled.png");
+            // ...Add, Fit and an x on a chip, through the window's own
+            // handler: the head as the same clicks in Edit ship leave it -
+            // the Lancet has two slots, so the third module comes off
+            const bool added = gui.clickGearForShot(4, focus);
+            pump();
+            std::cout << "  Add on Focus III: " << (added ? gui.gearHeadForShot() : std::string("NO BUTTON"))
+                      << std::endl;
+            gui.gearStateForShot(0, "");
+            pump();
+            const bool fitted = gui.clickGearForShot(3, lancet);
+            pump();
+            std::cout << "  Fit on the Lancet MH2: " << (fitted ? gui.gearHeadForShot() : std::string("NO BUTTON"))
+                      << std::endl;
+            const bool taken = gui.clickGearForShot(2, 0);
+            pump();
+            std::cout << "  x on the first chip: " << (taken ? gui.gearHeadForShot() : std::string("NO CHIP"))
+                      << std::endl;
+            // the gadgets, BoreMax fitted by its button
+            gui.gearStateForShot(2, "");
+            pump();
+            const bool carried = gui.clickGearForShot(7, boreMax);
+            pump();
+            std::cout << "  Fit on BoreMax: " << (carried ? "fitted" : "NO BUTTON") << std::endl;
+            shoot(gui.windowHandle(), "gear_gadgets.png");
+            gui.setFittedGadget(nullptr);
+            // a ship of one head: no heads to pick between
+            gui.pickShipForShot("prospector");
+            gui.gearStateForShot(0, "");
+            pump();
+            shoot(gui.windowHandle(), "gear_prospector.png");
+            // ...and back the way the pictures after these expect it
+            gui.railPickForShot(Rail::Scan);
+            gui.setGearShops(nullptr, "");
+            gui.setWhereAt("", "");
+            gui.pickShipForShot("mole");
+            gui.setHeadForShot(0, fit);
+            gui.setHeadForShot(1, wide);
+            gui.setHeadForShot(2, hard);
+            pump();
+        }
         // the two lists that drop out of the window: the ship, and the place
         // when the log has it wrong. Both have to clear the action row, which
         // is four real child windows and draws over anything painted under it.
