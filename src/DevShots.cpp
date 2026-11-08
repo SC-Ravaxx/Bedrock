@@ -2493,6 +2493,42 @@ int runScreenshots(const std::string& dir) {
         gui.setRefineryOrders(orders);
         pump();
         shoot(gui.windowHandle(), "main_refinery_done.png");
+        // ...two running at one station read under the same number, as at
+        // Checkmate on 8 November 2026: the first one's Calendar unfolds the
+        // code under the first, not the other
+        {
+            std::vector<SCMiner::RefineryOrder> two(2);
+            two[0].station = "Checkmate";
+            two[0].number = 2;
+            two[0].parts = {{"Stileron (Ore)", 747, 253}};
+            two[0].method = "Pyrometric Chromalysis";
+            two[0].cost = 10474;
+            two[0].seconds = 1854;
+            two[0].placed = now - 31 * 60;
+            two[0].due = now + 30 * 60;
+            two[0].seen = now - 30 * 60;
+            two[1].station = "Checkmate";
+            two[1].number = 2;
+            two[1].parts = {{"Stileron (Ore)", 330, 2662}, {"Stileron (Ore)", 517, 279}, {"Stileron (Ore)", 681, 275}};
+            two[1].method = "Pyrometric Chromalysis";
+            two[1].cost = 133210;
+            two[1].seconds = 15240;
+            two[1].placed = now - 31 * 60 - 26;
+            two[1].due = now + 4 * 3600 + 12 * 60;
+            two[1].seen = now - 30 * 60;
+            gui.setRefineryOrders(two);
+            pump();
+            const bool first = gui.openRefineryCalendarForShot(0);
+            pump();
+            shoot(gui.refineryHandle(), "refinery_orders_qr_same_number.png", true);
+            const bool other = gui.openRefineryCalendarForShot(1);
+            pump();
+            std::cout << "refinery calendar code, two under one number: "
+                      << (first ? "the first's under the first" : "NOT UNDER THE FIRST") << ", "
+                      << (other ? "then the other's under the other" : "NOT UNDER THE OTHER") << std::endl;
+            gui.openRefineryCalendarForShot(1);
+            pump();
+        }
         gui.setRefineryOrders({});
         gui.showRefineryOrdersForShot(false);
         pump();

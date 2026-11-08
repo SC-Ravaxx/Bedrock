@@ -50,6 +50,14 @@ struct RefineryOrder {
 // end in CRLF, the last without.
 std::string refineryOrderEvent(const RefineryOrder& order);
 
+// What tells a work order from the others for as long as it runs: its
+// station, when it was placed and its first part - nothing a later look at the
+// terminal changes. Not its number: that moves up as the order before it is
+// collected, and two orders at a station can be read under the same one. An
+// order read without its quote has no time it was placed; for it, its number
+// and when it is done stand in.
+std::string refineryOrderKey(const RefineryOrder& order);
+
 // The refinery at the place the log puts the player - "Levski", or "Pyro
 // Gateway" in Nyx as the tables' "Pyro Gateway (Nyx)" - or "" where there is
 // none

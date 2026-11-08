@@ -1398,10 +1398,14 @@ void drawQrCode(Gdiplus::Graphics& g, const std::vector<bool>& modules, int size
     g.SetSmoothingMode(was);
 }
 
-// A work order as the Refinery window tells it from the others while the
-// list changes under it: its station and its number on the terminal
-std::string orderKey(const RefineryOrder& o) {
-    return o.station + "#" + std::to_string(o.number);
+// The running order whose calendar code the Refinery window unfolds: the one
+// the button was clicked for (refineryOrderKey), -1 none or no longer running
+int unfoldedOrder(const std::vector<RefineryOrder>& orders, const std::string& key, long long now) {
+    if (key.empty()) return -1;
+    for (int i = 0; i < (int)orders.size(); i++) {
+        if (orders[i].due > now && refineryOrderKey(orders[i]) == key) return i;
+    }
+    return -1;
 }
 
 } // namespace
@@ -22718,10 +22722,7 @@ void MinerGUI::paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float t
         // The running order whose calendar code is unfolded under its card -
         // folded again once it is done or gone - and the code, made again
         // only when the entry it carries changes
-        int unfolded = -1;
-        for (int i = 0; i < total && !refineryQrOrder_.empty(); i++) {
-            if (refineryOrders_[i].due > now && orderKey(refineryOrders_[i]) == refineryQrOrder_) unfolded = i;
-        }
+        const int unfolded = unfoldedOrder(refineryOrders_, refineryQrOrder_, now);
         if (unfolded < 0) refineryQrOrder_.clear();
         const int qrQuiet = 3, qrModule = (std::max)(2, (int)std::lround(scaleF(3)));
         float qrH = 0;
@@ -22920,7 +22921,8 @@ bool MinerGUI::openRefineryCalendarForShot(int index) {
         if (hit.kind != 12 || hit.value != index) continue;
         SendMessageW(refinery_, WM_LBUTTONDOWN, 0,
                      MAKELPARAM((int)(hit.rect.X + hit.rect.Width / 2), (int)(hit.rect.Y + hit.rect.Height / 2)));
-        return index >= 0 && index < (int)refineryOrders_.size() && refineryQrOrder_ == orderKey(refineryOrders_[index]);
+        // unfolded under this card, not some other
+        return unfoldedOrder(refineryOrders_, refineryQrOrder_, (long long)std::time(nullptr)) == index;
     }
     return false;
 }
@@ -23029,7 +23031,7 @@ LRESULT MinerGUI::handleRefineryMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
                     // a running order's calendar code, unfolded or folded
                     // again; unfolding one folds any other
                     if (hit.value >= 0 && hit.value < (int)refineryOrders_.size()) {
-                        const std::string key = orderKey(refineryOrders_[hit.value]);
+                        const std::string key = refineryOrderKey(refineryOrders_[hit.value]);
                         refineryQrOrder_ = (refineryQrOrder_ == key) ? std::string() : key;
                         refineryQrReveal_ = !refineryQrOrder_.empty();
                     }

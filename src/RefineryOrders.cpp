@@ -216,6 +216,15 @@ std::string refineryOrderEvent(const RefineryOrder& order) {
            "END:VEVENT";
 }
 
+std::string refineryOrderKey(const RefineryOrder& order) {
+    std::string key = order.station + "|";
+    if (order.placed > 0) key += std::to_string(order.placed);
+    else key += "#" + std::to_string(order.number) + "@" + std::to_string(order.due);
+    // parts are only ever added to, so the first stays the first
+    if (!order.parts.empty()) key += "|" + order.parts[0].material + "|" + std::to_string(order.parts[0].quality);
+    return key;
+}
+
 bool RefineryOrderBook::usable(const RefineryPanel& panel) {
     const bool running = panel.kind == RefineryBar::Band::Processing;
     const bool done = panel.kind == RefineryBar::Band::Completed;

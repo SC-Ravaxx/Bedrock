@@ -1284,6 +1284,43 @@ int runSelfTest() {
                                " at most (" + std::to_string(eight.size()) + " bytes)");
     }
 
+    // --- Which work order a Calendar button in the Refinery window is for
+    //     (refineryOrderKey): two at one station read under the same number,
+    //     as at Checkmate on 8 November 2026, are two; one looked at again -
+    //     its number moved up, its time read a minute off, a part more - is
+    //     the same ---
+    {
+        SCMiner::RefineryOrder big;
+        big.station = "Checkmate";
+        big.number = 2;
+        big.placed = 1794139337;
+        big.due = 1794154577;
+        big.parts = {{"Stileron (Ore)", 330, 2662}, {"Stileron (Ore)", 517, 279}, {"Stileron (Ore)", 681, 275}};
+        SCMiner::RefineryOrder quick;
+        quick.station = "Checkmate";
+        quick.number = 2;
+        quick.placed = 1794139363;
+        quick.due = 1794141217;
+        quick.parts = {{"Stileron (Ore)", 747, 253}};
+        SCMiner::RefineryOrder later = big;
+        later.number = 1;
+        later.due += 60;
+        later.parts[0].yield = 2660;
+        later.parts.push_back({"Stileron (Ore)", 874, 12});
+        // ...and two read without their quote, so with no time placed: told
+        // apart by when they are done
+        SCMiner::RefineryOrder bare = big, bareToo = big;
+        bare.placed = bareToo.placed = 0;
+        bareToo.due += 3600;
+        const std::string key = SCMiner::refineryOrderKey(big);
+        const bool two = key != SCMiner::refineryOrderKey(quick) &&
+                         SCMiner::refineryOrderKey(bare) != SCMiner::refineryOrderKey(bareToo);
+        const bool same = key == SCMiner::refineryOrderKey(later);
+        allPassed &= check(two && same, "which work order a Calendar button is for: two at one station under the same "
+                                        "number are two, one looked at again - another number, a minute off, a part "
+                                        "more - is the same");
+    }
+
     // --- The panel's composition list: what the reader makes of
     //     a share and a quality, which line is which ore, and when a list
     //     hangs together ---
