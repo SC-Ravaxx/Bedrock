@@ -71,12 +71,13 @@ struct ShopInOrder {
     double metres = -1;    // how far from the player; -1 where that is not known
 };
 
-// The order an item's shops are listed in: the player's system first,
-// nearest first from where the player is (NavPlaces); then the other
-// systems, by the way through the gateway. Where the player is not at a
-// place with a point (open space, nothing in the log yet), the player's
-// system (where known) first and then by price. Of two as far as each
-// other to a tenth of a Gm - as a distance is shown -, the cheaper first.
+// The order an item's shops are listed in: nearest first from where the
+// player is (NavPlaces), whatever the system - into another by the way
+// through the gateway -, and those that cannot be measured after them.
+// Where the player is not at a place with a point (open space, nothing in
+// the log yet), the player's system (where known) first and then by price.
+// Of two as far as each other to a tenth of a Gm - as a distance is shown
+// -, the cheaper first.
 std::vector<ShopInOrder> nearestFirst(const std::vector<ShopOffer>& offers, const std::string& system,
                                       const std::string& place);
 

@@ -232,15 +232,20 @@ std::vector<ShopInOrder> nearestFirst(const std::vector<ShopOffer>& offers, cons
         out.push_back(std::move(shop));
     }
     std::stable_sort(out.begin(), out.end(), [](const ShopInOrder& a, const ShopInOrder& b) {
-        if (a.home != b.home) return a.home;
+        // the measured first, nearest first whatever their system; those
+        // not measured - all of them where the player has no point - the
+        // player's system first
         const bool aKnown = a.metres >= 0, bKnown = b.metres >= 0;
         if (aKnown != bKnown) return aKnown;
         if (aKnown) {
             // to the tenth of a Gm, as a distance is shown
             const long long aTenths = std::llround(a.metres / 1e8), bTenths = std::llround(b.metres / 1e8);
             if (aTenths != bTenths) return aTenths < bTenths;
+        } else if (a.home != b.home) {
+            return a.home;
         }
         if (a.offer.price != b.offer.price) return a.offer.price < b.offer.price;
+        if (a.home != b.home) return a.home;
         if (a.offer.system != b.offer.system) return a.offer.system < b.offer.system;
         return a.offer.where < b.offer.where;
     });

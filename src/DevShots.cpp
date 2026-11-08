@@ -1919,7 +1919,9 @@ int runScreenshots(const std::string& dir) {
             const bool unfolded = gui.clickGearForShot(5, lancet);
             pump();
             shoot(gui.windowHandle(), "gear_heads_open.png");
-            const bool folded = gui.clickGearForShot(6, lancet) && !gui.clickGearForShot(6, lancet);
+            const bool foldClick = gui.clickGearForShot(6, lancet);
+            pump();
+            const bool folded = foldClick && !gui.clickGearForShot(6, lancet);
             std::cout << "  the Lancet's shops unfolded by a click on its line: " << (unfolded ? "yes" : "NO")
                       << ", folded by a click on them: " << (folded ? "yes" : "NO") << std::endl;
             // ...Edit ship over the page

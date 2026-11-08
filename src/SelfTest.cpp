@@ -1868,15 +1868,17 @@ int runSelfTest() {
             if (s.offer.where == "Levski") toLevski = s.metres / 1e9;
         }
         const bool nearest = readHelix && atArc.size() == 8 &&
-                          sequence == "Area 18, Lorville, Everus Harbor, HUR-L1, Stanton Gateway, Levski, Nyx Gateway, "
+                          sequence == "Area 18, Stanton Gateway, Lorville, Everus Harbor, HUR-L1, Levski, Nyx Gateway, "
                                       "Pyro Gateway" &&
                           atArc[0].offer.price == 108000 && std::abs(atArc[0].metres / 1e9 - 2.89) < 0.01 &&
-                          atArc[1].offer.price == 102600 && atArc[3].home && !atArc[4].home && through &&
-                          std::abs(toLevski - viaGateways) < 1e-6 && std::abs(toLevski - 104.89) < 0.01;
-        allPassed &= check(nearest, "at ARC-L1 the shops come nearest first: Stanton's (Lorville before Everus Harbor at "
-                                 "the same Hurston, being cheaper), then Pyro's and Nyx's by the way through their "
-                                 "gateways (Levski 104.89 Gm); of one terminal reported twice the newer price; "
-                                 "a price of nought left out (got " +
+                          !atArc[1].home && atArc[1].offer.system == "Pyro" && atArc[2].offer.price == 102600 &&
+                          atArc[4].home && through && std::abs(toLevski - viaGateways) < 1e-6 &&
+                          std::abs(toLevski - 104.89) < 0.01;
+        allPassed &= check(nearest, "at ARC-L1 the shops come nearest first whatever their system, into Pyro and Nyx "
+                                    "by the way through their gateways: the Stanton Gateway in Pyro before Lorville, "
+                                    "Lorville before Everus Harbor at the same Hurston, being cheaper, Levski at "
+                                    "104.89 Gm; of one terminal reported twice the newer price; a price of nought "
+                                    "left out (got " +
                                      order("Stanton", "ARC-L1 Wide Forest Station") + ")");
         // without a place: the player's system first, then by price - and
         // without even that, by price alone; no distances either way
