@@ -40,6 +40,7 @@
 #include "GameTexts.h"
 #include "NoteBook.h"
 #include "DataBackup.h"
+#include "GameFiles.h"
 
 namespace {
 
@@ -1497,7 +1498,9 @@ int runLocateCrop(const cv::Rect& aim, const std::vector<std::string>& files) {
 // button puts it back - into <folder>, never the player's own data - and
 // that folder backed up again the way the Back up button would today. Says
 // what came back and what was left out, whether every file came back byte
-// for byte, and what the backup made today weighs.
+// for byte, and what the backup made today weighs. Blackbox backups in it go
+// to <folder>/SC Keybind Backups; which ones a backup takes today comes from
+// Blackbox's folder (BEDROCK_BLACKBOX_ROOT, else SC Blackbox's settings).
 int runBackupCheck(const std::string& backupFile, const std::string& folder) {
     namespace fs = std::filesystem;
     namespace DB = SCMiner::DataBackup;
@@ -1516,8 +1519,9 @@ int runBackupCheck(const std::string& backupFile, const std::string& folder) {
     size_t kept = 0, keptBytes = 0;
     for (const auto& e : entries) {
         const bool carried = DB::carried(e.path);
-        std::cout << (carried ? "  put back " : "  left out ") << std::setw(10) << e.bytes.size() << "  "
-                  << e.path << std::endl;
+        const bool blackbox = !carried && e.path.rfind(std::string(DB::BLACKBOX) + "/", 0) == 0;
+        std::cout << (carried ? "  put back " : blackbox ? "  blackbox " : "  left out ") << std::setw(10)
+                  << e.bytes.size() << "  " << e.path << std::endl;
         if (carried) {
             kept++;
             keptBytes += e.bytes.size();
@@ -1538,11 +1542,31 @@ int runBackupCheck(const std::string& backupFile, const std::string& folder) {
             std::cout << "  DIFFERS: " << e.path << std::endl;
         }
     }
+    if (DB::blackboxBackups(entries) > 0) {
+        std::string bbError;
+        const auto bb = DB::restoreBlackbox(fs::path(folder) / DB::BLACKBOX, entries, bbError);
+        std::cout << DB::blackboxBackups(entries) << " Blackbox backups: " << bb.added << " added to "
+                  << folder << "/" << DB::BLACKBOX << ", " << bb.there << " there already" << (bbError.empty() ? "" : ", ")
+                  << bbError << std::endl;
+    }
     const std::string again = DB::write(DB::collect(fs::path(folder)));
     std::cout << entries.size() << " files in the backup (" << text.size() << " bytes), " << kept
               << " put back (" << keptBytes << " bytes), " << same << " byte for byte, " << differ
               << " not; what was in the folder went to " << DB::ASIDE << "/" << aside << std::endl;
     std::cout << "backed up again today: " << again.size() << " bytes" << std::endl;
+    // ...and the Blackbox backups it would take along today
+    const auto blackbox = DB::collectBlackbox(SCMiner::GameFiles::where().root);
+    std::string last;
+    size_t blackboxBytes = 0;
+    for (const auto& e : blackbox) {
+        blackboxBytes += e.bytes.size();
+        const size_t a = e.path.find('/'), b = e.path.find('/', a + 1), c = e.path.find('/', b + 1);
+        const std::string name = e.path.substr(a + 1, c - a - 1);
+        if (name != last) std::cout << "  blackbox today " << name << std::endl;
+        last = name;
+    }
+    std::cout << "Blackbox today: " << DB::blackboxBackups(blackbox) << " backups, " << blackbox.size()
+              << " files, " << blackboxBytes << " bytes" << std::endl;
     return differ == 0 ? 0 : 2;
 }
 

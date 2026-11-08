@@ -6,6 +6,7 @@
 
 #include "AppPaths.h"
 #include "DataBackup.h"
+#include "GameFiles.h"
 #include "MiningLocations.h"
 #include "GamePlaces.h"
 #include "CraftingData.h"
@@ -10644,8 +10645,8 @@ void MinerGUI::drawBackupCard(Gdiplus::Graphics& g, int cw, int ch) {
     y += scaleF(32);
 
     Gdiplus::RectF blurb(left, y, width, scaleF(34));
-    g.DrawString(L"Notes, ships, shopping list, target ores and blueprint library, "
-                 L"saved to one file in a location of your choice.",
+    g.DrawString(L"Notes, ships, shopping list, target ores, blueprint library and the newest "
+                 L"Blackbox backups, saved to one file in a location of your choice.",
                  -1, &textFont, blurb, nullptr, &dimBrush);
     y += scaleF(48);
 
@@ -10702,7 +10703,7 @@ void MinerGUI::drawBackupCard(Gdiplus::Graphics& g, int cw, int ch) {
 void MinerGUI::openBackupForShot() {
     showBackup(true);
     // a line in it, so the picture shows where a result lands
-    backupNotice_ = L"Backed up 7 files to Bedrock data 2026-09-12.bedrock";
+    backupNotice_ = L"Backed up 7 files and 3 Blackbox backups to Bedrock data 2026-09-12.bedrock";
     backupNoticeBad_ = false;
     InvalidateRect(hwnd_, nullptr, TRUE);
 }
@@ -10713,12 +10714,17 @@ void MinerGUI::backUpData() {
     if (headless_) return;
     saveNote();   // whatever is being written this minute belongs in it
 
-    const auto entries = SCMiner::DataBackup::collect(AppPaths::data());
+    auto entries = SCMiner::DataBackup::collect(AppPaths::data());
     if (entries.empty()) {
         backupNotice_ = L"No data to back up yet";
         backupNoticeBad_ = true;
         return;
     }
+    const size_t files = entries.size();
+    // ...and Star Citizen's own files, as Blackbox last backed them up
+    const auto blackbox = SCMiner::DataBackup::collectBlackbox(SCMiner::GameFiles::where().root);
+    const int backups = SCMiner::DataBackup::blackboxBackups(blackbox);
+    entries.insert(entries.end(), blackbox.begin(), blackbox.end());
     std::wstring suggested = L"Bedrock data";
     {
         const std::time_t now = std::time(nullptr);
@@ -10747,9 +10753,11 @@ void MinerGUI::backUpData() {
     }
     out.write(text.data(), (std::streamsize)text.size());
     out.close();
-    backupNotice_ = L"Backed up " + std::to_wstring((int)entries.size()) +
-                    (entries.size() == 1 ? L" file to " : L" files to ") +
-                    file.filename().wstring();
+    backupNotice_ = L"Backed up " + std::to_wstring((int)files) + (files == 1 ? L" file" : L" files") +
+                    (backups > 0 ? L" and " + std::to_wstring(backups) +
+                                       (backups == 1 ? L" Blackbox backup" : L" Blackbox backups")
+                                 : std::wstring()) +
+                    L" to " + file.filename().wstring();
 }
 
 void MinerGUI::restoreData() {
@@ -10825,11 +10833,24 @@ void MinerGUI::restoreData() {
                                             [](const SCMiner::DataBackup::Entry& e) {
                                                 return SCMiner::DataBackup::carried(e.path);
                                             });
+    // Blackbox's backups go back into its folder, beside the ones there now
+    std::wstring blackbox;
+    if (SCMiner::DataBackup::blackboxBackups(entries) > 0) {
+        std::string bbError;
+        const auto bb = SCMiner::DataBackup::restoreBlackbox(SCMiner::GameFiles::where().root, entries, bbError);
+        if (bb.added > 0) {
+            blackbox = L"  \u00B7  " + std::to_wstring(bb.added) +
+                       (bb.added == 1 ? L" Blackbox backup added" : L" Blackbox backups added");
+        } else if (bbError.empty()) {
+            blackbox = L"  \u00B7  Blackbox backups already there";
+        }
+        if (!bbError.empty()) blackbox += L"  \u00B7  " + toW(bbError);
+    }
     backupNoticeBad_ = false;
     backupNotice_ = L"Restored " + std::to_wstring(restored) +
                     (restored == 1 ? L" file" : L" files") +
                     L"  \u00B7  Previous data moved to " + toW(std::string(SCMiner::DataBackup::ASIDE)) +
-                    L"\\" + toW(asideName) +
+                    L"\\" + toW(asideName) + blackbox +
                     L"  \u00B7  Settings apply after restart";
 }
 

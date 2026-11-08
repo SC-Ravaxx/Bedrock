@@ -3679,6 +3679,89 @@ int runSelfTest() {
         fs::remove_all(root, ec);
     }
 
+    // --- ...and Blackbox's newest backups of the game's own files, carried
+    //     along and put back beside the ones there, never over one ---
+    {
+        namespace DB = SCMiner::DataBackup;
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        const fs::path base = fs::temp_directory_path(ec) / "bedrock-backup-selftest-blackbox";
+        fs::remove_all(base, ec);
+        auto put = [&](const fs::path& p, const std::string& what) {
+            fs::create_directories(p.parent_path(), ec);
+            std::ofstream out(p, std::ios::binary | std::ios::trunc);
+            out.write(what.data(), (std::streamsize)what.size());
+        };
+        auto slurp = [&](const fs::path& p) {
+            std::ifstream in(p, std::ios::binary);
+            return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        };
+        const fs::path root = base / "backups";
+        const fs::path keys = fs::path("user") / "client" / "0" / "Profiles" / "default" / "actionmaps.xml";
+        const fs::path face = fs::path("user") / "client" / "0" / "CustomCharacters" / "a.chf";
+        // LIVE: the newest from SC Blackbox (no characters counted), an
+        // older one that counts them, and an older one still
+        put(root / "LIVE" / "2026-11-05_22-48-27" / "backup-info.txt", "reason=while-playing\r\nbinds=211\r\n");
+        put(root / "LIVE" / "2026-11-05_22-48-27" / keys, "<newest/>");
+        put(root / "LIVE" / "2026-10-30_11-13-19" / "backup-info.txt", "reason=start\r\ncharacters=1\r\n");
+        put(root / "LIVE" / "2026-10-30_11-13-19" / keys, "<older/>");
+        put(root / "LIVE" / "2026-10-30_11-13-19" / face, std::string("\x00\x01 a face", 8));
+        put(root / "LIVE" / "2026-10-01_10-00-00" / "backup-info.txt", "reason=start\r\ncharacters=0\r\n");
+        put(root / "LIVE" / "2026-10-01_10-00-00" / keys, "<oldest/>");
+        // PTU: the newest counts them itself (none)
+        put(root / "PTU" / "2026-11-06_16-58-37" / "backup-info.txt", "reason=change\r\ncharacters=0\r\n");
+        put(root / "PTU" / "2026-11-06_16-58-37" / keys, "<ptu/>");
+        put(root / "log.txt", "a line\r\n");
+
+        const auto entries = DB::collectBlackbox(root);
+        bool anyCarried = false;
+        for (const auto& e : entries) {
+            if (DB::carried(e.path)) anyCarried = true;
+        }
+        const std::string pre = std::string(DB::BLACKBOX) + "/";
+        auto has = [&](const std::string& path) {
+            return std::any_of(entries.begin(), entries.end(), [&](const DB::Entry& e) { return e.path == pre + path; });
+        };
+        allPassed &= check(DB::blackboxBackups(entries) == 3 && entries.size() == 7 &&
+                               has("LIVE/2026-11-05_22-48-27/user/client/0/Profiles/default/actionmaps.xml") &&
+                               has("LIVE/2026-10-30_11-13-19/user/client/0/CustomCharacters/a.chf") &&
+                               has("PTU/2026-11-06_16-58-37/backup-info.txt") &&
+                               !has("LIVE/2026-10-01_10-00-00/backup-info.txt"),
+                           "a backup takes Blackbox's newest backup of each channel, and the newest that counts the "
+                           "characters where that one does not (" + std::to_string(DB::blackboxBackups(entries)) +
+                               " backups, " + std::to_string(entries.size()) + " files)");
+        allPassed &= check(!anyCarried, "...none of them goes into the data folder");
+
+        // Back on another PC: a folder with one of them there already, changed
+        const fs::path other = base / "other";
+        put(other / "LIVE" / "2026-11-05_22-48-27" / "backup-info.txt", "reason=manual\r\n");
+        std::vector<DB::Entry> back;
+        std::string error;
+        DB::read(DB::write(entries), back, error);
+        const auto first = DB::restoreBlackbox(other, back, error);
+        allPassed &= check(first.added == 2 && first.there == 1 && error.empty() &&
+                               slurp(other / "LIVE" / "2026-10-30_11-13-19" / face) == std::string("\x00\x01 a face", 8) &&
+                               slurp(other / "PTU" / "2026-11-06_16-58-37" / keys) == "<ptu/>" &&
+                               slurp(other / "LIVE" / "2026-11-05_22-48-27" / "backup-info.txt") == "reason=manual\r\n" &&
+                               !fs::exists(other / "LIVE" / "2026-11-05_22-48-27" / keys, ec),
+                           "...put back, each comes back byte for byte beside the backups there, and one there "
+                           "already stays as it is (added " + std::to_string(first.added) + ", there " +
+                               std::to_string(first.there) + ")");
+        const auto again = DB::restoreBlackbox(other, back, error);
+        allPassed &= check(again.added == 0 && again.there == 3, "...and a second time adds nothing");
+
+        // A data backup with them in it leaves them out of the data folder
+        const fs::path data = base / "data";
+        put(data / "craft_list.txt", "two recipes\n");
+        std::vector<DB::Entry> both = DB::collect(data);
+        both.insert(both.end(), back.begin(), back.end());
+        std::string aside;
+        allPassed &= check(DB::restore(data, both, aside, error) && slurp(data / "craft_list.txt") == "two recipes\n" &&
+                               !fs::exists(data / DB::BLACKBOX, ec),
+                           "...and the restore of the data writes none of them into the data folder");
+        fs::remove_all(base, ec);
+    }
+
     // --- The blueprint list can be narrowed to what a contract hands out ---
     {
         int dropped = 0;

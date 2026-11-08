@@ -79,5 +79,26 @@ bool safePath(const std::string& path);
 bool restore(const std::filesystem::path& dataFolder, const std::vector<Entry>& entries,
              std::string& asideName, std::string& error);
 
+// Star Citizen's own files - keybinds, game settings, characters - as the
+// Blackbox plugin and SC Blackbox back them up (GameFiles), go along too:
+// of each channel the newest backup, and where that one does not count the
+// characters (SC Blackbox's never do), also the newest that does. Each file
+// as it lies, under BLACKBOX/<channel>/<id>/. They belong in the backups'
+// folder, not in the data folder, so carried() takes none of them.
+inline constexpr const char* BLACKBOX = "SC Keybind Backups";
+std::vector<Entry> collectBlackbox(const std::filesystem::path& root);
+
+// ...and back: each into <root>/<channel>/<id>, unless a backup of that name
+// is there already - that one stays as it is. Counted in backups; `error`
+// names a folder that could not be written.
+struct BlackboxBack {
+    int added = 0;
+    int there = 0;
+};
+BlackboxBack restoreBlackbox(const std::filesystem::path& root, const std::vector<Entry>& entries,
+                             std::string& error);
+// How many backups a list of entries holds
+int blackboxBackups(const std::vector<Entry>& entries);
+
 }  // namespace DataBackup
 }  // namespace SCMiner

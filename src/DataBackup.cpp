@@ -1,10 +1,14 @@
 #include "DataBackup.h"
 
+#include "GameFiles.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <ctime>
 #include <fstream>
+#include <map>
+#include <set>
 #include <sstream>
 
 namespace SCMiner {
@@ -16,7 +20,7 @@ namespace {
 // of the data folder. "uex" is what uexcorp.space last said of the prices -
 // two megabytes, and asked for again the next time the Ore Finder opens.
 bool skipTop(const std::string& name) {
-    return name == "debug" || name == "update" || name == "uex" || name == ASIDE;
+    return name == "debug" || name == "update" || name == "uex" || name == ASIDE || name == BLACKBOX;
 }
 
 bool isPicture(const std::string& name) {
@@ -275,6 +279,129 @@ bool restore(const std::filesystem::path& dataFolder, const std::vector<Entry>& 
         return false;
     }
     return true;
+}
+
+std::vector<Entry> collectBlackbox(const std::filesystem::path& root) {
+    namespace fs = std::filesystem;
+    std::vector<Entry> out;
+    std::error_code ec;
+    if (root.empty() || !fs::is_directory(root, ec)) return out;
+    for (const auto& folder : fs::directory_iterator(root, ec)) {
+        std::error_code ec2;
+        if (!folder.is_directory(ec2)) continue;
+        const std::string channel = GameFiles::textOf(folder.path().filename());
+        const auto list = GameFiles::backups(root, channel);   // newest first
+        if (list.empty()) continue;
+        std::vector<std::string> ids = {list[0].id};
+        if (!list[0].counted) {
+            for (const auto& b : list) {
+                if (b.counted) {
+                    ids.push_back(b.id);
+                    break;
+                }
+            }
+        }
+        for (const auto& id : ids) {
+            const fs::path backup = folder.path() / GameFiles::pathOf(id);
+            for (const auto& f : fs::recursive_directory_iterator(backup, ec2)) {
+                std::error_code ec3;
+                if (!f.is_regular_file(ec3)) continue;
+                std::string rel = GameFiles::textOf(fs::relative(f.path(), backup, ec3));
+                std::replace(rel.begin(), rel.end(), '\\', '/');
+                const std::string path = std::string(BLACKBOX) + "/" + channel + "/" + id + "/" + rel;
+                if (rel.empty() || !safePath(path)) continue;
+                bool ok = false;
+                std::string bytes = readWhole(f.path(), &ok);
+                if (!ok) continue;
+                out.push_back({path, std::move(bytes)});
+            }
+        }
+    }
+    std::sort(out.begin(), out.end(), [](const Entry& a, const Entry& b) { return a.path < b.path; });
+    return out;
+}
+
+namespace {
+
+// "SC Keybind Backups/LIVE/<id>/user/..." -> {"LIVE", "<id>", "user/..."}
+bool blackboxParts(const std::string& path, std::string& channel, std::string& id, std::string& rest) {
+    const std::string prefix = std::string(BLACKBOX) + "/";
+    if (path.compare(0, prefix.size(), prefix) != 0) return false;
+    const size_t a = path.find('/', prefix.size());
+    if (a == std::string::npos) return false;
+    const size_t b = path.find('/', a + 1);
+    if (b == std::string::npos || b + 1 >= path.size()) return false;
+    channel = path.substr(prefix.size(), a - prefix.size());
+    id = path.substr(a + 1, b - a - 1);
+    rest = path.substr(b + 1);
+    return !channel.empty() && !id.empty();
+}
+
+}  // namespace
+
+int blackboxBackups(const std::vector<Entry>& entries) {
+    std::set<std::string> seen;
+    for (const auto& e : entries) {
+        std::string channel, id, rest;
+        if (blackboxParts(e.path, channel, id, rest)) seen.insert(channel + "/" + id);
+    }
+    return (int)seen.size();
+}
+
+BlackboxBack restoreBlackbox(const std::filesystem::path& root, const std::vector<Entry>& entries,
+                             std::string& error) {
+    namespace fs = std::filesystem;
+    BlackboxBack back;
+    error.clear();
+    std::map<std::pair<std::string, std::string>, std::vector<std::pair<std::string, const Entry*>>> backups;
+    for (const auto& e : entries) {
+        std::string channel, id, rest;
+        if (!safePath(e.path) || !blackboxParts(e.path, channel, id, rest)) continue;
+        backups[{channel, id}].push_back({rest, &e});
+    }
+    if (backups.empty()) return back;
+    if (root.empty()) {
+        error = "No folder for Blackbox backups";
+        return back;
+    }
+    std::error_code ec;
+    for (const auto& [name, files] : backups) {
+        const fs::path folder = root / GameFiles::pathOf(name.first) / GameFiles::pathOf(name.second);
+        std::error_code look;
+        const bool there = fs::exists(folder, look);
+        if (look) {
+            error = "Cannot read " + GameFiles::textOf(folder);
+            continue;
+        }
+        if (there) {
+            back.there++;
+            continue;
+        }
+        if (!fs::create_directories(folder, ec)) {
+            error = "Cannot write to " + GameFiles::textOf(folder);
+            continue;
+        }
+        bool whole = true;
+        for (const auto& [rest, e] : files) {
+            const fs::path p = folder / GameFiles::pathOf(rest);
+            fs::create_directories(p.parent_path(), ec);
+            std::ofstream out(p, std::ios::binary | std::ios::trunc);
+            if (out.is_open()) out.write(e->bytes.data(), (std::streamsize)e->bytes.size());
+            if (!out.is_open() || !out) {
+                whole = false;
+                break;
+            }
+        }
+        if (whole) {
+            back.added++;
+            GameFiles::log(root, "Put back from a Bedrock backup: " + name.first + "/" + name.second);
+        } else {
+            // half a backup is none: the folder made just now goes again
+            fs::remove_all(folder, ec);
+            error = "Cannot write to " + GameFiles::textOf(folder);
+        }
+    }
+    return back;
 }
 
 }  // namespace DataBackup
