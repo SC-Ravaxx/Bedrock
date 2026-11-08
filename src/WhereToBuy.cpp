@@ -79,7 +79,7 @@ bool lagrangeName(const std::string& name, std::string& out) {
     return false;
 }
 
-// "Stanton-Pyro Jump Point", "Nyx - Castra Jump Point": the near side's
+// "Stanton-Pyro Jump Point", "Pyro - Nyx Jump Point": the near side's
 // gateway, which stands at it - "Pyro Gateway" in Stanton
 bool jumpPointName(std::string& name, std::string& system) {
     static const std::string_view TAIL = " Jump Point";

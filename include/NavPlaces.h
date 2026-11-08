@@ -21,7 +21,7 @@ struct NavPlace {
     double x, y, z;       // metres
 };
 
-// 115 names, 85 places
+// 113 names, 85 places
 inline constexpr NavPlace NAV_PLACES[] = {
     {"Hurston", "Stanton", 12850457093, 0, 0},
     {"Lorville", "Stanton", 12850457093, 0, 0},
@@ -55,7 +55,6 @@ inline constexpr NavPlace NAV_PLACES[] = {
     {"Pyro Gateway", "Stanton", 3310491640, -27979408221, -2676285679},
     {"Terra Gateway", "Stanton", 51118221617, -5269981303, -4339551619},
     {"Nyx Gateway", "Stanton", -62284282868, 23467602587, 20198396608},
-    {"Magnus Gateway", "Stanton", -62284282868, 23467602587, 20198396608},
     {"HUR-L1", "Stanton", 11565411328, 0, 0},
     {"HUR-L2", "Stanton", 14135502848, 0, 0},
     {"HUR-L3", "Stanton", -12850457600, -1123, 0},
@@ -137,7 +136,6 @@ inline constexpr NavPlace NAV_PLACES[] = {
     {"People's Service Station Lambda", "Nyx", 43327745192, 20656821621, 6763},
     {"Pyro Gateway", "Nyx", -12000043845, 20784584131, 0},
     {"Stanton Gateway", "Nyx", -13499935650, -23382715138, 0},
-    {"Castra Gateway", "Nyx", -13499935650, -23382715138, 0},
 };
 
 inline constexpr int NAV_PLACE_COUNT = (int)(sizeof(NAV_PLACES) / sizeof(NAV_PLACES[0]));

@@ -25,11 +25,12 @@ What is placed where:
   Keeger Belt segments (Nyx_SocialStation_001..004 = Alpha, Delta, Theta,
   Lambda, by the star map records inside them).
 
-The jump point containers keep their old names: in 4.10.2 the Nyx Gateway in
-Stanton stands in jumppoint_stanton_magnus (star map record RR_JP_StantonMagnus,
-"@Stanton_Nyx_JPStation") and the Stanton Gateway in Nyx in
-jumppoint_nyx_castra ("@Nyx_Stanton_JPStation"). The log's location codes
-still say Magnus and Castra, so those names are kept beside them.
+The jump point containers keep the names of an older plan: in 4.10.2 the Nyx
+Gateway in Stanton stands in jumppoint_stanton_magnus (star map record
+RR_JP_StantonMagnus, "@Stanton_Nyx_JPStation") and the Stanton Gateway in Nyx
+in jumppoint_nyx_castra ("@Nyx_Stanton_JPStation"). The gateways are the Nyx
+Gateway and the Stanton Gateway, and only those names are written: GamePlaces
+reads the log's codes for them as those (leadsTo).
 """
 import math
 import os
@@ -117,7 +118,7 @@ STANTON = [
     ('OOC_Stanton_4c_Euterpe', ['Euterpe']),
     ('OOC_JumpPoint_stanton_pyro', ['Pyro Gateway']),
     ('OOC_JumpPoint_stanton_terra', ['Terra Gateway']),
-    ('OOC_JumpPoint_stanton_magnus', ['Nyx Gateway', 'Magnus Gateway']),
+    ('OOC_JumpPoint_stanton_magnus', ['Nyx Gateway']),
 ] + [('OOC_Stanton%d_L%d' % (p, n), ['%s-L%d' % (code, n)])
      for p, code in enumerate(['HUR', 'CRU', 'ARC', 'MIC'], 1) for n in range(1, 6)]
 
@@ -150,7 +151,7 @@ NYX = [
     ('keeger_segment_social_003', ["People's Service Station Theta"]),
     ('keeger_segment_social_004', ["People's Service Station Lambda"]),
     ('jumppoint_nyx_pyro', ['Pyro Gateway']),
-    ('jumppoint_nyx_castra', ['Stanton Gateway', 'Castra Gateway']),
+    ('jumppoint_nyx_castra', ['Stanton Gateway']),
 ]
 
 

@@ -1694,7 +1694,8 @@ int runSelfTest() {
             at("Stanton Gateway", "Pyro", p) && p.system == "Pyro" && at("PYR2-L4", "", p) &&
             at("Checkmate Station", "Pyro", q) && p.x == q.x && p.y == q.y && at("Stanton-Pyro Jump Point", "", p) &&
             at("Pyro Gateway", "Stanton", q) && p.x == q.x && p.system == "Stanton" &&
-            at("Nyx Gateway (Stanton system)", "", p) && at("Magnus Gateway", "Stanton", q) && p.x == q.x &&
+            at("Nyx Gateway (Stanton system)", "", p) && at("Nyx Gateway", "Stanton", q) && p.x == q.x &&
+            !at("Magnus Gateway", "Stanton", q) && !at("Castra Gateway", "Nyx", q) &&
             at("MicroTech", "Stanton", p) && at("Delamar", "Nyx", q) && !at("Aaron Halo", "Stanton", p) &&
             !at("Glaciem Ring", "Nyx", p) && !at("", "Stanton", p) && !at("Rustbucket", "Pyro", p) &&
             !at("HUR-L12", "Stanton", p) && !at("ARC-L1x", "Stanton", p);
@@ -1727,8 +1728,8 @@ int runSelfTest() {
         }
         allPassed &= check(names && unplaced.empty(),
                            "a place has its point by every name it goes by: a station by its Lagrange point, a gateway "
-                           "by its system in brackets or the jump point it stands at - Magnus and Castra being the "
-                           "Nyx and Stanton gateways -, Checkmate by PYR2 L4; a belt, a ring, a gateway of two "
+                           "by its system in brackets, the jump point it stands at or the log's code for it - by the "
+                           "gateways' real names only -, Checkmate by PYR2 L4; a belt, a ring, a gateway of two "
                            "systems without one say none (" +
                                (unplaced.empty() ? std::string("every place the log names placed") : "unplaced: " + unplaced) + ")");
 
