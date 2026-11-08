@@ -6122,11 +6122,13 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
     Gdiplus::Font crossFont(&textFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::Font priceFont(&numeralFamily(), scaleF(Type::NUMBER), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
     Gdiplus::Font figureFont(&numeralFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font shopFigureFont(&numeralFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush textBrush(COL_TEXT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
     Gdiplus::SolidBrush accentBrush(COL_ACCENT);
     Gdiplus::SolidBrush greenBrush(COL_GREEN);
+    Gdiplus::SolidBrush shopBrush(tint(COL_TEXT, 210));   // an unfolded shop: a step under the name's ink
     Gdiplus::StringFormat oneLine;
     oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
     oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
@@ -6266,6 +6268,7 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
         bool fitted = false;
         bool button = false;   // Fit or Add, whether it can be pressed or not
         bool can = false;      // ...and it can
+        bool open = false;     // its shops unfolded under it
         std::vector<ShopInOrder> shops;   // one per place, the nearest first
         float pitch = 0;
     };
@@ -6323,9 +6326,15 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
             rows.push_back(std::move(r));
         }
     }
+    // a row's height: its name, its figures under a head's, its shop line -
+    // or, unfolded, a line for each shop (shopStep) from where the shop
+    // line was, and Less under them
+    const float shopStep = scaleF(17);
+    const float shopsTop = scaleF(headsList ? 37.0f : 22.0f);
     for (Row& r : rows) {
         if (gearShops_) r.shops = onePerPlace(nearestFirst(gearShops_->offersFor(r.item), whereSystem_, wherePlace_));
-        r.pitch = scaleF(headsList ? 66.0f : 49.0f);
+        r.open = !r.shops.empty() && r.item == gearOpen_;
+        r.pitch = r.open ? shopsTop + shopStep * (float)r.shops.size() + scaleF(26) : scaleF(headsList ? 66.0f : 49.0f);
     }
 
     // The card as tall as its rows, as far as the window's foot; what does
@@ -6425,17 +6434,71 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
         if (!r.stats.empty()) {
             g.DrawString(r.stats.c_str(), -1, &smallFont, Gdiplus::PointF(left, rowY + scaleF(19)), &dimBrush);
         }
-        // where it is sold: the nearest places, as many as the line holds
+        // where it is sold: the nearest places, as many as the line holds -
+        // a click unfolds every shop under it
         const float lineY = rowY + scaleF(headsList ? 34.0f : 19.0f);
         const float lineRoom = (r.button ? button.X - scaleF(12) : right) - left;
         if (gearShops_ && r.shops.empty()) {
             g.DrawString(L"No shop known to UEX", -1, &smallFont, Gdiplus::RectF(left, lineY, lineRoom, scaleF(16)),
                          &oneLine, &faintBrush);
+        } else if (r.open) {
+            // Unfolded: a line a shop, nearest first - the place, its
+            // system after it where that is not the player's (a gateway's
+            // name carries its own), how far, what it asks - and Less,
+            // which folds it again, as a click anywhere on the list does
+            const float figuresRight = right - rowButtonW - scaleF(20);
+            float priceW = 0, awayW = 0;
+            for (const ShopInOrder& s : r.shops) {
+                priceW = (std::max)(priceW, lineWidth(g, formatNumber((int)std::lround(s.offer.price)), shopFigureFont));
+                awayW = (std::max)(awayW, lineWidth(g, toW(gigametres(s.metres)), smallFont));
+            }
+            const float awayRight = figuresRight - priceW - scaleF(20);
+            const float placeRight = (std::max)(left + scaleF(60), awayRight - awayW - scaleF(12));
+            const float listY = rowY + shopsTop;
+            float sy = listY;
+            for (const ShopInOrder& s : r.shops) {
+                const std::wstring place = toW(shopPlace(s.offer));
+                const Gdiplus::RectF line(left, sy, placeRight - left, shopStep);
+                g.DrawString(place.c_str(), -1, &smallFont, line, &middle, &shopBrush);
+                if (!s.home && !s.offer.system.empty() && place.find(L'(') == std::wstring::npos) {
+                    const float systemX = left + lineWidth(g, place, smallFont);
+                    if (systemX < placeRight - scaleF(24)) {
+                        const std::wstring system = L"  \u00B7  " + toW(s.offer.system);
+                        g.DrawString(system.c_str(), -1, &smallFont,
+                                     Gdiplus::RectF(systemX, sy, placeRight - systemX, shopStep), &middle, &faintBrush);
+                    }
+                }
+                const std::wstring away = toW(gigametres(s.metres));
+                g.DrawString(away.c_str(), -1, &smallFont,
+                             Gdiplus::RectF(placeRight, sy, awayRight - placeRight, shopStep), &rightMiddle, &dimBrush);
+                const std::wstring price = formatNumber((int)std::lround(s.offer.price));
+                g.DrawString(price.c_str(), -1, &shopFigureFont,
+                             Gdiplus::RectF(awayRight, sy, figuresRight - awayRight, shopStep), &rightMiddle,
+                             &shopBrush);
+                sy += shopStep;
+            }
+            // Less, behind a small triangle pointing up (drawn: the text
+            // faces have no glyph for it)
+            const Gdiplus::RectF less(left, sy + scaleF(2), lineWidth(g, L"LESS", labelFont) + scaleF(14), scaleF(16));
+            const bool lit = seen(Gdiplus::RectF(left, listY, figuresRight - left, less.GetBottom() - listY));
+            Gdiplus::SolidBrush lessBrush(lit ? COL_TEXT : COL_TEXT_DIM);
+            const float mid = less.Y + less.Height / 2;
+            Gdiplus::GraphicsPath tip;
+            tip.AddLine(left + scaleF(1), mid + scaleF(2), left + scaleF(7), mid + scaleF(2));
+            tip.AddLine(left + scaleF(7), mid + scaleF(2), left + scaleF(4), mid - scaleF(2));
+            tip.CloseFigure();
+            g.FillPath(&lessBrush, &tip);
+            g.DrawString(L"LESS", -1, &labelFont, Gdiplus::RectF(left + scaleF(11), less.Y, less.Width, less.Height),
+                         &middle, &lessBrush);
+            hit(Gdiplus::RectF(left, listY, figuresRight - left, less.GetBottom() - listY), 6, r.index, r.item);
         } else if (gearShops_) {
             const std::wstring line = toW(shopLine(
                 r.shops, [&](const std::string& t) { return lineWidth(g, toW(t), smallFont) <= lineRoom; }));
+            const Gdiplus::RectF place(left, lineY, (std::min)(lineRoom, lineWidth(g, line, smallFont) + scaleF(4)),
+                                       scaleF(16));
             g.DrawString(line.c_str(), -1, &smallFont, Gdiplus::RectF(left, lineY, lineRoom, scaleF(16)), &oneLine,
-                         &faintBrush);
+                         seen(place) ? &dimBrush : &faintBrush);
+            hit(place, 5, r.index, r.item);
         }
         // Fit, or the head or gadget that is fitted; Add, quiet where no
         // slot is free
