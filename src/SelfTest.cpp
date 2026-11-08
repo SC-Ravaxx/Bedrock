@@ -4735,7 +4735,7 @@ int runSelfTest() {
                                    "...and a Prospector's HUD reads as Helix I with Focus III and Rieger-C3 (got " + got + ")");
             }
             // ...and a MOLE turret's: the line over its table names the head
-            // the player flies, a laser of size 2. Two turrets' HUDs at 5120 x
+            // the player flies, a laser of size 2. Three turrets' HUDs at 5120 x
             // 1440, cut and put back where they were on a black screen - the
             // Helix II's with a module's lines above it, read and passed over.
             {
@@ -4747,6 +4747,7 @@ int runSelfTest() {
                                        turretName(" HOFSTEDE-S2 MINING LASER ") == "Hofstede-S2 Mining Laser" &&
                                        turretName("HELIX II MINING LASER") == "Helix II Mining Laser" &&
                                        turretName("IMPACT II MINING LASER") == "Impact II Mining Laser" &&
+                                       turretName("HELIX U MINING LASER") == "Helix II Mining Laser" &&
                                        turretName("Laser Power (+25%)") == "-" &&
                                        turretName("C\" RIEGER-C3 MODOLE") == "-" &&
                                        turretName("PITMAN MINING LASER") == "-",
@@ -4759,6 +4760,10 @@ int runSelfTest() {
                 } turrets[] = {
                     {"scanpanel/turret_laser_hofstede.png", L"SELFTEST_TURRET_HOFSTEDE", 1310, 1100, "Hofstede-S2 Mining Laser"},
                     {"scanpanel/turret_laser_helix.png", L"SELFTEST_TURRET_HELIX", 1320, 930, "Helix II Mining Laser"},
+                    // ...over bright, rippled sand (8 November 2026), whose ripples
+                    // stand out as much as letters do (lightRows)
+                    {"scanpanel/turret_laser_helix_sand.jpg", L"SELFTEST_TURRET_HELIX_SAND", 1356, 918,
+                     "Helix II Mining Laser"},
                 };
                 for (const auto& t : turrets) {
                     const cv::Mat cut = testPicture(t.file, t.resource);

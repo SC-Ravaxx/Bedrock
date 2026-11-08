@@ -60,6 +60,7 @@ BEDROCK_BLOB(bedrock_blob_selftest_gauge_golem_78, BEDROCK_TESTS_DIR "/scanpanel
 BEDROCK_BLOB(bedrock_blob_selftest_gauge_golem_118, BEDROCK_TESTS_DIR "/scanpanel/gauge_golem_118.png")
 BEDROCK_BLOB(bedrock_blob_selftest_turret_hofstede, BEDROCK_TESTS_DIR "/scanpanel/turret_laser_hofstede.png")
 BEDROCK_BLOB(bedrock_blob_selftest_turret_helix, BEDROCK_TESTS_DIR "/scanpanel/turret_laser_helix.png")
+BEDROCK_BLOB(bedrock_blob_selftest_turret_helix_sand, BEDROCK_TESTS_DIR "/scanpanel/turret_laser_helix_sand.jpg")
 BEDROCK_BLOB(bedrock_blob_selftest_marker_lamp, BEDROCK_TESTS_DIR "/lamp_marker_3170.png")
 BEDROCK_BLOB(bedrock_blob_selftest_marker_mfd, BEDROCK_TESTS_DIR "/mfd_marker_15420.png")
 BEDROCK_BLOB(bedrock_blob_selftest_marker_canopy, BEDROCK_TESTS_DIR "/canopy_marker_60000.png")
@@ -125,6 +126,8 @@ bool embeddedResource(const std::string& name, const unsigned char** data, size_
         {"SELFTEST_TURRET_HOFSTEDE", bedrock_blob_selftest_turret_hofstede_start,
          bedrock_blob_selftest_turret_hofstede_end},
         {"SELFTEST_TURRET_HELIX", bedrock_blob_selftest_turret_helix_start, bedrock_blob_selftest_turret_helix_end},
+        {"SELFTEST_TURRET_HELIX_SAND", bedrock_blob_selftest_turret_helix_sand_start,
+         bedrock_blob_selftest_turret_helix_sand_end},
         {"SELFTEST_MARKER_LAMP", bedrock_blob_selftest_marker_lamp_start, bedrock_blob_selftest_marker_lamp_end},
         {"SELFTEST_MARKER_MFD", bedrock_blob_selftest_marker_mfd_start, bedrock_blob_selftest_marker_mfd_end},
         {"SELFTEST_MARKER_CANOPY", bedrock_blob_selftest_marker_canopy_start, bedrock_blob_selftest_marker_canopy_end},

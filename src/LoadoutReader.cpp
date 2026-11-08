@@ -120,6 +120,7 @@ const Item* byName(const std::string& read, const Item* items, int count, const 
 // at 1080 lines - stay two, and a long row is cut where a gap wider than a
 // few letters opens.
 cv::Mat letteringInk(const cv::Mat& bgr, double s);
+std::vector<cv::Rect> rowsOfInk(const cv::Mat& ink, double s);
 std::vector<cv::Rect> rowsOfPieces(std::vector<cv::Rect> pieces, int width, double s);
 
 std::vector<cv::Rect> textRows(const cv::Mat& bgr, double s) {
@@ -132,6 +133,31 @@ std::vector<cv::Rect> textRows(const cv::Mat& bgr, double s) {
         cv::imwrite(std::string(dump) + "_" + std::to_string(n) + "_ink.png", ink);
         n++;
     }
+    return rowsOfInk(ink, s);
+}
+
+// The rows of the light lettering alone. Over sand that is bright and
+// rippled, every ripple stands out of it as much as a letter does: at a MOLE
+// turret on 8 November 2026 the rows ran the band's width and none read. The
+// turret's laser line is light green (165/241/166 in the app's picture of an
+// HDR screen, white in an SDR one), the sand red: its green stayed under 175.
+// The modules' names are yellow, their effects green and amber, with little
+// red or blue: none of them is read here.
+std::vector<cv::Rect> lightRows(const cv::Mat& bgr, double s) {
+    std::vector<cv::Rect> rows;
+    if (bgr.empty() || bgr.channels() != 3) return rows;
+    std::vector<cv::Mat> planes;
+    cv::split(bgr, planes);
+    cv::Mat ink = (planes[1] >= 200) & (planes[0] >= 120) & (planes[2] >= 120);
+    // ...less the rules, as in letteringInk
+    cv::Mat rules;
+    cv::morphologyEx(ink, rules, cv::MORPH_OPEN,
+                     cv::getStructuringElement(cv::MORPH_RECT, cv::Size((std::max)(9, (int)std::lround(25 * s)), 1)));
+    ink.setTo(0, rules);
+    return rowsOfInk(ink, s);
+}
+
+std::vector<cv::Rect> rowsOfInk(const cv::Mat& ink, double s) {
     cv::Mat labels, stats, centres;
     const int count = cv::connectedComponentsWithStats(ink, labels, stats, centres, 8, CV_32S);
     std::vector<cv::Rect> pieces;
@@ -632,8 +658,15 @@ const MiningLaser* turretLaserByHudLine(const std::string& line) {
     const std::string f = folded(line, true);
     const size_t at = f.find("MININGLASER");
     if (at == std::string::npos) return nullptr;
-    return byName(f.substr(0, at), MINING_LASERS, MINING_LASER_COUNT, "Mining Laser",
-                  [](const MiningLaser& l) { return l.size == 2; });
+    const auto sizeTwo = [](const MiningLaser& l) { return l.size == 2; };
+    const std::string name = f.substr(0, at);
+    if (const MiningLaser* laser = byName(name, MINING_LASERS, MINING_LASER_COUNT, "Mining Laser", sizeTwo)) return laser;
+    // The HUD writes II as one glyph, which the second reader may take for a
+    // U (HELIX U MINING LASER) - and no laser of size 2 has a U in its name
+    if (name.find('U') == std::string::npos) return nullptr;
+    std::string two;
+    for (const char c : name) two += c == 'U' ? std::string("II") : std::string(1, c);
+    return byName(two, MINING_LASERS, MINING_LASER_COUNT, "Mining Laser", sizeTwo);
 }
 
 namespace {
@@ -665,15 +698,18 @@ const MiningLaser* readTurretLaser(const cv::Mat& frame, TextLineReader& lines, 
     // A laser's line is some twenty letters long - IMPACT II MINING LASER,
     // KLEIN-S2 MINING LASER - and some 200 wide at size 1: shorter rows are
     // the table's and the modules' effects, which are not read. Ten rows at
-    // most, at 50 ms a line.
-    int tried = 0;
-    for (const cv::Rect& row : textRows(part, s)) {
-        if (row.width < 150 * s) continue;
-        if (++tried > 10) break;
-        const std::string text = readRow(part, row, s, lines);
-        if (const MiningLaser* laser = turretLaserByHudLine(text)) {
-            if (read) *read = text;
-            return laser;
+    // most, at 50 ms a line - and where none of them was the laser's, the
+    // light lettering's rows alone, ten more (lightRows).
+    for (int pass = 0; pass < 2; pass++) {
+        int tried = 0;
+        for (const cv::Rect& row : pass == 0 ? textRows(part, s) : lightRows(part, s)) {
+            if (row.width < 150 * s) continue;
+            if (++tried > 10) break;
+            const std::string text = readRow(part, row, s, lines);
+            if (const MiningLaser* laser = turretLaserByHudLine(text)) {
+                if (read) *read = text;
+                return laser;
+            }
         }
     }
     return nullptr;
