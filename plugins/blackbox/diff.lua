@@ -1048,7 +1048,7 @@ local function settingsFile(r, x, y, suffix)
         local label = key == "(file version)" and "File version" or
           (info and info[1] ~= "" and info[1] or words(key))
         local kind = info and info[2] or "num"
-        local sa, sb = ha and settingValue(kind, va) or "not set", hb and settingValue(kind, vb) or "not set"
+        local sa, sb = ha and settingValue(kind, va) or "default", hb and settingValue(kind, vb) or "default"
         -- (an id has no value to show; values that read the same are no change)
         if kind == "device" or sa ~= sb then
           changes[#changes + 1] = {
@@ -1268,8 +1268,9 @@ local function lastAt(s, p)
   end
 end
 
--- A value as the list shows it: "not set" as "default", a setting's by its
--- kind, a number of more than 2 decimals to 2
+-- A value as the list shows it: "not set" (what older backups wrote for a
+-- setting at its default) as "default", a setting's by its kind, a number of
+-- more than 2 decimals to 2
 local function listValue(v, kind)
   if v == "not set" then return "default" end
   if kind == "pct" or kind == "onoff" then return settingValue(kind, v) end
