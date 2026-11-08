@@ -17076,6 +17076,7 @@ void MinerGUI::togglePlanner() {
     if (!planner_ && !createPlanner()) return;
     plannerVisible_ = !plannerVisible_;
     railRepaint();   // the rail shows it open or shut
+    gemMenu_.clear();   // a list of gems left open does not wait for its return
     if (plannerVisible_) {
         plannerScroll_ = 0;
         placePlanner();
@@ -17132,6 +17133,28 @@ LRESULT MinerGUI::handlePlannerMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                 }
                 return 0;
             }
+            // A family's list of gems answers next: a gem in it is picked,
+            // its arrow shuts it, and a click anywhere else shuts it and goes
+            // on to what lies there
+            if (!gemMenu_.empty()) {
+                const std::string family = gemMenu_;
+                gemMenu_.clear();
+                InvalidateRect(hwnd, nullptr, TRUE);
+                if (gemMenuList_.Contains(px, py)) {
+                    for (size_t i = gemMenuHitsFrom_; i < planHits_.size(); i++) {
+                        const auto& hit = planHits_[i];
+                        if (hit.kind != 14 || !hit.rect.Contains(px, py)) continue;
+                        plannerMineral_ = family;
+                        plannerGem_ = hit.value;
+                        plannerPlace_.clear();
+                        break;
+                    }
+                    return 0;
+                }
+                for (const auto& hit : planHits_) {
+                    if (hit.kind == 13 && hit.value == family && hit.rect.Contains(px, py)) return 0;
+                }
+            }
             for (const auto& hit : planHits_) {
                 if (!hit.rect.Contains(px, py)) continue;
                 if (hit.kind == 5) {
@@ -17176,6 +17199,12 @@ LRESULT MinerGUI::handlePlannerMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                     InvalidateRect(hwnd, nullptr, TRUE);
                     return 0;
                 }
+                if (hit.kind == 13) {
+                    // a family's arrow: the list of its gems
+                    gemMenu_ = hit.value;
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                    return 0;
+                }
                 if (hit.kind == 1) {
                     plannerUex_ = false;
                     plannerSystem_ = hit.value;
@@ -17200,9 +17229,10 @@ LRESULT MinerGUI::handlePlannerMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                     return 0;
                 }
                 else {
-                    // an ore or a family: its places, the card of a place left;
-                    // another family starts on all of its gems
-                    if (hit.value != plannerMineral_) plannerGem_.clear();
+                    // an ore or a family: its places, the card of a place left.
+                    // A family's row over the places is all of its gems; the
+                    // UEX tab stays on the gem it shows.
+                    if (hit.kind == 2 && !plannerUex_) plannerGem_.clear();
                     plannerMineral_ = hit.value;
                     plannerPlace_.clear();
                 }
@@ -17219,6 +17249,11 @@ LRESULT MinerGUI::handlePlannerMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                 case 'F':
                     if (uexCard_.step) {
                         uexCard_.step = 0;
+                        InvalidateRect(hwnd, nullptr, FALSE);
+                        return 0;
+                    }
+                    if (!gemMenu_.empty()) {
+                        gemMenu_.clear();
                         InvalidateRect(hwnd, nullptr, FALSE);
                         return 0;
                     }
@@ -18898,6 +18933,89 @@ static std::vector<std::string> gemsOf(MiningFamily family) {
     return gems;
 }
 
+// ...those of them found in a system ("ALL" for any), each with how many
+// places there are of it there
+static std::vector<std::pair<std::string, int>> gemsIn(MiningFamily family, const std::string& system) {
+    std::vector<std::pair<std::string, int>> out;
+    for (const std::string& gem : gemsOf(family)) {
+        int places = 0;
+        for (const OreLocation& o : locationsFor(gem, family)) {
+            if (system == "ALL" || _stricmp(o.system, system.c_str()) == 0) places++;
+        }
+        if (places) out.push_back({gem, places});
+    }
+    return out;
+}
+
+// The list a ground family's arrow opens over the ores: all of its gems,
+// then each gem of the system on the tabs with how many places it has
+// there. Under the row where the window has room, else over it - in the
+// window as it is, both rows sit at its foot. The UEX tab shows one gem's
+// market, so there it has no "All".
+void MinerGUI::paintGemMenu(Gdiplus::Graphics& g, int ch) {
+    gemMenuHitsFrom_ = planHits_.size();
+    gemMenuList_ = Gdiplus::RectF();
+    if (gemMenu_.empty() || gemMenuAnchor_.Width <= 0) return;
+    const MiningFamily family = gemMenu_ == "ROC deposits" ? MiningFamily::ROC : MiningFamily::FPS;
+    Gdiplus::Font textFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::SolidBrush textBrush(COL_TEXT), faintBrush(COL_TEXT_FAINT), accentBrush(COL_ACCENT);
+    Gdiplus::StringFormat oneLine;
+    oneLine.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+    Gdiplus::StringFormat rightOne;
+    rightOne.SetAlignment(Gdiplus::StringAlignmentFar);
+    rightOne.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    rightOne.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+
+    const auto placesWord = [](int n) { return std::to_wstring(n) + (n == 1 ? L" place" : L" places"); };
+    struct Entry { std::wstring label, count; std::string value; };
+    std::vector<Entry> entries;
+    if (!plannerUex_) {
+        int all = 0;
+        for (const OreLocation& o : bestOfFamily(family)) {
+            if (plannerSystem_ == "ALL" || _stricmp(o.system, plannerSystem_.c_str()) == 0) all++;
+        }
+        entries.push_back({L"All", placesWord(all), ""});
+    }
+    const auto gems = gemsIn(family, plannerSystem_);
+    for (const auto& gem : gems) entries.push_back({toW(gem.first), placesWord(gem.second), gem.first});
+    // lit: what the column beside it shows, when it shows this family
+    const bool lit = plannerMineral_ == gemMenu_ && plannerPlace_.empty();
+    std::string on;
+    if (lit && plannerUex_) {
+        on = marketOre();
+    } else if (lit) {
+        for (const auto& gem : gems) {
+            if (gem.first == plannerGem_) on = plannerGem_;
+        }
+    }
+
+    const float entryH = scaleF(22), pad = scaleF(4);
+    const float listW = gemMenuAnchor_.Width;
+    const float listH = entryH * (float)entries.size() + 2 * pad;
+    const float lx = gemMenuAnchor_.X;
+    float ly = gemMenuAnchor_.GetBottom() + scaleF(4);
+    if (ly + listH > (float)ch - scaleF(8)) ly = (std::max)(scaleF(8), gemMenuAnchor_.Y - scaleF(4) - listH);
+    gemMenuList_ = Gdiplus::RectF(lx, ly, listW, listH);
+    dropShadow(g, gemMenuList_, scaleF(R_CONTROL), scaleF(10));
+    fillRoundRect(g, gemMenuList_, scaleF(R_CONTROL), COL_CARD_HI);
+
+    float ey = ly + pad;
+    for (const auto& e : entries) {
+        const Gdiplus::RectF entry(lx + pad, ey, listW - 2 * pad, entryH);
+        const bool held = lit && e.value == on;
+        const bool hot = isHot(hoverPlan_, entry);
+        if (held) fillRoundRect(g, entry, scaleF(4), tint(COL_ACCENT, hot ? 62 : 44));
+        else if (hot) fillRoundRect(g, entry, scaleF(4), COL_HOVER);
+        const Gdiplus::RectF words(entry.X + scaleF(8), entry.Y, entry.Width - scaleF(16), entry.Height);
+        g.DrawString(e.count.c_str(), -1, &textFont, words, &rightOne, &faintBrush);
+        g.DrawString(e.label.c_str(), -1, &textFont, words, &oneLine, held ? &accentBrush : &textBrush);
+        planHits_.push_back({entry, 14, e.value});
+        ey += entryH;
+    }
+}
+
 std::string MinerGUI::marketOre() const {
     if (plannerMineral_ == "ROC deposits" || plannerMineral_ == "Hand minables") {
         const auto gems = gemsOf(plannerMineral_ == "ROC deposits" ? MiningFamily::ROC : MiningFamily::FPS);
@@ -18948,34 +19066,6 @@ std::wstring MinerGUI::rockMarketLine() const {
            unitWord(bestBuyer->unit);
 }
 
-// A ground family's gems as a row of buttons that wraps at the column's end:
-// over the UEX tab's listings, and with "All" first over the places, at the
-// same height in both
-float MinerGUI::paintGemChips(Gdiplus::Graphics& g, float x, float y, float right,
-                              const std::vector<std::string>& gems, const std::string& on, bool withAll) {
-    Gdiplus::Font subFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    std::vector<std::string> chips;
-    if (withAll) chips.push_back("");
-    chips.insert(chips.end(), gems.begin(), gems.end());
-    float gx = x;
-    for (const std::string& gem : chips) {
-        const std::wstring text = gem.empty() ? std::wstring(L"All") : toW(gem);
-        Gdiplus::RectF measured;
-        g.MeasureString(text.c_str(), -1, &subFont, Gdiplus::PointF(0, 0), &measured);
-        const float w = measured.Width + scaleF(14);
-        if (gx + w > right) {
-            gx = x;
-            y += scaleF(24);
-        }
-        const Gdiplus::RectF chip(gx, y, w, scaleF(20));
-        drawButton(g, chip, text.c_str(), subFont, gem == on ? ButtonKind::Selected : ButtonKind::Secondary,
-                   isHot(hoverPlan_, chip), scaleF(R_CONTROL));
-        planHits_.push_back({chip, 8, gem});
-        gx += w + scaleF(6);
-    }
-    return y + scaleF(30);
-}
-
 // The UEX tab's column: what players buy the ore for - the dearest first, as
 // the one to sell to - and what they sell it for, the cheapest first; each
 // with its quality in its rarity's colour, where and who. A listing opens
@@ -19006,8 +19096,23 @@ void MinerGUI::paintMarketColumn(Gdiplus::Graphics& g, int cw, int ch, float car
     // for the ground's families, a row of their gems to pick from
     float y = top - scaleF(6);
     if (plannerMineral_ == "ROC deposits" || plannerMineral_ == "Hand minables") {
-        y = paintGemChips(g, cardX, y, (float)cw - M,
-                          gemsOf(plannerMineral_ == "ROC deposits" ? MiningFamily::ROC : MiningFamily::FPS), ore, false);
+        float gx = cardX;
+        for (const std::string& gem : gemsOf(plannerMineral_ == "ROC deposits" ? MiningFamily::ROC : MiningFamily::FPS)) {
+            Gdiplus::RectF measured;
+            g.MeasureString(toW(gem).c_str(), -1, &subFont, Gdiplus::PointF(0, 0), &measured);
+            const float w = measured.Width + scaleF(14);
+            if (gx + w > (float)cw - M) {
+                gx = cardX;
+                y += scaleF(24);
+            }
+            const Gdiplus::RectF chip(gx, y, w, scaleF(20));
+            const bool on = gem == ore;
+            drawButton(g, chip, toW(gem).c_str(), subFont, on ? ButtonKind::Selected : ButtonKind::Secondary,
+                       isHot(hoverPlan_, chip), scaleF(R_CONTROL));
+            planHits_.push_back({chip, 8, gem});
+            gx += w + scaleF(6);
+        }
+        y += scaleF(30);
     }
 
     const auto entry = uexMarket_.find(ore);
@@ -19403,9 +19508,25 @@ void MinerGUI::paintPlanner(HDC hdc) {
             g.FillEllipse(&chip, M + scaleF(26), y + rowH / 2 - scaleF(3), scaleF(6), scaleF(6));
             g.DrawString(toW(name).c_str(), -1, &rowFont, Gdiplus::PointF(M + scaleF(38), y + scaleF(2)),
                          (chosen || most) ? &textBrush : &dimBrush);
-            Gdiplus::RectF sig(M, y + scaleF(4), leftW - scaleF(8), rowH);
+            // A ground family's arrow at the row's end opens the list of its
+            // gems over the ores; the figure moves in for it
+            const bool family = kind == 2;
+            Gdiplus::RectF sig(M, y + scaleF(4), leftW - scaleF(family ? 24 : 8), rowH);
             g.DrawString(right.c_str(), -1, &numFont, sig, &rightAlign, &faintBrush);
             planHits_.push_back({box, 3, name});   // before the row, so the box wins the click
+            if (family) {
+                const bool open = gemMenu_ == name;
+                // the whole end of the row takes the click; its face sits
+                // inside the row's frame
+                const Gdiplus::RectF arrow(M + leftW - scaleF(22), y, scaleF(22), rowH);
+                const Gdiplus::RectF face(arrow.X + scaleF(2), y + scaleF(3), arrow.Width - scaleF(5), rowH - scaleF(6));
+                const bool arrowHot = isHot(hoverPlan_, arrow);
+                if (arrowHot || open) fillRoundRect(g, face, scaleF(4), COL_HOVER);
+                drawChevron(g, face.X + face.Width / 2, y + rowH / 2, scaleF(1), open,
+                            (arrowHot || open) ? COL_TEXT : COL_TEXT_DIM);
+                planHits_.push_back({arrow, 13, name});   // ...and the arrow too
+                if (open) gemMenuAnchor_ = row;
+            }
             planHits_.push_back({row, kind, name});
             y += rowH;
         };
@@ -19432,6 +19553,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
         }
         const bool anyRoc = familyInSystem((int)MiningFamily::ROC, plannerSystem_);
         const bool anyFps = familyInSystem((int)MiningFamily::FPS, plannerSystem_);
+        gemMenuAnchor_ = Gdiplus::RectF();
         if (anyRoc || anyFps) {
             y += scaleF(4);
             g.DrawString(L"GROUND", -1, &smallFont, Gdiplus::PointF(M, y + scaleF(4)), &faintBrush);
@@ -19445,6 +19567,8 @@ void MinerGUI::paintPlanner(HDC hdc) {
                        !byPlace && plannerMineral_ == "Hand minables");
             }
         }
+        // a list whose family is not in the system on the tabs goes with it
+        if (gemMenuAnchor_.Width <= 0) gemMenu_.clear();
 
         // The UEX tab puts the marketplace where the places are
         if (plannerUex_) {
@@ -19460,26 +19584,14 @@ void MinerGUI::paintPlanner(HDC hdc) {
 
             const bool roc = (plannerMineral_ == "ROC deposits");
             const bool fps = (plannerMineral_ == "Hand minables");
-            // For the ground's two families, their gems over the card, where
-            // the UEX tab has them: "All", each place by its likeliest gem, or
-            // the places of one gem. Only the gems of the system on the tabs; a
-            // gem picked that it has none of leaves all of them.
-            float placesTop = listTop;
+            // For the ground's two families, the gem picked in their list on
+            // the left, if the system on the tabs has it; else all of them,
+            // each place by its likeliest gem
             std::string pickedGem;
-            if ((roc || fps) && !byPlace) {
-                const MiningFamily family = roc ? MiningFamily::ROC : MiningFamily::FPS;
-                std::vector<std::string> gems = gemsOf(family);
-                if (plannerSystem_ != "ALL") {
-                    gems.erase(std::remove_if(gems.begin(), gems.end(), [&](const std::string& name) {
-                                   const auto places = locationsFor(name, family);
-                                   return std::none_of(places.begin(), places.end(), [&](const OreLocation& o) {
-                                       return _stricmp(o.system, plannerSystem_.c_str()) == 0;
-                                   });
-                               }), gems.end());
+            if ((roc || fps) && !byPlace && !plannerGem_.empty()) {
+                for (const auto& gem : gemsIn(roc ? MiningFamily::ROC : MiningFamily::FPS, plannerSystem_)) {
+                    if (gem.first == plannerGem_) pickedGem = plannerGem_;
                 }
-                if (std::find(gems.begin(), gems.end(), plannerGem_) != gems.end()) pickedGem = plannerGem_;
-                placesTop = paintGemChips(g, cardX, listTop - scaleF(6), (float)cw - M, gems, pickedGem, true) +
-                            scaleF(6);
             }
             std::vector<OreLocation> rows = byPlace ? minedAt(plannerPlace_)
                                           : !pickedGem.empty()
@@ -19511,7 +19623,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
                 labelW.Width + scaleF(3) + lineWidth(g, subject, smallFont) + scaleF(8) + lineWidth(g, scope, subFont) > rw;
             const float scopeDown = scopeUnder ? scaleF(16) : 0.0f;
 
-            float ry = placesTop + scaleF(28) + scopeDown;
+            float ry = listTop + scaleF(28) + scopeDown;
             const float prowH = scaleF(27);
             // Each row's words: the name, and after it in the small face what
             // kind of place it is, which ones a generic name stands for, and the
@@ -19895,16 +20007,15 @@ void MinerGUI::paintPlanner(HDC hdc) {
             const float listH = more ? (std::max)(rowsH, topH) : rowsH;
             const float cardBottom = ry + listH + (rows.empty() ? scaleF(22) : 0.0f) +
                                      (more ? scaleF(14) : 0.0f) + scaleF(8);
-            const Gdiplus::RectF card(cardX, placesTop - scaleF(6), (float)cw - M - cardX,
-                                      cardBottom - (placesTop - scaleF(6)));
+            const Gdiplus::RectF card(cardX, listTop - scaleF(6), (float)cw - M - cardX, cardBottom - (listTop - scaleF(6)));
             fillRoundRect(g, card, scaleF(R_CARD), COL_CARD);
             cardLight(g, card, scaleF(R_CARD), scaleF(44));
             cardEdge(g, card, scaleF(R_CARD));
 
-            g.DrawString(label.c_str(), -1, &smallFont, Gdiplus::PointF(rx, placesTop + scaleF(4)), &faintBrush);
+            g.DrawString(label.c_str(), -1, &smallFont, Gdiplus::PointF(rx, listTop + scaleF(4)), &faintBrush);
             g.DrawString(subject.c_str(), -1, &smallFont,
-                         Gdiplus::PointF(rx + labelW.Width + scaleF(3), placesTop + scaleF(4)), &textBrush);
-            Gdiplus::RectF scopeRect(rx, placesTop + scaleF(5) + scopeDown, rw, scaleF(14));
+                         Gdiplus::PointF(rx + labelW.Width + scaleF(3), listTop + scaleF(4)), &textBrush);
+            Gdiplus::RectF scopeRect(rx, listTop + scaleF(5) + scopeDown, rw, scaleF(14));
             g.DrawString(scope.c_str(), -1, &subFont, scopeRect, &rightAlign, &faintBrush);
 
             if (rows.empty()) {
@@ -20191,6 +20302,8 @@ void MinerGUI::paintPlanner(HDC hdc) {
             if (M + longW.Width <= footerRoom) footer = longer;
         }
         g.DrawString(footer.c_str(), -1, &subFont, Gdiplus::PointF(M, fy), &faintBrush);
+        // a family's list of gems over all of it but the UEX card
+        paintGemMenu(g, ch);
         // Report to UEX, over everything else
         if (uexCard_.step) drawUexCard(g, cw, ch, uexCard_, hoverPlan_);
         else uexCard_.hits.clear();

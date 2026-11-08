@@ -1427,10 +1427,11 @@ private:
     void showPlaceFinderFor(const std::string& place);
     void showSystemFinderFor(const std::string& system);
     // kind 0 ore, 1 system, 2 family, 3 tick box, 4 a link, 5 Report to UEX,
-    // 6 the UEX tab, 7 a listing (its page), 8 a gem of the family picked (""
-    // for all of them, over the places only), 9 the listings' order ("price",
-    // "newest"), 10 a place in the list (what else is mined there), 11 a ROC
-    // gem of a place and 12 a hand-mined one (the places of that gem)
+    // 6 the UEX tab, 7 a listing (its page), 8 a gem in the UEX tab, 9 the
+    // listings' order ("price", "newest"), 10 a place in the list (what else
+    // is mined there), 11 a ROC gem of a place and 12 a hand-mined one (the
+    // places of that gem), 13 a family's arrow (its gems' list), 14 a gem in
+    // that list ("" for all of them)
     struct PlanHit { Gdiplus::RectF rect; int kind; std::string value; };
     std::vector<PlanHit> planHits_;
     static LRESULT CALLBACK PlannerProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -1450,10 +1451,18 @@ private:
     // The Ore Finder's UEX tab: what players on the UEX marketplace buy and
     // sell the picked ore for, and at what quality
     bool plannerUex_ = false;
-    // For the ground's two families, the gem picked over the places and in
-    // the UEX tab. Over the places "" is all of them, each place by its
-    // likeliest; the UEX tab shows the first gem then.
+    // For the ground's two families, the gem picked in the list of their gems
+    // and in the UEX tab. Over the places "" is all of them, each place by
+    // its likeliest; the UEX tab shows the first gem then.
     std::string plannerGem_;
+    // The family whose arrow opened the list of its gems, "" while shut: over
+    // the ore list, the family's row its anchor; a click in it picks, any
+    // other click shuts it
+    std::string gemMenu_;
+    Gdiplus::RectF gemMenuAnchor_;
+    Gdiplus::RectF gemMenuList_;
+    size_t gemMenuHitsFrom_ = 0;
+    void paintGemMenu(Gdiplus::Graphics& g, int ch);
     // the listings by price (the default), or the most lately renewed first:
     // the one sign of life the API gives (UEX has no feedback to sort by)
     bool marketByRecent_ = false;
@@ -1466,11 +1475,6 @@ private:
     std::shared_ptr<const UexThreads> uexThreads_;
     std::string marketOre() const;                    // the ore or gem the UEX tab is on
     void paintMarketColumn(Gdiplus::Graphics& g, int cw, int ch, float cardX, float top);
-    // A family's gems as buttons from (x, y), wrapping at `right`, with "All"
-    // first when `withAll`; `on` is the one lit. Returns the top of what
-    // follows them.
-    float paintGemChips(Gdiplus::Graphics& g, float x, float y, float right, const std::vector<std::string>& gems,
-                        const std::string& on, bool withAll);
     // The rock view's line: what a player on UEX pays for the best part of
     // quality 900 or more; "" where there is none to say
     std::wstring rockMarketLine() const;

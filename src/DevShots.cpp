@@ -2154,21 +2154,41 @@ int runScreenshots(const std::string& dir) {
     // ...and the ground's two families: all their gems, each place by its
     // likeliest, a gem a line by its best buyer
     gui.openOreForShot("Hadanite");
-    gui.pointInPlannerForShot(8, "", true);
+    gui.pointInPlannerForShot(2, "Hand minables", true);
     pump();
     if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_gems.png", true);
     gui.openOreForShot("Beradom");
-    gui.pointInPlannerForShot(8, "", true);
+    gui.pointInPlannerForShot(2, "ROC deposits", true);
     pump();
     if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_gems_roc.png", true);
     // ...a place of theirs: what is mined there, its gems under the ship's ores
     gui.pointInPlannerForShot(10, "Pyro IV", true);
     pump();
     if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_place_from_roc.png", true);
-    // ...and one gem, as a recipe or a note asks for it: the places of it
-    gui.openOreForShot("Hadanite");
-    pump();
-    if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_gems_pick.png", true);
+    // ...a family's arrow: the list of its gems over the ores, the pointer
+    // on one; then that one picked, its places
+    {
+        gui.pointInPlannerForShot(2, "Hand minables", true);
+        const bool arrow = gui.pointInPlannerForShot(13, "Hand minables", true);
+        const bool listed = gui.pointInPlannerForShot(14, "Hadanite", false);
+        pump();
+        if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_gems_menu.png", true);
+        gui.pointInPlannerForShot(14, "Hadanite", true);
+        const bool shut = !gui.pointInPlannerForShot(14, "Hadanite", false);
+        gui.pointInPlannerForShot(-1, "", false);
+        pump();
+        if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_gems_pick.png", true);
+        // ...and Stanton's ROC deposits, the list under its row if it fits
+        gui.pointInPlannerForShot(1, "STANTON", true);
+        gui.pointInPlannerForShot(13, "ROC deposits", true);
+        pump();
+        if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_gems_menu_stanton.png", true);
+        gui.pointInPlannerForShot(1, "ALL", true);
+        pump();
+        std::cout << "ore finder gems: " << (arrow ? "arrow" : "NO ARROW") << ", "
+                  << (listed ? "Hadanite listed" : "HADANITE NOT LISTED") << ", "
+                  << (shut ? "list shut on the pick" : "LIST STILL OPEN") << std::endl;
+    }
     // ...and the UEX tab: what players buy and sell Ouratite for; then a
     // ground family's gem
     gui.setUexMarket("Ouratite", shotListings("Ouratite", shotNow), shotNow - 60, "");
