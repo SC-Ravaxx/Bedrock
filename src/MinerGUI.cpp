@@ -6162,7 +6162,7 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
     // line, the card grows
     const float chipH = scaleF(26);
     wchar_t count[32];
-    std::swprintf(count, 32, L"%d OF %d", (int)loadout_.modules.size(), loadout_.laser ? loadout_.laser->slots : 0);
+    std::swprintf(count, 32, L"%d of %d", (int)loadout_.modules.size(), loadout_.laser ? loadout_.laser->slots : 0);
     const float labelW = lineWidth(g, L"MODULES", labelFont), countW = lineWidth(g, count, labelFont);
     const float chipsX = left + labelW + scaleF(4) + countW + scaleF(10);
     const float crossW = lineWidth(g, L"\u00D7", crossFont);
@@ -6290,6 +6290,38 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
             r.can = r.button && !r.fitted;
             rows.push_back(std::move(r));
         }
+    } else if (tab == 1) {
+        // the modules worth a row, as Edit ship lists them: one row each,
+        // however many of it are on the head - the row carries the count
+        const int slots = loadout_.laser ? loadout_.laser->slots : 0;
+        for (const int i : modulesByName()) {
+            const MiningModule& m = MINING_MODULES[i];
+            int howMany = 0;
+            for (const MiningModule* f : loadout_.modules) howMany += f == &m ? 1 : 0;
+            Row r;
+            r.name = toW(moduleShortName(m));
+            if (howMany > 1) r.name += L" \u00D7" + std::to_wstring(howMany);
+            r.effect = moduleEffect(m);
+            r.item = m.name;
+            r.index = i;
+            r.fitted = modulesRow && howMany > 0;
+            r.button = modulesRow;
+            r.can = modulesRow && (int)loadout_.modules.size() < slots;
+            rows.push_back(std::move(r));
+        }
+    } else {
+        // the gadgets: the one carried is the player's pick, as in Edit ship
+        for (int i = 0; i < MINING_GADGET_COUNT; i++) {
+            const MiningGadget& gd = MINING_GADGETS[i];
+            Row r;
+            r.name = toW(gd.name);
+            r.item = gd.name;
+            r.index = i;
+            r.fitted = fittedGadget_ == &gd;
+            r.button = true;
+            r.can = !r.fitted;
+            rows.push_back(std::move(r));
+        }
     }
     for (Row& r : rows) {
         if (gearShops_) r.shops = onePerPlace(nearestFirst(gearShops_->offersFor(r.item), whereSystem_, wherePlace_));
@@ -6405,16 +6437,18 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
             g.DrawString(line.c_str(), -1, &smallFont, Gdiplus::RectF(left, lineY, lineRoom, scaleF(16)), &oneLine,
                          &faintBrush);
         }
-        // Fit, or the head that is fitted; Add, quiet where no slot is free
-        if (headsList && r.fitted) {
+        // Fit, or the head or gadget that is fitted; Add, quiet where no
+        // slot is free
+        const wchar_t* const press = tab == 1 ? L"Add" : L"Fit";
+        if (r.fitted && tab != 1) {
             g.DrawString(L"FITTED", -1, &labelFont, Gdiplus::RectF(left, button.Y, wide, buttonH), &rightMiddle,
                          &greenBrush);
         } else if (r.button && r.can) {
-            drawButton(g, button, headsList ? L"Fit" : L"Add", fieldFont, ButtonKind::Secondary, seen(button), radius);
-            hit(button, headsList ? 3 : 4, r.index, r.item);
+            drawButton(g, button, press, fieldFont, ButtonKind::Secondary, seen(button), radius);
+            hit(button, tab == 0 ? 3 : tab == 1 ? 4 : 7, r.index, r.item);
         } else if (r.button) {
             strokeRoundRect(g, button, radius, COL_BORDER);
-            g.DrawString(headsList ? L"Fit" : L"Add", -1, &fieldFont, button, &centred, &faintBrush);
+            g.DrawString(press, -1, &fieldFont, button, &centred, &faintBrush);
         }
     }
     g.Restore(unclipped);
@@ -6477,6 +6511,13 @@ void MinerGUI::pressGear(HWND hwnd, float px, float py) {
             case 4:
                 // as a click on the module's row in Edit ship
                 addHeadModule(&MINING_MODULES[hit.value]);
+                storeHead();
+                craftedEditing_ = false;
+                saveLoadout();
+                break;
+            case 7:
+                // as a click on the gadget in Edit ship
+                pickGadget(&MINING_GADGETS[hit.value]);
                 storeHead();
                 craftedEditing_ = false;
                 saveLoadout();

@@ -1531,7 +1531,8 @@ private:
         // place), 2 the x on a fitted module (its place on the head), 3 Fit
         // (the laser, MINING_LASERS), 4 Add (the module, MINING_MODULES),
         // 5 an item's shop line, which unfolds its shops, 6 those shops
-        // unfolded, which fold again (both: the item's index in its table)
+        // unfolded, which fold again (both: the item's index in its table),
+        // 7 a gadget's Fit (MINING_GADGETS)
         int kind;
         int value;
         std::string item;   // 5 and 6: the item's name at UEX
