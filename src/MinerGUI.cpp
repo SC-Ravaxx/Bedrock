@@ -6273,15 +6273,18 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
     }
 
     // the slots, a chip each: a module with the fitted green down its edge
-    // and an x that takes it out, an empty one an outline; the one picked
-    // amber, as a picked tab - Swap and Fit in the list below go there
+    // and an x that takes it out, an empty one an outline. While the
+    // modules are listed, the slot picked is amber, as a picked tab - Swap
+    // and Fit in the list go there; a click on a chip picks its slot and
+    // lists the modules
     if (modulesRow) {
+        const bool modulesListed = std::clamp(gearTab_, 0, 2) == 1;
         g.DrawString(L"MODULES", -1, &labelFont, Gdiplus::RectF(left, modY, labelW + scaleF(2), chipH), &middle,
                      &faintBrush);
         g.DrawString(count, -1, &labelFont, Gdiplus::RectF(left + labelW + scaleF(4), modY, countW + scaleF(2), chipH),
                      &middle, &dimBrush);
         for (const Chip& c : chips) {
-            const bool picked = c.at == slotPicked;
+            const bool picked = modulesListed && c.at == slotPicked;
             const bool onCross = c.filled && isHot(hoverMain_, c.cross);
             const bool hot = isHot(hoverMain_, c.rect) && !onCross;
             Gdiplus::Color ink = COL_TEXT;
@@ -6682,7 +6685,14 @@ void MinerGUI::pressGear(HWND hwnd, float px, float py) {
                 break;
             }
             case 8:
-                gearSlot_ = hit.value;   // the slot Swap and Fit go to
+                // a slot picked for Swap and Fit, and the modules listed
+                // where another list was
+                gearSlot_ = hit.value;
+                if (gearTab_ != 1) {
+                    gearTab_ = 1;
+                    gearScroll_ = 0.0f;
+                    gearOpen_.clear();
+                }
                 break;
             case 7:
                 // as a click on the gadget in Edit ship

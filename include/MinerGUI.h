@@ -417,6 +417,7 @@ public:
     // ...a click on one of its pieces (GearHit's kinds and values), through
     // the window's own handler; false where the page shows no such piece
     bool clickGearForShot(int kind, int value);
+    int gearTabForShot() const { return gearTab_; }   // ...and the list it shows
     // ...and what the head shown carries, for the shot log, with the slot
     // picked in brackets
     std::string gearHeadForShot();

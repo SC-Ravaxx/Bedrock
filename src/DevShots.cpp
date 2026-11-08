@@ -1917,6 +1917,15 @@ int runScreenshots(const std::string& dir) {
             gui.gearStateForShot(0, "");
             pump();
             shoot(gui.windowHandle(), "gear_heads.png");
+            // ...a chip clicked over the laser heads: the modules listed,
+            // that slot picked
+            const bool chipClicked = gui.clickGearForShot(8, 1);
+            pump();
+            std::cout << "  the second chip clicked over the laser heads: "
+                      << (chipClicked && gui.gearTabForShot() == 1 ? "the modules listed, " : "NO LIST, ")
+                      << gui.gearHeadForShot() << std::endl;
+            gui.gearStateForShot(0, "");
+            pump();
             // ...the fitted head's shops unfolded by a click on its line: the
             // green frame round its row alone, the shops in a panel under it
             const bool unfolded = gui.clickGearForShot(5, helixTwo);
