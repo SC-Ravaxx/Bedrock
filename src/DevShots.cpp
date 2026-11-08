@@ -1386,13 +1386,24 @@ int runScreenshots(const std::string& dir) {
             pump();
             shoot(gui.windowHandle(), "overlay_rock_contents_heph_top.png");
             gui.toggleOverlayMode();
-            // ...and in the rock view what a player on UEX pays for that 975
+            // ...and in the rock view what a player on UEX pays for that 975,
+            // under the list in the full window and in the overlay, its ores
+            // one to a row and on one line
             {
                 const long long now = (long long)std::time(nullptr);
                 gui.setUexPrices(true, nullptr, 0, "");
                 gui.setUexMarket("Hephaestanite", shotListings("Hephaestanite", now), now - 60, "");
                 pump();
                 shoot(gui.windowHandle(), "rock_contents_market.png");
+                gui.toggleOverlayMode();
+                pump();
+                shoot(gui.windowHandle(), "overlay_rock_contents_market.png");
+                gui.setOverlayOreRows(false);
+                pump();
+                shoot(gui.windowHandle(), "overlay_rock_contents_market_line.png");
+                gui.setOverlayOreRows(true);
+                gui.toggleOverlayMode();
+                pump();
                 gui.setUexMarket("Hephaestanite", std::make_shared<std::vector<SCMiner::UexListing>>(), now, "");
             }
             gui.setRockContents(hephTiers);

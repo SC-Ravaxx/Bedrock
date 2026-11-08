@@ -16595,6 +16595,10 @@ void MinerGUI::drawCompactRock(Gdiplus::Graphics& g, int cw, int ch) {
         }
     }
 
+    // ...and what a player on the UEX marketplace pays for its best part of
+    // quality 900 or more, as under the full window's list
+    line(rockMarketLine(), infoFont, accentBrush);
+
     // the verdict, the way the full window puts it
     const RockVerdict v = rockVerdict();
     Gdiplus::Color tone = COL_TEXT_DIM;
