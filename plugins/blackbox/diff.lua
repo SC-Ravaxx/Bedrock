@@ -1284,7 +1284,7 @@ function M.shown(summary, detail)
   if body == "" then return { change = summary } end
   -- characters as they were written before "9 characters saved": the first
   -- of them, and how many more
-  local count = tonumber(match(summary, "^(%d+) characters?$"))
+  local count = tonumber(match(summary, "^(%d+) characters$"))
   if count and find(body, '^Character ".*" %(new%)$') and count == 1 + (tonumber(more) or 0) then
     return { change = plural(count, "character") .. " saved" }
   end
