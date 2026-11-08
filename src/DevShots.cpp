@@ -2005,12 +2005,13 @@ int runScreenshots(const std::string& dir) {
             pump();
             std::cout << "  x on the first chip: " << (taken ? gui.gearHeadForShot() : std::string("NO CHIP"))
                       << std::endl;
-            // the gadgets, BoreMax fitted by its button
+            // the gadgets: prices and shops alone, no button - and BoreMax
+            // on the rock in the rock view leaves them as they are
+            gui.setFittedGadget(SCMiner::gadgetById("thcn_boremax"));
             gui.gearStateForShot(2, "");
             pump();
-            const bool carried = gui.clickGearForShot(7, boreMax);
-            pump();
-            std::cout << "  Fit on BoreMax: " << (carried ? "fitted" : "NO BUTTON") << std::endl;
+            const bool button = gui.clickGearForShot(7, boreMax);
+            std::cout << "  gadgets: " << (button ? "A BUTTON" : "no button") << std::endl;
             shoot(gui.windowHandle(), "gear_gadgets.png");
             gui.setFittedGadget(nullptr);
             // a ship of one head: no heads to pick between

@@ -1541,8 +1541,8 @@ private:
         // into the slot picked (MINING_MODULES), 5 an item's shop line,
         // which unfolds its shops, 6 Less under them, 9 the unfolded item's
         // row, both of which fold them again (5, 6, 9: the item's index in
-        // its table), 7 a gadget's Fit (MINING_GADGETS), 8 a slot's chip,
-        // which picks the slot (its place on the head)
+        // its table), 8 a slot's chip, which picks the slot (its place on
+        // the head)
         int kind;
         int value;
         std::string item;   // 5, 6 and 9: the item's name at UEX

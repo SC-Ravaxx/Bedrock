@@ -6332,7 +6332,7 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
         std::wstring name, effect, stats;
         std::string item;      // its name at UEX
         int index = -1;        // in its table
-        bool fitted = false;   // on the head (or carried): framed green
+        bool fitted = false;   // on the head: framed green
         bool here = false;     // ...where its button would put it: FITTED instead
         bool button = false;   // Fit or Swap, whether it can be pressed or not
         bool can = false;      // ...and it can
@@ -6385,17 +6385,15 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
             rows.push_back(std::move(r));
         }
     } else {
-        // the gadgets: the one carried is the player's pick, as in Edit ship
+        // the gadgets: where to buy them, and nothing more - a gadget is not
+        // fitted to the ship but stuck on the rock by hand, and which one is
+        // on it is picked in the rock view
         for (int i = 0; i < MINING_GADGET_COUNT; i++) {
             const MiningGadget& gd = MINING_GADGETS[i];
             Row r;
             r.name = toW(gd.name);
             r.item = gd.name;
             r.index = i;
-            r.fitted = fittedGadget_ == &gd;
-            r.here = r.fitted;
-            r.button = !r.here;
-            r.can = r.button;
             rows.push_back(std::move(r));
         }
     }
@@ -6479,8 +6477,8 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
         const float rowY = y;
         y += r.pitch;
         if (rowY + r.pitch < view.Y || rowY - scaleF(6) > view.GetBottom()) continue;
-        // Fit under a head's price; Swap or Fit beside a module's, Fit
-        // beside a gadget's - or FITTED in its place
+        // Fit under a head's price; Swap or Fit beside a module's - or FITTED
+        // in its place; a gadget's price alone
         const Gdiplus::RectF button(right - rowButtonW, rowY + scaleF(headsList ? 23.0f : 6.0f), rowButtonW, buttonH);
         const bool buttonPlace = r.button || r.here;
         // The row's own lines and, round them alone, its frame: green where
@@ -6598,15 +6596,15 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
                          seen(place) ? &dimBrush : &faintBrush);
             hit(place, 5, r.index, r.item);
         }
-        // FITTED where the item already is - the head's laser, the gadget
-        // carried, the module in the slot picked; else Fit or Swap, quiet
-        // where the head has no slot for it
+        // FITTED where the item already is - the head's laser, the module in
+        // the slot picked; else Fit or Swap, quiet where the head has no slot
+        // for it
         if (r.here) {
             g.DrawString(L"FITTED", -1, &labelFont, Gdiplus::RectF(left, button.Y, wide, buttonH), &rightMiddle,
                          &greenBrush);
         } else if (r.button && r.can) {
             drawButton(g, button, press, fieldFont, ButtonKind::Secondary, seen(button), radius);
-            hit(button, tab == 0 ? 3 : tab == 1 ? 4 : 7, r.index, r.item);
+            hit(button, tab == 0 ? 3 : 4, r.index, r.item);
         } else if (r.button) {
             strokeRoundRect(g, button, radius, COL_BORDER);
             g.DrawString(press, -1, &fieldFont, button, &centred, &faintBrush);
@@ -6704,13 +6702,6 @@ void MinerGUI::pressGear(HWND hwnd, float px, float py) {
                     gearScroll_ = 0.0f;
                     gearOpen_.clear();
                 }
-                break;
-            case 7:
-                // as a click on the gadget in Edit ship
-                pickGadget(&MINING_GADGETS[hit.value]);
-                storeHead();
-                craftedEditing_ = false;
-                saveLoadout();
                 break;
             case 5:
                 gearOpen_ = gearOpen_ == hit.item ? std::string() : hit.item;
