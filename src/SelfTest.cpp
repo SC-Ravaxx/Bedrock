@@ -224,8 +224,12 @@ int runSelfTest() {
         using SCMiner::ContractScan;
         allPassed &= check(ContractScan::bareTitle("Ship In Distress <EM4>[300 Rep] [BP]*</EM4>") == "Ship In Distress" &&
                                ContractScan::bareTitle("Deep space hit <EM4>[BP]</EM4>") == "Deep space hit" &&
-                               ContractScan::bareTitle("Crew Hasn't Checked In [60/100 Rep]*") == "Crew Hasn't Checked In",
-                           "a contract's title comes off the log without Bedrock's marks and the reputation");
+                               ContractScan::bareTitle("Crew Hasn't Checked In [60/100 Rep]*") == "Crew Hasn't Checked In" &&
+                               ContractScan::bareTitle("Master Rank - Direct Grade B Cargo Haul \xC2\xB7 Lorville > Area18 "
+                                                       "<EM4>[BP]</EM4>") == "Master Rank - Direct Grade B Cargo Haul" &&
+                               ContractScan::bareTitle("Red Wind Seeking New Haulers \xC2\xB7 to Area18") ==
+                                   "Red Wind Seeking New Haulers",
+                           "a contract's title comes off the log without Bedrock's marks, the route of a haul and the reputation");
         allPassed &= check(ContractScan::titleMatches("Take Outlaws at {*} Offline", "take outlaws at Rat's Nest offline") &&
                                !ContractScan::titleMatches("Take Outlaws at {*} Offline", "Take Outlaws at Rat's Nest") &&
                                ContractScan::payoutFor("Ship In Distress") != nullptr &&
@@ -2543,7 +2547,8 @@ int runSelfTest() {
             const std::string k = SCMiner::GAME_TEXT_MARKS[i].key;
             if (title.empty() && std::strncmp(SCMiner::GAME_TEXT_MARKS[i].text, "{S}{T", 5) == 0) title = k;
             if (withP.empty() && k.size() > 2 && k.compare(k.size() - 2, 2, ",P") == 0 &&
-                std::strncmp(SCMiner::GAME_TEXT_MARKS[i].text, "\\n\\n", 4) == 0) {
+                std::strncmp(SCMiner::GAME_TEXT_MARKS[i].text, "\\n\\n", 4) == 0 &&
+                std::strstr(SCMiner::GAME_TEXT_MARKS[i].text, "<EM4>BLUEPRINTS</EM4>")) {
                 withP = k;    // a description's, which gets a list
             }
         }
@@ -2556,13 +2561,37 @@ int runSelfTest() {
         const std::string first = "\xEF\xBB\xBF" + upper + "=Wanted <EM4>[BP";
         allPassed &= check(!title.empty() && !withP.empty() && marked == 2 && out.compare(0, first.size(), first) == 0 &&
                                out.find("\r\nnot_a_contract=Stays\r\n") != std::string::npos &&
-                               out.find("=Text\\n\\n<EM4>BLUEPRINTS</EM4>") != std::string::npos &&
+                               (out.find("=Text\\n\\n<EM4>DIFFICULTY</EM4>") != std::string::npos ||
+                                out.find("=Text\\n\\n<EM4>BLUEPRINTS</EM4>") != std::string::npos) &&
+                               out.find("<EM4>BLUEPRINTS</EM4>") != std::string::npos &&
                                out.find("\r\nbedrock_game_texts=Written by Bedrock") != std::string::npos,
                            "the game's file comes back line for line, marks added, and Bedrock's line last (" +
                                std::to_string(marked) + " marked)");
         allPassed &= check(GameTexts::isOurs(out) && GameTexts::isOurs("a=b\\n<EM4>BLUEPRINTS</EM4> \xC2\xB7 One of 3") &&
                                !GameTexts::isOurs("a=b <EM4>Potential Blueprints</EM4>"),
                            "Bedrock's file is known as Bedrock's, a pack's is not");
+        // ...a contract's description how hard it is and how many enemy ships
+        // it puts up at once, above its blueprints, and a haul's title where it
+        // goes - the places filled in by the game
+        {
+            const std::string hauls =
+                "Covalex_HaulCargo_AToB_title=~mission(ReputationRank) Rank - Direct Cargo Haul\r\n"
+                "RedWind_HaulCargo_AToB_title_01=Haul\r\n"
+                "RedWind_HaulCargo_MultiToSingle_title_01=Haul \r\n"
+                "Foxwell_ShipWaveAttack_ClearHostiles_Desc_M_001=Text\r\n";
+            std::string withRoutes;
+            GameTexts::compose(hauls, owns({}), withRoutes);
+            allPassed &= check(withRoutes.find("Rank - Direct Cargo Haul \xC2\xB7 ~mission(Location|Name) > "
+                                               "~mission(Destination|Name) <EM4>[BP]</EM4>\r\n") != std::string::npos &&
+                                   withRoutes.find("RedWind_HaulCargo_AToB_title_01=Haul \xC2\xB7 ~mission(Location|Name) > "
+                                                   "~mission(Destination|Name)\r\n") != std::string::npos &&
+                                   withRoutes.find("RedWind_HaulCargo_MultiToSingle_title_01=Haul \xC2\xB7 to "
+                                                   "~mission(Destination|Name)\r\n") != std::string::npos &&
+                                   withRoutes.find("=Text\\n\\n<EM4>DIFFICULTY</EM4> 5.0 of 7 \xC2\xB7 Up to 4 enemy ships at a "
+                                                   "time\\n\\n<EM4>BLUEPRINTS</EM4> \xC2\xB7 One of 6") != std::string::npos,
+                               "a haul's title says where it goes, a contract's description how hard it is and how many "
+                               "enemy ships come at once, above its blueprints");
+        }
 
         // ...and the names: class, size and grade before a component's,
         // tracking signal and size before a missile's - read off the game's

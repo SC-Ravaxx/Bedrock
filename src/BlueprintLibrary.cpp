@@ -103,6 +103,12 @@ std::string ContractScan::bareTitle(std::string_view logTitle) {
     for (const char* mark : {"[BP*]", "[BP]"}) {
         for (size_t k; (k = s.find(mark)) != std::string::npos;) s.erase(k, std::strlen(mark));
     }
+    // ...and the route Bedrock writes after a haul's title, the places filled
+    // in by the game: " · Lorville > Area18" (no title of the game's has a "·")
+    for (const char* dot : {" \xC2\xB7 ", " \xB7 "}) {
+        const size_t k = s.find(dot);
+        if (k != std::string::npos) s.erase(k);
+    }
     auto trimEnd = [&] {
         while (!s.empty() && (s.back() == ' ' || s.back() == '*')) s.pop_back();
     };

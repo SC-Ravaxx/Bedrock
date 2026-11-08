@@ -29,6 +29,11 @@ What gets added, and only this, at the end of the game's values:
   - a variant that pays nothing under a [BP*] title says so, and which
     variant does ('They Will Be Missed': the Neutral contract is not the
     Veteran one)
+  - every contract's DESCRIPTION gets how hard it is and how many enemy
+    ships it puts up at once, above the blueprints where it has them:
+        DIFFICULTY 5.0 of 7 · Up to 4 enemy ships at a time
+  - a haul's TITLE gets where it goes, filled in by the game:
+        ... Cargo Haul · Lorville > Area18 [BP]
 
 What depends on the player is left as a token for GameTexts.cpp to fill in:
     {S}                   a space, unless the game's value ends with one
@@ -531,6 +536,68 @@ for key, users in desc_users.items():
     marks[key] = NL + NL + "<EM4>BLUEPRINTS</EM4> · None in this variant" + NL + note
     report["variants that pay nothing"] += 1
 
+# --- what a contract is like: how hard, what comes at you, where a haul goes ----
+# Every description of a released contract gets one line, above its blueprints
+# where it has them. The figure is the game's own weighting of its four
+# difficulty axes, 1 to 7 (gen_contracts_from_p4k.py, contract_facts); where
+# the contracts sharing the description differ, the line gives the span
+# ('3.0–5.0 of 7'). The ships are the most any of them puts up at once, enemy
+# groups only.
+def difficulty_line(users):
+    scores = sorted({r.get("score") or 0 for r in users} - {0})
+    ships = max([r.get("ships") or 0 for r in users] or [0])
+    if scores:
+        lo, hi = scores[0], scores[-1]
+        line = "<EM4>DIFFICULTY</EM4> " + ("%.1f" % lo if lo == hi else "%.1f–%.1f" % (lo, hi)) + " of 7"
+        if ships:
+            line += " · Up to %d enemy ship%s at a time" % (ships, "" if ships == 1 else "s")
+        return line
+    if ships:
+        return "<EM4>ENEMY SHIPS</EM4> Up to %d at a time" % ships
+    return ""
+
+
+title_users = defaultdict(list)
+for r in all_records:
+    k = real_key(r["titleKey"])
+    if k:
+        title_users[k].append(r)
+for key, users in desc_users.items():
+    line = difficulty_line(users)
+    # (Hockrow's hard black box runs name their title as their description too)
+    if not line or not game[key].strip() or key in title_users:
+        continue
+    marks[key] = NL + NL + line + marks.get(key, "")
+    report["descriptions with difficulty"] += 1
+
+# A haul's title gets where it goes, by the tokens the game's own briefings name
+# the places with - the game fills them in: where it picks up and where it drops
+# off ('Lorville > Area18'); with several pick-ups only where it ends ('to
+# Area18'), with several drop-offs only where it starts ('from Lorville'). Only
+# where every contract going by the title is that kind of haul (its stops are
+# the PickupLocation and DropoffLocation variables), and the briefing of one of
+# them uses that token: then the game is known to fill it in for them.
+PICKUP, DROPOFF = "~mission(Location|Name)", "~mission(Destination|Name)"
+for key, users in title_users.items():
+    if not game[key].strip() or not all((r.get("pickups") or 0) >= 1 and (r.get("dropoffs") or 0) >= 1 for r in users):
+        continue
+    briefings = " ".join(game.get(real_key(r["descKey"]), "") for r in users)
+    if all(r["pickups"] == 1 and r["dropoffs"] == 1 for r in users):
+        route, needs = PICKUP + " > " + DROPOFF, ("Location", "Destination")
+    elif all(r["dropoffs"] == 1 for r in users):
+        route, needs = "to " + DROPOFF, ("Destination",)
+    elif all(r["pickups"] == 1 for r in users):
+        route, needs = "from " + PICKUP, ("Location",)
+    else:
+        report["hauls with stops on both ends"] += 1
+        continue
+    if not all(re.search(r"~mission\(%s[|)]" % n, briefings, re.I) for n in needs):
+        report["hauls whose briefings name no such place"] += 1
+        continue
+    tag = marks.get(key, "")
+    marks[key] = "{S}· " + route + (" " + tag[3:] if tag.startswith("{S}") else tag)
+    report["haul titles with their route"] += 1
+
 # --- what a contract is sure to pay out of ---------------------------------------
 # For BlueprintLibrary: while one of its blueprints is missing, a contract that
 # pays out blueprints gives one every time it is completed, and once it has
@@ -650,8 +717,11 @@ TOKEN = re.compile(r"\{S\}|\{I-?\d+\|[^{}]*\}|\{[OA]\d+:[\d,]*\}|\{T\d+:[\d,]*\|
 for key, text in marks.items():
     literal = TOKEN.sub("", text)
     assert "{" not in literal and "}" not in literal, key
-    assert "[BP" in text or "<EM4>BLUEPRINTS</EM4>" in text, key
-    assert "Rep]" not in text and "Reputation" not in text and "~mission(" not in text, key
+    assert any(k in text for k in ("[BP", "<EM4>BLUEPRINTS</EM4>", "<EM4>DIFFICULTY</EM4>", "<EM4>ENEMY SHIPS</EM4>",
+                                   PICKUP, DROPOFF)), key
+    # the game's tokens only as the route of a haul, and nothing of a pack's
+    assert "Rep]" not in text and "Reputation" not in text, key
+    assert "~mission(" not in text.replace(PICKUP, "").replace(DROPOFF, ""), key
 
 
 def esc(s):

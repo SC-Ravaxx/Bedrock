@@ -724,7 +724,8 @@ for path in walk(os.path.join("contracts", "contractgenerator")):
             all_records.append({"titleKey": _tk, "descKey": _md.group(1) if _md else "",
                                 "debug": _dbg, "contract": gen_name + "/" + _dbg if gen_name and _dbg else "",
                                 "standing": standing_names.get((re.search(r'minStanding="([0-9a-f-]{36})"', _blk) or [None, ""])[1], ""),
-                                "bp": "blueprintPool" in _blk, "unreleased": 'notForRelease="1"' in _head})
+                                "bp": "blueprintPool" in _blk, "unreleased": 'notForRelease="1"' in _head,
+                                **{k: v for k, v in contract_facts(_blk).items() if k in ("score", "ships", "pickups", "dropoffs")}})
     if "BlueprintRewards" not in text:
         continue
     contract_files += 1
@@ -809,7 +810,8 @@ for path in walk(os.path.join("contracts", "contractgenerator")):
             all_records.append({"titleKey": _tk, "descKey": _md.group(1) if _md else "",
                                 "debug": _dbg, "contract": gen_name + "/" + _dbg if gen_name and _dbg else "",
                                 "standing": standing_names.get((re.search(r'minStanding="([0-9a-f-]{36})"', block) or [None, ""])[1], ""),
-                                "bp": "blueprintPool" in block, "unreleased": 'notForRelease="1"' in _head})
+                                "bp": "blueprintPool" in block, "unreleased": 'notForRelease="1"' in _head,
+                                **{k: v for k, v in contract_facts(block).items() if k in ("score", "ships", "pickups", "dropoffs")}})
             if "blueprintPool" not in block:
                 continue
             # ...and what the game has not released is not a way to earn
