@@ -2003,6 +2003,12 @@ public:
     // then the gems of ROC deposits, then the hand-mined ones, each family
     // best chance first. Public for the self-test.
     static std::vector<OreLocation> minedAt(const std::string& place);
+    // The suit a place's surface asks for, where the game's files make it
+    // plain: in the place's row "Hot - Pembroke suit", on its card the state
+    // in capitals and the rest after it ("HOT SURFACE", " - Pembroke suit").
+    // All empty for every other place. Public for the self-test.
+    struct SuitWords { std::wstring row, state, rest; };
+    static SuitWords suitWordsAt(const std::string& place);
 private:
     bool anyWantedResult() const;   // ...for any match on screen, so the blink repaints
     // Whether a part of the rock on view is one the player is after: its

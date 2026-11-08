@@ -2653,6 +2653,17 @@ int runScreenshots(const std::string& dir) {
     gui.openOreForShot("Aluminium");
     pump();
     if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_long.png", true);
+    // ...and the places whose surface asks for a suit: Feynmaline's, three
+    // hot and Terminus cold; then Aberdeen's card
+    gui.openOreForShot("Feynmaline");
+    pump();
+    if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_suits.png", true);
+    {
+        const bool listed = gui.pointInPlannerForShot(10, "Aberdeen", true);
+        pump();
+        if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_place_suit.png", true);
+        std::cout << "ore finder suits: " << (listed ? "Aberdeen's card" : "ABERDEEN NOT LISTED") << std::endl;
+    }
     // ...and an ore the player has traded: their own deals under what a rock
     // of it holds - bought refined for a recipe, sold as it came out of the
     // rock; a request the shop refused is not among them

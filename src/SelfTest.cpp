@@ -6947,6 +6947,34 @@ int runSelfTest() {
         }
         allPassed &= check(unlisted == 0, "Every place a list names has that mineral on its own list (" +
                                               std::to_string(unlisted) + " missing)");
+        // ...and the suit a place's surface asks for, where the game's files
+        // make it plain, in its rows and on its card: three hot places and
+        // Terminus. The Terminus Ring is a belt, and Daymar's figure (160 C)
+        // is no answer: neither names one, nor does any other place.
+        bool suits = true;
+        for (const char* hot : {"Aberdeen", "Arial", "Pyro I"}) {
+            const auto words = SCMiner::MinerGUI::suitWordsAt(hot);
+            suits &= words.row == L"Hot - Pembroke suit" && words.state + words.rest == L"HOT SURFACE - Pembroke suit";
+        }
+        const auto cold = SCMiner::MinerGUI::suitWordsAt(terminus);
+        suits &= cold.row == L"Cold - Novikov suit" && cold.state + cold.rest == L"COLD SURFACE - Novikov suit";
+        for (const char* none : {"Terminus Ring", "Daymar", "Hurston"}) {
+            const auto words = SCMiner::MinerGUI::suitWordsAt(none);
+            suits &= words.row.empty() && words.state.empty() && words.rest.empty();
+        }
+        allPassed &= check(suits, "Aberdeen, Arial and Pyro I ask for the Pembroke suit, Terminus for the Novikov; "
+                                  "the Terminus Ring, Daymar and Hurston for none");
+        std::vector<std::string> suited;
+        for (const auto& row : SCMiner::ORE_LOCATIONS) {
+            if (!SCMiner::MinerGUI::suitWordsAt(row.location).row.empty() &&
+                std::find(suited.begin(), suited.end(), row.location) == suited.end()) {
+                suited.push_back(row.location);
+            }
+        }
+        std::sort(suited.begin(), suited.end());
+        allPassed &= check(suited == std::vector<std::string>{"Aberdeen", "Arial", "Pyro I", "Pyro VI (Terminus)"},
+                           "Of the places the tables list, those four alone name a suit (" +
+                               std::to_string(suited.size()) + ")");
     }
 
     // --- refinery table ---

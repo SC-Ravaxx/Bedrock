@@ -615,6 +615,17 @@ float lineWidth(Gdiplus::Graphics& g, const std::wstring& t, const Gdiplus::Font
 #endif
 }
 
+// Where the last part of a line starts when it is drawn in a colour of its
+// own right after the rest (a place's suit after its small words): the whole
+// line's width less the part's, each measured with GDI+'s padding
+float tailOffset(Gdiplus::Graphics& g, const std::wstring& lead, const std::wstring& tail, const Gdiplus::Font& f) {
+    const std::wstring line = lead + tail;
+    Gdiplus::RectF whole, part;
+    g.MeasureString(line.c_str(), (INT)line.size(), &f, Gdiplus::PointF(0, 0), &whole);
+    g.MeasureString(tail.c_str(), (INT)tail.size(), &f, Gdiplus::PointF(0, 0), &part);
+    return whole.Width - part.Width;
+}
+
 // A text in lines `room` wide: on one where it fits; otherwise broken where
 // its parts meet ("a  \u00B7  b", the separator left out at a break), and
 // between words only inside a part wider than the room. The breaks are its
@@ -8399,8 +8410,8 @@ int MinerGUI::drawLocationCard(Gdiplus::Graphics& g, int cw, int yPos, int ch) {
 
     // Each row's words, on one line beside the figure when they fit and on
     // two when they do not - the small words then under the name, as in the
-    // Ore Finder.
-    struct PlaceWords { std::wstring name, sub; bool twoLines = false; };
+    // Ore Finder, and last among them the suit a hot or cold place asks for.
+    struct PlaceWords { std::wstring name, sub, suit; bool twoLines = false; };
     std::vector<PlaceWords> words;
     const float lineH = scaleF(12);   // the second line
     {
@@ -8414,9 +8425,11 @@ int MinerGUI::drawLocationCard(Gdiplus::Graphics& g, int cw, int yPos, int ch) {
             w.sub = toW(row.kind);
             if (row.note[0]) w.sub += L"  ·  " + toW(row.note);
             if (!inSystem(row)) w.sub += L"  ·  " + toW(row.system);
+            w.suit = suitWordsAt(row.location).row;
+            if (!w.suit.empty()) w.sub += L"  \u00B7  ";
             Gdiplus::RectF nameW, subW;
             g.MeasureString(w.name.c_str(), -1, &rowFont, Gdiplus::PointF(0, 0), &nameW);
-            g.MeasureString(w.sub.c_str(), -1, &subFont, Gdiplus::PointF(0, 0), &subW);
+            g.MeasureString((w.sub + w.suit).c_str(), -1, &subFont, Gdiplus::PointF(0, 0), &subW);
             w.twoLines = nameW.Width + subW.Width > room;
             words.push_back(std::move(w));
         }
@@ -8502,17 +8515,30 @@ int MinerGUI::drawLocationCard(Gdiplus::Graphics& g, int cw, int yPos, int ch) {
         Gdiplus::SolidBrush* nameBrush = dimmed ? &faintBrush : &textBrush;
         const float textX = left + scaleF(8);
         g.DrawString(w.name.c_str(), -1, &rowFont, Gdiplus::PointF(textX, y + scaleF(4)), nameBrush);
+        Gdiplus::PointF subAt(textX, y + scaleF(20));
         if (w.twoLines) {
             // (a box taller than the line it adds: the descenders of
             // "lagrange" hang below it, and the groove lies lower still)
             g.DrawString(w.sub.c_str(), -1, &subFont,
-                         Gdiplus::RectF(textX, y + scaleF(20), rowW - scaleF(16), scaleF(15)), &trimmed,
+                         Gdiplus::RectF(subAt.X, subAt.Y, rowW - scaleF(16), scaleF(15)), &trimmed,
                          dimmed ? &faintBrush : &dimBrush);
         } else {
             Gdiplus::RectF measured;
             g.MeasureString(w.name.c_str(), -1, &rowFont, Gdiplus::PointF(0, 0), &measured);
-            g.DrawString(w.sub.c_str(), -1, &subFont, Gdiplus::PointF(textX + measured.Width, y + scaleF(7)),
-                         dimmed ? &faintBrush : &dimBrush);
+            subAt = Gdiplus::PointF(textX + measured.Width, y + scaleF(7));
+            g.DrawString(w.sub.c_str(), -1, &subFont, subAt, dimmed ? &faintBrush : &dimBrush);
+        }
+        if (!w.suit.empty()) {
+            // in the Caution colour, faded as the row is in another system
+            Gdiplus::SolidBrush cautionBrush(dimmed ? tint(COL_YELLOW, 150) : COL_YELLOW);
+            const float sx = subAt.X + tailOffset(g, w.sub, w.suit, subFont);
+            const float end = textX + rowW - scaleF(16);
+            if (!w.twoLines) {
+                g.DrawString(w.suit.c_str(), -1, &subFont, Gdiplus::PointF(sx, subAt.Y), &cautionBrush);
+            } else if (sx < end) {
+                g.DrawString(w.suit.c_str(), -1, &subFont, Gdiplus::RectF(sx, subAt.Y, end - sx, scaleF(15)), &trimmed,
+                             &cautionBrush);
+            }
         }
 
         std::wstringstream pct;
@@ -11234,6 +11260,41 @@ std::vector<OreLocation> MinerGUI::minedAt(const std::string& place) {
         out.insert(out.end(), rows.begin(), rows.end());
     }
     return out;
+}
+
+// The places whose surface the game's files make plainly too hot or too
+// cold for ordinary armor. One base temperature per body, state@temperature
+// in records\roomsystem\atmospherestatetemplates\system\<sys>\<body>.xml:
+// Aberdeen 523 K (250 C), Arial 498 K (225 C), Pyro I 499 K (226 C), Pyro VI
+// 140 K (-133 C). TemperatureResistance of the suits: Pembroke Exploration
+// Suit -75 to 225 C, Novikov Exploration Suit -225 to 75 C, ordinary armor
+// about -97 to 121 C. The other bodies' figures are no answer (Daymar's says
+// 160 C, players measured 108 C at most): no hint there, nor on the Terminus
+// Ring, a belt. Names as the ore tables spell them, matched whole.
+namespace {
+struct SurfaceSuit {
+    const char* place;
+    bool hot;
+    const wchar_t* suit;
+};
+const SurfaceSuit SURFACE_SUITS[] = {
+    {"Aberdeen", true, L"Pembroke suit"},
+    {"Arial", true, L"Pembroke suit"},
+    {"Pyro I", true, L"Pembroke suit"},
+    {"Pyro VI (Terminus)", false, L"Novikov suit"},
+};
+}  // namespace
+
+MinerGUI::SuitWords MinerGUI::suitWordsAt(const std::string& place) {
+    for (const SurfaceSuit& s : SURFACE_SUITS) {
+        if (_stricmp(s.place, place.c_str()) != 0) continue;
+        SuitWords words;
+        words.row = std::wstring(s.hot ? L"Hot" : L"Cold") + L" - " + s.suit;
+        words.state = s.hot ? L"HOT SURFACE" : L"COLD SURFACE";
+        words.rest = std::wstring(L" - ") + s.suit;
+        return words;
+    }
+    return {};
 }
 
 LRESULT MinerGUI::handleNotesMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -20430,16 +20491,22 @@ void MinerGUI::paintPlanner(HDC hdc) {
             const bool scopeUnder =
                 labelW.Width + scaleF(3) + lineWidth(g, subject, smallFont) + scaleF(8) + lineWidth(g, scope, subFont) > rw;
             const float scopeDown = scopeUnder ? scaleF(16) : 0.0f;
+            // A place whose surface asks for a suit names it on a line of
+            // its own under the heading; the rows go down by that line
+            const SuitWords placeSuit = byPlace ? suitWordsAt(plannerPlace_) : SuitWords();
+            const float suitDown = placeSuit.state.empty() ? 0.0f : scaleF(16);
+            Gdiplus::SolidBrush cautionBrush(COL_YELLOW);
 
-            float ry = listTop + scaleF(28) + scopeDown;
+            float ry = listTop + scaleF(28) + scopeDown + suitDown;
             const float prowH = scaleF(27);
             // Each row's words: the name, and after it in the small face what
-            // kind of place it is, which ones a generic name stands for, and the
-            // system. Where the two do not fit beside the figure, the small words
-            // take a second line under the name (Lagrange C names five points, the
-            // Pyro belt a sentence). A place's gems follow its ship's ores, each
-            // family under its name and signature as on the left.
-            struct PlaceWords { std::wstring name, sub; bool twoLines = false, headed = false; };
+            // kind of place it is, which ones a generic name stands for, the
+            // system and, in the Caution colour, the suit where the surface asks
+            // for one. Where the two do not fit beside the figure, the small
+            // words take a second line under the name (Lagrange C names five
+            // points, the Pyro belt a sentence). A place's gems follow its ship's
+            // ores, each family under its name and signature as on the left.
+            struct PlaceWords { std::wstring name, sub, suit; bool twoLines = false, headed = false; };
             std::vector<PlaceWords> words;
             const float lineH = scaleF(14);   // the second line
             const float headH = scaleF(26);   // a family's heading over its first gem
@@ -20456,11 +20523,13 @@ void MinerGUI::paintPlanner(HDC hdc) {
                     if (row.note[0]) w.sub += L"  ·  " + toW(row.note);
                     if (plannerSystem_ == "ALL") w.sub += L"  ·  " + toW(row.system);
                     if (byPlace) w.sub = toW(row.system) + L"  ·  " + toW(row.kind);
+                    if (!byPlace) w.suit = suitWordsAt(row.location).row;
+                    if (!w.suit.empty()) w.sub += L"  \u00B7  ";
                     w.headed = byPlace && row.family != before;
                     before = row.family;
                     Gdiplus::RectF nameW, subW;
                     g.MeasureString(w.name.c_str(), -1, &placeFont, Gdiplus::PointF(0, 0), &nameW);
-                    g.MeasureString(w.sub.c_str(), -1, &subFont, Gdiplus::PointF(0, 0), &subW);
+                    g.MeasureString((w.sub + w.suit).c_str(), -1, &subFont, Gdiplus::PointF(0, 0), &subW);
                     w.twoLines = nameW.Width + subW.Width > room;
                     words.push_back(std::move(w));
                 }
@@ -20825,6 +20894,13 @@ void MinerGUI::paintPlanner(HDC hdc) {
                          Gdiplus::PointF(rx + labelW.Width + scaleF(3), listTop + scaleF(4)), &textBrush);
             Gdiplus::RectF scopeRect(rx, listTop + scaleF(5) + scopeDown, rw, scaleF(14));
             g.DrawString(scope.c_str(), -1, &subFont, scopeRect, &rightAlign, &faintBrush);
+            if (!placeSuit.state.empty()) {
+                const Gdiplus::PointF at(rx, listTop + scaleF(5) + scopeDown + scaleF(16));
+                g.DrawString(placeSuit.state.c_str(), -1, &subFont, at, &cautionBrush);
+                g.DrawString(placeSuit.rest.c_str(), -1, &subFont,
+                             Gdiplus::PointF(at.X + tailOffset(g, placeSuit.state, placeSuit.rest, subFont), at.Y),
+                             &dimBrush);
+            }
 
             if (rows.empty()) {
                 g.DrawString(L"No known locations for this ore", -1, &subFont, Gdiplus::PointF(rx, ry + scaleF(4)), &dimBrush);
@@ -20862,14 +20938,24 @@ void MinerGUI::paintPlanner(HDC hdc) {
                 else planHits_.push_back({band, row.family == MiningFamily::ROC ? 11 : 12, row.mineral});
                 g.DrawString(w.name.c_str(), -1, &placeFont, Gdiplus::PointF(rx, ry + scaleF(3)),
                              hot ? &accentBrush : &textBrush);
+                Gdiplus::PointF subAt(rx, ry + scaleF(22));
                 if (w.twoLines) {
-                    g.DrawString(w.sub.c_str(), -1, &subFont, Gdiplus::RectF(rx, ry + scaleF(22), rw, lineH),
+                    g.DrawString(w.sub.c_str(), -1, &subFont, Gdiplus::RectF(subAt.X, subAt.Y, rw, lineH),
                                  &trimmed, &dimBrush);
                 } else {
                     Gdiplus::RectF measured;
                     g.MeasureString(w.name.c_str(), -1, &placeFont, Gdiplus::PointF(0, 0), &measured);
-                    g.DrawString(w.sub.c_str(), -1, &subFont, Gdiplus::PointF(rx + measured.Width, ry + scaleF(6)),
-                                 &dimBrush);
+                    subAt = Gdiplus::PointF(rx + measured.Width, ry + scaleF(6));
+                    g.DrawString(w.sub.c_str(), -1, &subFont, subAt, &dimBrush);
+                }
+                if (!w.suit.empty()) {
+                    const float sx = subAt.X + tailOffset(g, w.sub, w.suit, subFont);
+                    if (!w.twoLines) {
+                        g.DrawString(w.suit.c_str(), -1, &subFont, Gdiplus::PointF(sx, subAt.Y), &cautionBrush);
+                    } else if (sx < rx + rw) {
+                        g.DrawString(w.suit.c_str(), -1, &subFont, Gdiplus::RectF(sx, subAt.Y, rx + rw - sx, lineH),
+                                     &trimmed, &cautionBrush);
+                    }
                 }
                 std::wstringstream pct;
                 pct << std::fixed << std::setprecision(1) << row.chance << L" %";
