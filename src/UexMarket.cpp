@@ -185,6 +185,10 @@ std::vector<UexListing> buyersFor(const std::vector<UexListing>& listings, int q
     std::vector<UexListing> out;
     for (const UexListing& listing : listings) {
         if (!listing.buying) continue;
+        // One that names no quality may be for any of the ore's: "Stileron
+        // 517 50K, 747 250K, 874 1.5M, 947 3M, 972 10M" at 10M, which pays
+        // 3M for a 947
+        if (listing.quality <= 0) continue;
         if (listing.quality > quality) continue;   // asks for better than the part is
         out.push_back(listing);
     }

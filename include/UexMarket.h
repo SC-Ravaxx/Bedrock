@@ -73,7 +73,8 @@ int itemFor(const std::map<std::string, int>& items, const std::string& ore);
 // seller asks most - the window turns the sellers round)
 bool readListings(const std::string& json, long long now, std::vector<UexListing>& out, std::string& why);
 // The listings that would buy the quality of a rock's part: buying, at
-// that quality or less asked for - none asks less than it gets
+// that quality or less asked for - none asks less than it gets - and
+// naming one: a listing without a quality may be for any of the ore's
 std::vector<UexListing> buyersFor(const std::vector<UexListing>& listings, int quality);
 
 }  // namespace UexMarket

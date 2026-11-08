@@ -2383,10 +2383,11 @@ int runSelfTest() {
                             threads.threadUrl(9).empty();
         allPassed &= check(talks && before && learnt, "the player's UEX conversations: the newest about a listing, its "
                                                       "page from a notification, the page's shape for the rest");
-        allPassed &= check(reads && forGood.size() == 2 && forLess.size() == 1 && named,
+        allPassed &= check(reads && forGood.size() == 1 && forGood[0].quality == 960 && forLess.empty() && named,
                            "the UEX marketplace read: figures as numbers or strings, sold out, lapsed and other "
                            "currencies out, quality 0 or 1 none, renewed from the approval, cSCU counted in SCU; "
-                           "a buyer for better than the part is none; ice is the marketplace's Pressurized Ice (got " +
+                           "a buyer for better than the part is none, nor one that names no quality; ice is the "
+                           "marketplace's Pressurized Ice (got " +
                                std::to_string(listings.size()) + ")");
     }
 
