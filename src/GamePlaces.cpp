@@ -121,6 +121,19 @@ std::string systemOfAbbreviation(std::string_view s) {
     return "";
 }
 
+// Where a jump point leads. The two between Stanton and Nyx kept the names
+// of an older plan: the one in Stanton is named for Magnus, the one in Nyx
+// for Castra (rs_ext_stan-magnus_jp1, rs_ext_nyx-castra_jp1, and the
+// gateways' codes RR_JP_StantonMagnus, RR_JP_NyxCastra). The game's files
+// put the Nyx Gateway (Stanton_Nyx_JPStation) at the first and the Stanton
+// Gateway (Nyx_Stanton_JPStation) at the second (4.10.2), and neither
+// Magnus nor Castra can be reached: each leads to the other of the two.
+std::string leadsTo(const std::string& from, const std::string& named) {
+    if (sameName(from, "Stanton") && sameName(named, "Magnus")) return "Nyx";
+    if (sameName(from, "Nyx") && sameName(named, "Castra")) return "Stanton";
+    return named;
+}
+
 // "rs_ext_nyx-pyro_jp1" / "LOC_rs_ext_stan-magnus_jp1" -> (from, to)
 bool jumpPoint(std::string_view name, std::string* from, std::string* to) {
     static const std::regex form(R"(rs_ext_([a-z]+)-([a-z]+)_jp)", std::regex::icase);
@@ -130,7 +143,7 @@ bool jumpPoint(std::string_view name, std::string* from, std::string* to) {
     const std::string a = systemOfAbbreviation(m[1].str()), b = systemOfAbbreviation(m[2].str());
     if (a.empty() || b.empty()) return false;
     if (from) *from = a;
-    if (to) *to = b;
+    if (to) *to = leadsTo(a, b);
     return true;
 }
 
@@ -230,7 +243,7 @@ GamePlace placeByLocationCode(std::string_view code, std::string_view systemHint
         if (std::regex_match(name.c_str(), m, form)) {
             const std::string from = systemOfAbbreviation(m[1].str()), to = systemOfAbbreviation(m[2].str());
             if (from.empty() || to.empty()) return {};
-            return {to + " Gateway", from, "", 0};
+            return {leadsTo(from, to) + " Gateway", from, "", 0};
         }
     }
     {

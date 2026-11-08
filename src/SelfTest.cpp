@@ -4309,9 +4309,51 @@ int runSelfTest() {
                            "rs_ext_pyro3_leo is Orbituary, rs_ext_pyro6_leo Ruin Station, rs_ext_cru-leo1 Seraphim "
                            "Station; rs_ext_pyro2_l4 and P5_L3 are Pyro's Lagrange points, OOC_Stanton2_L2 is CRU-L2");
         allPassed &= check(SCMiner::jumpDestination("rs_ext_nyx-pyro_jp1") == "Pyro" &&
-                               SCMiner::jumpDestination("LOC_rs_ext_stan-magnus_jp1") == "Magnus" &&
+                               SCMiner::jumpDestination("LOC_rs_ext_stan-magnus_jp1") == "Nyx" &&
+                               SCMiner::jumpDestination("rs_ext_nyx-castra_jp1") == "Stanton" &&
                                SCMiner::jumpDestination("pyro2").empty(),
-                           "a jump point names the far side");
+                           "a jump point names the far side - Stanton's named for Magnus leads to Nyx, Nyx's named "
+                           "for Castra to Stanton");
+        {
+            // ...and so do the gateways' codes: the Stanton Gateway in Nyx,
+            // the Nyx Gateway in Stanton (a terminal opened at each, 31 Oct)
+            const auto inNyx = placeByLocationCode("RR_JP_NyxCastra", "");
+            const auto inStanton = placeByLocationCode("RR_JP_StantonMagnus", "");
+            const auto atPoint = placeByDestination("rs_ext_nyx-castra_jp1", "");
+            allPassed &= check(inNyx.name == "Stanton Gateway" && inNyx.system == "Nyx" &&
+                                   inStanton.name == "Nyx Gateway" && inStanton.system == "Stanton" &&
+                                   atPoint.name == "Stanton Gateway" && atPoint.system == "Nyx",
+                               "RR_JP_NyxCastra is the Stanton Gateway in Nyx, RR_JP_StantonMagnus the Nyx Gateway in "
+                               "Stanton (got " + inNyx.name + ", " + inStanton.name + ")");
+            // From Nyx to Stanton without a terminal on the way, as the log
+            // wrote it: after the crossing the ship is in Stanton, at the
+            // gateway there - not in a system named for the jump point
+            SCMiner::GameState crossing;
+            auto put = [&](const char* line) {
+                SCMiner::GameState::Event event;
+                if (SCMiner::GameState::parse(line, &event)) crossing.apply(event);
+            };
+            put("<2026-10-31T16:23:14.789Z> [Notice] <Player Selected Quantum Target - Local> [ItemNavigation][CL][31008] | "
+                "NOT AUTH | ESPR_Prowler_Utility_910484762854[910484762854]|CSCItemNavigation::OnPlayerSelectedQuantumTarget|"
+                "Player has selected point rs_ext_nyx-castra_jp1 as their destination, routing locally "
+                "[Team_CGP4][QuantumTravel]");
+            put("<2026-10-31T16:23:14.789Z> [Notice] <Calculate Route> [ItemNavigation][CL][31008] | NOT AUTH | "
+                "ESPR_Prowler_Utility_910484762854[910484762854]|CSCItemNavigation::CalculateRoute|Projected Start Location "
+                "is Nyx System for route to destination rs_ext_nyx-castra_jp1 [Team_CGP4][QuantumTravel]");
+            put("<2026-10-31T16:25:14.999Z> [Notice] <Quantum Drive Arrived - Arrived at Final Destination> "
+                "[ItemNavigation][CL][31008] | NOT AUTH | ESPR_Prowler_Utility_910484762854[910484762854]|"
+                "CSCItemNavigation::OnQuantumDriveArrived|Quantum Drive has arrived at final destination "
+                "[Team_CGP4][QuantumTravel]");
+            const bool before = crossing.system() == "Nyx" && crossing.place() == "Stanton Gateway";
+            const std::string beforeSaid = crossing.system() + ", " + crossing.place();
+            put("<2026-10-31T16:28:40.008Z> [Notice] <Calculate Route> [ItemNavigation][CL][31008] | NOT AUTH | "
+                "ESPR_Prowler_Utility_910484762854[910484762854]|CSCItemNavigation::CalculateRoute|Projected Start Location "
+                "is Nyx Gateway for route to destination ab_collector_gas_Stanton2 [Team_CGP4][QuantumTravel]");
+            allPassed &= check(before && crossing.system() == "Stanton" && crossing.place() == "Nyx Gateway",
+                               "from Nyx to Stanton: at the jump point still Nyx (got " + beforeSaid +
+                                   "), after it Stanton at the Nyx Gateway (got " + crossing.system() + ", " +
+                                   crossing.place() + ")");
+        }
         allPassed &= check(!placeByDestination("MISSION_QT_Quantum_Beacon_784491487948", "").known() &&
                                !placeByDestination("ObjectContainer_RestStop", "").known(),
                            "a beacon or an unnamed rest stop says nothing");
