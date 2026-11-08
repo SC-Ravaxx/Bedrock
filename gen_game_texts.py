@@ -30,15 +30,18 @@ What gets added, and only this, at the end of the game's values:
     variant does ('They Will Be Missed': the Neutral contract is not the
     Veteran one)
   - every contract's DESCRIPTION gets how hard it is, in the game's words,
-    how many enemy ships it puts up at once and what it brings in
-    reputation, above the blueprints where it has them:
+    how many enemy ships it puts up at once and what it brings, above the
+    blueprints where it has them:
         DIFFICULTY Hard · Up to 4 enemy ships at a time
-        REPUTATION 200 Standing · 50 Affinity
-  - every TITLE gets the word and what it brings, and a contract that brings
-    something from one place to another where it goes, filled in by the game:
+        STANDING 200
+        AFFINITY 50
+  - every TITLE gets the word and what it brings - Rep for Standing alone, a
+    career by its name - and a contract that brings something from one place
+    to another where it goes, filled in by the game:
         ... Cargo Haul · Easy · 100 Rep · 50 Affinity · Lorville > Area18 [BP]
+        Secure Site · Normal · 500 Security
     - where the contracts sharing a text differ, the least and the most:
-        Haul · Easy–Hard · 50–1,000 Rep · 0–50 Affinity · ...
+        Haul · Easy–Hard · 50–1,000 Hauling · 0–50 Affinity · ...
 
 What depends on the player is left as a token for GameTexts.cpp to fill in:
     {S}                   a space, unless the game's value ends with one
@@ -560,11 +563,14 @@ def level_words(users):
 
 
 # What completing it brings, as the contract states it (gen_contracts_from_p4k.py,
-# reputation_of, by the names the mobiGlas gives them): reputation on a ladder
-# - the outfit's Standing or a career's (Hauling, Security) - and Affinity with
-# whoever gave it, kept apart. Where the contracts sharing a text differ, the
-# least and the most, 0 for those without it. A contract that states nothing
-# (a career's names the ladder, not how much) leaves the text without it.
+# reputation_of, by the names the mobiGlas gives them) - three things the game
+# keeps apart: Standing with the outfit, whose ranks a player climbs (Jr.
+# Contractor, Sr. Contractor ...); a career's own ladder (Security, Hauling
+# ...), which opens more of that career's contracts and no rank with the
+# outfit; and Affinity with whoever gave it (Neutral, Liked, Exalted). Where
+# the contracts sharing a text differ, the least and the most, 0 for those
+# without it. A contract that states nothing (a career's names the ladder,
+# not how much) leaves the text without it.
 def stated_reps(users):
     reps = [r.get("rep") or {} for r in users]
     return reps if reps and all(reps) else []
@@ -575,27 +581,44 @@ def span(values):
     return "{:,}".format(lo) if lo == hi else "{:,}–{:,}".format(lo, hi)
 
 
-def title_reps(users):
-    reps = stated_reps(users)
-    ladder = [sum(amount for scope, amount in rep.items() if scope != "Affinity") for rep in reps]
-    affinity = [rep.get("Affinity", 0) for rep in reps]
-    parts = []
-    if any(ladder):
-        parts.append(span(ladder) + " Rep")
-    if any(affinity):
-        parts.append(span(affinity) + " Affinity")
-    return parts
+# Wikelo's own ladder, which the game calls Barter & Trade (New Customer to
+# Very Best Customer), is his alone and no career: it goes by its name, as
+# Standing and Affinity do.
+OWN_LADDERS = ("Standing", "Barter & Trade", "Affinity")
 
 
-def reputation_line(users):
+def what_it_brings(users):
+    """[(heading, name, word, values)], Standing first, Affinity last: the
+    description's heading and the name after the figure there, and the
+    title's word - a career by its name, Career where the game gives it none"""
     reps = stated_reps(users)
     scopes = []
     for rep in reps:
         scopes += [scope for scope in rep if scope not in scopes]
-    scopes.sort(key=lambda scope: scope == "Affinity")
-    # (a ladder known only by its record's name gets no name)
-    parts = [span([rep.get(scope, 0) for rep in reps]) + ("" if "_" in scope else " " + scope) for scope in scopes]
-    return "<EM4>REPUTATION</EM4> " + " · ".join(parts) if parts else ""
+    out = []
+    for scope in ["Standing", "Barter & Trade"] + sorted(s for s in scopes if s not in OWN_LADDERS) + ["Affinity"]:
+        values = [rep.get(scope, 0) for rep in reps]
+        if not any(values):
+            continue
+        if scope == "Standing":
+            out.append(("STANDING", "", "Rep", values))
+        elif scope in OWN_LADDERS:
+            out.append((scope.upper(), "", scope, values))
+        else:
+            name = "" if "_" in scope else scope
+            out.append(("CAREER", name, name or "Career", values))
+    return out
+
+
+# In a title: Rep for Standing alone, a career by its name, Affinity
+def title_reps(users):
+    return [span(values) + " " + word for heading, name, word, values in what_it_brings(users)]
+
+
+# In a description, a line each: STANDING 25, CAREER 500 Security, AFFINITY 50
+def reputation_lines(users):
+    return ["<EM4>%s</EM4> %s%s" % (heading, span(values), " " + name if name else "")
+            for heading, name, word, values in what_it_brings(users)]
 
 
 # Every description of a released contract gets a line or two above its
@@ -612,9 +635,7 @@ def difficulty_lines(users):
         lines.append(line)
     elif ships:
         lines.append("<EM4>ENEMY SHIPS</EM4> Up to %d at a time" % ships)
-    reputation = reputation_line(users)
-    if reputation:
-        lines.append(reputation)
+    lines += reputation_lines(users)
     return NL.join(lines)
 
 
@@ -827,7 +848,9 @@ for key, text in marks.items():
     literal = TOKEN.sub("", text)
     assert "{" not in literal and "}" not in literal, key
     assert text.startswith("{S}· ") or any(k in text for k in ("[BP", "<EM4>BLUEPRINTS</EM4>", "<EM4>DIFFICULTY</EM4>",
-                                                               "<EM4>ENEMY SHIPS</EM4>", "<EM4>REPUTATION</EM4>")), key
+                                                               "<EM4>ENEMY SHIPS</EM4>", "<EM4>STANDING</EM4>",
+                                                               "<EM4>CAREER</EM4>", "<EM4>AFFINITY</EM4>",
+                                                               "<EM4>BARTER & TRADE</EM4>")), key
     # the game's tokens only as the stops of a route, and nothing of a pack's
     assert "Rep]" not in text and "Reputation" not in text, key
     assert "~mission(" not in ROUTE_TOKEN.sub("", text), key

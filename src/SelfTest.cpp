@@ -233,7 +233,7 @@ int runSelfTest() {
                                ContractScan::bareTitle("Deep space hit \xC2\xB7 Easy \xC2\xB7 50 Rep <EM4>[BP]</EM4>") ==
                                    "Deep space hit" &&
                                ContractScan::bareTitle("Rookie Hauler Needed for Small Shipment \xC2\xB7 Easy\xE2\x80\x93Hard "
-                                                       "\xC2\xB7 50\xE2\x80\x93" "1,000 Rep \xC2\xB7 0\xE2\x80\x93" "50 Affinity "
+                                                       "\xC2\xB7 50\xE2\x80\x93" "1,000 Hauling \xC2\xB7 0\xE2\x80\x93" "50 Affinity "
                                                        "\xC2\xB7 Gaslight, ... > Canard View") ==
                                    "Rookie Hauler Needed for Small Shipment",
                            "a contract's title comes off the log without Bedrock's marks - how hard, what it brings, the "
@@ -2940,10 +2940,10 @@ int runSelfTest() {
                                !GameTexts::isOurs("a=b <EM4>Potential Blueprints</EM4>"),
                            "Bedrock's file is known as Bedrock's, a pack's is not");
         // ...a contract's description how hard it is, in the game's words, how
-        // many enemy ships it puts up at once and what it brings - reputation
-        // and Affinity apart - above its blueprints; its title the word and
-        // what it brings, and where it goes - the places filled in by the
-        // game: a haul's, a recovered cargo's, a distribution run's (whose
+        // many enemy ships it puts up at once and what it brings - Standing,
+        // a career and Affinity apart - above its blueprints; its title the
+        // word and what it brings, and where it goes - the places filled in by
+        // the game: a haul's, a recovered cargo's, a distribution run's (whose
         // first drop-off is Destination1 in one variant), an order's. Where
         // the contracts sharing a text differ (every rank and size of Red
         // Wind's hauls goes by one title), the least and the most. A Covalex
@@ -2959,6 +2959,8 @@ int runSelfTest() {
                 "Shubin_Industrial_ShipMining_Stanton_M_Solar_Title_001=Order\r\n"
                 "headhunters_EliminateSpecific_Asteroid_Generic_VE_title_001=Deep space hit\r\n"
                 "cfp_sabotage_generators_VE_title_001=Sabotage\r\n"
+                "EckhartSecurity_Defend_E_Title_001=Secure Site\r\n"
+                "TheCollector_Recipes_Title_VGLflightsuit=Flight suit\r\n"
                 "RedWind_HaulCargo_AToB_desc_01=Haul text\r\n"
                 "Foxwell_ShipWaveAttack_ClearHostiles_Desc_M_001=Text\r\n";
             std::string withRoutes;
@@ -2968,13 +2970,13 @@ int runSelfTest() {
             allPassed &= check(withRoutes.find("Rank - Direct Cargo Haul" + dot + "Easy" + dot + from + " > " + to +
                                                " <EM4>[BP]</EM4>\r\n") != std::string::npos &&
                                    withRoutes.find("RedWind_HaulCargo_AToB_title_01=Haul" + redWind + "50" + dash +
-                                                   "1,000 Rep" + dot + "0" + dash + "50 Affinity" + dot + from + " > " + to +
-                                                   "\r\n") != std::string::npos &&
-                                   withRoutes.find("RedWind_HaulCargo_MultiToSingle_title_01=Haul" + redWind + "200" + dash +
-                                                   "4,000 Rep" + dot + "0" + dash + "50 Affinity" + dot + from + ", ... > " +
+                                                   "1,000 Hauling" + dot + "0" + dash + "50 Affinity" + dot + from + " > " +
                                                    to + "\r\n") != std::string::npos &&
+                                   withRoutes.find("RedWind_HaulCargo_MultiToSingle_title_01=Haul" + redWind + "200" + dash +
+                                                   "4,000 Hauling" + dot + "0" + dash + "50 Affinity" + dot + from +
+                                                   ", ... > " + to + "\r\n") != std::string::npos &&
                                    withRoutes.find("RedWind_HaulCargo_SingleToMulti_title_01=Haul" + redWind + "100" + dash +
-                                                   "4,000 Rep" + dot + "0" + dash + "50 Affinity" + dot + from +
+                                                   "4,000 Hauling" + dot + "0" + dash + "50 Affinity" + dot + from +
                                                    " > ~mission(Destination1|Name), ...\r\n") != std::string::npos &&
                                    withRoutes.find("=Ling Shipment Recovery" + dot + "Easy" + dot + "100 Rep" + dot + from +
                                                    " > " + to + "\r\n") != std::string::npos &&
@@ -2984,16 +2986,20 @@ int runSelfTest() {
                                        std::string::npos &&
                                    withRoutes.find("=Sabotage" + dot + "Easy" + dot + "25 Rep" + dot +
                                                    "50 Affinity <EM4>[BP]</EM4>\r\n") != std::string::npos &&
+                                   withRoutes.find("=Secure Site" + dot + "Normal" + dot + "500 Security\r\n") !=
+                                       std::string::npos &&
+                                   withRoutes.find("=Flight suit" + dot + "10 Barter & Trade <EM4>[BP]</EM4>\r\n") !=
+                                       std::string::npos &&
                                    withRoutes.find("=Haul text\\n\\n<EM4>DIFFICULTY</EM4> Easy" + dash +
-                                                   "Hard\\n<EM4>REPUTATION</EM4> 50" + dash + "1,000 Hauling" + dot + "0" +
-                                                   dash + "50 Affinity\r\n") != std::string::npos &&
+                                                   "Hard\\n<EM4>CAREER</EM4> 50" + dash + "1,000 Hauling\\n<EM4>AFFINITY</EM4> 0" +
+                                                   dash + "50\r\n") != std::string::npos &&
                                    withRoutes.find("=Text\\n\\n<EM4>DIFFICULTY</EM4> Hard" + dot +
-                                                   "Up to 4 enemy ships at a time\\n<EM4>REPUTATION</EM4> 150 Standing"
+                                                   "Up to 4 enemy ships at a time\\n<EM4>STANDING</EM4> 150"
                                                    "\\n\\n<EM4>BLUEPRINTS</EM4>" + dot + "One of 6") != std::string::npos,
                                "a contract's title says how hard it is, what it brings and where it goes, its description "
                                "how hard it is, how many enemy ships come at once and what it brings, above its "
-                               "blueprints - reputation and Affinity apart, the least and the most where the contracts "
-                               "sharing a text differ");
+                               "blueprints - Standing, a career and Affinity apart, the least and the most where the "
+                               "contracts sharing a text differ");
         }
 
         // ...and the names: class, size and grade before a component's,
