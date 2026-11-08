@@ -753,6 +753,7 @@ for path in walk(os.path.join("contracts", "contractgenerator")):
                                 "debug": _dbg, "contract": gen_name + "/" + _dbg if gen_name and _dbg else "",
                                 "standing": standing_names.get((re.search(r'minStanding="([0-9a-f-]{36})"', _blk) or [None, ""])[1], ""),
                                 "bp": "blueprintPool" in _blk, "unreleased": 'notForRelease="1"' in _head,
+                                "rep": reputation_of(_blk),
                                 **{k: v for k, v in contract_facts(_blk).items() if k in ("score", "level", "ships", "from", "to")}})
     if "BlueprintRewards" not in text:
         continue
@@ -839,6 +840,7 @@ for path in walk(os.path.join("contracts", "contractgenerator")):
                                 "debug": _dbg, "contract": gen_name + "/" + _dbg if gen_name and _dbg else "",
                                 "standing": standing_names.get((re.search(r'minStanding="([0-9a-f-]{36})"', block) or [None, ""])[1], ""),
                                 "bp": "blueprintPool" in block, "unreleased": 'notForRelease="1"' in _head,
+                                "rep": reputation_of(block),
                                 **{k: v for k, v in contract_facts(block).items() if k in ("score", "level", "ships", "from", "to")}})
             if "blueprintPool" not in block:
                 continue

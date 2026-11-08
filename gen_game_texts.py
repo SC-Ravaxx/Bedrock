@@ -30,12 +30,15 @@ What gets added, and only this, at the end of the game's values:
     variant does ('They Will Be Missed': the Neutral contract is not the
     Veteran one)
   - every contract's DESCRIPTION gets how hard it is, in the game's words,
-    and how many enemy ships it puts up at once, above the blueprints where
-    it has them:
+    how many enemy ships it puts up at once and what it brings in
+    reputation, above the blueprints where it has them:
         DIFFICULTY Hard · Up to 4 enemy ships at a time
-  - every TITLE gets the same word, and a contract that brings something
-    from one place to another where it goes, filled in by the game:
-        ... Cargo Haul · Easy · Lorville > Area18 [BP]
+        REPUTATION 200 Standing · 50 Affinity
+  - every TITLE gets the word and what it brings, and a contract that brings
+    something from one place to another where it goes, filled in by the game:
+        ... Cargo Haul · Easy · 100 Rep · 50 Affinity · Lorville > Area18 [BP]
+    - where the contracts sharing a text differ, the least and the most:
+        Haul · Easy–Hard · 50–1,000 Rep · 0–50 Affinity · ...
 
 What depends on the player is left as a token for GameTexts.cpp to fill in:
     {S}                   a space, unless the game's value ends with one
@@ -538,7 +541,7 @@ for key, users in desc_users.items():
     marks[key] = NL + NL + "<EM4>BLUEPRINTS</EM4> · None in this variant" + NL + note
     report["variants that pay nothing"] += 1
 
-# --- what a contract is like: how hard, and where it goes ---------------------
+# --- what a contract is like: how hard, what it brings, where it goes --------
 # How hard, in the game's own words: the step of a contract's mechanical-skill
 # axis (<ContractDifficulty mechanicalSkill="Easy_PvE_only_action_3">), the one
 # axis the game names in plain words - and the word community sites show for
@@ -556,20 +559,63 @@ def level_words(users):
     return words[0] if len(words) == 1 else words[0] + "–" + words[-1]
 
 
-# Every description of a released contract gets one line, above its blueprints
-# where it has them: the word, and the most enemy ships any of the contracts
-# using it puts up at once (enemy groups only).
-def difficulty_line(users):
+# What completing it brings, as the contract states it (gen_contracts_from_p4k.py,
+# reputation_of, by the names the mobiGlas gives them): reputation on a ladder
+# - the outfit's Standing or a career's (Hauling, Security) - and Affinity with
+# whoever gave it, kept apart. Where the contracts sharing a text differ, the
+# least and the most, 0 for those without it. A contract that states nothing
+# (a career's names the ladder, not how much) leaves the text without it.
+def stated_reps(users):
+    reps = [r.get("rep") or {} for r in users]
+    return reps if reps and all(reps) else []
+
+
+def span(values):
+    lo, hi = min(values), max(values)
+    return "{:,}".format(lo) if lo == hi else "{:,}–{:,}".format(lo, hi)
+
+
+def title_reps(users):
+    reps = stated_reps(users)
+    ladder = [sum(amount for scope, amount in rep.items() if scope != "Affinity") for rep in reps]
+    affinity = [rep.get("Affinity", 0) for rep in reps]
+    parts = []
+    if any(ladder):
+        parts.append(span(ladder) + " Rep")
+    if any(affinity):
+        parts.append(span(affinity) + " Affinity")
+    return parts
+
+
+def reputation_line(users):
+    reps = stated_reps(users)
+    scopes = []
+    for rep in reps:
+        scopes += [scope for scope in rep if scope not in scopes]
+    scopes.sort(key=lambda scope: scope == "Affinity")
+    # (a ladder known only by its record's name gets no name)
+    parts = [span([rep.get(scope, 0) for rep in reps]) + ("" if "_" in scope else " " + scope) for scope in scopes]
+    return "<EM4>REPUTATION</EM4> " + " · ".join(parts) if parts else ""
+
+
+# Every description of a released contract gets a line or two above its
+# blueprints where it has them: the word and the most enemy ships any of the
+# contracts using it puts up at once (enemy groups only), then what it brings.
+def difficulty_lines(users):
     words = level_words(users)
     ships = max([r.get("ships") or 0 for r in users] or [0])
+    lines = []
     if words:
         line = "<EM4>DIFFICULTY</EM4> " + words
         if ships:
             line += " · Up to %d enemy ship%s at a time" % (ships, "" if ships == 1 else "s")
-        return line
-    if ships:
-        return "<EM4>ENEMY SHIPS</EM4> Up to %d at a time" % ships
-    return ""
+        lines.append(line)
+    elif ships:
+        lines.append("<EM4>ENEMY SHIPS</EM4> Up to %d at a time" % ships)
+    reputation = reputation_line(users)
+    if reputation:
+        lines.append(reputation)
+    return NL.join(lines)
 
 
 released_desc_users = defaultdict(list)
@@ -582,12 +628,12 @@ for r in all_records:
     if real_key(r["titleKey"]):
         title_users[real_key(r["titleKey"])].append(r)
 for key, users in released_desc_users.items():
-    line = difficulty_line(users)
+    line = difficulty_lines(users)
     # (Hockrow's hard black box runs name their title as their description too)
     if not line or not game[key].strip() or key in title_users:
         continue
     marks[key] = NL + NL + line + marks.get(key, "")
-    report["descriptions with difficulty"] += 1
+    report["descriptions with difficulty or reputation"] += 1
 
 
 # Where a contract goes: where it picks something up - or finds what it brings
@@ -643,6 +689,10 @@ for key, users in title_users.items():
     if words:
         parts.append(words)
         report["titles with difficulty"] += 1
+    reps = title_reps(users)
+    if reps:
+        parts += reps
+        report["titles with reputation or affinity"] += 1
     route = route_of(key, users)
     if route:
         parts.append(route)
@@ -777,7 +827,7 @@ for key, text in marks.items():
     literal = TOKEN.sub("", text)
     assert "{" not in literal and "}" not in literal, key
     assert text.startswith("{S}· ") or any(k in text for k in ("[BP", "<EM4>BLUEPRINTS</EM4>", "<EM4>DIFFICULTY</EM4>",
-                                                               "<EM4>ENEMY SHIPS</EM4>")), key
+                                                               "<EM4>ENEMY SHIPS</EM4>", "<EM4>REPUTATION</EM4>")), key
     # the game's tokens only as the stops of a route, and nothing of a pack's
     assert "Rep]" not in text and "Reputation" not in text, key
     assert "~mission(" not in ROUTE_TOKEN.sub("", text), key
