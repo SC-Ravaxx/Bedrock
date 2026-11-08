@@ -2991,6 +2991,23 @@ int runSelfTest() {
                           "the red-green sets hold for each other's kind (%.1f and %.1f, 12 or more)", pd, dp);
             allPassed &= check(pd >= 12.0 && dp >= 12.0, line);
         }
+        // A refinery's four workload steps, light to extreme: good, caution,
+        // the orange halfway to bad, bad - each apart from the next to
+        // normal sight in every set (the word beside them says the step to
+        // any eye)
+        {
+            double least = 99;
+            for (C::Set set : {C::Set::Bedrock, C::Set::Protanopia, C::Set::Deuteranopia, C::Set::Tritanopia}) {
+                const C::Scheme& s = C::preset(set);
+                const C::Rgb steps[4] = {s[C::Good], s[C::Caution], C::halfway(s[C::Caution], s[C::Bad]), s[C::Bad]};
+                for (int k = 0; k + 1 < 4; k++) least = (std::min)(least, C::difference(steps[k], steps[k + 1]));
+            }
+            std::snprintf(line, sizeof(line),
+                          "the refinery's workload steps are apart in every set (%.1f, 14 or more), heavy at %s",
+                          least, C::hex(C::halfway(bedrock[C::Caution], bedrock[C::Bad])).c_str());
+            allPassed &= check(least >= 14.0 && C::halfway(bedrock[C::Caution], bedrock[C::Bad]) == C::rgb(229, 140, 89),
+                               line);
+        }
 
         // Nothing a player picks makes a window unreadable: a white
         // background is darkened, words as dark as the window lightened

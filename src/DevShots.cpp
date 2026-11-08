@@ -2360,6 +2360,9 @@ int runScreenshots(const std::string& dir) {
         seen["Pyro Gateway (Nyx)"] = {96, 0, now - 3 * 3600, 2, false};
         seen["Orbituary"] = {148, 2, now - 7 * 60, 2, false};
         seen["HUR-L1 Green Glade Station"] = {-1, 1, now - 12 * 60, 1, false};
+        // ...and readings hours and a day old, which keep their colour
+        seen["ARC-L1 Wide Forest Station"] = {299, 2, now - 6 * 3600, 1, false};
+        seen["Ruin Station"] = {90, 0, now - 22 * 3600, 1, false};
         gui.setRefineryWorkloads(seen);
         gui.setRefineryShare(true, true);
         pump();

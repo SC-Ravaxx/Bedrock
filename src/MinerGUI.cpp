@@ -116,6 +116,7 @@ Gdiplus::Color COL_ACCENT_HI(250, 196, 98);  // the amber under the pointer
 Gdiplus::Color COL_GREEN(96, 202, 132);      // good: it breaks, the best match, done
 Gdiplus::Color COL_RED(234, 94, 86);         // bad: it will not hold, something went wrong
 Gdiplus::Color COL_YELLOW(224, 186, 92);     // caution: only with help, slow, nearly full
+Gdiplus::Color COL_ORANGE(229, 140, 89);     // between caution and bad: a refinery's heavy workload
 Gdiplus::Color COL_ACCENT_INK(28, 20, 6);    // words on an amber face
 // What is looked for, and what blinks with it: the ores ticked, the rows
 // they are in, the live dot - red like bad until the player says otherwise
@@ -204,6 +205,7 @@ void paintWith(const Colours::Scheme& s) {
     }
     COL_GREEN = colourOf(s[Good]);
     COL_YELLOW = colourOf(s[Caution]);
+    COL_ORANGE = colourOf(halfway(s[Caution], s[Bad]));
     COL_RED = colourOf(s[Bad]);
     COL_WANTED = colourOf(s[LookedFor]);
     COL_LEGENDARY = colourOf(s[Legendary]);
@@ -23627,13 +23629,18 @@ void MinerGUI::paintRefinery(HDC hdc) {
                 std::wstring words;
                 if (w.capacity >= 0) words = std::to_wstring(w.capacity) + L" %";
                 if (!level.empty()) words += (words.empty() ? L"" : L"  \u00B7  ") + level;
-                words += L"  \u00B7  " + when;
-                const Gdiplus::Color tone = age > 2 * 3600    ? COL_TEXT_FAINT
-                                            : w.workload == 0 ? COL_GREEN
-                                            : w.workload == 2 ? COL_YELLOW
-                                            : w.workload == 3 ? COL_RED
-                                                              : COL_TEXT_DIM;
-                Gdiplus::SolidBrush toneBrush(tone);
+                const std::wstring ago = L"  \u00B7  " + when;
+                // The workload in the colour of its step, however old the
+                // reading - light green, moderate yellow, heavy orange,
+                // extreme red; a capacity alone by the step it stands for,
+                // as the order by price takes it. The age beside it grey,
+                // fainter after two hours.
+                const Gdiplus::Color tone = row.level == 0   ? COL_GREEN
+                                            : row.level == 1 ? COL_YELLOW
+                                            : row.level == 2 ? COL_ORANGE
+                                            : row.level == 3 ? COL_RED
+                                                             : COL_TEXT_DIM;
+                Gdiplus::SolidBrush toneBrush(tone), agoBrush(age > 2 * 3600 ? COL_TEXT_FAINT : COL_TEXT_DIM);
                 Gdiplus::RectF nameW;
                 g.MeasureString(toW(st.name).c_str(), -1, &stationFont, Gdiplus::PointF(0, 0), &nameW);
                 const float from = rx + nameW.Width + scaleF(8);
@@ -23641,11 +23648,20 @@ void MinerGUI::paintRefinery(HDC hdc) {
                 if (to - from > scaleF(40)) {
                     // Beside a long name the level and its age come first:
                     // the surcharge goes by the level, not by the figure
-                    Gdiplus::RectF need;
-                    g.MeasureString(words.c_str(), -1, &subFont, Gdiplus::PointF(0, 0), &need);
-                    if (need.Width > to - from && !level.empty()) words = level + L"  \u00B7  " + when;
-                    g.DrawString(words.c_str(), -1, &subFont, Gdiplus::RectF(from, ry + scaleF(1), to - from, scaleF(16)),
-                                 &leftMid, &toneBrush);
+                    if (lineWidth(g, words + ago, subFont) > to - from && !level.empty()) words = level;
+                    const Gdiplus::RectF box(from, ry + scaleF(1), to - from, scaleF(16));
+                    g.DrawString(words.c_str(), -1, &subFont, box, &leftMid, &toneBrush);
+                    // ...and the age where its letters end: GDI+ measures a
+                    // line 3 % wider than it draws it, plus a sixth of an em
+                    // on each side
+                    Gdiplus::RectF drawn;
+                    g.MeasureString(words.c_str(), -1, &subFont, Gdiplus::PointF(0, 0), &drawn);
+                    const float em = subFont.GetSize();
+                    const float after = from + (std::max)(0.0f, (drawn.Width - em / 3.0f) / 1.03f);
+                    if (to - after > scaleF(12)) {
+                        g.DrawString(ago.c_str(), -1, &subFont, Gdiplus::RectF(after, box.Y, to - after, box.Height),
+                                     &leftMid, &agoBrush);
+                    }
                 }
             }
 

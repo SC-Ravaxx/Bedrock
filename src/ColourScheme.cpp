@@ -470,6 +470,10 @@ Rgb between(const Scheme& scheme, int r, int g, int b) {
 Rgb dimInk(const Scheme& scheme) { return between(scheme, 145, 150, 157); }
 Rgb faintInk(const Scheme& scheme) { return between(scheme, 93, 99, 108); }
 
+Rgb halfway(Rgb a, Rgb b) {
+    return rgb((redOf(a) + redOf(b)) / 2, (greenOf(a) + greenOf(b)) / 2, (blueOf(a) + blueOf(b)) / 2);
+}
+
 double plainestDifference(const Scheme& scheme, Vision vision, Role* which) {
     static const Role coloured[] = {Legendary, Epic, Rare, Uncommon, Highlight, Good, Caution, Bad, LookedFor};
     const Rgb plain[3] = {seenWith(scheme[Text], vision), seenWith(dimInk(scheme), vision),

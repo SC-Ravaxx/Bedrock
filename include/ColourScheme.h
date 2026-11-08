@@ -128,6 +128,9 @@ double worstDifference(const Scheme& scheme, Vision vision, Role* first = nullpt
 // (160,166,176) and (108,115,127).
 Rgb dimInk(const Scheme& scheme);
 Rgb faintInk(const Scheme& scheme);
+// Halfway between two colours, channel by channel: a step between two of a
+// set's own, as a refinery's heavy workload between caution and bad
+Rgb halfway(Rgb a, Rgb b);
 // ...and how near a colour that means something comes to those plain inks
 // or the text, as someone with the given vision sees it, and which colour
 // comes nearest: one that reads as plain grey or white says nothing. Common
