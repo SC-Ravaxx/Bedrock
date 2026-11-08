@@ -72,13 +72,14 @@ contracts and blueprints. It does not read the game's memory, attach to its
 process or inject anything. The `[BP]` option and the component names write a
 language file into the game folder, the way language packs do.
 
-Network: an update check (official builds only), UEX's public price lists
-while the Ore Finder is open, refinery workloads to and from Bedrock's server
-(official builds only; untick "Share refinery workloads" in the Refinery
-window to stop sending - what is sent is listed in `dist/README.txt`), your
-refinery jobs to UEX only if you switch that on, and terminal prices to UEX
-only if you switch the UEX Datarunner on and click Send. The update check and
-the refinery workloads carry a random number made for the install
+Network: an update check, the plugin list and the plugins you install
+(official builds only), UEX's public price lists while the Ore Finder is open,
+refinery workloads to and from Bedrock's server (official builds only; untick
+"Share refinery workloads" in the Refinery window to stop sending - what is
+sent is listed in `dist/README.txt`), your refinery jobs to UEX only if you
+switch that on, and terminal prices to UEX only if you switch the UEX
+Datarunner on and click Send. The update check, the refinery workloads and
+plugin downloads carry a random number made for the install
 (`install_id.txt`), so that installs are counted rather than addresses;
 `stats=0` in `region_config.txt` leaves it out.
 

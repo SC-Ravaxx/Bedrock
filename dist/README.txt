@@ -437,7 +437,7 @@ written to the registry.
 
 What Bedrock sends
 ------------------
-Three network requests of its own, and three more only if you switch them on:
+Four network requests of its own, and three more only if you switch them on:
 
 - The update check: one small text file from the-forsaken.org, once at start
   and once an hour. It carries the version, whether it is the Windows or the
@@ -464,6 +464,10 @@ Three network requests of its own, and three more only if you switch them on:
   sends a lot of readings that can't be right is held back from sharing
   for ten minutes. While the Refinery window is open, Bedrock fetches the
   latest workload of every station every five minutes, ticked or not.
+- Plugins: the first time you open Plugins after a start, Bedrock downloads
+  the list of plugins from the-forsaken.org, and a plugin when you click
+  Install. A plugin's download carries your install's number (see below),
+  the list doesn't.
 - Your UEX account and refinery jobs (both optional): on first start,
   Bedrock asks whether you want to connect your UEX account. You can skip
   this and connect later in the Ore Finder (Connect UEX, bottom right). Get
@@ -510,10 +514,10 @@ Three network requests of its own, and three more only if you switch them on:
 Your install's number: the first time it starts, Bedrock makes a random
 number for this install and keeps it in install_id.txt in its data folder
 (%LOCALAPPDATA%\Bedrock). It is made of nothing of you, your PC or the game.
-It goes along with the update check and the refinery workloads, so that I
-can count installs instead of IP addresses: Bedrock's statistics keep the
-number instead of your IP address. A backup doesn't carry it. To leave it
-out, close Bedrock and set stats=0 in region_config.txt.
+It goes along with the update check, the refinery workloads and plugin
+downloads, so that I can count installs instead of IP addresses: Bedrock's
+statistics keep the number instead of your IP address. A backup doesn't
+carry it. To leave it out, close Bedrock and set stats=0 in region_config.txt.
 
 A cleanly read value no table knows (e.g. 70,000) is shown as read after four
 identical scans, with the nearest table values beside it - as an unknown
