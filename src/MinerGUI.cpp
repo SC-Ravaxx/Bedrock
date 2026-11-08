@@ -15360,6 +15360,10 @@ void MinerGUI::drawWhatsNewCard(Gdiplus::Graphics& g, int cw, int ch) {
     // however softly put, turns that into a collection. The jar sits behind the
     // ? button and along the foot of the main window. Plain words, like a patch
     // note.
+    version(L"3.0.1.2", L"8 November");
+    note(L"Refinery: Work orders of an hour or more no longer show up twice, and");
+    note(L"keep their method and cost.");
+    gap(10);
     version(L"3.0.1.1", L"8 November");
     note(L"Refinery: Calendar now shows the QR code of the work order you click,");
     note(L"also when two work orders at a station have the same number.");
