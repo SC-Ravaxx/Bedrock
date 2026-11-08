@@ -131,11 +131,41 @@ def enemy_ships(block):
     return most
 
 
+# Where a contract takes the player: every stop is a location property of its
+# own, and its extendedTextToken is the name the game fills the place in by,
+# in briefings and titles alike:
+#   <MissionProperty missionVariableName="PickupLocation_BP1" extendedTextToken="Location">
+# Things are picked up (or found and brought away) at PickupLocation...,
+# MissionLocation... (a cargo recovery's wreck, a salvage job's field) and
+# dropped off at DropoffLocation... / DropOffLocation... / EndingLocation. The
+# first pick-up is Location nearly everywhere, the first drop-off Destination;
+# more stops are Location1-3 / Destination1-3, as the game's own stop lists
+# (HaulCargo_3_SingleToMultiToken) name them. A combat wave's location
+# (BP_MissionLocation_Wave1) or a defended one is not a stop.
+PICKUP_VAR = re.compile(r"^(?:BP_)?(?:Pickup|Mission)Location\d*(?:_BP\d*)?$")
+DROPOFF_VAR = re.compile(r"^(?:Drop[oO]ffLocation\d*(?:_BP\d*)?|EndingLocation)$")
+
+
+def stop_tokens(block):
+    """The tokens of a contract's pick-ups and drop-offs, in file order"""
+    picks, drops = [], []
+    for part in re.split(r"(?=<MissionProperty\s)", block):
+        m = re.match(r'<MissionProperty\s+missionVariableName="([^"]*)"\s+extendedTextToken="([^"]*)"', part)
+        if not m or "<MissionPropertyValue_Location" not in part[:400]:
+            continue
+        var, token = m.group(1), m.group(2)
+        if PICKUP_VAR.match(var) and token not in picks:
+            picks.append(token)
+        elif DROPOFF_VAR.match(var) and token not in drops:
+            drops.append(token)
+    return picks, drops
+
+
 def contract_facts(block):
     """How hard the contract is - the four axes, the hardest of them, the
-    game's own weighting of them into one figure and the risk axis in words -
-    how many enemy ships it puts up at once, and for a haul how many places
-    it picks up at and drops off at"""
+    game's own weighting of them into one figure, the mechanical-skill step the
+    game's own words go by (Easy_PvE_only_action_3) and the risk axis in words -
+    how many enemy ships it puts up at once, and where it picks up and drops off"""
     axes = {}
     dm = re.search(r"<ContractDifficulty[^>]*>", block)
     if dm:
@@ -160,12 +190,10 @@ def contract_facts(block):
             score = sum(axes.values()) / float(len(axes))
         rm = re.search(r'riskOfLoss="([^"]*)"', dm.group(0))
         risk_words = axis_words(rm.group(1)) if rm else ""
-    # A haul's stops are mission variables of their own: PickupLocation_BP,
-    # DropoffLocation1_BP ... (DropoffLocation1_MaxShips_BP is not a stop)
-    stops = set(re.findall(r'missionVariableName="((?:Pickup|Drop[oO]ff)Location\d*)(?:_BP)?"', block))
-    pickups = sum(1 for s in stops if s.startswith("Pickup"))
+    picks, drops = stop_tokens(block)
     return {"axes": axes, "difficulty": max(axes.values()) if axes else 0, "score": round(score, 1),
-            "risk": risk_words, "ships": enemy_ships(block), "pickups": pickups, "dropoffs": len(stops) - pickups}
+            "level": axes.get("mechanicalSkill", 0), "risk": risk_words, "ships": enemy_ships(block),
+            "from": picks, "to": drops}
 
 
 # ---- blueprint GUID -> readable name --------------------------------------
@@ -725,7 +753,7 @@ for path in walk(os.path.join("contracts", "contractgenerator")):
                                 "debug": _dbg, "contract": gen_name + "/" + _dbg if gen_name and _dbg else "",
                                 "standing": standing_names.get((re.search(r'minStanding="([0-9a-f-]{36})"', _blk) or [None, ""])[1], ""),
                                 "bp": "blueprintPool" in _blk, "unreleased": 'notForRelease="1"' in _head,
-                                **{k: v for k, v in contract_facts(_blk).items() if k in ("score", "ships", "pickups", "dropoffs")}})
+                                **{k: v for k, v in contract_facts(_blk).items() if k in ("score", "level", "ships", "from", "to")}})
     if "BlueprintRewards" not in text:
         continue
     contract_files += 1
@@ -811,7 +839,7 @@ for path in walk(os.path.join("contracts", "contractgenerator")):
                                 "debug": _dbg, "contract": gen_name + "/" + _dbg if gen_name and _dbg else "",
                                 "standing": standing_names.get((re.search(r'minStanding="([0-9a-f-]{36})"', block) or [None, ""])[1], ""),
                                 "bp": "blueprintPool" in block, "unreleased": 'notForRelease="1"' in _head,
-                                **{k: v for k, v in contract_facts(block).items() if k in ("score", "ships", "pickups", "dropoffs")}})
+                                **{k: v for k, v in contract_facts(block).items() if k in ("score", "level", "ships", "from", "to")}})
             if "blueprintPool" not in block:
                 continue
             # ...and what the game has not released is not a way to earn

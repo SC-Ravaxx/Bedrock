@@ -229,8 +229,13 @@ int runSelfTest() {
                                ContractScan::bareTitle("Master Rank - Direct Grade B Cargo Haul \xC2\xB7 Lorville > Area18 "
                                                        "<EM4>[BP]</EM4>") == "Master Rank - Direct Grade B Cargo Haul" &&
                                ContractScan::bareTitle("Red Wind Seeking New Haulers \xC2\xB7 to Area18") ==
-                                   "Red Wind Seeking New Haulers",
-                           "a contract's title comes off the log without Bedrock's marks, the route of a haul and the reputation");
+                                   "Red Wind Seeking New Haulers" &&
+                               ContractScan::bareTitle("Deep space hit \xC2\xB7 Easy <EM4>[BP]</EM4>") == "Deep space hit" &&
+                               ContractScan::bareTitle("Rookie Hauler Needed for Small Shipment \xC2\xB7 Easy\xE2\x80\x93Hard "
+                                                       "\xC2\xB7 Gaslight, ... > Canard View") ==
+                                   "Rookie Hauler Needed for Small Shipment",
+                           "a contract's title comes off the log without Bedrock's marks, how hard, the route and the "
+                           "reputation");
         allPassed &= check(ContractScan::titleMatches("Take Outlaws at {*} Offline", "take outlaws at Rat's Nest offline") &&
                                !ContractScan::titleMatches("Take Outlaws at {*} Offline", "Take Outlaws at Rat's Nest") &&
                                ContractScan::payoutFor("Ship In Distress") != nullptr &&
@@ -2932,27 +2937,44 @@ int runSelfTest() {
         allPassed &= check(GameTexts::isOurs(out) && GameTexts::isOurs("a=b\\n<EM4>BLUEPRINTS</EM4> \xC2\xB7 One of 3") &&
                                !GameTexts::isOurs("a=b <EM4>Potential Blueprints</EM4>"),
                            "Bedrock's file is known as Bedrock's, a pack's is not");
-        // ...a contract's description how hard it is and how many enemy ships
-        // it puts up at once, above its blueprints, and a haul's title where it
-        // goes - the places filled in by the game
+        // ...a contract's description how hard it is, in the game's words, and
+        // how many enemy ships it puts up at once, above its blueprints; its
+        // title the same word, and where it goes - the places filled in by the
+        // game: a haul's, a recovered cargo's, a distribution run's (whose
+        // first drop-off is Destination1 in one variant), an order's
         {
             const std::string hauls =
                 "Covalex_HaulCargo_AToB_title=~mission(ReputationRank) Rank - Direct Cargo Haul\r\n"
                 "RedWind_HaulCargo_AToB_title_01=Haul\r\n"
                 "RedWind_HaulCargo_MultiToSingle_title_01=Haul \r\n"
+                "RedWind_HaulCargo_SingleToMulti_title_01=Haul\r\n"
+                "LingFamily_RecoverCargo_Easy_Title=Ling Shipment Recovery\r\n"
+                "Shubin_Industrial_ShipMining_Stanton_M_Solar_Title_001=Order\r\n"
+                "headhunters_EliminateSpecific_Asteroid_Generic_VE_title_001=Deep space hit\r\n"
                 "Foxwell_ShipWaveAttack_ClearHostiles_Desc_M_001=Text\r\n";
             std::string withRoutes;
             GameTexts::compose(hauls, owns({}), withRoutes);
-            allPassed &= check(withRoutes.find("Rank - Direct Cargo Haul \xC2\xB7 ~mission(Location|Name) > "
-                                               "~mission(Destination|Name) <EM4>[BP]</EM4>\r\n") != std::string::npos &&
-                                   withRoutes.find("RedWind_HaulCargo_AToB_title_01=Haul \xC2\xB7 ~mission(Location|Name) > "
-                                                   "~mission(Destination|Name)\r\n") != std::string::npos &&
-                                   withRoutes.find("RedWind_HaulCargo_MultiToSingle_title_01=Haul \xC2\xB7 to "
-                                                   "~mission(Destination|Name)\r\n") != std::string::npos &&
-                                   withRoutes.find("=Text\\n\\n<EM4>DIFFICULTY</EM4> 5.0 of 7 \xC2\xB7 Up to 4 enemy ships at a "
-                                                   "time\\n\\n<EM4>BLUEPRINTS</EM4> \xC2\xB7 One of 6") != std::string::npos,
-                               "a haul's title says where it goes, a contract's description how hard it is and how many "
-                               "enemy ships come at once, above its blueprints");
+            const std::string dot = " \xC2\xB7 ", from = "~mission(Location|Name)", to = "~mission(Destination|Name)";
+            allPassed &= check(withRoutes.find("Rank - Direct Cargo Haul" + dot + "Easy" + dot + from + " > " + to +
+                                               " <EM4>[BP]</EM4>\r\n") != std::string::npos &&
+                                   withRoutes.find("RedWind_HaulCargo_AToB_title_01=Haul" + dot + "Easy\xE2\x80\x93Hard" + dot +
+                                                   from + " > " + to + "\r\n") != std::string::npos &&
+                                   withRoutes.find("RedWind_HaulCargo_MultiToSingle_title_01=Haul" + dot +
+                                                   "Easy\xE2\x80\x93Hard" + dot + from + ", ... > " + to + "\r\n") !=
+                                       std::string::npos &&
+                                   withRoutes.find("RedWind_HaulCargo_SingleToMulti_title_01=Haul" + dot +
+                                                   "Easy\xE2\x80\x93Hard" + dot + from +
+                                                   " > ~mission(Destination1|Name), ...\r\n") != std::string::npos &&
+                                   withRoutes.find("=Ling Shipment Recovery" + dot + "Easy" + dot + from + " > " + to +
+                                                   "\r\n") != std::string::npos &&
+                                   withRoutes.find("_Title_001=Order" + dot + "Easy" + dot + "to " + to + " <EM4>[BP") !=
+                                       std::string::npos &&
+                                   withRoutes.find("=Deep space hit" + dot + "Easy <EM4>[BP]</EM4>\r\n") != std::string::npos &&
+                                   withRoutes.find("=Text\\n\\n<EM4>DIFFICULTY</EM4> Hard" + dot +
+                                                   "Up to 4 enemy ships at a time\\n\\n<EM4>BLUEPRINTS</EM4>" + dot +
+                                                   "One of 6") != std::string::npos,
+                               "a contract's title says how hard it is and where it goes, its description how hard it is "
+                               "and how many enemy ships come at once, above its blueprints");
         }
 
         // ...and the names: class, size and grade before a component's,
