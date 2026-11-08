@@ -6342,7 +6342,7 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
     const float listTop = shipCard.GetBottom() + scaleF(12);
     const bool status = !gearShops_;
     const float rowsTop = listTop + scaleF(50);
-    float rowsH = status ? scaleF(20) : 0.0f;
+    float rowsH = status ? scaleF(26) : 0.0f;
     for (const Row& r : rows) rowsH += r.pitch;
     const float natural = rowsTop + rowsH + scaleF(2);
     const float listBottom = (std::max)(listTop + scaleF(80), (std::min)(natural, (float)ch - scaleF(12)));
@@ -6390,7 +6390,7 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
             gearShopsNote_.empty() ? std::wstring(L"Loading from UEX") : L"UEX unreachable: " + toW(gearShopsNote_);
         g.DrawString(words.c_str(), -1, &smallFont, Gdiplus::RectF(left, y - scaleF(2), wide, scaleF(16)), &oneLine,
                      &faintBrush);
-        y += scaleF(20);
+        y += scaleF(26);
     }
     for (const Row& r : rows) {
         const float rowY = y;
@@ -6515,6 +6515,15 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
         }
     }
     g.Restore(unclipped);
+    // more above: the rows come in under the tabs out of the card, as they
+    // go out at its foot - no row cut off by a hard edge
+    if (gearScroll_ > 0.5f) {
+        const float fadeH = (std::min)(scaleF(28), view.Height);
+        const Gdiplus::RectF fade(cardX, view.Y, cardW, fadeH);
+        Gdiplus::LinearGradientBrush shade(Gdiplus::RectF(fade.X, fade.Y - 2, fade.Width, fadeH + 3), COL_CARD,
+                                           tint(COL_CARD, 0), Gdiplus::LinearGradientModeVertical);
+        g.FillRectangle(&shade, fade);
+    }
     // more below: the card's foot fades out over it
     if (gearScroll_ < scrollMost - 0.5f) {
         const float fadeH = (std::min)(scaleF(40), view.Height);
