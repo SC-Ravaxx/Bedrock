@@ -103,6 +103,71 @@ def axis_words(raw):
     return s[:1].lower() + s[1:] if s else ""
 
 
+# ---- what a contract is like, for any contract -------------------------------
+# A group of ships is on whichever side the mission variable it fills says:
+# CargoShip_BP, EscortShip_BP, AlliedSpawnDescriptions_BP are the player's to
+# protect or meet, SalvageSpawnDescription_BP is a wreck. The spawn tags name
+# no side (they are GUIDs the dump does not resolve), so the variable is all
+# there is to go by. A refuelling run's TargetSpawnDescriptions is the ship
+# to refuel; an ambush's is the one to shoot.
+NOT_ENEMIES = re.compile(r"^(CargoShip|RecipientShip\d*|EscortShip|AttackedShip\w*|Allied\w*|Friendly\w*|"
+                         r"Salvage\w*|DecoyProbe|FakeShip|ShipToBoard|BoardedShip|HeistShip)$")
+
+
+def enemy_ships(block):
+    """How many enemy ships the contract puts up at once: the most any one of
+    its hostile ship groups spawns together"""
+    refuelling = "RecipientShip" in block
+    most = 0
+    for part in re.split(r"(?=<MissionProperty\s)", block):
+        m = re.match(r'<MissionProperty\s+missionVariableName="([^"]*)"', part)
+        if not m:
+            continue
+        role = re.sub(r"_BP$", "", m.group(1)).split("_")[-1]
+        if NOT_ENEMIES.match(role) or (refuelling and role == "TargetSpawnDescriptions"):
+            continue
+        for amount in re.findall(r'<SpawnDescription_Ship concurrentAmount="(\d+)"', part):
+            most = max(most, int(amount))
+    return most
+
+
+def contract_facts(block):
+    """How hard the contract is - the four axes, the hardest of them, the
+    game's own weighting of them into one figure and the risk axis in words -
+    how many enemy ships it puts up at once, and for a haul how many places
+    it picks up at and drops off at"""
+    axes = {}
+    dm = re.search(r"<ContractDifficulty[^>]*>", block)
+    if dm:
+        # <ContractDifficulty mechanicalSkill="Normal_PvE_only_action_4" ...>:
+        # four axes, each ending in its step
+        for axis in ("mechanicalSkill", "mentalLoad", "riskOfLoss", "gameKnowledge"):
+            am = re.search(axis + r'="([^"]*)"', dm.group(0))
+            if not am:
+                continue
+            step = re.search(r"_(\d+)$", am.group(1))
+            if step:
+                axes[axis] = int(step.group(1))
+    score = 0.0
+    risk_words = ""
+    if dm and axes:
+        pm = re.search(r'difficultyProfile="([0-9a-f-]+)"', dm.group(0))
+        weights = difficulty_profiles.get(pm.group(1) if pm else "", {})
+        total = sum(weights.get(a, 0.0) for a in axes)
+        if total > 0:
+            score = sum(axes[a] * weights.get(a, 0.0) for a in axes) / total
+        else:
+            score = sum(axes.values()) / float(len(axes))
+        rm = re.search(r'riskOfLoss="([^"]*)"', dm.group(0))
+        risk_words = axis_words(rm.group(1)) if rm else ""
+    # A haul's stops are mission variables of their own: PickupLocation_BP,
+    # DropoffLocation1_BP ... (DropoffLocation1_MaxShips_BP is not a stop)
+    stops = set(re.findall(r'missionVariableName="((?:Pickup|Drop[oO]ff)Location\d*)(?:_BP)?"', block))
+    pickups = sum(1 for s in stops if s.startswith("Pickup"))
+    return {"axes": axes, "difficulty": max(axes.values()) if axes else 0, "score": round(score, 1),
+            "risk": risk_words, "ships": enemy_ships(block), "pickups": pickups, "dropoffs": len(stops) - pickups}
+
+
 # ---- blueprint GUID -> readable name --------------------------------------
 # (filled from the blueprint dump when one is passed in, so the pool siblings
 # can be named rather than shown as BP_CRAFT_ tags)
@@ -773,45 +838,14 @@ for path in walk(os.path.join("contracts", "contractgenerator")):
             if mt2:
                 minutes = int(mt2.group(1))
 
-            # <ContractDifficulty mechanicalSkill="Normal_PvE_only_action_4" ...>
-            # Four axes, each ending in its step; the hardest of them is what
-            # the contract is worth warning about.
-            difficulty = 0
-            axes = {}
-            # Everything else worth knowing before accepting
-            group_max = 0
-            gm = re.search(r'maxGroupSize="(\d+)"', block)
-            if gm:
-                group_max = int(gm.group(1))
-            dm = re.search(r"<ContractDifficulty[^>]*>", block)
-            if dm:
-                for axis in ("mechanicalSkill", "mentalLoad", "riskOfLoss", "gameKnowledge"):
-                    am = re.search(axis + r'="([^"]*)"', dm.group(0))
-                    if not am:
-                        continue
-                    step = re.search(r"_(\d+)$", am.group(1))
-                    if step:
-                        axes[axis] = int(step.group(1))
-                if axes:
-                    difficulty = max(axes.values())
-            # One figure, the way the game weights it
-            score = 0.0
-            risk_words = ""
-            if dm and axes:
-                pm = re.search(r'difficultyProfile="([0-9a-f-]+)"', dm.group(0))
-                weights = difficulty_profiles.get(pm.group(1) if pm else "", {})
-                total = sum(weights.get(a, 0.0) for a in axes)
-                if total > 0:
-                    score = sum(axes[a] * weights.get(a, 0.0) for a in axes) / total
-                else:
-                    score = sum(axes.values()) / float(len(axes))
-                rm = re.search(r'riskOfLoss="([^"]*)"', dm.group(0))
-                risk_words = axis_words(rm.group(1)) if rm else ""
-
-            # How many enemy ships the contract puts up at once. Which ships
+            # How hard it is (the hardest of the four axes is what the contract
+            # is worth warning about; the score is the game's own weighting of
+            # them) and how many enemy ships it puts up at once - which ships
             # they are is behind spawn tags the dump does not define, so the
-            # count is all that can honestly be said.
-            ships = [int(x) for x in re.findall(r'<SpawnDescription_Ship concurrentAmount="(\d+)"', block)]
+            # count is all that can honestly be said. (No player count: the
+            # only maxGroupSize in a contract is an NPC spawn's group size.)
+            facts = contract_facts(block)
+            axes, difficulty, score, risk_words = facts["axes"], facts["difficulty"], facts["score"], facts["risk"]
 
             # <ContractGenerationParams_Legacy maxInstancesPerPlayer="1"
             #  respawnTime="5" respawnTimeVariation="2" /> - how long after a
@@ -891,9 +925,9 @@ for path in walk(os.path.join("contracts", "contractgenerator")):
                         "chance": float(chance or 1),      # the contract's own roll
                         "poolSize": len(entries),          # how many blueprints share the pool
                         "difficulty": difficulty,
-                        "score": round(score, 1),
+                        "score": score,
                         "risk": risk_words,
-                        "ships": max(ships) if ships else 0,
+                        "ships": facts["ships"],
                         "axes": axes,
                         "illegal": illegal,
                         # The first rung of an outfit's ladder: the same
@@ -906,7 +940,6 @@ for path in walk(os.path.join("contracts", "contractgenerator")):
                         # the same, by GUID, for the planner's ranks
                         "repNeed": need,
                         "repAwardList": award_list,
-                        "groupMax": group_max,
                         "poolName": pool_name,
                         "poolItems": [tag_name.get(guid_to_tag.get(g, ""), guid_to_tag.get(g, ""))
                                       for g, _w in entries if guid_to_tag.get(g)],

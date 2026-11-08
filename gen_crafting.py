@@ -351,8 +351,6 @@ for b in sorted(blueprints, key=lambda x: (x["_type"], x["output_name"])):
             "score": int(round(float(row.get("score") or 0) * 10)),
             "risk": row.get("risk") or "",
             "ships": int(row.get("ships") or 0),
-            # how many players the contract lets in; 1 means solo
-            "party": int(row.get("groupMax") or 0),
             "illegal": bool(row.get("illegal")),
             "reputation": rep,
             "poolItems": [x for x in (row.get("poolItems") or []) if x],
@@ -541,7 +539,6 @@ with io.open(out, "w", encoding="utf-8", newline="\n") as f:
     w("    uint8_t score;         // the four weighted the way the game does, in tenths\n")
     w("    const char* riskText;  // what the risk axis says in words\n")
     w("    uint8_t ships;         // enemy ships at once, 0 = the files do not say\n")
-    w("    uint8_t party;         // players allowed, 0 = the files do not say\n")
     w("    uint16_t poolFirst;    // first entry in CRAFT_POOL_ITEMS\n")
     w("    uint8_t poolCount;     // how many of the pool's blueprints are named\n")
     w("    uint16_t respawn;      // minutes after a run ends until it is offered again, 0 = at once\n")
@@ -706,7 +703,7 @@ with io.open(out, "w", encoding="utf-8", newline="\n") as f:
     w("inline const CraftSource CRAFT_SOURCES[] = {\n")
     for src in sources:
         w('    {"%s", "%s", "%s", "%s", "%s", "%s", %d, %d, %d, %d, %s, %d, %d, '
-          '%d, %d, %d, %d, %s, "%s", %d, "%s", %d, %d, %d, %d, %d, %d, %s, %d, %d, %d, %d, %d, %d, %d},\n'
+          '%d, %d, %d, %d, %s, "%s", %d, "%s", %d, %d, %d, %d, %d, %s, %d, %d, %d, %d, %d, %d, %d},\n'
           % (esc(src["title"]), esc(src["faction"]), esc(src["system"]),
              esc(src["standing"] or ""), esc(src["type"]), esc(src.get("description") or ""),
              min(65535, src.get("minutes") or 0), min(7, src.get("difficulty") or 0),
@@ -720,7 +717,7 @@ with io.open(out, "w", encoding="utf-8", newline="\n") as f:
              min(7, (src.get("axes") or {}).get("gameKnowledge", 0)),
              "true" if src.get("illegal") else "false", esc(src.get("reputation") or ""),
              min(255, src.get("score") or 0), esc(src.get("risk") or ""),
-             min(255, src.get("ships") or 0), min(255, src.get("party") or 0),
+             min(255, src.get("ships") or 0),
              src.get("poolFirst", 0), min(255, src.get("poolCount", 0)),
              min(65535, src.get("respawn") or 0), min(255, src.get("respawnVar") or 0),
              "true" if src.get("intro") else "false", src["otherFirst"], min(255, src["otherCount"]),

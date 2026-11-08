@@ -13298,7 +13298,6 @@ void MinerGUI::paintContractCard(Gdiplus::Graphics& g, int cw, int ch, const Cra
     int lines = 2;   // payout and blueprint chance are on every card
     if (src.reputation[0]) lines++;
     if (src.ships) lines++;
-    if (src.party) lines++;
     if (src.cooldown) lines++;
     if (src.respawn) lines++;
     if (src.abandonCd > 0) lines++;
@@ -13414,12 +13413,7 @@ void MinerGUI::paintContractCard(Gdiplus::Graphics& g, int cw, int ch, const Cra
     // What comes at you, where the files say so: the spawn tags name no ship,
     // so the count is all that can honestly be given.
     if (src.ships) {
-        row(L"ENEMY SHIPS", L"Up to " + std::to_wstring(src.ships) +
-                               (src.ships == 1 ? L" at a time" : L" at a time"));
-    }
-    if (src.party) {
-        row(L"PARTY", src.party == 1 ? L"Solo only"
-                                     : L"Up to " + std::to_wstring(src.party) + L" players");
+        row(L"ENEMY SHIPS", L"Up to " + std::to_wstring(src.ships) + L" at a time");
     }
     row(L"PAYOUT", L"Computed in game from difficulty and distance", false);
     if (src.reputation[0]) {
