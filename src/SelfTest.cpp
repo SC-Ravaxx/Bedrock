@@ -1188,6 +1188,82 @@ int runSelfTest() {
                            "quotes kept for their orders: two set up one after the other each to its own, the same job "
                            "twice two, an order read five minutes on still its own - not one without a part in common, "
                            "and the record says why");
+        // From an hour up the terminal gives the time left to the nearest
+        // minute. Checkmate, 8 November 2026: an order read as number 2,
+        // 24 s later as number 1 (the one before it collected) with its time
+        // 23 s on - one order, not a second beside it; the other order read
+        // then its own
+        SCMiner::RefineryOrderBook rounded;
+        RefineryPanel quoteBig = setup;
+        quoteBig.cost = 133210;
+        quoteBig.seconds = 15240;
+        quoteBig.rows = {row("Stileron (Ore)", 330, 5916, 2662), row("Stileron (Ore)", 517, 622, 279),
+                         row("Stileron (Ore)", 681, 612, 275)};
+        RefineryPanel big = running;
+        big.order = 2;
+        big.rows = {row("Stileron (Ore)", 330, -1, 2662), row("Stileron (Ore)", 517, -1, 279),
+                    row("Stileron (Ore)", 681, -1, 275)};
+        RefineryPanel quoteSmall = setup;
+        quoteSmall.cost = 10474;
+        quoteSmall.seconds = 1854;
+        quoteSmall.rows = {row("Stileron (Ore)", 747, 558, 253)};
+        RefineryPanel small2 = running;
+        small2.order = 2;
+        small2.rows = {row("Stileron (Ore)", 747, -1, 253)};
+        const long long t1 = 1794139300;
+        rounded.take("Checkmate", screen({quoteBig}), t1);
+        rounded.take("Checkmate", screen({at(big, 15180)}), t1 + 48);
+        rounded.take("Checkmate", screen({at(big, 15180)}), t1 + 49);
+        rounded.take("Checkmate", screen({quoteSmall}), t1 + 60);
+        RefineryPanel bigUp = big;
+        bigUp.order = 1;
+        rounded.take("Checkmate", screen({at(bigUp, 15180), at(small2, 1844)}), t1 + 72);
+        rounded.take("Checkmate", screen({at(bigUp, 15180), at(small2, 1843)}), t1 + 73);
+        const auto& roundedOrders = rounded.orders();
+        const bool oneEachRounded = roundedOrders.size() == 2 && roundedOrders[0].number == 1 &&
+                                    roundedOrders[0].due == t1 + 49 + 15180 && roundedOrders[0].cost == 133210 &&
+                                    roundedOrders[1].number == 2 && roundedOrders[1].cost == 10474;
+        // ...its quote although the two roundings put it placed 39 s before
+        // the quote was last seen (from 15 s it went without)
+        SCMiner::RefineryOrderBook early;
+        RefineryPanel quoteIron = setup;
+        quoteIron.seconds = 7260;
+        quoteIron.rows = {row("Iron (Ore)", 874, 484, 235)};
+        early.take("Levski", screen({quoteIron}), t1);
+        early.take("Levski", screen({at(running, 7200)}), t1 + 20);
+        early.take("Levski", screen({at(running, 7200)}), t1 + 21);
+        const bool roundedQuote = early.orders().size() == 1 && early.orders()[0].complete() &&
+                                  early.orders()[0].placed == t1 - 39;
+        // ...two alike set up half a minute apart still two, each with its
+        // quote; and a long list scrolled to other parts half a minute on
+        // still the one order
+        SCMiner::RefineryOrderBook alike;
+        RefineryPanel running2Long = running;
+        running2Long.order = 2;
+        alike.take("Levski", screen({quoteIron}), t1);
+        alike.take("Levski", screen({at(running, 7260)}), t1 + 5);
+        alike.take("Levski", screen({at(running, 7260)}), t1 + 6);
+        alike.take("Levski", screen({quoteIron}), t1 + 30);
+        alike.take("Levski", screen({at(running, 7200), at(running2Long, 7260)}), t1 + 35);
+        alike.take("Levski", screen({at(running, 7200), at(running2Long, 7260)}), t1 + 36);
+        const bool alikeTwo = alike.orders().size() == 2 && alike.orders()[0].number == 1 &&
+                              alike.orders()[1].number == 2 && alike.orders()[0].complete() &&
+                              alike.orders()[1].complete();
+        SCMiner::RefineryOrderBook scrolledLong;
+        RefineryPanel topLong = running;
+        topLong.order = 3;
+        topLong.rows = {row("Quantainium (Raw)", 669, -1, 210), row("Bexalite (Raw)", 756, -1, 88)};
+        RefineryPanel bottomLong = topLong;
+        bottomLong.rows = {row("Gold (Ore)", 553, -1, 54), row("Copper (Ore)", 652, -1, 135)};
+        scrolledLong.take("Checkmate", screen({at(topLong, 7200)}), t1);
+        scrolledLong.take("Checkmate", screen({at(topLong, 7200)}), t1 + 1);
+        scrolledLong.take("Checkmate", screen({at(bottomLong, 7140)}), t1 + 40);
+        scrolledLong.take("Checkmate", screen({at(bottomLong, 7140)}), t1 + 41);
+        const bool scrolledOne = scrolledLong.orders().size() == 1 && scrolledLong.orders()[0].parts.size() == 4;
+        allPassed &= check(oneEachRounded && roundedQuote && alikeTwo && scrolledOne,
+                           "work orders of an hour and more, their time to the minute: one read under a smaller number "
+                           "half a minute on still one, scrolled to other parts too; its quote despite the rounding; "
+                           "two alike set up one after the other still two");
         allPassed &= check(once && twice && quoted && later && notGarbled && notElsewhere && another && kept,
                            "the work orders' book: an order taken on the second reading that agrees, with the quote "
                            "read before it and what went in; the same order later only kept; a garbled reading, "

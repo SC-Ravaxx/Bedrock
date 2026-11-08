@@ -325,9 +325,14 @@ RefineryOrderBook::Quote* RefineryOrderBook::quoteFor(const std::string& station
         if (q.used || q.station != station) continue;
         here++;
         const long long since = now - q.taken;
-        if (since < 0 || remaining > q.seconds + 2) continue;
+        // From an hour up the terminal rounds both times to the minute, the
+        // quote's and the one left: the moment placed, worked out from the
+        // two, can be a minute early or late, and the time left half a
+        // minute over the quote's. Under the hour, to the second.
+        const bool rough = remaining >= 3600 || q.seconds >= 3600;
+        if (since < 0 || remaining > q.seconds + (rough ? 32 : 2)) continue;
         const long long gap = now + remaining - q.seconds - q.taken;
-        if (gap < -15 || gap > 120) continue;
+        if (gap < (rough ? -75 : -15) || gap > 120) continue;
         if (since > 60 && !overlap(q.parts, parts)) continue;
         if (!best || gap < bestGap) {
             best = &q;
@@ -401,19 +406,37 @@ bool RefineryOrderBook::apply(const std::string& station, const RefineryScreen& 
         // what makes it the same order is its station and when it is done -
         // with its number or a part in common to back that up - or, with
         // the clock off, its number and a part in common.
+        // From an hour up the terminal gives the time left in hours and
+        // minutes, to the nearest minute ("4h 13m": 15180 s at every look
+        // for a minute), so two looks put the same order up to a minute
+        // apart, and one first read that way stays that far off until a look
+        // under the hour. Within that minute a part in common holds where
+        // the number stayed or went down - an order moves up the list as the
+        // one before it is collected, never down, so two alike set up one
+        // after the other stay two - and on a rough look the number alone.
+        // Checkmate, 8 November 2026: the order read as number 2 at first
+        // was number 1 from 24 s later, and a second one came up beside it.
+        const bool rough = panel.seconds >= 3600;
         RefineryOrder* known = nullptr;
         for (RefineryOrder& order : orders_) {
             if (order.station != station) continue;
-            const bool sameTime = std::llabs(order.due - due) <= 10;
+            const long long apart = std::llabs(order.due - due);
+            const bool sameTime = apart <= 10;
+            const bool sameMinute = apart <= 70;
             const bool sameNumber = order.number >= 0 && order.number == panel.order;
             const bool common = overlap(order.parts, parts);
-            if ((sameTime && (sameNumber || common)) || (sameNumber && common)) {
+            const bool movedUp = order.number < 0 || panel.order <= order.number;
+            if ((sameTime && (sameNumber || common)) || (sameMinute && common && movedUp) ||
+                (sameMinute && rough && sameNumber) || (sameNumber && common)) {
                 known = &order;
                 break;
             }
         }
         if (known) {
-            if (std::llabs(known->due - due) > 2) {
+            // when it is done: to the second from a look under the hour, from
+            // a rough one only where it is out by more than the rounding - not
+            // a minute this way or that at every look
+            if (std::llabs(known->due - due) > (rough ? 70 : 2)) {
                 known->due = due;
                 changed = true;
             }
