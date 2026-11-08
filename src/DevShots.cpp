@@ -2151,14 +2151,24 @@ int runScreenshots(const std::string& dir) {
     pump();
     if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_prices_home.png", true);
     gui.setCurrentSystem("Pyro");
-    // ...and the ground's two families: a gem a line, by its best buyer (a
-    // gem's name opens its family)
+    // ...and the ground's two families: all their gems, each place by its
+    // likeliest, a gem a line by its best buyer
     gui.openOreForShot("Hadanite");
+    gui.pointInPlannerForShot(8, "", true);
     pump();
     if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_gems.png", true);
     gui.openOreForShot("Beradom");
+    gui.pointInPlannerForShot(8, "", true);
     pump();
     if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_gems_roc.png", true);
+    // ...a place of theirs: what is mined there, its gems under the ship's ores
+    gui.pointInPlannerForShot(10, "Pyro IV", true);
+    pump();
+    if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_place_from_roc.png", true);
+    // ...and one gem, as a recipe or a note asks for it: the places of it
+    gui.openOreForShot("Hadanite");
+    pump();
+    if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_gems_pick.png", true);
     // ...and the UEX tab: what players buy and sell Ouratite for; then a
     // ground family's gem
     gui.setUexMarket("Ouratite", shotListings("Ouratite", shotNow), shotNow - 60, "");
@@ -2252,6 +2262,13 @@ int runScreenshots(const std::string& dir) {
         std::cout << "ore finder place: " << (listed ? "listed" : "NOT LISTED") << ", "
                   << (opened ? "its card opened" : "CARD NOT OPENED") << ", "
                   << (back ? "back by the ore" : "NOT BACK") << std::endl;
+        // ...and a gem of the place clicked: the places of that gem, in the
+        // system on the tabs (before kind 11, the family's list)
+        gui.pointInPlannerForShot(10, terminus, true);
+        pump();
+        if (!gui.pointInPlannerForShot(11, "Feynmaline", true)) gui.pointInPlannerForShot(2, "ROC deposits", true);
+        pump();
+        if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_place_gem_pick.png", true);
         // ...and a place whose name leaves no room beside it for how many
         gui.openOreForShot("Savrilium");
         gui.pointInPlannerForShot(10, "Breaker Stations Large Geode", true);

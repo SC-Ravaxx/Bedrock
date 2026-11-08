@@ -1427,9 +1427,10 @@ private:
     void showPlaceFinderFor(const std::string& place);
     void showSystemFinderFor(const std::string& system);
     // kind 0 ore, 1 system, 2 family, 3 tick box, 4 a link, 5 Report to UEX,
-    // 6 the UEX tab, 7 a listing (its page), 8 a gem in the UEX tab, 9 the
-    // listings' order ("price", "newest"), 10 a place in the list (what else
-    // is mined there)
+    // 6 the UEX tab, 7 a listing (its page), 8 a gem of the family picked (""
+    // for all of them, over the places only), 9 the listings' order ("price",
+    // "newest"), 10 a place in the list (what else is mined there), 11 a ROC
+    // gem of a place and 12 a hand-mined one (the places of that gem)
     struct PlanHit { Gdiplus::RectF rect; int kind; std::string value; };
     std::vector<PlanHit> planHits_;
     static LRESULT CALLBACK PlannerProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -1447,9 +1448,11 @@ private:
     std::string uexNote_;
     bool planPulse_ = false;          // the blink's beat
     // The Ore Finder's UEX tab: what players on the UEX marketplace buy and
-    // sell the picked ore for, and at what quality; for the ground's two
-    // families, the gem picked in it
+    // sell the picked ore for, and at what quality
     bool plannerUex_ = false;
+    // For the ground's two families, the gem picked over the places and in
+    // the UEX tab. Over the places "" is all of them, each place by its
+    // likeliest; the UEX tab shows the first gem then.
     std::string plannerGem_;
     // the listings by price (the default), or the most lately renewed first:
     // the one sign of life the API gives (UEX has no feedback to sort by)
@@ -1463,6 +1466,11 @@ private:
     std::shared_ptr<const UexThreads> uexThreads_;
     std::string marketOre() const;                    // the ore or gem the UEX tab is on
     void paintMarketColumn(Gdiplus::Graphics& g, int cw, int ch, float cardX, float top);
+    // A family's gems as buttons from (x, y), wrapping at `right`, with "All"
+    // first when `withAll`; `on` is the one lit. Returns the top of what
+    // follows them.
+    float paintGemChips(Gdiplus::Graphics& g, float x, float y, float right, const std::vector<std::string>& gems,
+                        const std::string& on, bool withAll);
     // The rock view's line: what a player on UEX pays for the best part of
     // quality 900 or more; "" where there is none to say
     std::wstring rockMarketLine() const;
