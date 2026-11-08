@@ -771,9 +771,9 @@ void drawPuzzle(Gdiplus::Graphics& g, float cx, float cy, float size, const Gdip
 
 // The rail's icons: lines on a 20 by 20 grid, its top left at x, y, one
 // unit `s` pixels - a scope for the scan, a flask for the refinery, a lens
-// for the Ore Finder, a sheet for the blueprints, a pencil for the notes, an
-// arrow up for the Datarunner, a jigsaw piece for the plugins, a sun of
-// spokes for the settings
+// for the Ore Finder, a laser head for the gear, a sheet for the blueprints,
+// a pencil for the notes, an arrow up for the Datarunner, a jigsaw piece for
+// the plugins, a sun of spokes for the settings
 void drawRailIcon(Gdiplus::Graphics& g, MinerGUI::RailItem item, float x, float y, float s,
                   const Gdiplus::Color& ink) {
     using R = MinerGUI::RailItem;
@@ -817,6 +817,22 @@ void drawRailIcon(Gdiplus::Graphics& g, MinerGUI::RailItem item, float x, float 
             ring(9, 9, 5);
             line(13, 13, 17, 17);
             break;
+        case R::Gear: {
+            // a laser head from the side: its body, the nozzle narrowing out
+            // of it, and the beam
+            Gdiplus::GraphicsPath body;
+            addRoundRect(body, Gdiplus::RectF(x + 1.5f * s, y + 6 * s, 8 * s, 8 * s), 1.5f * s);
+            g.DrawPath(&pen, &body);
+            Gdiplus::GraphicsPath nozzle;
+            nozzle.AddLine(x + 9.5f * s, y + 7.5f * s, x + 13 * s, y + 9 * s);
+            nozzle.AddLine(x + 13 * s, y + 9 * s, x + 13 * s, y + 11 * s);
+            nozzle.AddLine(x + 13 * s, y + 11 * s, x + 9.5f * s, y + 12.5f * s);
+            nozzle.CloseFigure();
+            Gdiplus::SolidBrush fill(ink);
+            g.FillPath(&fill, &nozzle);
+            line(15, 10, 18.5f, 10);
+            break;
+        }
         case R::Blueprints: {
             Gdiplus::GraphicsPath sheet;
             addRoundRect(sheet, Gdiplus::RectF(x + 4 * s, y + 3 * s, 12 * s, 14 * s), 1.5f * s);
@@ -3302,8 +3318,9 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             break;
 
         case WM_MOUSEWHEEL:
-            // Over the what's-new card the wheel reads it. Anywhere else the
-            // main window has nothing that scrolls, so it is left alone.
+            // Over the what's-new card the wheel reads it. Elsewhere it
+            // scrolls what scrolls: the Datarunner's card, a plugin's page,
+            // the Gear page's list.
             if (whatsNewOpen_) {
                 scrollWhatsNew(-GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA * scaleF(56));
                 return 0;
@@ -3327,6 +3344,15 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 InvalidateRect(hwnd, nullptr, FALSE);
                 return 0;
             }
+            // ...and on the Gear page its list (held to its length as it is
+            // drawn), unless a sheet or the ship's list lies over it
+            if (gearPageUp() &&
+                !(keysOpen_ || aboutOpen_ || backupOpen_ || uexWelcome_.step || loadoutOpen_ || shipPickerOpen_)) {
+                gearScroll_ = (std::max)(0.0f, gearScroll_ - GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA *
+                                                                 scaleF(56));
+                InvalidateRect(hwnd, nullptr, FALSE);
+                return 0;
+            }
             break;
 
         case WM_RBUTTONDOWN: {
@@ -3342,12 +3368,7 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             const float py = (float)(short)HIWORD(lParam);
             for (const auto& hit : loadoutHits_) {
                 if (hit.kind != 1 || !hit.rect.Contains(px, py)) continue;
-                const MiningModule* m = &MINING_MODULES[hit.value];
-                for (auto at = loadout_.modules.begin(); at != loadout_.modules.end(); ++at) {
-                    if (*at != m) continue;
-                    loadout_.modules.erase(at);
-                    break;
-                }
+                takeHeadModule(&MINING_MODULES[hit.value]);
                 storeHead();
                 saveLoadout();
                 InvalidateRect(hwnd, nullptr, TRUE);
@@ -3514,6 +3535,13 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 pluginPress(hwnd, px, py);
                 return 0;
             }
+            // The Gear page: its ship card and lists, and the ship's list
+            // when it is down over them. (Edit ship's sheet, over it as over
+            // the scan page, takes its clicks below.)
+            if (gearPageUp() && !phoneTapping_ && !loadoutOpen_) {
+                pressGear(hwnd, px, py);
+                return 0;
+            }
             // What lies over the page takes the click before anything under
             // it: under the frosted glass the rock's heads and gadgets and the
             // footer's Backup cannot be read, and a click meant to close a list
@@ -3553,26 +3581,9 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                         return 0;
                     }
                     if (hit.kind == 0) {
-                        // a different head: its module slots may be fewer, so
-                        // anything that no longer fits comes off rather than
-                        // sitting in a loadout that cannot exist - and the
-                        // crafted figure stays with the laser it was typed for
-                        std::vector<std::pair<const MiningLaser*, float>> none;
-                        auto& kept = fit_ >= 0 && fit_ < (int)fits_.size() ? fits_[(size_t)fit_].crafted : none;
-                        putLaser(kept, loadout_, &MINING_LASERS[hit.value]);
-                        if ((int)loadout_.modules.size() > loadout_.laser->slots) {
-                            loadout_.modules.resize(loadout_.laser->slots);
-                        }
+                        putHeadLaser(&MINING_LASERS[hit.value]);
                     } else if (hit.kind == 1) {
-                        // One more of it, while there is a slot free. Not a toggle: the same
-                        // module can go in more than once - three Rieger-C3 on a three-slot
-                        // head is a real fit, because the multipliers stack. Right-click
-                        // takes one back off; see WM_RBUTTONDOWN.
-                        const MiningModule* m = &MINING_MODULES[hit.value];
-                        if (loadout_.laser &&
-                            (int)loadout_.modules.size() < loadout_.laser->slots) {
-                            loadout_.modules.push_back(m);
-                        }
+                        addHeadModule(&MINING_MODULES[hit.value]);
                     } else if (hit.kind == 2) {
                         pickGadget(&MINING_GADGETS[hit.value]);
                     } else if (hit.kind == 3) {
@@ -3635,26 +3646,7 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 return 0;
             }
             if (shipPickerOpen_) {
-                for (const auto& hit : shipHits_) {
-                    if (!hit.rect.Contains(px, py)) continue;
-                    if (hit.index >= 0) {
-                        pickFit(hit.index, true);
-                        setShipPickerOpen(false);
-                        return 0;
-                    }
-                    // A new one of that kind: chosen, and its card open with
-                    // the title waiting to be typed over
-                    const int added = addFit(MINING_SHIPS[-1 - hit.index]);
-                    setShipPickerOpen(false);
-                    if (added >= 0) {
-                        pickFit(added, true);
-                        showLoadout(true);
-                        nameEditing_ = !phoneTapping_;   // (the typing is the PC's)
-                        nameEntry_.clear();
-                    }
-                    return 0;
-                }
-                setShipPickerOpen(false);    // anywhere else closes it
+                pressShipPicker(px, py);
                 return 0;
             }
             // No everRead_ guard here: the row is there from the first minute,
@@ -3947,6 +3939,12 @@ void MinerGUI::paintWindowBody(Gdiplus::Graphics& g, int cw, int ch) {
             paintPluginView(b, cw, ch, true);
             return;
         }
+        // ...or the Gear page, likewise (the phone's picture neither)
+        if (gearPageUp()) {
+            drawHeader(b, cw, true);
+            drawGearPage(b, cw, ch);
+            return;
+        }
         drawHeader(b, cw);
         lookHits_.clear();
         drawContextCard(b, cw);
@@ -4069,7 +4067,7 @@ void MinerGUI::drawRail(Gdiplus::Graphics& g, int rw, int ch) {
     fillRoundRect(g, Gdiplus::RectF(((float)rw - mark) / 2.0f, 12 * s + (40 * s - mark) / 2.0f, mark, mark), 4 * s,
                   COL_ACCENT);
     float y = 52 * s;
-    const bool page = !pluginPage_;   // the scan's page, or the Datarunner's over it
+    const bool page = !pluginPage_ && !gearPage_;   // the scan's page, or the Datarunner's over it
     const auto item = [&](R kind, const std::wstring& label, const std::string& id, bool active, int count,
                           const Gdiplus::Color& face) {
         const Gdiplus::RectF box(x, y, itemW, itemH);
@@ -4106,6 +4104,7 @@ void MinerGUI::drawRail(Gdiplus::Graphics& g, int rw, int ch) {
     item(R::Scan, L"Scan", "", page && !datarunnerOpen_, 0, COL_ACCENT);
     item(R::Refinery, L"Refinery", "", refineryVisible_, refineryDoneCount(), COL_GREEN);
     item(R::Finder, L"Ore Finder", "", plannerVisible_, 0, COL_ACCENT);
+    item(R::Gear, L"Gear", "", gearPage_, 0, COL_ACCENT);
     item(R::Blueprints, L"Blueprints", "", craftingVisible_, 0, COL_ACCENT);
     item(R::Notes, L"Notes", "", notesVisible_, 0, COL_ACCENT);
 
@@ -4130,7 +4129,8 @@ void MinerGUI::drawRail(Gdiplus::Graphics& g, int rw, int ch) {
 void MinerGUI::railPick(RailItem item, const std::string& id) {
     using R = RailItem;
     const bool datarunnerWasOpen = datarunnerOpen_;
-    const bool aPage = item == R::Scan || item == R::Datarunner || item == R::Plugins || item == R::Plugin;
+    const bool aPage = item == R::Scan || item == R::Gear || item == R::Datarunner || item == R::Plugins ||
+                       item == R::Plugin;
     // a card over the page goes, as a click beside it would take it away;
     // the Datarunner's is a page, and goes for another page only
     if (aPage) closeOtherSheets(pluginPage_);
@@ -4138,6 +4138,9 @@ void MinerGUI::railPick(RailItem item, const std::string& id) {
     switch (item) {
         case R::Scan:
             toScanPage();
+            break;
+        case R::Gear:
+            showGearPage();
             break;
         case R::Datarunner:
             // its card, the page; a second click shuts it. How it works over
@@ -4175,6 +4178,12 @@ void MinerGUI::railPick(RailItem item, const std::string& id) {
 }
 
 void MinerGUI::toScanPage() {
+    // the Gear page goes, and its lists are no longer asked for
+    if (gearPage_) {
+        gearPage_ = false;
+        gearListsWanted_ = false;
+        if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+    }
     if (!pluginPage_) return;
     endPluginTyping(false);
     pluginPage_ = false;
@@ -4288,12 +4297,20 @@ void MinerGUI::drawHeader(Gdiplus::Graphics& g, int cw, bool stripOnly) {
         // (GDI+ keeps a sixth of the em clear before a string)
         const float x = M - scaleF(5), metaX = M - scaleF(3);
         const bool plugin = pluginPageUp();
-        const std::wstring title = plugin ? toW(pluginCurrent_.title) : std::wstring(L"Scan");
+        const bool gear = gearPageUp();
+        const std::wstring title = plugin ? toW(pluginCurrent_.title) : std::wstring(gear ? L"Gear" : L"Scan");
         g.DrawString(title.c_str(), -1, &titleFont, Gdiplus::RectF(x, scaleF(5), subRight - x, scaleF(31)), &oneLine,
                      &textBrush);
         if (plugin) {
             g.DrawString(toW(pluginCurrent_.subtitle).c_str(), -1, &metaFont,
                          Gdiplus::RectF(metaX, scaleF(33), subRight - metaX, scaleF(17)), &oneLine, &dimBrush);
+        } else if (gear) {
+            // the game, and where the shops' distances are from
+            std::string where = whereSystem_;
+            if (!wherePlace_.empty()) where += (where.empty() ? "" : " - ") + wherePlace_;
+            const std::wstring line = L"Star Citizen 4.10" + (where.empty() ? std::wstring() : L"  ·  " + toW(where));
+            g.DrawString(line.c_str(), -1, &metaFont, Gdiplus::RectF(metaX, scaleF(33), subRight - metaX, scaleF(17)),
+                         &oneLine, &dimBrush);
         } else {
             gameLine(metaFont, metaX, scaleF(33));
         }
@@ -5142,6 +5159,9 @@ void MinerGUI::pickFit(int index, bool byHand) {
     headShown_ = -1;
     useHead(0);
     setFiringAll();
+    // the Gear page's list at its top again, nothing unfolded
+    gearScroll_ = 0.0f;
+    gearOpen_.clear();
     // Picked by hand while sitting in a hull the log has named: that hull
     // is this fit's from now on
     if (byHand) rememberHull();
@@ -5275,7 +5295,8 @@ void MinerGUI::useHead(int index) {
 void MinerGUI::setShipPickerOpen(bool open) {
     if (shipPickerOpen_ == open) return;
     if (open) closeOtherSheets(shipPickerOpen_);
-    if (open) toScanPage();
+    // (over the Gear page as well: its ship card has the same field)
+    if (open && !gearPage_) toScanPage();
     shipPickerOpen_ = open;
     layoutControls();
     InvalidateRect(hwnd_, nullptr, TRUE);
@@ -5301,7 +5322,8 @@ void MinerGUI::closeOtherSheets(const bool& opening) {
 void MinerGUI::showLoadout(bool open) {
     if (loadoutOpen_ == open) return;
     if (open) closeOtherSheets(loadoutOpen_);
-    if (open) toScanPage();
+    // (over the Gear page as well: its ship card has the same button)
+    if (open && !gearPage_) toScanPage();
     endNameEditing(true);    // a title half typed is kept, as a click elsewhere keeps it
     removeArmed_ = false;
     loadoutOpen_ = open;
@@ -5364,6 +5386,31 @@ static std::wstring moduleEffect(const MiningModule& m) {
     wchar_t out[32];
     std::swprintf(out, 32, L"%+.0f%% %s", best->by, best->what);
     return out;
+}
+
+// The modules worth a row, as Edit ship and the Gear page list them: by
+// their names, case folded away, so FLTR reads beside Focus instead of
+// above every lower-case letter, and each family falls into place on its
+// own - the plain name is a prefix of the rest: Focus, Focus II, Focus III.
+// Only a module that moves NOTHING is left out. Power, window and rate alone
+// would miss five real ones: the three FLTR heads, which draw less inert
+// rock in, and Forel and Lifeline, which trade resistance against how fast
+// the danger band fills.
+static std::vector<int> modulesByName() {
+    auto sortName = [](const MiningModule& m) {
+        std::string name = moduleShortName(m);
+        for (char& c : name) c = (char)::tolower((unsigned char)c);
+        return name;
+    };
+    std::vector<int> order;
+    for (int i = 0; i < MINING_MODULE_COUNT; i++) {
+        if (moduleEffect(MINING_MODULES[i]).empty()) continue;
+        order.push_back(i);
+    }
+    std::sort(order.begin(), order.end(), [&sortName](int a, int b) {
+        return sortName(MINING_MODULES[a]) < sortName(MINING_MODULES[b]);
+    });
+    return order;
 }
 
 void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
@@ -5621,29 +5668,7 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
         // Alphabetical, by the name that is on the row. Fitted modules are not
         // lifted to the front: that would shuffle rows under the cursor as one is
         // added. A fitted module is washed in green where it stands.
-        //
-        // Case is folded away, so FLTR reads beside Focus instead of above
-        // every lower-case letter, and each family falls into place on its
-        // own: the plain name is a prefix of the rest, so Focus, Focus II,
-        // Focus III. One row each, however many of that module are fitted -
-        // the row carries the count.
-        auto sortName = [](const MiningModule& m) {
-            std::string name = moduleShortName(m);
-            for (char& c : name) c = (char)::tolower((unsigned char)c);
-            return name;
-        };
-        std::vector<int> order;
-        for (int i = 0; i < MINING_MODULE_COUNT; i++) {
-            // Only a module that moves NOTHING is left out. Power, window and rate
-            // alone would miss five real ones: the three FLTR heads, which draw less
-            // inert rock in, and Forel and Lifeline, which trade resistance against how
-            // fast the danger band fills.
-            if (moduleEffect(MINING_MODULES[i]).empty()) continue;
-            order.push_back(i);
-        }
-        std::sort(order.begin(), order.end(), [&sortName](int a, int b) {
-            return sortName(MINING_MODULES[a]) < sortName(MINING_MODULES[b]);
-        });
+        const std::vector<int> order = modulesByName();
 
         // Three columns, so every module fits: two hold only twelve, and a list
         // cut short makes a module look missing. The names all end in "Module", so
@@ -6014,6 +6039,485 @@ void MinerGUI::drawShipPicker(Gdiplus::Graphics& g, int cw) {
         cx = chip.GetRight() + scaleF(6);
     }
     (void)cw;
+}
+
+// ---- the Gear page --------------------------------------------------------
+// A page of the main window, right of the rail (RailItem::Gear). At its head
+// the ship as the scan page has it - the same field drops the same list of
+// fits, Edit ship opens the same sheet - with its heads and the modules on
+// the one shown, each with an x that takes it off. Under it the laser heads
+// the ship takes, the modules and the gadgets, each with what the nearest
+// shop asks and which shops are nearest, as UEX's community lists them
+// (WhereToBuy.h). Fit does what a click on the head's row in Edit ship does,
+// Add what a click on a module's row does, the x what a right-click does.
+
+void MinerGUI::showGearPage() {
+    closeOtherSheets(gearPage_);   // the scan page's lists and cards go
+    endPluginTyping(false);
+    pluginPage_ = false;
+    if (!gearPage_) {
+        // a fresh look: the list at its top, nothing unfolded
+        gearScroll_ = 0.0f;
+        gearOpen_.clear();
+    }
+    gearPage_ = true;
+    gearListsWanted_ = true;   // UEX is asked for the lists while the page is up
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void MinerGUI::putHeadLaser(const MiningLaser* laser) {
+    if (!laser) return;
+    // a different head: its module slots may be fewer, so anything that no
+    // longer fits comes off rather than sitting in a loadout that cannot
+    // exist - and the crafted figure stays with the laser it was typed for
+    std::vector<std::pair<const MiningLaser*, float>> none;
+    auto& kept = fit_ >= 0 && fit_ < (int)fits_.size() ? fits_[(size_t)fit_].crafted : none;
+    putLaser(kept, loadout_, laser);
+    if ((int)loadout_.modules.size() > loadout_.laser->slots) loadout_.modules.resize(loadout_.laser->slots);
+}
+
+bool MinerGUI::addHeadModule(const MiningModule* module) {
+    // One more of it, while there is a slot free. Not a toggle: the same
+    // module can go in more than once - three Rieger-C3 on a three-slot head
+    // is a real fit, because the multipliers stack. takeHeadModule takes one
+    // back off.
+    if (!module || !loadout_.laser || (int)loadout_.modules.size() >= loadout_.laser->slots) return false;
+    loadout_.modules.push_back(module);
+    return true;
+}
+
+void MinerGUI::takeHeadModule(const MiningModule* module) {
+    const auto at = std::find(loadout_.modules.begin(), loadout_.modules.end(), module);
+    if (at != loadout_.modules.end()) loadout_.modules.erase(at);
+}
+
+void MinerGUI::pressShipPicker(float px, float py) {
+    for (const auto& hit : shipHits_) {
+        if (!hit.rect.Contains(px, py)) continue;
+        if (hit.index >= 0) {
+            pickFit(hit.index, true);
+            setShipPickerOpen(false);
+            return;
+        }
+        // A new one of that kind: chosen, and its card open with the title
+        // waiting to be typed over
+        const int added = addFit(MINING_SHIPS[-1 - hit.index]);
+        setShipPickerOpen(false);
+        if (added >= 0) {
+            pickFit(added, true);
+            showLoadout(true);
+            nameEditing_ = !phoneTapping_;   // (the typing is the PC's)
+            nameEntry_.clear();
+        }
+        return;
+    }
+    setShipPickerOpen(false);   // anywhere else closes it
+}
+
+void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
+    Gdiplus::Font labelFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font fieldFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font nameFont(&markFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font smallFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font crossFont(&textFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font priceFont(&numeralFamily(), scaleF(Type::NUMBER), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font figureFont(&numeralFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::SolidBrush textBrush(COL_TEXT);
+    Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
+    Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
+    Gdiplus::SolidBrush accentBrush(COL_ACCENT);
+    Gdiplus::SolidBrush greenBrush(COL_GREEN);
+    Gdiplus::StringFormat oneLine;
+    oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+    Gdiplus::StringFormat middle;
+    middle.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    middle.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    middle.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+    Gdiplus::StringFormat rightMiddle;
+    rightMiddle.SetAlignment(Gdiplus::StringAlignmentFar);
+    rightMiddle.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    rightMiddle.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    Gdiplus::StringFormat centred;
+    centred.SetAlignment(Gdiplus::StringAlignmentCenter);
+    centred.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    centred.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+
+    gearHits_.clear();
+    const float px = scaleF(1.0f);
+    const float M = (float)scale(MARGIN);
+    const float cardX = M - scaleF(6), cardW = (float)cw - 2 * M + scaleF(12);
+    const float left = M + scaleF(6), right = (float)cw - M - scaleF(6), wide = right - left;
+    const float radius = scaleF(R_CONTROL);
+
+    // ---- the ship: its field and Edit ship, its heads, the modules on the
+    // head shown
+    const float top = (float)scale(LY_CONTEXT);
+    const float fieldY = top + scaleF(26), fieldH = scaleF(28);
+    const bool tabs = ship_ && heads_.size() > 1;
+    const float tabY = fieldY + fieldH + scaleF(10), tabH = scaleF(36);
+    const bool modulesRow = ship_ && loadout_.laser;
+    const float modY = (tabs ? tabY + tabH : fieldY + fieldH) + scaleF(10);
+    // the modules' chips laid out first: where they run onto a second
+    // line, the card grows
+    const float chipH = scaleF(26);
+    wchar_t count[32];
+    std::swprintf(count, 32, L"%d OF %d", (int)loadout_.modules.size(), loadout_.laser ? loadout_.laser->slots : 0);
+    const float labelW = lineWidth(g, L"MODULES", labelFont), countW = lineWidth(g, count, labelFont);
+    const float chipsX = left + labelW + scaleF(4) + countW + scaleF(10);
+    const float crossW = lineWidth(g, L"\u00D7", crossFont);
+    struct Chip {
+        Gdiplus::RectF rect, cross;
+        std::wstring words;
+        size_t at = 0;   // its place on the head
+    };
+    std::vector<Chip> chips;
+    float chipX = chipsX, chipY = modY;
+    if (modulesRow) {
+        for (size_t k = 0; k < loadout_.modules.size(); k++) {
+            const MiningModule* m = loadout_.modules[k];
+            if (!m) continue;
+            Chip c;
+            c.words = toW(moduleShortName(*m));
+            c.at = k;
+            const float w = scaleF(9) + lineWidth(g, c.words, fieldFont) + scaleF(4) + crossW + scaleF(7);
+            if (chipX > chipsX && chipX + w > right) {
+                chipX = chipsX;
+                chipY += chipH + scaleF(6);
+            }
+            c.rect = Gdiplus::RectF(chipX, chipY, w, chipH);
+            c.cross = Gdiplus::RectF(chipX + w - crossW - scaleF(11), chipY, crossW + scaleF(11), chipH);
+            chips.push_back(c);
+            chipX += w + scaleF(8);
+        }
+    }
+    const float shipBottom = modulesRow ? chipY + chipH : (tabs ? tabY + tabH : fieldY + fieldH);
+    const Gdiplus::RectF shipCard(cardX, top, cardW, shipBottom + scaleF(16) - top);
+    mainscanCard(g, shipCard, px);
+
+    g.DrawString(L"SHIP", -1, &labelFont, Gdiplus::PointF(left, top + scaleF(10)), &faintBrush);
+    shipField_ = Gdiplus::RectF(left, fieldY, std::round(wide * 0.56f), fieldH);
+    mainscanField(g, shipField_, px, isHot(hoverMain_, shipField_), shipPickerOpen_, false);
+    const std::wstring shipName = ship_ ? fitTitle() : std::wstring(L"Select ship");
+    g.DrawString(shipName.c_str(), -1, &fieldFont,
+                 Gdiplus::RectF(left + scaleF(11), fieldY, shipField_.Width - scaleF(35), fieldH), &middle,
+                 ship_ ? &textBrush : &faintBrush);
+    // Edit ship, as on the scan page: an outline in the quiet ink while
+    // there is no ship to edit
+    const float buttonW = scaleF(70);
+    loadoutButton_ = Gdiplus::RectF(right - buttonW, fieldY, buttonW, fieldH);
+    if (ship_) {
+        drawButton(g, loadoutButton_, L"Edit ship", fieldFont, ButtonKind::Secondary, isHot(hoverMain_, loadoutButton_),
+                   radius);
+    } else {
+        strokeRoundRect(g, loadoutButton_, radius, COL_BORDER);
+        g.DrawString(L"Edit ship", -1, &fieldFont, loadoutButton_, &centred, &faintBrush);
+    }
+
+    // the heads, as Edit ship's tabs have them: a click shows that head
+    if (tabs) {
+        const float gap = scaleF(8);
+        const float tabW = (wide - gap * (float)(heads_.size() - 1)) / (float)heads_.size();
+        for (size_t i = 0; i < heads_.size(); i++) {
+            const Gdiplus::RectF tab(left + (tabW + gap) * (float)i, tabY, tabW, tabH);
+            const bool here = (int)i == headShown_;
+            if (here) {
+                fillRoundRect(g, tab, radius, COL_CARD_HI);
+                selectionFrame(g, tab, radius);
+            } else {
+                fillRoundRect(g, tab, radius, isHot(hoverMain_, tab) ? COL_HOVER : COL_CARD_HI);
+            }
+            g.DrawString(headPlace((int)i).c_str(), -1, &labelFont, Gdiplus::PointF(tab.X + scaleF(10), tabY + scaleF(5)),
+                         here ? &accentBrush : &dimBrush);
+            if (const MiningLaser* l = here ? loadout_.laser : heads_[i].laser) {
+                g.DrawString(laserShortName(*l).c_str(), -1, &smallFont,
+                             Gdiplus::RectF(tab.X + scaleF(10), tabY + scaleF(19), tabW - scaleF(18), scaleF(15)), &oneLine,
+                             here ? &textBrush : &faintBrush);
+            }
+            gearHits_.push_back({tab, 1, (int)i, std::string()});
+        }
+    }
+
+    // the modules on it, a chip each with the fitted green down its edge
+    if (modulesRow) {
+        g.DrawString(L"MODULES", -1, &labelFont, Gdiplus::RectF(left, modY, labelW + scaleF(2), chipH), &middle,
+                     &faintBrush);
+        g.DrawString(count, -1, &labelFont, Gdiplus::RectF(left + labelW + scaleF(4), modY, countW + scaleF(2), chipH),
+                     &middle, &dimBrush);
+        for (const Chip& c : chips) {
+            fillRoundRect(g, c.rect, radius, COL_CARD_HI);
+            edgeBar(g, c.rect, radius, scaleF(3), COL_GREEN);
+            g.DrawString(c.words.c_str(), -1, &fieldFont,
+                         Gdiplus::RectF(c.rect.X + scaleF(9), c.rect.Y, c.cross.X - c.rect.X - scaleF(7), chipH), &middle,
+                         &textBrush);
+            g.DrawString(L"\u00D7", -1, &crossFont,
+                         Gdiplus::RectF(c.rect.GetRight() - scaleF(7) - crossW, c.rect.Y, crossW + scaleF(2), chipH),
+                         &middle, isHot(hoverMain_, c.cross) ? &textBrush : &faintBrush);
+            gearHits_.push_back({c.cross, 2, (int)c.at, std::string()});
+        }
+    }
+
+    // ---- the list: the laser heads the ship takes, the modules or the
+    // gadgets, each with what the nearest shop asks
+    struct Row {
+        std::wstring name, effect, stats;
+        std::string item;      // its name at UEX
+        int index = -1;        // in its table
+        bool fitted = false;
+        bool button = false;   // Fit or Add, whether it can be pressed or not
+        bool can = false;      // ...and it can
+        std::vector<ShopInOrder> shops;   // one per place, the nearest first
+        float pitch = 0;
+    };
+    const int tab = std::clamp(gearTab_, 0, 2);
+    const bool headsList = tab == 0;
+    std::vector<Row> rows;
+    if (headsList) {
+        // those the ship takes, as Edit ship lists them; without a ship all
+        for (int i = 0; i < MINING_LASER_COUNT; i++) {
+            const MiningLaser& l = MINING_LASERS[i];
+            if (ship_ && !laserFits(l, *ship_)) continue;
+            Row r;
+            r.name = toW(l.name);
+            r.item = l.name;
+            r.index = i;
+            wchar_t stats[96];
+            std::swprintf(stats, 96, L"%.0f  ·  %.0f m  ·  %d slot%s", l.fracture, l.fullRange, l.slots,
+                          l.slots == 1 ? L"" : L"s");
+            r.stats = stats;
+            r.fitted = ship_ && loadout_.laser == &l;
+            r.button = ship_ != nullptr;
+            r.can = r.button && !r.fitted;
+            rows.push_back(std::move(r));
+        }
+    }
+    for (Row& r : rows) {
+        if (gearShops_) r.shops = onePerPlace(nearestFirst(gearShops_->offersFor(r.item), whereSystem_, wherePlace_));
+        r.pitch = scaleF(headsList ? 66.0f : 49.0f);
+    }
+
+    // The card as tall as its rows, as far as the window's foot; what does
+    // not fit is scrolled to (WM_MOUSEWHEEL), held to the list's length here
+    const float listTop = shipCard.GetBottom() + scaleF(12);
+    const bool status = !gearShops_;
+    const float rowsTop = listTop + scaleF(50);
+    float rowsH = status ? scaleF(20) : 0.0f;
+    for (const Row& r : rows) rowsH += r.pitch;
+    const float natural = rowsTop + rowsH + scaleF(2);
+    const float listBottom = (std::max)(listTop + scaleF(80), (std::min)(natural, (float)ch - scaleF(12)));
+    const float scrollMost = (std::max)(0.0f, natural - listBottom);
+    gearScroll_ = std::clamp(gearScroll_, 0.0f, scrollMost);
+    const Gdiplus::RectF listCard(cardX, listTop, cardW, listBottom - listTop);
+    mainscanCard(g, listCard, px);
+
+    // the three lists, and at the right where the figures come from - over
+    // the heads with the size of head the ship takes
+    {
+        std::vector<Segment> segs(3);
+        segs[0].text = L"Laser heads";
+        segs[1].text = L"Modules";
+        segs[2].text = L"Gadgets";
+        segs[(size_t)tab].on = true;
+        const float segY = listTop + scaleF(12), segH = scaleF(28);
+        const std::vector<Gdiplus::RectF> places =
+            drawSegmented(g, left - scaleF(2), segY, segH, segs, fieldFont, figureFont, scaleF(10), px, hoverMain_);
+        for (size_t k = 0; k < places.size(); k++) gearHits_.push_back({places[k], 0, (int)k, std::string()});
+        std::wstring source = L"UEX";
+        if (headsList && ship_) source = L"SIZE " + std::to_wstring((int)ship_->size) + L"  ·  UEX";
+        g.DrawString(source.c_str(), -1, &labelFont, Gdiplus::RectF(left, segY, wide, segH), &rightMiddle, &faintBrush);
+    }
+
+    // The rows, clipped to the card under the tabs: hits only where a row
+    // shows, and only there does it light up under the pointer
+    const float viewTop = std::round(listTop + scaleF(44));
+    const Gdiplus::RectF view(cardX, viewTop, cardW, std::round(listBottom) - viewTop);
+    const auto seen = [&](const Gdiplus::RectF& r) {
+        return isHot(hoverMain_, r) && view.Contains((float)hoverMain_.x, (float)hoverMain_.y);
+    };
+    const auto hit = [&](const Gdiplus::RectF& r, int kind, int value, const std::string& item) {
+        const float y0 = (std::max)(r.Y, view.Y), y1 = (std::min)(r.GetBottom(), view.GetBottom());
+        if (y1 - y0 >= 1.0f) gearHits_.push_back({Gdiplus::RectF(r.X, y0, r.Width, y1 - y0), kind, value, item});
+    };
+    const Gdiplus::GraphicsState unclipped = g.Save();
+    g.SetClip(view);
+    const float buttonH = scaleF(22);
+    const float rowButtonW = (std::max)(scaleF(44), lineWidth(g, L"Add", fieldFont) + scaleF(20));
+    float y = rowsTop - gearScroll_;
+    if (status) {
+        // the lists not there yet, or not to be had
+        const std::wstring words =
+            gearShopsNote_.empty() ? std::wstring(L"Loading from UEX") : L"UEX unreachable: " + toW(gearShopsNote_);
+        g.DrawString(words.c_str(), -1, &smallFont, Gdiplus::RectF(left, y - scaleF(2), wide, scaleF(16)), &oneLine,
+                     &faintBrush);
+        y += scaleF(20);
+    }
+    for (const Row& r : rows) {
+        const float rowY = y;
+        y += r.pitch;
+        if (rowY + r.pitch < view.Y || rowY - scaleF(6) > view.GetBottom()) continue;
+        if (r.fitted) {
+            selectionFrame(g, Gdiplus::RectF(cardX + scaleF(6), rowY - scaleF(6), cardW - scaleF(12), r.pitch - scaleF(6)),
+                           radius, COL_GREEN);
+        }
+        // Fit under a head's price; Add beside a module's
+        const Gdiplus::RectF button(right - rowButtonW, rowY + scaleF(headsList ? 23.0f : 6.0f), rowButtonW, buttonH);
+        // the nearest shop's price at the right, on the name's baseline
+        const float baseline = rowY + fontAscent(nameFont);
+        const float priceRight = headsList || !r.button ? right : button.X - scaleF(8);
+        float nameEnd = priceRight;
+        if (!r.shops.empty()) {
+            const std::wstring price = formatNumber((int)std::lround(r.shops.front().offer.price));
+            const float unitW = lineWidth(g, L"aUEC", smallFont), priceW = lineWidth(g, price, priceFont);
+            const float unitX = priceRight - unitW, priceX = unitX - priceW;
+            g.DrawString(price.c_str(), -1, &priceFont,
+                         Gdiplus::PointF(priceX, std::round(baseline - fontAscent(priceFont))), &textBrush);
+            g.DrawString(L"aUEC", -1, &smallFont, Gdiplus::PointF(unitX, std::round(baseline - fontAscent(smallFont))),
+                         &dimBrush);
+            nameEnd = priceX;
+        }
+        // the name, a module's effect right behind it, a head's figures
+        // under it as Edit ship prints them
+        const float nameRoom = (std::max)(scaleF(40), nameEnd - scaleF(10) - left);
+        g.DrawString(r.name.c_str(), -1, &nameFont, Gdiplus::RectF(left, rowY, nameRoom, scaleF(20)), &oneLine,
+                     r.fitted ? &greenBrush : &textBrush);
+        if (!r.effect.empty()) {
+            const float effectX = left + lineWidth(g, r.name, nameFont) + scaleF(3);
+            if (effectX < left + nameRoom - scaleF(24)) {
+                Gdiplus::SolidBrush effectBrush(r.fitted ? tint(COL_GREEN, 190) : COL_TEXT_DIM);
+                g.DrawString(r.effect.c_str(), -1, &smallFont,
+                             Gdiplus::RectF(effectX, std::round(baseline - fontAscent(smallFont)), left + nameRoom - effectX,
+                                            scaleF(16)),
+                             &oneLine, &effectBrush);
+            }
+        }
+        if (!r.stats.empty()) {
+            g.DrawString(r.stats.c_str(), -1, &smallFont, Gdiplus::PointF(left, rowY + scaleF(19)), &dimBrush);
+        }
+        // where it is sold: the nearest places, as many as the line holds
+        const float lineY = rowY + scaleF(headsList ? 34.0f : 19.0f);
+        const float lineRoom = (r.button ? button.X - scaleF(12) : right) - left;
+        if (gearShops_ && r.shops.empty()) {
+            g.DrawString(L"No shop known to UEX", -1, &smallFont, Gdiplus::RectF(left, lineY, lineRoom, scaleF(16)),
+                         &oneLine, &faintBrush);
+        } else if (gearShops_) {
+            const std::wstring line = toW(shopLine(
+                r.shops, [&](const std::string& t) { return lineWidth(g, toW(t), smallFont) <= lineRoom; }));
+            g.DrawString(line.c_str(), -1, &smallFont, Gdiplus::RectF(left, lineY, lineRoom, scaleF(16)), &oneLine,
+                         &faintBrush);
+        }
+        // Fit, or the head that is fitted; Add, quiet where no slot is free
+        if (headsList && r.fitted) {
+            g.DrawString(L"FITTED", -1, &labelFont, Gdiplus::RectF(left, button.Y, wide, buttonH), &rightMiddle,
+                         &greenBrush);
+        } else if (r.button && r.can) {
+            drawButton(g, button, headsList ? L"Fit" : L"Add", fieldFont, ButtonKind::Secondary, seen(button), radius);
+            hit(button, headsList ? 3 : 4, r.index, r.item);
+        } else if (r.button) {
+            strokeRoundRect(g, button, radius, COL_BORDER);
+            g.DrawString(headsList ? L"Fit" : L"Add", -1, &fieldFont, button, &centred, &faintBrush);
+        }
+    }
+    g.Restore(unclipped);
+    // more below: the card's foot fades out over it
+    if (gearScroll_ < scrollMost - 0.5f) {
+        const float fadeH = (std::min)(scaleF(40), view.Height);
+        const Gdiplus::RectF fade(cardX, listBottom - fadeH, cardW, fadeH);
+        Gdiplus::LinearGradientBrush shade(Gdiplus::RectF(fade.X, fade.Y - 1, fade.Width, fadeH + 3), tint(COL_CARD, 0),
+                                           COL_CARD, Gdiplus::LinearGradientModeVertical);
+        Gdiplus::GraphicsPath shape;
+        addRoundRect(shape, fade, scaleF(R_CARD));
+        g.FillPath(&shade, &shape);
+    }
+}
+
+void MinerGUI::pressGear(HWND hwnd, float px, float py) {
+    // the ship's list, while it is down, takes the click wherever it lands
+    if (shipPickerOpen_) {
+        pressShipPicker(px, py);
+        return;
+    }
+    if (shipField_.Width > 0 && shipField_.Contains(px, py)) {
+        setShipPickerOpen(true);
+        return;
+    }
+    if (ship_ && loadoutButton_.Width > 0 && loadoutButton_.Contains(px, py)) {
+        showLoadout(true);
+        return;
+    }
+    for (const GearHit& one : gearHits_) {
+        if (!one.rect.Contains(px, py)) continue;
+        const GearHit hit = one;   // (the page is drawn anew under it)
+        switch (hit.kind) {
+            case 0:
+                // another list, from its top
+                if (hit.value != gearTab_) {
+                    gearTab_ = hit.value;
+                    gearScroll_ = 0.0f;
+                    gearOpen_.clear();
+                }
+                break;
+            case 1:
+                useHead(hit.value);   // as Edit ship's tabs: the head shown
+                break;
+            case 2:
+                // as a right-click on the module in Edit ship
+                if (hit.value >= 0 && hit.value < (int)loadout_.modules.size()) {
+                    takeHeadModule(loadout_.modules[(size_t)hit.value]);
+                    storeHead();
+                    saveLoadout();
+                }
+                break;
+            case 3:
+                // as a click on the head's row in Edit ship
+                putHeadLaser(&MINING_LASERS[hit.value]);
+                storeHead();
+                craftedEditing_ = false;
+                saveLoadout();
+                break;
+            case 4:
+                // as a click on the module's row in Edit ship
+                addHeadModule(&MINING_MODULES[hit.value]);
+                storeHead();
+                craftedEditing_ = false;
+                saveLoadout();
+                break;
+            case 5:
+                gearOpen_ = gearOpen_ == hit.item ? std::string() : hit.item;
+                break;
+            case 6:
+                gearOpen_.clear();
+                break;
+        }
+        InvalidateRect(hwnd, nullptr, TRUE);
+        return;
+    }
+}
+
+void MinerGUI::gearStateForShot(int tab, const std::string& open) {
+    gearTab_ = std::clamp(tab, 0, 2);
+    gearOpen_ = open;
+    gearScroll_ = 0.0f;
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+bool MinerGUI::clickGearForShot(int kind, int value) {
+    for (const GearHit& hit : gearHits_) {
+        if (hit.kind != kind || hit.value != value) continue;
+        const int x = (int)std::lround(hit.rect.X + hit.rect.Width / 2) + railWidth();
+        const int y = (int)std::lround(hit.rect.Y + hit.rect.Height / 2);
+        SendMessageW(hwnd_, WM_LBUTTONDOWN, 0, MAKELPARAM(x, y));
+        SendMessageW(hwnd_, WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+        return true;
+    }
+    return false;
+}
+
+std::string MinerGUI::gearHeadForShot() const {
+    std::string out = loadout_.laser ? std::string(loadout_.laser->name) : std::string("no laser head");
+    for (const MiningModule* m : loadout_.modules) {
+        if (m) out += std::string(" + ") + m->name;
+    }
+    return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -26896,6 +27400,8 @@ void MinerGUI::showPluginPage(const std::string& id) {
     endPluginTyping(false);
     if (!(pluginPage_ && pluginShown_ == id)) pluginScroll_ = 0;
     pluginPage_ = true;
+    gearPage_ = false;   // (one page at a time)
+    gearListsWanted_ = false;
     pluginShown_ = id;
     // the server's list, once per start, as the window of their own has it
     if (!pluginsAsked_ && pluginAction_) {

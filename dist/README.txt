@@ -52,7 +52,8 @@ Getting started
    On Windows, clicks go through the overlay to the game; to use its buttons,
    move it or resize it, Alt-Tab to Bedrock first. In the main window, the
    sidebar on the left opens the Ore Finder (F), the Blueprints (B), the
-   Refinery (R) and your Notes (N).
+   Refinery (R) and your Notes (N), and Gear: the laser heads, modules and
+   gadgets your ship takes, with the nearest shops that sell them.
 7. SHIP, next to LOCATION, holds the ships you mine with and what they carry -
    heads, modules, crafted bonus - which is what the rock view works with.
    You can save several, also more than one of the same type, each under its
@@ -444,9 +445,11 @@ Four network requests of its own, and three more only if you switch them on:
   Linux build, and your install's number (see below) - nothing about you,
   your machine or your game. update=0 in region_config.txt turns it off, and
   an update itself is only downloaded when you click it.
-- Ore prices from UEX: while the Ore Finder is open, Bedrock downloads the
+- Prices from UEX: while the Ore Finder is open, Bedrock downloads the ore
   price list from uexcorp.space (at most every 30 minutes) and UEX's list of
-  terminals (once a week). The UEX market tab loads the player listings for
+  terminals (once a week). While the Gear page is open, it downloads UEX's
+  prices of the laser heads, modules and gadgets (at most every 12 hours).
+  The UEX market tab loads the player listings for
   the selected ore, and the rock view checks them when a rock contains ore of
   quality 900 or higher (each ore at most every 10 minutes). These requests
   include Bedrock's version, the platform and Bedrock's UEX app token, which

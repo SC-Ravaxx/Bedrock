@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -78,5 +79,24 @@ struct ShopInOrder {
 // other to a tenth of a Gm - as a distance is shown -, the cheaper first.
 std::vector<ShopInOrder> nearestFirst(const std::vector<ShopOffer>& offers, const std::string& system,
                                       const std::string& place);
+
+// ...one per place, as the Gear page lists them: the first of each place in
+// that order - the nearest, and of one place's shops the cheaper
+std::vector<ShopInOrder> onePerPlace(const std::vector<ShopInOrder>& shops);
+
+// A shop's place by the name a list gives it: a gateway with the system it
+// stands in, as UEX names it - Pyro and Nyx each have a Stanton Gateway
+std::string shopPlace(const ShopOffer& offer);
+
+// How far, as a list shows it: "28.0 Gm"; "" where that is not known
+std::string gigametres(double metres);
+
+// The line under an item: its nearest places and how far each is, as many
+// as `fits` lets through, and then how many more there are - "Orbituary
+// 28.0 Gm  ·  Stanton Gateway (Pyro) 47.8 Gm  ·  11 more"; where nothing
+// is measured, the places alone. The nearest at least, however narrow;
+// `named`: how many it names. "" for no shops.
+std::string shopLine(const std::vector<ShopInOrder>& shops, const std::function<bool(const std::string&)>& fits,
+                     size_t* named = nullptr);
 
 }  // namespace SCMiner

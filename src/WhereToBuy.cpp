@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <string_view>
 
 #include "MiniJson.h"
@@ -244,6 +245,53 @@ std::vector<ShopInOrder> nearestFirst(const std::vector<ShopOffer>& offers, cons
         return a.offer.where < b.offer.where;
     });
     return out;
+}
+
+std::vector<ShopInOrder> onePerPlace(const std::vector<ShopInOrder>& shops) {
+    std::vector<ShopInOrder> out;
+    for (const ShopInOrder& shop : shops) {
+        const bool listed = std::any_of(out.begin(), out.end(), [&](const ShopInOrder& o) {
+            return sameName(o.offer.where, shop.offer.where) && sameName(o.offer.system, shop.offer.system);
+        });
+        if (!listed) out.push_back(shop);
+    }
+    return out;
+}
+
+std::string shopPlace(const ShopOffer& offer) {
+    static const std::string_view GATEWAY = " Gateway";
+    const std::string& where = offer.where;
+    const bool gateway = where.size() > GATEWAY.size() &&
+                         sameName(std::string_view(where).substr(where.size() - GATEWAY.size()), GATEWAY);
+    return gateway && !offer.system.empty() ? where + " (" + offer.system + ")" : where;
+}
+
+std::string gigametres(double metres) {
+    if (metres < 0) return std::string();
+    char text[32];
+    std::snprintf(text, sizeof(text), "%.1f Gm", metres / 1e9);
+    return text;
+}
+
+std::string shopLine(const std::vector<ShopInOrder>& shops, const std::function<bool(const std::string&)>& fits,
+                     size_t* named) {
+    if (named) *named = 0;
+    if (shops.empty()) return std::string();
+    static const std::string SEP = "  \xC2\xB7  ";
+    const auto words = [](const ShopInOrder& shop) {
+        const std::string way = gigametres(shop.metres);
+        return shopPlace(shop.offer) + (way.empty() ? "" : " " + way);
+    };
+    for (size_t take = shops.size(); take >= 1; take--) {
+        std::string line;
+        for (size_t i = 0; i < take; i++) line += (i ? SEP : std::string()) + words(shops[i]);
+        if (take < shops.size()) line += SEP + std::to_string(shops.size() - take) + " more";
+        if (take == 1 || !fits || fits(line)) {
+            if (named) *named = take;
+            return line;
+        }
+    }
+    return std::string();
 }
 
 }  // namespace SCMiner

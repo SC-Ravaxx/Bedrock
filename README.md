@@ -29,6 +29,8 @@ executable and start it. The app tells you when a newer version is out.
 - **Ore Finder:** where an ore is found, what a rock of it usually holds, and
   where refined ore sells best right now (prices players report on
   [UEX](https://uexcorp.space)), next to your own trades from the game log.
+- **Gear:** the laser heads, modules and gadgets your ship takes, with the
+  nearest shops that sell them and their prices from UEX.
 - **Refinery:** reads your work orders off the refinery terminal and shows
   when each one is done, and how busy each station is - shared between
   players, so you can check a station before you fly there.
@@ -73,7 +75,8 @@ process or inject anything. The `[BP]` option and the component names write a
 language file into the game folder, the way language packs do.
 
 Network: an update check, the plugin list and the plugins you install
-(official builds only), UEX's public price lists while the Ore Finder is open,
+(official builds only), UEX's public price lists while the Ore Finder or the
+Gear page is open,
 refinery workloads to and from Bedrock's server (official builds only; untick
 "Share refinery workloads" in the Refinery window to stop sending - what is
 sent is listed in `dist/README.txt`), your refinery jobs to UEX only if you

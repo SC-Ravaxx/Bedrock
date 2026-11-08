@@ -130,20 +130,24 @@ public:
     std::string uexMarketWanted() const;
     // The shops that sell the mining gear - laser heads, modules, gadgets -
     // as UEX lists them (WhereToBuy.h). Whether the lists are wanted: UEX is
-    // only asked for them while something shows them, and nothing does yet.
+    // only asked for them while the Gear page is up.
     bool gearListsWanted() const { return gearListsWanted_; }
     // ...the lists that came - null while none has - and what went wrong the
-    // last time they were asked for ("" when nothing did)
+    // last time they were asked for ("" when nothing did); the Gear page
+    // drawn anew with them
     void setGearShops(std::shared_ptr<const UexShops> shops, const std::string& note) {
         gearShops_ = std::move(shops);
         gearShopsNote_ = note;
+        if (gearPage_ && hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
     }
     // Where the player is, for the order of those shops (nearestFirst): the
     // place as GamePlaces names it ("ARC-L1", "Levski"; "" in open space or
     // before the log has named one) and its system ("Stanton"; "" unknown)
     void setWhereAt(const std::string& place, const std::string& system) {
+        const bool moved = place != wherePlace_ || system != whereSystem_;
         wherePlace_ = place;
         whereSystem_ = system;
+        if (moved && gearPage_ && hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
     }
     // The player's own conversations there (read with their key): a listing
     // they are talking about says so, and opens at their thread
@@ -276,10 +280,10 @@ public:
     void showPluginPage(const std::string& id);
 
     // ---- the rail: the full window's pages and tools, down its left ----
-    // Scan, Datarunner, Plugins and each plugin are pages of the main window;
-    // the others open their windows. Not in the overlay, nor in a phone's
-    // picture of the window.
-    enum class RailItem { Scan, Datarunner, Refinery, Finder, Blueprints, Notes, Plugin, Plugins, Settings };
+    // Scan, Gear, Datarunner, Plugins and each plugin are pages of the main
+    // window; the others open their windows. Not in the overlay, nor in a
+    // phone's picture of the window.
+    enum class RailItem { Scan, Datarunner, Refinery, Finder, Blueprints, Notes, Plugin, Plugins, Settings, Gear };
     // ...a click on one, for a picture (`id`: the plugin's)
     void railPickForShot(RailItem item, const std::string& id = "") { railPick(item, id); }
     void paintPluginsTo(HDC hdc);
@@ -406,6 +410,14 @@ public:
     void wantGearListsForShot(bool wanted) { gearListsWanted_ = wanted; }
     std::shared_ptr<const UexShops> gearShopsForShot() const { return gearShops_; }
     std::string whereAtForShot() const { return whereSystem_ + " - " + wherePlace_; }
+    // The Gear page for a picture: its list (0 laser heads, 1 modules, 2
+    // gadgets) and the item whose shops are unfolded ("" none), at the top
+    void gearStateForShot(int tab, const std::string& open);
+    // ...a click on one of its pieces (GearHit's kinds and values), through
+    // the window's own handler; false where the page shows no such piece
+    bool clickGearForShot(int kind, int value);
+    // ...and what the head shown carries, for the shot log
+    std::string gearHeadForShot() const;
     // Types into the crafted-% field the way a keyboard does: real key
     // messages posted to the window, so they travel the whole path the
     // shortcuts and IsDialogMessage sit on. WM_CHAR delivered straight to
@@ -1174,6 +1186,7 @@ private:
     };
     std::vector<RailHit> railHits_;
     bool pluginPage_ = false;      // the plugins' page, or one plugin's, is up (pluginShown_)
+    bool gearPage_ = false;        // the Gear page is up (showGearPage)
     bool phonePainting_ = false;   // the window drawn for a phone: as it was, without the rail
     // The window on screen, not the overlay nor a phone's picture: the rail
     // is up with Bedrock's mark at its head, the header holds the page's
@@ -1185,9 +1198,12 @@ private:
     // on the PC
     int scanShift() const { return railShown() || phonePainting_ ? scale(LY_SIGCARD - LY_CONTROLS) : 0; }
     bool pluginPageUp() const { return pluginPage_ && railShown(); }
+    // ...and the Gear page: beside the rail only - a phone's picture is the
+    // scan page's
+    bool gearPageUp() const { return gearPage_ && railShown(); }
     void drawRail(Gdiplus::Graphics& g, int rw, int ch);
     void railPick(RailItem item, const std::string& id);
-    void toScanPage();   // a plugin's page left for the scan, typing let go
+    void toScanPage();   // a plugin's page or the Gear page left for the scan, typing let go
     void railRepaint();  // a tool's window opened or shut: the rail shows it
     // A card drawn by the parent cannot cover a child window: the buttons
     // go under it (`on`) and come back as layoutControls has them
@@ -1503,6 +1519,39 @@ private:
     std::shared_ptr<const UexShops> gearShops_;
     std::string gearShopsNote_;
     std::string wherePlace_, whereSystem_;
+    // The Gear page (gearPage_): which list, how far down it is scrolled,
+    // the item whose shops are unfolded (by its name at UEX), and where its
+    // pieces were drawn
+    int gearTab_ = 0;   // 0 laser heads, 1 modules, 2 gadgets
+    float gearScroll_ = 0.0f;
+    std::string gearOpen_;
+    struct GearHit {
+        Gdiplus::RectF rect;
+        // 0 a list's tab (value: the list), 1 a head of the ship (its
+        // place), 2 the x on a fitted module (its place on the head), 3 Fit
+        // (the laser, MINING_LASERS), 4 Add (the module, MINING_MODULES),
+        // 5 an item's shop line, which unfolds its shops, 6 those shops
+        // unfolded, which fold again (both: the item's index in its table)
+        int kind;
+        int value;
+        std::string item;   // 5 and 6: the item's name at UEX
+    };
+    std::vector<GearHit> gearHits_;
+    void showGearPage();
+    void drawGearPage(Gdiplus::Graphics& g, int cw, int ch);
+    void pressGear(HWND hwnd, float px, float py);
+    // What a click on a row of Edit ship does to the head shown, for the
+    // Gear page to do the same: a laser put on it (the crafted figure goes
+    // aside with the one that leaves, the modules are trimmed to the new
+    // one's slots), a module added where a slot is free, one taken off (a
+    // right-click there). The caller stores the head and saves.
+    void putHeadLaser(const MiningLaser* laser);
+    bool addHeadModule(const MiningModule* module);
+    void takeHeadModule(const MiningModule* module);
+    // A click while the ship's list is down: a fit picked, a new one added
+    // and its card opened, or the list shut - over the scan page or the Gear
+    // page alike
+    void pressShipPicker(float px, float py);
     std::string marketOre() const;                    // the ore or gem the UEX tab is on
     void paintMarketColumn(Gdiplus::Graphics& g, int cw, int ch, float cardX, float top);
     // The rock view's line: what a player on UEX pays for the best part of

@@ -1969,6 +1969,49 @@ int runSelfTest() {
                                    (fromKept.shops ? std::to_string(fromKept.shops->itemCount()) + " items" : "none: " + fromKept.note) +
                                    ", refused: " + (refusedOne.note.empty() ? std::string("no reason") : refusedOne.note) + ")");
         }
+
+        // The Gear page's lines: one shop per place, a gateway named with its
+        // system, the nearest places as many as the line holds and then how
+        // many more - and without distances the places alone
+        {
+            auto shop = [](const char* where, const char* system, double gigametresAway, double price) {
+                ShopInOrder s;
+                s.offer.where = where;
+                s.offer.system = system;
+                s.offer.price = price;
+                s.home = std::string(system) == "Pyro";
+                s.metres = gigametresAway < 0 ? -1.0 : gigametresAway * 1e9;
+                return s;
+            };
+            const std::vector<ShopInOrder> lancet = {
+                shop("Orbituary", "Pyro", 28.04, 94000),     shop("Stanton Gateway", "Pyro", 47.81, 94000),
+                shop("Stanton Gateway", "Pyro", 47.81, 96000), shop("Nyx Gateway", "Pyro", 57.7, 94000),
+                shop("Area 18", "Stanton", 64.43, 94000),    shop("Levski", "Nyx", 90.1, 94000)};
+            const auto places = SCMiner::onePerPlace(lancet);
+            const std::string dot = "  \xC2\xB7  ";
+            size_t allNamed = 0, twoNamed = 0, oneNamed = 9;
+            const std::string all = SCMiner::shopLine(places, [](const std::string&) { return true; }, &allNamed);
+            const std::string two =
+                SCMiner::shopLine(places, [](const std::string& t) { return t.size() <= 70; }, &twoNamed);
+            const std::string one = SCMiner::shopLine(places, [](const std::string&) { return false; }, &oneNamed);
+            std::vector<ShopInOrder> unmeasured = places;
+            for (ShopInOrder& s : unmeasured) s.metres = -1;
+            const std::string bare = SCMiner::shopLine(unmeasured, [](const std::string& t) { return t.size() <= 50; });
+            size_t noneNamed = 7;
+            const bool lines =
+                places.size() == 5 && places[1].offer.price == 94000 &&
+                all == "Orbituary 28.0 Gm" + dot + "Stanton Gateway (Pyro) 47.8 Gm" + dot + "Nyx Gateway (Pyro) 57.7 Gm" +
+                           dot + "Area 18 64.4 Gm" + dot + "Levski 90.1 Gm" &&
+                allNamed == 5 && two == "Orbituary 28.0 Gm" + dot + "Stanton Gateway (Pyro) 47.8 Gm" + dot + "3 more" &&
+                twoNamed == 2 && one == "Orbituary 28.0 Gm" + dot + "4 more" && oneNamed == 1 &&
+                bare == "Orbituary" + dot + "Stanton Gateway (Pyro)" + dot + "3 more" &&
+                SCMiner::shopLine({}, nullptr, &noneNamed).empty() && noneNamed == 0 &&
+                SCMiner::shopPlace(places[3].offer) == "Area 18" && SCMiner::gigametres(0) == "0.0 Gm" &&
+                SCMiner::gigametres(-1).empty();
+            allPassed &= check(lines, "an item's line on the Gear page: one shop per place, a gateway with its system, "
+                                      "as many places as the line holds and how many more (got \"" +
+                                          two + "\" / \"" + one + "\" / \"" + bare + "\")");
+        }
     }
 
     // --- Reporting to UEX: the refinery a job was placed at - only where
