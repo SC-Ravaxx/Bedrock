@@ -263,19 +263,21 @@ local function backupCard(ui, name, list, i)
   elseif b.reason == "restored" then
     chip, tone = "RESTORED", "good"
   end
-  -- the change in the menus' words, why where it tells something, and the
-  -- device: the line breaks between them where it is too long
+  -- the change in the menus' words, and why where it tells something; the
+  -- device on a line of its own where Bedrock draws one (ui.features.note,
+  -- 3.0.2 on), else after them, where the line breaks when it is too long
   local shown = diff.shown(b.summary, b.detail)
   local parts = { shown.change ~= "" and shown.change or "Backup" }
   if shown.more then parts[1] = parts[1] .. "  " .. shown.more end
   local reason = why(b)
   if reason ~= "" then parts[#parts + 1] = reason end
-  if shown.device then parts[#parts + 1] = shown.device end
+  local noted = ui.features and ui.features.note
+  if shown.device and not noted then parts[#parts + 1] = shown.device end
   local key = "b:" .. b.id
   local mine = name .. "/" .. b.id
   -- (faint: no setting of the menus - drawn fainter where Bedrock knows how)
-  if not ui.card(key, when(b.created), { subtitle = table.concat(parts, DOT), chip = chip, tone = tone,
-    faint = shown.faint }) then return end
+  if not ui.card(key, when(b.created), { subtitle = table.concat(parts, DOT), note = noted and shown.device or nil,
+    chip = chip, tone = tone, faint = shown.faint }) then return end
   ui.row("Custom binds", b.binds >= 0 and tostring(b.binds) or "\u{2013}")
   if b.counted or b.characters > 0 then ui.row("Characters", tostring(b.characters)) end
   local m = V.message
