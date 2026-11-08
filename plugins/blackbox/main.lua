@@ -38,13 +38,9 @@ local function lowerWhen(ms)
   return (w:gsub("^Today", "today"):gsub("^Yesterday", "yesterday"))
 end
 
--- SC Blackbox's words for why a backup was made
+-- Why a backup was made, where it tells something: by hand, or around a
+-- restore (SC Blackbox's words)
 local REASONS = {
-  start = "App started",
-  change = "Files changed",
-  ["while-playing"] = "While playing",
-  ["game-start"] = "Game started",
-  ["game-exit"] = "After playing",
   manual = "Saved by hand",
   ["before-restore"] = "Before a restore",
 }
@@ -267,11 +263,19 @@ local function backupCard(ui, name, list, i)
   elseif b.reason == "restored" then
     chip, tone = "RESTORED", "good"
   end
-  local sub = (b.summary ~= "" and b.summary or "Backup") .. DOT .. why(b)
+  -- the change in the menus' words, why where it tells something, and the
+  -- device: the line breaks between them where it is too long
+  local shown = diff.shown(b.summary, b.detail)
+  local parts = { shown.change ~= "" and shown.change or "Backup" }
+  if shown.more then parts[1] = parts[1] .. "  " .. shown.more end
+  local reason = why(b)
+  if reason ~= "" then parts[#parts + 1] = reason end
+  if shown.device then parts[#parts + 1] = shown.device end
   local key = "b:" .. b.id
   local mine = name .. "/" .. b.id
-  if not ui.card(key, when(b.created), { subtitle = sub, chip = chip, tone = tone }) then return end
-  if b.detail ~= "" then ui.text(b.detail) end
+  -- (faint: no setting of the menus - drawn fainter where Bedrock knows how)
+  if not ui.card(key, when(b.created), { subtitle = table.concat(parts, DOT), chip = chip, tone = tone,
+    faint = shown.faint }) then return end
   ui.row("Custom binds", b.binds >= 0 and tostring(b.binds) or "\u{2013}")
   if b.counted or b.characters > 0 then ui.row("Characters", tostring(b.characters)) end
   local m = V.message

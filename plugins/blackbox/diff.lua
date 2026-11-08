@@ -320,6 +320,72 @@ end
 
 M.build = NAMES.game or ""
 
+-- ---- game settings as the menus name them ---------------------------------------
+-- names.json "settings": attribute (lower case) -> { label, kind, faint }
+--   kind   pct (shown x 100, "43 %"), onoff (On, Off), num, device (an id: no values)
+--   faint  1 where it is no setting of the menus (a device's id, a retired value,
+--          the game's own state)
+
+local SETTINGS = NAMES.settings or {}
+
+local function settingInfo(name)
+  return SETTINGS[lower(name)]
+end
+
+-- A decimal number's sign, whole part and fraction ("-0.5" -> "-", "0", "5";
+-- "12" -> "", "12", ""); nil for other text
+local function figures(v)
+  local sign, whole, frac = match(v, "^(%-?)(%d+)%.(%d+)$")
+  if sign then return sign, whole, frac end
+  sign, whole = match(v, "^(%-?)(%d+)$")
+  if sign then return sign, whole, "" end
+  return nil
+end
+
+-- The figures rounded to `places` decimals, half away from zero, on the figures
+-- as written; trailing zeros cut
+local function rounded(sign, whole, frac, places)
+  local digits = whole .. sub(frac .. string.rep("0", places), 1, places)
+  local after = byte(frac, places + 1)
+  if after and after >= 53 then
+    local out, carry = {}, 1
+    for i = #digits, 1, -1 do
+      local d = byte(digits, i) - 48 + carry
+      carry = d >= 10 and 1 or 0
+      out[i] = char(48 + d % 10)
+    end
+    digits = (carry == 1 and "1" or "") .. concat(out)
+  end
+  local w = gsub(sub(digits, 1, #digits - places), "^0+(%d)", "%1")
+  local f = gsub(sub(digits, #digits - places + 1), "0+$", "")
+  local s = f == "" and w or (w .. "." .. f)
+  if not find(s, "[1-9]") then return "0" end
+  return sign .. s
+end
+
+-- "0.098999992" -> "0.1", "5.70707" -> "5.71", "1" -> "1"; other text as it is
+local function num(v)
+  local sign, whole, frac = figures(v)
+  if not sign or frac == "" then return v end
+  return rounded(sign, whole, frac, 2)
+end
+
+-- "0.43" -> "43 %"
+local function percent(v)
+  local sign, whole, frac = figures(v)
+  if not sign then return v end
+  frac = frac .. "00"
+  return rounded(sign, whole .. sub(frac, 1, 2), sub(frac, 3), 0) .. " %"
+end
+
+local function settingValue(kind, v)
+  if kind == "pct" then return percent(v) end
+  if kind == "onoff" then return v == "1" and "On" or v == "0" and "Off" or v end
+  return num(v)
+end
+
+M.num, M.percent = num, percent
+
 -- ---- input names (InputNames) --------------------------------------------------
 
 local function names(list)
@@ -806,7 +872,7 @@ end
 
 local function optionValue(a, value)
   if a == "invert" then return value == "1" and "yes" or value == "0" and "no" or value end
-  return value
+  return num(value)
 end
 
 local function optionText(key, a, b)
@@ -855,17 +921,21 @@ local function diffDocs(r, a, b, suffix, indent)
         local kind = devKind(dev)
         local label = actionLabel(map, action)
         local fallback = defaultText(map, action, dev)
-        binds[#binds + 1] = {
-          kind = kindWord(ha, hb),
-          group = map,
-          groupLabel = mapLabel(map),
-          text = label .. DOT .. deviceName(dev, a, b) .. ": " .. (ha and inputs(kind, va) or fallback) ..
-            ARROW .. (hb and inputs(kind, vb) or fallback),
-          tech = map .. TECHSEP .. action .. " [" .. devLabel(dev) .. "]: " .. (ha and techInputs(va) or "(default)") ..
-            ARROW .. (hb and techInputs(vb) or "(default)"),
-          sort = label .. "\1" .. dev,
-          techSort = key,
-        }
+        local was, now = ha and inputs(kind, va) or fallback, hb and inputs(kind, vb) or fallback
+        -- (binds that read the same, such as an input cleared where the game
+        -- has none, are no change to list)
+        if was ~= now then
+          binds[#binds + 1] = {
+            kind = kindWord(ha, hb),
+            group = map,
+            groupLabel = mapLabel(map),
+            text = label .. DOT .. deviceName(dev, a, b) .. ": " .. was .. ARROW .. now,
+            tech = map .. TECHSEP .. action .. " [" .. devLabel(dev) .. "]: " .. (ha and techInputs(va) or "(default)") ..
+              ARROW .. (hb and techInputs(vb) or "(default)"),
+            sort = label .. "\1" .. dev,
+            techSort = key,
+          }
+        end
       end
     end
   end
@@ -896,13 +966,16 @@ local function diffDocs(r, a, b, suffix, indent)
     if not (ha and hb and va == vb) then
       local at = lastPart(key)
       local text = optionText(key, a, b)
-      options[#options + 1] = {
-        kind = kindWord(ha, hb),
-        text = text .. ": " .. (ha and optionValue(at, va) or "default") .. ARROW .. (hb and optionValue(at, vb) or "default"),
-        tech = optionTech(key) .. ": " .. (ha and va or "(default)") .. ARROW .. (hb and vb or "(default)"),
-        sort = text,
-        techSort = key,
-      }
+      local was, now = ha and optionValue(at, va) or "default", hb and optionValue(at, vb) or "default"
+      if was ~= now then
+        options[#options + 1] = {
+          kind = kindWord(ha, hb),
+          text = text .. ": " .. was .. ARROW .. now,
+          tech = optionTech(key) .. ": " .. (ha and va or "(default)") .. ARROW .. (hb and vb or "(default)"),
+          sort = text,
+          techSort = key,
+        }
+      end
     end
   end
   emit(r, "Control settings" .. suffix, options, indent, false)
@@ -971,14 +1044,21 @@ local function settingsFile(r, x, y, suffix)
       local ha, hb = ea ~= nil, eb ~= nil
       local va, vb = ea and ea.value, eb and eb.value
       if not (ha and hb and va == vb) then
-        local label = key == "(file version)" and "File version" or words(key)
-        changes[#changes + 1] = {
-          kind = kindWord(ha, hb),
-          text = label .. ": " .. (ha and va or "not set") .. ARROW .. (hb and vb or "not set"),
-          tech = key .. ": " .. (ha and va or "(not set)") .. ARROW .. (hb and vb or "(not set)"),
-          sort = label,
-          techSort = key,
-        }
+        local info = key ~= "(file version)" and settingInfo(key)
+        local label = key == "(file version)" and "File version" or
+          (info and info[1] ~= "" and info[1] or words(key))
+        local kind = info and info[2] or "num"
+        local sa, sb = ha and settingValue(kind, va) or "not set", hb and settingValue(kind, vb) or "not set"
+        -- (an id has no value to show; values that read the same are no change)
+        if kind == "device" or sa ~= sb then
+          changes[#changes + 1] = {
+            kind = kindWord(ha, hb),
+            text = kind == "device" and (label .. " changed") or (label .. ": " .. sa .. ARROW .. sb),
+            tech = key .. ": " .. (ha and va or "(not set)") .. ARROW .. (hb and vb or "(not set)"),
+            sort = label,
+            techSort = key,
+          }
+        end
       end
     end
   end
@@ -1112,8 +1192,10 @@ function M.summary(r)
   return upperFirst(concat(parts, ", "))
 end
 
--- The first change in words, and how many more: a backup's detail line
-function M.detail(r)
+-- The first change in words, and how many more: a backup's detail line.
+-- `firstCharacters`: no backup before counts characters - where they are all
+-- that changed, "9 characters saved"
+function M.detail(r, firstCharacters)
   local first, n = nil, 0
   for _, l in ipairs(r.lines) do
     if l[1] == "added" or l[1] == "removed" or l[1] == "changed" then
@@ -1122,6 +1204,7 @@ function M.detail(r)
     end
   end
   if not first then return "" end
+  if firstCharacters and r.characters == n then return plural(n, "character") .. " saved" end
   return first .. (n > 1 and ("   (+" .. (n - 1) .. " more)") or "")
 end
 
@@ -1149,6 +1232,93 @@ function M.onlyGameStateDiffers(a, b)
     end
   end
   return true
+end
+
+-- ---- a backup in the list ---------------------------------------------------------
+-- How a backup's change reads in the list, from the summary and detail in its
+-- backup-info.txt - in the menus' words, or as SC Blackbox and Blackbox 1.0
+-- wrote them, with the files' names and values; old backups are not written
+-- again. { change, more, device, faint }:
+--   change  "Master Volume  43 % → 100 %", "Hail Target  Button 14 → Button 3"
+--   more    "+2 more", or nil
+--   device  a keybind's or control setting's device, or nil
+--   faint   the one change is no setting of the menus (an id, a retired
+--           value, the game's own state)
+
+-- The settings by the names backups give them: the menu's label, or the
+-- attribute's name as words() wrote it - which is, without its spaces and in
+-- lower case, the attribute's name in lower case without its underscores
+local BYLABEL, BYWORDS = {}, {}
+for key, s in pairs(SETTINGS) do
+  if s[1] ~= "" then BYLABEL[s[1]] = key end
+  BYWORDS[(gsub(key, "_", ""))] = key
+end
+
+local function settingNamed(what)
+  local key = BYLABEL[what] or BYWORDS[lower((gsub(what, " ", "")))]
+  return key and SETTINGS[key]
+end
+
+local function lastAt(s, p)
+  local at, from = nil, 1
+  while true do
+    local i = find(s, p, from, true)
+    if not i then return at end
+    at, from = i, i + #p
+  end
+end
+
+-- A value as the list shows it: "not set" as "default", a setting's by its
+-- kind, a number of more than 2 decimals to 2
+local function listValue(v, kind)
+  if v == "not set" then return "default" end
+  if kind == "pct" or kind == "onoff" then return settingValue(kind, v) end
+  if find(v, "^%-?%d+%.%d%d%d+$") then return num(v) end
+  return v
+end
+
+function M.shown(summary, detail)
+  summary, detail = summary or "", detail or ""
+  local body, more = match(detail, "^(.-)   %(%+(%d+) more%)$")
+  body = body or detail
+  if body == "" then return { change = summary } end
+  -- characters as they were written before "9 characters saved": the first
+  -- of them, and how many more
+  local count = tonumber(match(summary, "^(%d+) characters?$"))
+  if count and find(body, '^Character ".*" %(new%)$') and count == 1 + (tonumber(more) or 0) then
+    return { change = plural(count, "character") .. " saved" }
+  end
+  local out = { more = more and ("+" .. more .. " more") or nil }
+  -- "<what>: <old> → <new>", or a change without values
+  local what, old, new = body, nil, nil
+  local arrow = lastAt(body, ARROW)
+  if arrow then
+    local left = sub(body, 1, arrow - 1)
+    local colon = lastAt(left, ": ")
+    if colon then what, old, new = sub(left, 1, colon - 1), sub(left, colon + 2), sub(body, arrow + #ARROW) end
+  end
+  -- what the first change is: the summary's first part
+  local part = match(summary, "^[^,]*")
+  local kind
+  if find(part, "^%d+ keybinds?$") then
+    -- "<action> · <device>"
+    local at = lastAt(what, DOT)
+    if at then what, out.device = sub(what, 1, at - 1), sub(what, at + #DOT) end
+  elseif find(part, "^%d+ control settings?$") then
+    -- "<device> · <option>"
+    local at = find(what, DOT, 1, true)
+    if at then what, out.device = upperFirst(sub(what, at + #DOT)), sub(what, 1, at - 1) end
+  elseif find(part, "^%d+ game settings?$") then
+    local s = settingNamed(what) or (not old and settingNamed((gsub(what, " changed$", ""))))
+    out.faint = not more and ((s and s[3] == 1) or find(what, "DEPRECATED$") ~= nil)
+    if s then
+      kind = s[2]
+      if s[1] ~= "" then what = s[1] end
+      if kind == "device" then what, old = what .. " changed", nil end
+    end
+  end
+  out.change = old and (what .. "  " .. listValue(old, kind) .. ARROW .. listValue(new, kind)) or what
+  return out
 end
 
 return M

@@ -154,7 +154,7 @@ function E.run(name, reason, opt)
   local hashes = bedrock.hashes(files)
   local list = E.list(name, true)
   local latest = list[1]
-  local base = baselineChars(name, list, 1)
+  local base, counted = baselineChars(name, list, 1)
   local chars = diff.set(files, CHARS)
   local charsSame = diff.same(chars, base)
   if latest and latest.allhash == hashes.all and charsSame then
@@ -191,7 +191,7 @@ function E.run(name, reason, opt)
       if not before then error("the latest backup can't be read") end
       local d = diff.compare(diff.merged(before, base, CHARS), current)
       info.summary = #d.lines == 0 and "Minor file changes" or diff.summary(d)
-      info.detail = diff.detail(d)
+      info.detail = diff.detail(d, counted == nil)
     end)
     if not ok then
       info.summary = "Changed"
