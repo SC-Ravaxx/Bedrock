@@ -417,6 +417,9 @@ public:
     // ...a click on one of its pieces (GearHit's kinds and values), through
     // the window's own handler; false where the page shows no such piece
     bool clickGearForShot(int kind, int value);
+    // ...the pointer put on one (kind -1: taken off the page), as a move of
+    // the mouse leaves it
+    bool pointGearForShot(int kind, int value);
     int gearTabForShot() const { return gearTab_; }   // ...and the list it shows
     // ...and what the head shown carries, for the shot log, with the slot
     // picked in brackets
@@ -1542,7 +1545,8 @@ private:
         // which unfolds its shops, 6 Less under them, 9 the unfolded item's
         // row, both of which fold them again (5, 6, 9: the item's index in
         // its table), 8 a slot's chip, which picks the slot (its place on
-        // the head)
+        // the head), 10 a gadget's i, which shows what it does under the
+        // pointer and takes no click (MINING_GADGETS)
         int kind;
         int value;
         std::string item;   // 5, 6 and 9: the item's name at UEX

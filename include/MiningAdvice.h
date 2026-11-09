@@ -917,4 +917,55 @@ inline const MiningGadget* gadgetById(const char* id) {
     return nullptr;
 }
 
+// What a gadget does, as the Gear page's i lists it: what it helps with,
+// then what it costs - the order of the game's own description - each the
+// strongest first. Between two as strong, the one it is the best of the six
+// at goes first: Sabir's resistance before its window.
+struct GadgetEffect {
+    const char* what;   // in the rock view's words
+    float by;           // per cent
+    bool helps;
+};
+
+inline std::vector<GadgetEffect> gadgetEffects(const MiningGadget& g) {
+    struct Axis {
+        const char* what;
+        float MiningGadget::* field;
+        bool lessHelps;   // instability and resistance help by going down
+    };
+    static const Axis axes[] = {
+        {"Instability", &MiningGadget::instability, true},
+        {"Resistance", &MiningGadget::resistance, true},
+        {"Optimal charge window", &MiningGadget::window, false},
+        {"Optimal charge rate", &MiningGadget::rate, false},
+        {"Useful ore clustering", &MiningGadget::cluster, false},
+    };
+    struct Ranked {
+        GadgetEffect effect;
+        bool best;
+        int axis;
+    };
+    std::vector<Ranked> ranked;
+    for (int a = 0; a < (int)(sizeof(axes) / sizeof(axes[0])); a++) {
+        const float by = g.*axes[a].field;
+        if (by == 0) continue;
+        const bool helps = axes[a].lessHelps ? by < 0 : by > 0;
+        bool best = helps;
+        for (int i = 0; i < MINING_GADGET_COUNT && best; i++) {
+            const float other = MINING_GADGETS[i].*axes[a].field;
+            best = axes[a].lessHelps ? other >= by : other <= by;
+        }
+        ranked.push_back({{axes[a].what, by, helps}, best, a});
+    }
+    std::stable_sort(ranked.begin(), ranked.end(), [](const Ranked& x, const Ranked& y) {
+        if (x.effect.helps != y.effect.helps) return x.effect.helps;
+        if (std::fabs(x.effect.by) != std::fabs(y.effect.by)) return std::fabs(x.effect.by) > std::fabs(y.effect.by);
+        if (x.best != y.best) return x.best;
+        return x.axis < y.axis;
+    });
+    std::vector<GadgetEffect> out;
+    for (const Ranked& r : ranked) out.push_back(r.effect);
+    return out;
+}
+
 }  // namespace SCMiner

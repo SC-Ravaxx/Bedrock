@@ -6153,6 +6153,18 @@ void MinerGUI::pressShipPicker(float px, float py) {
     setShipPickerOpen(false);   // anywhere else closes it
 }
 
+// The small i behind a gadget's name: a ring, and the letter drawn in it as
+// shapes - a face would set it by its box, not its ink, off the middle
+static void drawInfoMark(Gdiplus::Graphics& g, const Gdiplus::RectF& r, const Gdiplus::Color& ink) {
+    const float s = r.Width / 12.0f;
+    Gdiplus::Pen ring(ink, 1.1f * s);
+    g.DrawEllipse(&ring, r.X + 0.55f * s, r.Y + 0.55f * s, r.Width - 1.1f * s, r.Height - 1.1f * s);
+    Gdiplus::SolidBrush brush(ink);
+    const float cx = r.X + r.Width / 2, cy = r.Y + r.Height / 2;
+    g.FillEllipse(&brush, cx - 0.85f * s, cy - 3.6f * s, 1.7f * s, 1.7f * s);
+    g.FillRectangle(&brush, cx - 0.75f * s, cy - 1.0f * s, 1.5f * s, 4.4f * s);
+}
+
 void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
     Gdiplus::Font labelFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
     Gdiplus::Font fieldFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
@@ -6465,6 +6477,10 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
     const wchar_t* const press = tab == 1 && inSlot ? L"Swap" : L"Fit";
     const float rowButtonW =
         (std::max)(scaleF(44), lineWidth(g, tab == 1 ? L"Swap" : L"Fit", fieldFont) + scaleF(20));
+    // the gadget whose i is under the pointer, and where its i is
+    int infoFor = -1;
+    Gdiplus::RectF infoIcon;
+    const float capMiddle = inkMiddle(L"H", markFamily(), Gdiplus::FontStyleRegular, scaleF(Type::STRONG));
     float y = rowsTop - gearScroll_;
     if (status) {
         // the lists not there yet, or not to be had
@@ -6525,6 +6541,24 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
         }
         if (!r.stats.empty()) {
             g.DrawString(r.stats.c_str(), -1, &smallFont, Gdiplus::PointF(left, rowY + scaleF(19)), &dimBrush);
+        }
+        // a gadget's i, right behind its name, on its capitals' middle:
+        // under the pointer it lights, and what the gadget does comes up
+        // over the list (drawn last, below)
+        if (tab == 2 && r.index >= 0) {
+            const float d = scaleF(12);
+            const float iconX = std::round(left + lineWidth(g, r.name, nameFont) + scaleF(2));
+            if (iconX + d < left + nameRoom) {
+                const Gdiplus::RectF icon(iconX, std::round(rowY + capMiddle - d / 2), d, d);
+                const Gdiplus::RectF iconHit(icon.X - scaleF(4), icon.Y - scaleF(4), d + scaleF(8), d + scaleF(8));
+                const bool asked = seen(iconHit);
+                drawInfoMark(g, icon, asked ? COL_ACCENT : COL_TEXT_FAINT);
+                if (asked) {
+                    infoFor = r.index;
+                    infoIcon = icon;
+                }
+                hit(iconHit, 10, r.index, r.item);
+            }
         }
         // where it is sold: the nearest places, as many as the line holds -
         // a click unfolds every shop under it
@@ -6634,6 +6668,65 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
         addRoundRect(shape, fade, scaleF(R_CARD));
         g.FillPath(&shade, &shape);
     }
+    // What the gadget under the pointer does, over the list, hanging from
+    // its i - or above it where the window ends first: what it helps with
+    // in green and what it costs in red, as much as its item file gives
+    // (OptiMax's resistance -25 %, where the game's text says -30), then
+    // the game's own words about it
+    if (infoFor >= 0) {
+        const MiningGadget& gd = MINING_GADGETS[infoFor];
+        Gdiplus::Font effectFont(&numeralFamily(), scaleF(Type::BODY), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+        const std::vector<GadgetEffect> effects = gadgetEffects(gd);
+        const float pad = scaleF(12);
+        const float popW = (std::min)(scaleF(340), cardW - scaleF(8));
+        const float popX = std::round((std::max)(cardX + scaleF(4), (std::min)(left - scaleF(8), cardX + cardW - scaleF(4) - popW)));
+        const float textX = popX + pad, textW = popW - 2 * pad;
+        std::vector<std::wstring> labels, values;
+        float labelW = 0, valueW = 0;
+        for (const GadgetEffect& e : effects) {
+            wchar_t v[32];
+            std::swprintf(v, 32, L"%+.0f %%", e.by);
+            labels.push_back(toW(e.what));
+            values.push_back(v);
+            labelW = (std::max)(labelW, lineWidth(g, labels.back(), smallFont));
+            valueW = (std::max)(valueW, lineWidth(g, values.back(), effectFont));
+        }
+        const float effectStep = scaleF(17), wordsGap = scaleF(7);
+        // (broken a little short of the box: the Linux build sets 12.1 px
+        // at 12, and a line broken at its width would wrap once more in
+        // Windows' wider letters)
+        const Fitted words = fitLines(g, toW(gd.blurb), smallFont, textW - scaleF(4));
+        Gdiplus::RectF lineBox;
+        g.MeasureString(L"Ag", -1, &smallFont, Gdiplus::PointF(0, 0), &lineBox);
+        const float wordsH = lineBox.Height + words.more;
+        const float popH = std::round(scaleF(9) + effectStep * (float)effects.size() + wordsGap + wordsH + scaleF(8));
+        float popY = infoIcon.GetBottom() + scaleF(6);
+        if (popY + popH > (float)ch - scaleF(8)) popY = (std::max)(scaleF(8), infoIcon.Y - scaleF(6) - popH);
+        const Gdiplus::RectF pop(popX, std::round(popY), popW, popH);
+        dropShadow(g, pop, radius, scaleF(8));
+        fillRoundRect(g, pop, radius, COL_CARD_HI);
+        // each effect on one baseline: its words, its figure at the right
+        // of a column of its own
+        Gdiplus::StringFormat rightTop;
+        rightTop.SetAlignment(Gdiplus::StringAlignmentFar);
+        rightTop.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+        Gdiplus::SolidBrush redBrush(COL_RED);
+        const float valueX = textX + labelW + scaleF(16);
+        float baseline = pop.Y + scaleF(9) + scaleF(13);
+        for (size_t k = 0; k < effects.size(); k++) {
+            g.DrawString(labels[k].c_str(), -1, &smallFont,
+                         Gdiplus::PointF(textX, std::round(baseline - fontAscent(smallFont))), &dimBrush);
+            const float valueTop = std::round(baseline - fontAscent(effectFont));
+            g.DrawString(values[k].c_str(), -1, &effectFont, Gdiplus::RectF(valueX, valueTop, valueW, scaleF(18)),
+                         &rightTop, effects[k].helps ? &greenBrush : &redBrush);
+            baseline += effectStep;
+        }
+        Gdiplus::StringFormat lines;   // broken by fitLines: in a box as wide as it was broken for
+        lines.SetTrimming(Gdiplus::StringTrimmingNone);
+        const float wordsY = pop.Y + scaleF(9) + effectStep * (float)effects.size() + wordsGap;
+        g.DrawString(words.text.c_str(), -1, &smallFont, Gdiplus::RectF(textX, wordsY, textW, wordsH + scaleF(2)),
+                     &lines, &faintBrush);
+    }
 }
 
 void MinerGUI::pressGear(HWND hwnd, float px, float py) {
@@ -6707,6 +6800,8 @@ void MinerGUI::pressGear(HWND hwnd, float px, float py) {
             case 5:
                 gearOpen_ = gearOpen_ == hit.item ? std::string() : hit.item;
                 break;
+            case 10:
+                return;   // a gadget's i: it answers the pointer, not a click
             case 6:
             case 9:
                 gearOpen_.clear();
@@ -6732,6 +6827,23 @@ bool MinerGUI::clickGearForShot(int kind, int value) {
         const int y = (int)std::lround(hit.rect.Y + hit.rect.Height / 2);
         SendMessageW(hwnd_, WM_LBUTTONDOWN, 0, MAKELPARAM(x, y));
         SendMessageW(hwnd_, WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+        return true;
+    }
+    return false;
+}
+
+bool MinerGUI::pointGearForShot(int kind, int value) {
+    if (kind < 0) {
+        hoverMain_ = {-1, -1};
+        if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+        return true;
+    }
+    for (const GearHit& hit : gearHits_) {
+        if (hit.kind != kind || hit.value != value) continue;
+        // (the window's pixels: the page's, moved over by the rail)
+        hoverMain_ = {(LONG)std::lround(hit.rect.X + hit.rect.Width / 2) + railWidth(),
+                      (LONG)std::lround(hit.rect.Y + hit.rect.Height / 2)};
+        InvalidateRect(hwnd_, nullptr, FALSE);
         return true;
     }
     return false;

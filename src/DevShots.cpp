@@ -2013,6 +2013,18 @@ int runScreenshots(const std::string& dir) {
             const bool button = gui.clickGearForShot(7, boreMax);
             std::cout << "  gadgets: " << (button ? "A BUTTON" : "no button") << std::endl;
             shoot(gui.windowHandle(), "gear_gadgets.png");
+            // ...the pointer on BoreMax's i: what it does over the list -
+            // then on Waveshift's, the last
+            const int waveshift = (int)(SCMiner::gadgetById("grin_waveshift") - SCMiner::MINING_GADGETS);
+            const bool boreInfo = gui.pointGearForShot(10, boreMax);
+            pump();
+            shoot(gui.windowHandle(), "gear_gadgets_info.png");
+            const bool waveInfo = gui.pointGearForShot(10, waveshift);
+            pump();
+            shoot(gui.windowHandle(), "gear_gadgets_info_last.png");
+            gui.pointGearForShot(-1, 0);
+            pump();
+            std::cout << "  a gadget's i under the pointer: " << (boreInfo && waveInfo ? "yes" : "NO I") << std::endl;
             gui.setFittedGadget(nullptr);
             // a ship of one head: no heads to pick between
             gui.pickShipForShot("prospector");

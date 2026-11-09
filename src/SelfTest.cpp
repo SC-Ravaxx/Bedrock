@@ -609,6 +609,36 @@ int runSelfTest() {
                            "a contract taken runs until the log says it is over - given up, or finished - and one "
                            "shared runs as well, without counting as the player's own");
 
+        // What the Gear page's i lists for a gadget: what it helps with, the
+        // strongest first, then what it costs - and each of the six does both
+        {
+            const auto listed = [](const char* id) {
+                std::string out;
+                bool costs = false;
+                for (const SCMiner::GadgetEffect& e : SCMiner::gadgetEffects(*SCMiner::gadgetById(id))) {
+                    if (!e.helps && !costs) {
+                        out += " |";
+                        costs = true;
+                    }
+                    char one[64];
+                    std::snprintf(one, sizeof one, " %s %+.0f", e.what, e.by);
+                    out += one;
+                }
+                return out;
+            };
+            bool eachBoth = true;
+            for (int i = 0; i < SCMiner::MINING_GADGET_COUNT; i++) {
+                const std::vector<SCMiner::GadgetEffect> effects = SCMiner::gadgetEffects(SCMiner::MINING_GADGETS[i]);
+                eachBoth &= !effects.empty() && effects.front().helps && !effects.back().helps;
+            }
+            allPassed &= check(listed("thcn_boremax") == " Instability -70 Useful ore clustering +30 | Resistance +10" &&
+                                   listed("shin_sabir") == " Resistance -50 Optimal charge window +50 | Instability +15" &&
+                                   listed("grin_optimax") ==
+                                       " Useful ore clustering +60 Resistance -25 | Optimal charge window -30" &&
+                                   eachBoth,
+                               "a gadget's i lists what it helps with, the strongest first, then what it costs");
+        }
+
         // The gadget: what the panel prints with it on, taken back
         const SCMiner::MiningGadget* sabir = SCMiner::gadgetById("shin_sabir");
         SCMiner::RockStats rock;
