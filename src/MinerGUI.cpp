@@ -5637,16 +5637,20 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
                      Gdiplus::PointF(field.X + scaleF(12), y + scaleF(5)),
                      craftedEntry_.empty() && !craftedEditing_ ? &faintBrush : &textBrush);
         loadoutHits_.push_back({field, 3, 0});
-        // beside the field, on as many lines as the card's width leaves it
+        // beside the field, on as many lines as the card's width leaves it:
+        // the words, and the line off the item whole on a line of its own -
+        // GDI+ broke it after "+0.00" at 110 %
         {
-            const wchar_t* second = L"Second value shown on the item: \"Laser Power: +0.00 % → +28.84 %\"";
             const Gdiplus::RectF room(left + scaleF(122), y + scaleF(1), wide - scaleF(122), scaleF(60));
-            Gdiplus::StringFormat wrapped;
-            wrapped.SetTrimming(Gdiplus::StringTrimmingEllipsisWord);
+            const Fitted words = fitLines(g, L"Second value shown on the item:", noteFont, room.Width);
+            const Fitted value = fitLines(g, L"\"Laser Power: +0.00 % → +28.84 %\"", noteFont, room.Width);
+            const std::wstring second = words.text + L"\n" + value.text;
+            Gdiplus::StringFormat lines;   // broken here: no trimming, the breaks kept
+            lines.SetTrimming(Gdiplus::StringTrimmingNone);
             Gdiplus::RectF used;
-            g.MeasureString(second, -1, &noteFont, room, &wrapped, &used);
-            g.DrawString(second, -1, &noteFont, Gdiplus::RectF(room.X, room.Y, room.Width, used.Height), &wrapped,
-                         &dimBrush);
+            g.MeasureString(second.c_str(), -1, &noteFont, Gdiplus::RectF(0, 0, 100000.0f, 100000.0f), &lines, &used);
+            g.DrawString(second.c_str(), -1, &noteFont, Gdiplus::RectF(room.X, room.Y, room.Width, used.Height + scaleF(2)),
+                         &lines, &dimBrush);
             const float leaveY = room.Y + used.Height;
             g.DrawString(L"Leave at 0 for a stock laser head", -1, &noteFont, Gdiplus::PointF(room.X, leaveY),
                          &faintBrush);
