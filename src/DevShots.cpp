@@ -1897,10 +1897,8 @@ int runScreenshots(const std::string& dir) {
             gui.setHeadForShot(1, middleHead);
             gui.setHeadForShot(2, starboardHead);
             gui.setWhereAt("Checkmate", "Pyro");
-            const int lancet = (int)(SCMiner::laserById("grin_lancet_s2") - SCMiner::MINING_LASERS);
             const int helixTwo = (int)(SCMiner::laserById("thcn_helix_s2") - SCMiner::MINING_LASERS);
             const SCMiner::MiningModule* focusThree = SCMiner::moduleById("passive_focus_mk3");
-            const int focus = (int)(focusThree - SCMiner::MINING_MODULES);
             const int fltrXl = (int)(SCMiner::moduleById("passive_fltr_mk3") - SCMiner::MINING_MODULES);
             const int boreMax = (int)(SCMiner::gadgetById("thcn_boremax") - SCMiner::MINING_GADGETS);
             // the lists not there yet - and UEX asked for them, the page being up
@@ -1912,20 +1910,19 @@ int runScreenshots(const std::string& dir) {
             gui.setGearShops(nullptr, "Server responded 503");
             pump();
             shoot(gui.windowHandle(), "gear_unreachable.png");
-            // ...and with them: the heads the MOLE takes, its own framed green
+            // ...and with them: the heads the MOLE takes, the two it carries
+            // framed green - nothing to fit here, that is Edit ship's
             gui.setGearShops(shotGearShops(), "");
             gui.gearStateForShot(0, "");
             pump();
             shoot(gui.windowHandle(), "gear_heads.png");
-            // ...a chip clicked over the laser heads: the modules listed,
-            // that slot picked
-            const bool chipClicked = gui.clickGearForShot(8, 1);
-            pump();
-            std::cout << "  the second chip clicked over the laser heads: "
-                      << (chipClicked && gui.gearTabForShot() == 1 ? "the modules listed, " : "NO LIST, ")
-                      << gui.gearHeadForShot() << std::endl;
-            gui.gearStateForShot(0, "");
-            pump();
+            int fitPieces = 0;
+            for (int kind : {1, 2, 3, 4, 8}) {
+                for (int value = 0; value < 64; value++) {
+                    fitPieces += gui.clickGearForShot(kind, value) ? 1 : 0;
+                }
+            }
+            std::cout << "  something to fit on the Gear page: " << (fitPieces ? "YES" : "no") << std::endl;
             // ...the fitted head's shops unfolded by a click on its line: the
             // green frame round its row alone, the shops in a panel under it
             const bool unfolded = gui.clickGearForShot(5, helixTwo);
@@ -1948,9 +1945,8 @@ int runScreenshots(const std::string& dir) {
             pump();
             shoot(gui.windowHandle(), "gear_edit_ship.png");
             gui.showLoadoutForShot(false);
-            // the modules, every slot of the left head full and the first
-            // picked: its Rieger-C3 FITTED, every other module's button a
-            // Swap - the Focus III in the third slot framed green, with one
+            // the modules: the two the left head carries framed green, the
+            // Rieger-C3 with its count
             portHead.modules = {rieger, rieger, focusThree};
             gui.setHeadForShot(0, portHead);
             gui.gearStateForShot(1, "");
@@ -1961,50 +1957,15 @@ int runScreenshots(const std::string& dir) {
             SendMessageW(gui.windowHandle(), WM_MOUSEWHEEL, MAKEWPARAM(0, (WORD)(short)(-3 * WHEEL_DELTA)), 0);
             pump();
             shoot(gui.windowHandle(), "gear_modules_scrolled.png");
-            // ...Swap, Fit, a chip and its x, through the window's own
-            // handler: the x on the second chip empties that slot, the
-            // Focus III moves up, and the empty slot is picked - every
-            // module's button a Fit
+            // ...a module's shops unfolded
             gui.gearStateForShot(1, "");
             pump();
-            const bool emptied = gui.clickGearForShot(2, 1);
-            pump();
-            std::cout << "  x on the second chip: " << (emptied ? gui.gearHeadForShot() : std::string("NO CHIP"))
-                      << std::endl;
-            shoot(gui.windowHandle(), "gear_modules_empty_slot.png");
-            // ...a module's shops unfolded, its Fit beside it
             const bool moduleUnfolded = gui.clickGearForShot(5, fltrXl);
             pump();
             std::cout << "  the FLTR-XL's shops unfolded: " << (moduleUnfolded ? "yes" : "NO") << std::endl;
             shoot(gui.windowHandle(), "gear_modules_open.png");
             gui.clickGearForShot(9, fltrXl);
             pump();
-            // ...Fit on Focus III fills the empty slot: one module in two
-            const bool filled = gui.clickGearForShot(4, focus);
-            pump();
-            std::cout << "  Fit on Focus III: " << (filled ? gui.gearHeadForShot() : std::string("NO BUTTON"))
-                      << std::endl;
-            // ...the first chip picked, and Swap on the FLTR-XL: the
-            // Rieger-C3 in that slot goes
-            const bool picked = gui.clickGearForShot(8, 0);
-            pump();
-            const bool swapped = picked && gui.clickGearForShot(4, fltrXl);
-            pump();
-            std::cout << "  the first slot picked, Swap on FLTR-XL: "
-                      << (swapped ? gui.gearHeadForShot() : std::string("NO BUTTON")) << std::endl;
-            // ...Fit on the Lancet MH2 and the x on the first chip: the head
-            // as the same clicks in Edit ship leave it - the Lancet has two
-            // slots, so the third module comes off
-            gui.gearStateForShot(0, "");
-            pump();
-            const bool fitted = gui.clickGearForShot(3, lancet);
-            pump();
-            std::cout << "  Fit on the Lancet MH2: " << (fitted ? gui.gearHeadForShot() : std::string("NO BUTTON"))
-                      << std::endl;
-            const bool taken = gui.clickGearForShot(2, 0);
-            pump();
-            std::cout << "  x on the first chip: " << (taken ? gui.gearHeadForShot() : std::string("NO CHIP"))
-                      << std::endl;
             // the gadgets: prices and shops alone, no button - and BoreMax
             // on the rock in the rock view leaves them as they are
             gui.setFittedGadget(SCMiner::gadgetById("thcn_boremax"));

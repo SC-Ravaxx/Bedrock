@@ -411,8 +411,7 @@ public:
     std::shared_ptr<const UexShops> gearShopsForShot() const { return gearShops_; }
     std::string whereAtForShot() const { return whereSystem_ + " - " + wherePlace_; }
     // The Gear page for a picture: its list (0 laser heads, 1 modules, 2
-    // gadgets) and the item whose shops are unfolded ("" none), at the top,
-    // the module slot picked as for a head just shown
+    // gadgets) and the item whose shops are unfolded ("" none), at the top
     void gearStateForShot(int tab, const std::string& open);
     // ...a click on one of its pieces (GearHit's kinds and values), through
     // the window's own handler; false where the page shows no such piece
@@ -421,8 +420,7 @@ public:
     // the mouse leaves it
     bool pointGearForShot(int kind, int value);
     int gearTabForShot() const { return gearTab_; }   // ...and the list it shows
-    // ...and what the head shown carries, for the shot log, with the slot
-    // picked in brackets
+    // ...and what the head shown carries, for the shot log
     std::string gearHeadForShot();
     // Types into the crafted-% field the way a keyboard does: real key
     // messages posted to the window, so they travel the whole path the
@@ -1526,26 +1524,17 @@ private:
     std::string gearShopsNote_;
     std::string wherePlace_, whereSystem_;
     // The Gear page (gearPage_): which list, how far down it is scrolled,
-    // the item whose shops are unfolded (by its name at UEX), the module
-    // slot picked, and where its pieces were drawn
+    // the item whose shops are unfolded (by its name at UEX), and where its
+    // pieces were drawn
     int gearTab_ = 0;   // 0 laser heads, 1 modules, 2 gadgets
     float gearScroll_ = 0.0f;
     std::string gearOpen_;
-    // The slot the modules' Swap and Fit put a module into: the chip
-    // clicked last; -1 until then, and again for another ship or head
-    // (useHead, putHeadLaser), which is the first empty slot, else the first
-    int gearSlot_ = -1;
-    int gearSlotNow();   // ...as it stands on the head shown; -1 where it has no slots
     struct GearHit {
         Gdiplus::RectF rect;
-        // 0 a list's tab (value: the list), 1 a head of the ship (its
-        // place), 2 the x on a module's chip (its slot on the head), 3 Fit
-        // (the laser, MINING_LASERS), 4 Swap or Fit, which puts the module
-        // into the slot picked (MINING_MODULES), 5 an item's shop line,
-        // which unfolds its shops, 6 Less under them, 9 the unfolded item's
-        // row, both of which fold them again (5, 6, 9: the item's index in
-        // its table), 8 a slot's chip, which picks the slot (its place on
-        // the head), 10 a gadget's i, which shows what it does under the
+        // 0 a list's tab (value: the list), 5 an item's shop line, which
+        // unfolds its shops, 6 Less under them, 9 the unfolded item's row,
+        // both of which fold them again (5, 6, 9: the item's index in its
+        // table), 10 a gadget's i, which shows what it does under the
         // pointer and takes no click (MINING_GADGETS)
         int kind;
         int value;
@@ -1563,13 +1552,6 @@ private:
     void putHeadLaser(const MiningLaser* laser);
     bool addHeadModule(const MiningModule* module);
     void takeHeadModule(const MiningModule* module);
-    // ...and the Gear page's own: a module into one slot of the head, the
-    // one there taken out (where the slot is empty, it goes into the first
-    // empty one: the head's modules are kept in a row) - gives back the
-    // slot it went into, -1 where the head has no such slot; and one slot
-    // emptied, the modules after it moving up
-    int setHeadModule(int at, const MiningModule* module);
-    void emptyHeadSlot(int at);
     // A click while the ship's list is down: a fit picked, a new one added
     // and its card opened, or the list shut - over the scan page or the Gear
     // page alike

@@ -5291,7 +5291,6 @@ void MinerGUI::useHead(int index) {
     storeHead();
     headShown_ = index;
     loadout_ = heads_[index];
-    gearSlot_ = -1;   // the Gear page's slot picked starts over on it
     craftedEntry_.clear();
     if (loadout_.craftedPower != 0.0f) {
         wchar_t buf[32];
@@ -6092,7 +6091,6 @@ void MinerGUI::putHeadLaser(const MiningLaser* laser) {
     auto& kept = fit_ >= 0 && fit_ < (int)fits_.size() ? fits_[(size_t)fit_].crafted : none;
     putLaser(kept, loadout_, laser);
     if ((int)loadout_.modules.size() > loadout_.laser->slots) loadout_.modules.resize(loadout_.laser->slots);
-    gearSlot_ = -1;   // the Gear page's slot picked starts over on it
 }
 
 bool MinerGUI::addHeadModule(const MiningModule* module) {
@@ -6108,30 +6106,6 @@ bool MinerGUI::addHeadModule(const MiningModule* module) {
 void MinerGUI::takeHeadModule(const MiningModule* module) {
     const auto at = std::find(loadout_.modules.begin(), loadout_.modules.end(), module);
     if (at != loadout_.modules.end()) loadout_.modules.erase(at);
-}
-
-int MinerGUI::setHeadModule(int at, const MiningModule* module) {
-    if (!module || !loadout_.laser || at < 0 || at >= loadout_.laser->slots) return -1;
-    if (at < (int)loadout_.modules.size()) {
-        loadout_.modules[(size_t)at] = module;
-        return at;
-    }
-    loadout_.modules.push_back(module);
-    return (int)loadout_.modules.size() - 1;
-}
-
-void MinerGUI::emptyHeadSlot(int at) {
-    if (at >= 0 && at < (int)loadout_.modules.size()) loadout_.modules.erase(loadout_.modules.begin() + at);
-}
-
-int MinerGUI::gearSlotNow() {
-    const int slots = loadout_.laser ? loadout_.laser->slots : 0;
-    if (slots <= 0) return -1;
-    if (gearSlot_ < 0 || gearSlot_ >= slots) {
-        const int filled = (int)loadout_.modules.size();
-        gearSlot_ = filled < slots ? filled : 0;
-    }
-    return gearSlot_;
 }
 
 void MinerGUI::pressShipPicker(float px, float py) {
@@ -6174,14 +6148,12 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
     Gdiplus::Font fieldFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::Font nameFont(&markFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::Font smallFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::Font crossFont(&textFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::Font priceFont(&numeralFamily(), scaleF(Type::NUMBER), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
     Gdiplus::Font figureFont(&numeralFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::Font shopFigureFont(&numeralFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush textBrush(COL_TEXT);
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
-    Gdiplus::SolidBrush accentBrush(COL_ACCENT);
     Gdiplus::SolidBrush greenBrush(COL_GREEN);
     Gdiplus::SolidBrush shopBrush(tint(COL_TEXT, 210));   // an unfolded shop: a step under the name's ink
     Gdiplus::StringFormat oneLine;
@@ -6207,54 +6179,11 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
     const float left = M + scaleF(6), right = (float)cw - M - scaleF(6), wide = right - left;
     const float radius = scaleF(R_CONTROL);
 
-    // ---- the ship: its field and Edit ship, its heads, the modules on the
-    // head shown
+    // ---- the ship: its field and Edit ship. What it carries is changed in
+    // Edit ship, not here; the lists below mark it in green
     const float top = (float)scale(LY_CONTEXT);
     const float fieldY = top + scaleF(26), fieldH = scaleF(28);
-    const bool tabs = ship_ && heads_.size() > 1;
-    const float tabY = fieldY + fieldH + scaleF(10), tabH = scaleF(36);
-    const bool modulesRow = ship_ && loadout_.laser;
-    const float modY = (tabs ? tabY + tabH : fieldY + fieldH) + scaleF(10);
-    // the modules' chips laid out first, one a slot of the head - the
-    // modules on it, then the empty slots: where they run onto a second
-    // line, the card grows
-    const float chipH = scaleF(26);
-    const int slots = modulesRow ? (std::max)(0, (int)loadout_.laser->slots) : 0;
-    const int slotPicked = modulesRow ? gearSlotNow() : -1;
-    const MiningModule* const inSlot = slotPicked >= 0 && slotPicked < (int)loadout_.modules.size()
-                                           ? loadout_.modules[(size_t)slotPicked]
-                                           : nullptr;
-    wchar_t count[32];
-    std::swprintf(count, 32, L"%d of %d", (int)loadout_.modules.size(), loadout_.laser ? loadout_.laser->slots : 0);
-    const float labelW = lineWidth(g, L"MODULES", labelFont), countW = lineWidth(g, count, labelFont);
-    const float chipsX = left + labelW + scaleF(4) + countW + scaleF(10);
-    const float crossW = lineWidth(g, L"\u00D7", crossFont);
-    struct Chip {
-        Gdiplus::RectF rect, cross;
-        std::wstring words;
-        int at = 0;            // its slot on the head
-        bool filled = false;   // a module in it (else Empty)
-    };
-    std::vector<Chip> chips;
-    float chipX = chipsX, chipY = modY;
-    for (int k = 0; k < slots; k++) {
-        Chip c;
-        c.at = k;
-        c.filled = k < (int)loadout_.modules.size() && loadout_.modules[(size_t)k];
-        c.words = c.filled ? toW(moduleShortName(*loadout_.modules[(size_t)k])) : std::wstring(L"Empty");
-        const float w = c.filled ? scaleF(9) + lineWidth(g, c.words, fieldFont) + scaleF(4) + crossW + scaleF(7)
-                                 : scaleF(12) + lineWidth(g, c.words, fieldFont) + scaleF(12);
-        if (chipX > chipsX && chipX + w > right) {
-            chipX = chipsX;
-            chipY += chipH + scaleF(6);
-        }
-        c.rect = Gdiplus::RectF(chipX, chipY, w, chipH);
-        if (c.filled) c.cross = Gdiplus::RectF(chipX + w - crossW - scaleF(11), chipY, crossW + scaleF(11), chipH);
-        chips.push_back(c);
-        chipX += w + scaleF(8);
-    }
-    const float shipBottom = modulesRow ? chipY + chipH : (tabs ? tabY + tabH : fieldY + fieldH);
-    const Gdiplus::RectF shipCard(cardX, top, cardW, shipBottom + scaleF(16) - top);
+    const Gdiplus::RectF shipCard(cardX, top, cardW, fieldY + fieldH + scaleF(16) - top);
     mainscanCard(g, shipCard, px);
 
     g.DrawString(L"SHIP", -1, &labelFont, Gdiplus::PointF(left, top + scaleF(10)), &faintBrush);
@@ -6276,89 +6205,25 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
         g.DrawString(L"Edit ship", -1, &fieldFont, loadoutButton_, &centred, &faintBrush);
     }
 
-    // the heads, as Edit ship's tabs have them: a click shows that head
-    if (tabs) {
-        const float gap = scaleF(8);
-        const float tabW = (wide - gap * (float)(heads_.size() - 1)) / (float)heads_.size();
-        for (size_t i = 0; i < heads_.size(); i++) {
-            const Gdiplus::RectF tab(left + (tabW + gap) * (float)i, tabY, tabW, tabH);
-            const bool here = (int)i == headShown_;
-            if (here) {
-                fillRoundRect(g, tab, radius, COL_CARD_HI);
-                selectionFrame(g, tab, radius);
-            } else {
-                fillRoundRect(g, tab, radius, isHot(hoverMain_, tab) ? COL_HOVER : COL_CARD_HI);
-            }
-            g.DrawString(headPlace((int)i).c_str(), -1, &labelFont, Gdiplus::PointF(tab.X + scaleF(10), tabY + scaleF(5)),
-                         here ? &accentBrush : &dimBrush);
-            if (const MiningLaser* l = here ? loadout_.laser : heads_[i].laser) {
-                g.DrawString(laserShortName(*l).c_str(), -1, &smallFont,
-                             Gdiplus::RectF(tab.X + scaleF(10), tabY + scaleF(19), tabW - scaleF(18), scaleF(15)), &oneLine,
-                             here ? &textBrush : &faintBrush);
-            }
-            gearHits_.push_back({tab, 1, (int)i, std::string()});
-        }
-    }
-
-    // the slots, a chip each: a module with the fitted green down its edge
-    // and an x that takes it out, an empty one an outline. While the
-    // modules are listed, the slot picked is amber, as a picked tab - Swap
-    // and Fit in the list go there; a click on a chip picks its slot and
-    // lists the modules
-    if (modulesRow) {
-        const bool modulesListed = std::clamp(gearTab_, 0, 2) == 1;
-        g.DrawString(L"MODULES", -1, &labelFont, Gdiplus::RectF(left, modY, labelW + scaleF(2), chipH), &middle,
-                     &faintBrush);
-        g.DrawString(count, -1, &labelFont, Gdiplus::RectF(left + labelW + scaleF(4), modY, countW + scaleF(2), chipH),
-                     &middle, &dimBrush);
-        for (const Chip& c : chips) {
-            const bool picked = modulesListed && c.at == slotPicked;
-            const bool onCross = c.filled && isHot(hoverMain_, c.cross);
-            const bool hot = isHot(hoverMain_, c.rect) && !onCross;
-            Gdiplus::Color ink = COL_TEXT;
-            if (c.filled) {
-                fillRoundRect(g, c.rect, radius, hot && !picked ? COL_HOVER : COL_CARD_HI);
-                if (picked) ink = choiceFace(g, c.rect, radius, true, hot, false);
-                edgeBar(g, c.rect, radius, scaleF(3), COL_GREEN);
-            } else if (picked) {
-                ink = choiceFace(g, c.rect, radius, true, hot, false);
-            } else {
-                if (hot) fillRoundRect(g, c.rect, radius, COL_CARD_HI);
-                strokeRoundRect(g, c.rect, radius, COL_BORDER);
-                ink = hot ? COL_TEXT : COL_TEXT_DIM;
-            }
-            Gdiplus::SolidBrush inkBrush(ink);
-            if (c.filled) {
-                g.DrawString(c.words.c_str(), -1, &fieldFont,
-                             Gdiplus::RectF(c.rect.X + scaleF(9), c.rect.Y, c.cross.X - c.rect.X - scaleF(7), chipH),
-                             &middle, &inkBrush);
-                g.DrawString(L"\u00D7", -1, &crossFont,
-                             Gdiplus::RectF(c.rect.GetRight() - scaleF(7) - crossW, c.rect.Y, crossW + scaleF(2), chipH),
-                             &middle, onCross ? &textBrush : &faintBrush);
-                gearHits_.push_back({c.cross, 2, c.at, std::string()});
-            } else {
-                g.DrawString(c.words.c_str(), -1, &fieldFont, c.rect, &centred, &inkBrush);
-            }
-            gearHits_.push_back({c.rect, 8, c.at, std::string()});
-        }
-    }
-
     // ---- the list: the laser heads the ship takes, the modules or the
     // gadgets, each with what the nearest shop asks
     struct Row {
         std::wstring name, effect, stats;
         std::string item;      // its name at UEX
         int index = -1;        // in its table
-        bool fitted = false;   // on the head: framed green
-        bool here = false;     // ...where its button would put it: FITTED instead
-        bool button = false;   // Fit or Swap, whether it can be pressed or not
-        bool can = false;      // ...and it can
+        bool fitted = false;   // on the ship: framed green
         bool open = false;     // its shops unfolded under it
         std::vector<ShopInOrder> shops;   // one per place, the nearest first
         float pitch = 0;
     };
     const int tab = std::clamp(gearTab_, 0, 2);
     const bool headsList = tab == 0;
+    // what the ship carries, on any of its heads: the one shown is
+    // loadout_, the others as they were stored
+    std::vector<const MiningLoadout*> carried;
+    if (ship_) {
+        for (size_t h = 0; h < heads_.size(); h++) carried.push_back((int)h == headShown_ ? &loadout_ : &heads_[h]);
+    }
     std::vector<Row> rows;
     if (headsList) {
         // those the ship takes, as Edit ship lists them; without a ship all
@@ -6373,32 +6238,25 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
             std::swprintf(stats, 96, L"%.0f  ·  %.0f m  ·  %d slot%s", l.fracture, l.fullRange, l.slots,
                           l.slots == 1 ? L"" : L"s");
             r.stats = stats;
-            r.fitted = ship_ && loadout_.laser == &l;
-            r.here = r.fitted;
-            r.button = ship_ != nullptr && !r.here;
-            r.can = r.button;
+            for (const MiningLoadout* on : carried) r.fitted |= on->laser == &l;
             rows.push_back(std::move(r));
         }
     } else if (tab == 1) {
         // the modules worth a row, as Edit ship lists them: one row each,
-        // however many of it are on the head - the row carries the count.
-        // Its button puts it into the slot picked, whatever it holds: the
-        // same module can sit in more than one slot (three Rieger-C3 on a
-        // MOLE's head), so only the one in that slot is FITTED instead
+        // however many of it the ship carries - the row carries the count
         for (const int i : modulesByName()) {
             const MiningModule& m = MINING_MODULES[i];
             int howMany = 0;
-            for (const MiningModule* f : loadout_.modules) howMany += f == &m ? 1 : 0;
+            for (const MiningLoadout* on : carried) {
+                for (const MiningModule* f : on->modules) howMany += f == &m ? 1 : 0;
+            }
             Row r;
             r.name = toW(moduleShortName(m));
             if (howMany > 1) r.name += L" \u00D7" + std::to_wstring(howMany);
             r.effect = moduleEffect(m);
             r.item = m.name;
             r.index = i;
-            r.fitted = modulesRow && howMany > 0;
-            r.here = modulesRow && inSlot == &m;
-            r.button = modulesRow && !r.here;
-            r.can = r.button && slotPicked >= 0;
+            r.fitted = howMany > 0;
             rows.push_back(std::move(r));
         }
     } else {
@@ -6474,13 +6332,6 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
     };
     const Gdiplus::GraphicsState unclipped = g.Save();
     g.SetClip(view);
-    const float buttonH = scaleF(22);
-    // a module's button says what it does to the slot picked: Swap what is
-    // in it, Fit where it is empty - as wide either way, so the prices
-    // stay where they are
-    const wchar_t* const press = tab == 1 && inSlot ? L"Swap" : L"Fit";
-    const float rowButtonW =
-        (std::max)(scaleF(44), lineWidth(g, tab == 1 ? L"Swap" : L"Fit", fieldFont) + scaleF(20));
     // the gadget whose i is under the pointer, and where its i is
     int infoFor = -1;
     Gdiplus::RectF infoIcon;
@@ -6498,16 +6349,12 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
         const float rowY = y;
         y += r.pitch;
         if (rowY + r.pitch < view.Y || rowY - scaleF(6) > view.GetBottom()) continue;
-        // Fit under a head's price; Swap or Fit beside a module's - or FITTED
-        // in its place; a gadget's price alone
-        const Gdiplus::RectF button(right - rowButtonW, rowY + scaleF(headsList ? 23.0f : 6.0f), rowButtonW, buttonH);
-        const bool buttonPlace = r.button || r.here;
         // The row's own lines and, round them alone, its frame: green where
-        // it is fitted. Unfolded, a click on them folds it, and under the
-        // pointer they are framed (its button lights by itself)
+        // the ship carries it. Unfolded, a click on them folds it, and
+        // under the pointer they are framed
         const Gdiplus::RectF own(cardX + scaleF(6), rowY - scaleF(6), cardW - scaleF(12),
                                  r.open ? ownH : r.pitch - scaleF(6));
-        const bool rowLit = r.open && seen(own) && !(r.button && r.can && seen(button));
+        const bool rowLit = r.open && seen(own);
         if (r.fitted) {
             if (rowLit) fillRoundRect(g, own, radius, tint(COL_GREEN, 16));
             selectionFrame(g, own, radius, COL_GREEN);
@@ -6516,7 +6363,7 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
         }
         // the nearest shop's price at the right, on the name's baseline
         const float baseline = rowY + fontAscent(nameFont);
-        const float priceRight = headsList || !buttonPlace ? right : button.X - scaleF(8);
+        const float priceRight = right;
         float nameEnd = priceRight;
         if (!r.shops.empty()) {
             const std::wstring price = formatNumber((int)std::lround(r.shops.front().offer.price));
@@ -6567,7 +6414,7 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
         // where it is sold: the nearest places, as many as the line holds -
         // a click unfolds every shop under it
         const float lineY = rowY + scaleF(headsList ? 34.0f : 19.0f);
-        const float lineRoom = (buttonPlace ? button.X - scaleF(12) : right) - left;
+        const float lineRoom = right - left;
         if (gearShops_ && r.shops.empty()) {
             g.DrawString(L"No shop known to UEX", -1, &smallFont, Gdiplus::RectF(left, lineY, lineRoom, scaleF(16)),
                          &oneLine, &faintBrush);
@@ -6635,21 +6482,7 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
                          seen(place) ? &dimBrush : &faintBrush);
             hit(place, 5, r.index, r.item);
         }
-        // FITTED where the item already is - the head's laser, the module in
-        // the slot picked; else Fit or Swap, quiet where the head has no slot
-        // for it
-        if (r.here) {
-            g.DrawString(L"FITTED", -1, &labelFont, Gdiplus::RectF(left, button.Y, wide, buttonH), &rightMiddle,
-                         &greenBrush);
-        } else if (r.button && r.can) {
-            drawButton(g, button, press, fieldFont, ButtonKind::Secondary, seen(button), radius);
-            hit(button, tab == 0 ? 3 : 4, r.index, r.item);
-        } else if (r.button) {
-            strokeRoundRect(g, button, radius, COL_BORDER);
-            g.DrawString(press, -1, &fieldFont, button, &centred, &faintBrush);
-        }
-        // the unfolded row's own lines fold it (after its button's hit,
-        // which keeps its click)
+        // the unfolded row's own lines fold it
         if (r.open) hit(own, 9, r.index, r.item);
     }
     g.Restore(unclipped);
@@ -6759,48 +6592,6 @@ void MinerGUI::pressGear(HWND hwnd, float px, float py) {
                     gearOpen_.clear();
                 }
                 break;
-            case 1:
-                useHead(hit.value);   // as Edit ship's tabs: the head shown
-                break;
-            case 2:
-                // the x on a slot's chip: that slot emptied (the modules
-                // after it move up), and the first empty slot picked
-                if (hit.value >= 0 && hit.value < (int)loadout_.modules.size()) {
-                    emptyHeadSlot(hit.value);
-                    gearSlot_ = -1;
-                    storeHead();
-                    saveLoadout();
-                }
-                break;
-            case 3:
-                // as a click on the head's row in Edit ship
-                putHeadLaser(&MINING_LASERS[hit.value]);
-                storeHead();
-                craftedEditing_ = false;
-                saveLoadout();
-                break;
-            case 4: {
-                // Swap or Fit: the module into the slot picked, what was
-                // there taken out - and that slot stays picked
-                const int at = setHeadModule(gearSlotNow(), &MINING_MODULES[hit.value]);
-                if (at >= 0) {
-                    gearSlot_ = at;
-                    storeHead();
-                    craftedEditing_ = false;
-                    saveLoadout();
-                }
-                break;
-            }
-            case 8:
-                // a slot picked for Swap and Fit, and the modules listed
-                // where another list was
-                gearSlot_ = hit.value;
-                if (gearTab_ != 1) {
-                    gearTab_ = 1;
-                    gearScroll_ = 0.0f;
-                    gearOpen_.clear();
-                }
-                break;
             case 5:
                 gearOpen_ = gearOpen_ == hit.item ? std::string() : hit.item;
                 break;
@@ -6820,7 +6611,6 @@ void MinerGUI::gearStateForShot(int tab, const std::string& open) {
     gearTab_ = std::clamp(tab, 0, 2);
     gearOpen_ = open;
     gearScroll_ = 0.0f;
-    gearSlot_ = -1;
     if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
@@ -6858,8 +6648,6 @@ std::string MinerGUI::gearHeadForShot() {
     for (const MiningModule* m : loadout_.modules) {
         if (m) out += std::string(" + ") + m->name;
     }
-    const int slot = gearSlotNow();
-    if (slot >= 0) out += " (slot " + std::to_string(slot + 1) + " picked)";
     return out;
 }
 
