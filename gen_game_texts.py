@@ -35,13 +35,13 @@ What gets added, and only this, at the end of the game's values:
         DIFFICULTY Hard · Up to 4 enemy ships at a time
         STANDING 200
         AFFINITY 50
-  - every TITLE gets the word and what it brings - Rep for Standing alone, a
-    career by its name - and a contract that brings something from one place
-    to another where it goes, filled in by the game:
-        ... Cargo Haul · Easy · 100 Rep · 50 Affinity · Lorville > Area18 [BP]
+  - every TITLE gets the word and what it brings - STD for Standing, AFF for
+    Affinity, a career by its name - and a contract that brings something
+    from one place to another where it goes, filled in by the game:
+        ... Cargo Haul · Easy · 100 STD · 50 AFF · Lorville > Area18 [BP]
         Secure Site · Normal · 500 Security
     - where the contracts sharing a text differ, the least and the most:
-        Haul · Easy–Hard · 50–1,000 Hauling · 0–50 Affinity · ...
+        Haul · Easy–Hard · 50–1,000 Hauling · 0–50 AFF · ...
 
 What depends on the player is left as a token for GameTexts.cpp to fill in:
     {S}                   a space, unless the game's value ends with one
@@ -583,14 +583,17 @@ def span(values):
 
 # Wikelo's own ladder, which the game calls Barter & Trade (New Customer to
 # Very Best Customer), is his alone and no career: it goes by its name, as
-# Standing and Affinity do.
+# Standing and Affinity do. A title has them short beside the figure, as the
+# description has them spelled out above it: STD, AFF.
 OWN_LADDERS = ("Standing", "Barter & Trade", "Affinity")
+TITLE_WORDS = {"Standing": "STD", "Affinity": "AFF"}
 
 
 def what_it_brings(users):
     """[(heading, name, word, values)], Standing first, Affinity last: the
     description's heading and the name after the figure there, and the
-    title's word - a career by its name, Career where the game gives it none"""
+    title's word - STD, AFF, a career by its name, Career where the game
+    gives it none"""
     reps = stated_reps(users)
     scopes = []
     for rep in reps:
@@ -600,17 +603,15 @@ def what_it_brings(users):
         values = [rep.get(scope, 0) for rep in reps]
         if not any(values):
             continue
-        if scope == "Standing":
-            out.append(("STANDING", "", "Rep", values))
-        elif scope in OWN_LADDERS:
-            out.append((scope.upper(), "", scope, values))
+        if scope in OWN_LADDERS:
+            out.append((scope.upper(), "", TITLE_WORDS.get(scope, scope), values))
         else:
             name = "" if "_" in scope else scope
             out.append(("CAREER", name, name or "Career", values))
     return out
 
 
-# In a title: Rep for Standing alone, a career by its name, Affinity
+# In a title: STD for Standing, a career by its name, AFF for Affinity
 def title_reps(users):
     return [span(values) + " " + word for heading, name, word, values in what_it_brings(users)]
 
