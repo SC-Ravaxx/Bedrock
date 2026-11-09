@@ -401,7 +401,12 @@ public:
     void renameFitForShot(const wchar_t* typed) {
         nameEditing_ = true;
         nameEntry_ = typed;
+        nameSelected_ = false;
     }
+    // ...the title as a new ship's card and a click on it open it: the
+    // name marked; and what the field holds, for the shot log
+    void startRenameForShot() { startNameEditing(); }
+    std::wstring nameEntryForShot() const { return nameEntry_; }
     void stopRenameForShot() { endNameEditing(false); }   // ...and let go, the name as it was
     void showLoadoutForShot(bool open) { showLoadout(open); }
     // The gear's shop lists wanted, as a page showing them wants them
@@ -1083,9 +1088,13 @@ private:
     void rememberHull();                            // hull_ is the chosen fit's from now on
     std::wstring fitTitle() const;                  // the chosen fit's name, as it is shown
     // The card's title is its fit's name, typed over in place (see
-    // drawLoadoutCard): what is typed, and whether it is being typed
+    // drawLoadoutCard): what is typed, whether it is being typed, and
+    // whether it stands marked whole (startNameEditing) - a key typed then
+    // replaces it
     bool nameEditing_ = false;
     std::wstring nameEntry_;
+    bool nameSelected_ = false;
+    void startNameEditing();
     void endNameEditing(bool keep);
     bool removeArmed_ = false;                      // Remove pressed once; the second press removes
 

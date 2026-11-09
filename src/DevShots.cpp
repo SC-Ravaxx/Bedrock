@@ -2069,6 +2069,16 @@ int runScreenshots(const std::string& dir) {
         pump();
         shoot(gui.windowHandle(), "loadout_rename.png");
         gui.stopRenameForShot();
+        // ...and as a new ship's card or a click on the title opens it: the
+        // name marked, and a letter typed over it whole
+        gui.startRenameForShot();
+        pump();
+        shoot(gui.windowHandle(), "loadout_name_marked.png");
+        for (const wchar_t c : std::wstring(L"Big")) SendMessageW(gui.windowHandle(), WM_CHAR, (WPARAM)c, 0);
+        pump();
+        std::cout << "  the marked name typed over with Big: "
+                  << (gui.nameEntryForShot() == L"Big" ? "Big" : "NOT REPLACED") << std::endl;
+        gui.stopRenameForShot();
         gui.showLoadoutForShot(false);
         gui.pickShipForShot("mole");
         pump();

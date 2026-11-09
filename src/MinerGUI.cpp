@@ -3264,16 +3264,22 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             // A plugin's page: a search or a counter being typed into
             if (pluginPageUp() && pluginChar(hwnd, (wchar_t)wParam)) return 0;
             // The loadout's title being typed over: what the player calls
-            // this ship. Enter or Tab keeps it, Esc leaves the old name.
+            // this ship. Enter or Tab keeps it, Esc leaves the old name;
+            // while the name stands marked, a letter types over it whole
+            // and Backspace takes it all.
             if (loadoutOpen_ && nameEditing_) {
                 const wchar_t c = (wchar_t)wParam;
                 if (c == VK_BACK) {
-                    if (!nameEntry_.empty()) nameEntry_.pop_back();
+                    if (nameSelected_) nameEntry_.clear();
+                    else if (!nameEntry_.empty()) nameEntry_.pop_back();
+                    nameSelected_ = false;
                 } else if (c == VK_RETURN || c == VK_TAB) {
                     endNameEditing(true);
                 } else if (c == VK_ESCAPE) {
                     endNameEditing(false);
-                } else if (c >= L' ' && nameEntry_.size() < 32) {
+                } else if (c >= L' ' && (nameSelected_ || nameEntry_.size() < 32)) {
+                    if (nameSelected_) nameEntry_.clear();
+                    nameSelected_ = false;
                     nameEntry_ += c;
                 } else {
                     break;
@@ -3321,6 +3327,16 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
         case WM_KEYDOWN:
             if (lookingOpen_ && (wParam == VK_ESCAPE || wParam == VK_RETURN)) {
                 setLookingOpen(false);
+                return 0;
+            }
+            // The title marked whole: an arrow, Home or End lets go of the
+            // mark with the caret after the name, Del takes it all
+            if (loadoutOpen_ && nameEditing_ && nameSelected_ &&
+                (wParam == VK_LEFT || wParam == VK_RIGHT || wParam == VK_HOME || wParam == VK_END ||
+                 wParam == VK_DELETE)) {
+                if (wParam == VK_DELETE) nameEntry_.clear();
+                nameSelected_ = false;
+                InvalidateRect(hwnd, nullptr, TRUE);
                 return 0;
             }
             if (pluginPageUp() && !(keysOpen_ || aboutOpen_ || backupOpen_ || whatsNewOpen_ || uexWelcome_.step) &&
@@ -3572,10 +3588,10 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                     if (hit.kind != 7) removeArmed_ = false;
                     if (hit.kind == 6) {
                         if (phoneTapping_) return 0;
-                        if (!nameEditing_) {
-                            nameEditing_ = true;
-                            nameEntry_ = fitTitle();
-                        }
+                        // a click on it starts typing with the name marked;
+                        // a second one lets go of the mark
+                        if (!nameEditing_) startNameEditing();
+                        else nameSelected_ = false;
                         craftedEditing_ = false;
                         SetFocus(hwnd);   // the letters have to land here
                         InvalidateRect(hwnd, nullptr, TRUE);
@@ -5253,12 +5269,23 @@ std::wstring MinerGUI::fitTitle() const {
     return toW(fits_[fit_].name);
 }
 
+// The title typed over from here: the name it has stands in the field
+// marked, as a field's text is when it is entered - a letter types over it
+// whole, Enter keeps it
+void MinerGUI::startNameEditing() {
+    nameEditing_ = true;
+    nameEntry_ = fitTitle();
+    nameSelected_ = !nameEntry_.empty();
+    craftedEditing_ = false;
+}
+
 // The title typed over: kept on Enter, a click elsewhere or another fit;
 // dropped on Esc. Nothing typed keeps the name it had, and a name another
 // fit has gets a number.
 void MinerGUI::endNameEditing(bool keep) {
     if (!nameEditing_) return;
     nameEditing_ = false;
+    nameSelected_ = false;
     if (!keep || fit_ < 0 || fit_ >= (int)fits_.size()) return;
     std::wstring typed = nameEntry_;
     while (!typed.empty() && typed.back() == L' ') typed.pop_back();
@@ -5495,18 +5522,45 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
     Gdiplus::StringFormat titleLine;
     titleLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
     titleLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+    // The name's capitals in the field's middle, where Remove and the x
+    // stand too - placed by their ink, not by the face's line (inkMiddle);
+    // what stands beside it on its baseline
+    const float titleMiddle = titleField.Y + titleField.Height / 2;
+    const float titleTop =
+        std::round(titleMiddle - inkMiddle(L"H", markFamily(), Gdiplus::FontStyleRegular, scaleF(Type::TITLE)));
+    const float besideTop = std::round(titleTop + fontAscent(titleFont) - fontAscent(rowFont));
     if (nameEditing_) {
         fillRoundRect(g, titleField, scaleF(R_CONTROL), COL_CARD_HI);
         strokeRoundRect(g, titleField, scaleF(R_CONTROL), tint(COL_ACCENT, 220));
-        // what is typed, the caret after it; nothing typed yet shows the name
-        // it will keep, quietly, behind the caret
-        const std::wstring typed = nameEntry_ + L"|";
-        g.DrawString(typed.c_str(), -1, &titleFont, Gdiplus::PointF(left - scaleF(1), y - scaleF(2)), &textBrush);
+        // What is typed, then the caret - a bar, not a "|": the glyph hangs
+        // below the line into the frame. The name as it stood, untouched,
+        // is marked; nothing typed shows the name it will keep, quietly,
+        // behind the caret. Mark and caret share the field's middle with
+        // the letters.
+        Gdiplus::StringFormat typedLine;   // (a typed space moves the caret on)
+        typedLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap | Gdiplus::StringFormatFlagsMeasureTrailingSpaces);
+        const float textX = left - scaleF(1);
+        const float pad = titleFont.GetSize() / 6.0f;   // GDI+'s room before a line's first letter
+        float typedW = 0;
+        if (!nameEntry_.empty()) {
+            Gdiplus::RectF w;
+            g.MeasureString(nameEntry_.c_str(), -1, &titleFont, Gdiplus::PointF(0, 0), &typedLine, &w);
+            typedW = (std::max)(0.0f, w.Width - 2 * pad);
+        }
+        const float barH = std::round(scaleF(22));
+        const float barY = std::round(titleMiddle - barH / 2);
+        if (nameSelected_ && !nameEntry_.empty()) {
+            fillRoundRect(g,
+                          Gdiplus::RectF(std::round(textX + pad - scaleF(3)), barY - scaleF(1), typedW + scaleF(6),
+                                         barH + scaleF(2)),
+                          scaleF(4), tint(COL_ACCENT, 77));
+        }
+        g.DrawString(nameEntry_.c_str(), -1, &titleFont, Gdiplus::PointF(textX, titleTop), &typedLine, &textBrush);
+        const float caretX = std::round(textX + pad + typedW + (nameEntry_.empty() ? 0.0f : scaleF(3)));
+        g.FillRectangle(&textBrush, Gdiplus::RectF(caretX, barY, (std::max)(1.0f, std::round(scaleF(2))), barH));
         if (nameEntry_.empty()) {
-            Gdiplus::RectF caretW;
-            g.MeasureString(L"|", -1, &titleFont, Gdiplus::PointF(0, 0), &caretW);
-            g.DrawString(fitTitle().c_str(), -1, &titleFont,
-                         Gdiplus::PointF(left - scaleF(1) + caretW.Width - scaleF(4), y - scaleF(2)), &faintBrush);
+            g.DrawString(fitTitle().c_str(), -1, &titleFont, Gdiplus::PointF(caretX + scaleF(5) - pad, titleTop),
+                         &faintBrush);
         }
         if (kindBelow) {
             g.DrawString(kind.c_str(), -1, &rowFont, Gdiplus::RectF(left - scaleF(1), y + scaleF(29), titleRoom, scaleF(18)),
@@ -5516,13 +5570,13 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
         if (titleHot) fillRoundRect(g, titleField, scaleF(R_CONTROL), COL_HOVER);
         // (a box as tall as the line: the descenders of "Prospector" hang
         // below the 26 px the name itself takes)
-        g.DrawString(title.c_str(), -1, &titleFont, Gdiplus::RectF(left - scaleF(1), y - scaleF(2), titleRoom, scaleF(31)),
+        g.DrawString(title.c_str(), -1, &titleFont, Gdiplus::RectF(left - scaleF(1), titleTop, titleRoom, scaleF(31)),
                      &titleLine, &textBrush);
         std::wstring beside = kindBelow ? std::wstring() : kind;
         if (titleHot) beside += beside.empty() ? L"Click to rename" : L"  ·  Click to rename";
         if (!beside.empty() && after < titleField.GetRight() - scaleF(20)) {
             g.DrawString(beside.c_str(), -1, &rowFont,
-                         Gdiplus::RectF(after, y + scaleF(5), titleField.GetRight() - scaleF(8) - after, scaleF(16)),
+                         Gdiplus::RectF(after, besideTop, titleField.GetRight() - scaleF(8) - after, scaleF(16)),
                          &titleLine, &faintBrush);
         }
         if (kindBelow) {
@@ -6117,14 +6171,13 @@ void MinerGUI::pressShipPicker(float px, float py) {
             return;
         }
         // A new one of that kind: chosen, and its card open with the title
-        // waiting to be typed over
+        // marked, to be typed over or kept
         const int added = addFit(MINING_SHIPS[-1 - hit.index]);
         setShipPickerOpen(false);
         if (added >= 0) {
             pickFit(added, true);
             showLoadout(true);
-            nameEditing_ = !phoneTapping_;   // (the typing is the PC's)
-            nameEntry_.clear();
+            if (!phoneTapping_) startNameEditing();   // (the typing is the PC's)
         }
         return;
     }
