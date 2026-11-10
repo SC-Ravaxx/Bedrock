@@ -3,12 +3,14 @@ at stand in their system, out of the game's own object containers.
 
     python gen_nav_places.py <folder> include/NavPlaces.h <build label>
 
-<folder> holds the three systems' containers, unpacked from Data.p4k with
-unp4k (searched for under it, at any depth):
+<folder> holds the three systems' containers and Stanton's twenty Lagrange
+points', unpacked from Data.p4k with unp4k (searched for under it, at any
+depth):
 
     unp4k.exe <channel>/Data.p4k stantonsystem.socpak
     unp4k.exe <channel>/Data.p4k pyrosystem.socpak
     unp4k.exe <channel>/Data.p4k nyxsystem.socpak
+    unp4k.exe <channel>/Data.p4k stanton1_l1.socpak   (... to stanton4_l5)
 
 A system's container lists its bodies, Lagrange points, jump points and
 belt segments as a tree of Child elements. A place's position is its
@@ -19,8 +21,13 @@ frame /showlocation reports in. Planets do not orbit.
 What is placed where:
 - a planet or a moon at its centre, and the cities, outposts and stations in
   low orbit over it there as well (a radius is a thousandth of a Gm);
-- a station at a Lagrange point or a jump point at that point's container
-  (HUR-L1's station stands 4,037 km from it, the gateways 40-50 km);
+- a station at one of Stanton's Lagrange points where the point's own
+  container puts it: up to 16,712 km from the point and 11,799 km over or
+  under the planets' plane (the MIC stations), which the Aaron Halo's thin
+  bands cannot leave out (HaloRoute.h); CRU-L2 and CRU-L3 have no station
+  and stand at the point;
+- Pyro's stops and the gateways at their point's container (the gateways
+  40-50 km from it);
 - Levski at its Glaciem Ring segment, the People's Service Stations at their
   Keeger Belt segments (Nyx_SocialStation_001..004 = Alpha, Delta, Theta,
   Lambda, by the star map records inside them).
@@ -34,6 +41,7 @@ reads the log's codes for them as those (leadsTo).
 """
 import math
 import os
+import re
 import struct
 import sys
 import xml.etree.ElementTree as ET
@@ -78,8 +86,9 @@ def qmul(a, b):
             aw * by - ax * bz + ay * bw + az * bx, aw * bz + ax * by - ay * bx + az * bw)
 
 
-def placed(xml):
-    """Every Child's entityName and its position in the system's frame."""
+def placed(xml, turns=None):
+    """Every Child's entityName and its position in the system's frame
+    (and, into `turns`, the rotation that frame gives its own children)."""
     root = ET.fromstring(xml)
     out = {}
 
@@ -92,9 +101,27 @@ def placed(xml):
                 name = ch.get('entityName') or ''
                 if name and name not in out:
                     out[name] = cp
+                    if turns is not None:
+                        turns[name] = cq
                 walk(ch, cp, cq)
     walk(root, (0.0, 0.0, 0.0), (1.0, 0.0, 0.0, 0.0))
     return out
+
+
+def station(folder, planet, point, at, turn):
+    """Stanton's rest stop at a Lagrange point, where the point's own
+    container puts it, turned as the point is turned in the system: the child
+    made of rs_ext_<hur|cru|arc|mic>-l<n>.socpak - LOC_RR_S<planet>_L<n> by
+    name, but ARC-L2's is rs_ext_arc-l001. CRU-L2 and CRU-L3 have none, and
+    a route there ends at the point itself."""
+    key = 'stanton%d_l%d' % (planet, point)
+    root = ET.fromstring(read_socpak_xml(find(folder, key + '.socpak'), key))
+    want = 'rs_ext_%s-l%d.socpak' % (['hur', 'cru', 'arc', 'mic'][planet - 1], point)
+    for ch in root.iter('Child'):
+        if (ch.get('name') or '').replace('\\', '/').split('/')[-1].lower() == want:
+            r = qrot(turn, vec(ch.get('pos') or '0,0,0'))
+            return (at[0] + r[0], at[1] + r[1], at[2] + r[2])
+    return at
 
 
 # (container entity, names the place goes by). Gateways are named for where
@@ -170,15 +197,20 @@ def main():
     rows = []
     for system, table in (('Stanton', STANTON), ('Pyro', PYRO), ('Nyx', NYX)):
         key = system.lower() + 'system'
-        where = placed(read_socpak_xml(find(folder, key + '.socpak'), key))
+        turns = {}
+        where = placed(read_socpak_xml(find(folder, key + '.socpak'), key), turns)
         for entity, names in table:
             if entity not in where:
                 # a Lagrange point the system does not have (Pyro IV has none)
                 if entity.startswith('P') and '_L' in entity:
                     continue
                 raise SystemExit('%s: no %s in the tree' % (system, entity))
+            at = where[entity]
+            point = re.match(r'^OOC_Stanton([1-4])_L([1-5])$', entity)
+            if point:
+                at = station(folder, int(point.group(1)), int(point.group(2)), at, turns[entity])
             for name in names:
-                rows.append((name, system, where[entity]))
+                rows.append((name, system, at))
 
     def esc(s):
         return s.replace('\\', '\\\\').replace('"', '\\"')
@@ -193,15 +225,16 @@ def main():
         '// metres, the star at the origin, the frame /showlocation reports in.',
         '//',
         '// GENERATED by gen_nav_places.py from the game\'s system containers',
-        '// (stantonsystem, pyrosystem, nyxsystem .socpak), game build %s.' % build,
+        '// (stantonsystem, pyrosystem, nyxsystem .socpak) and Stanton\'s twenty',
+        '// Lagrange points\' (stanton1_l1 .. stanton4_l5), game build %s.' % build,
         '// Do not edit by hand - regenerate for a new build.',
         '//',
         '// A city, an outpost or a station in low orbit stands at its body\'s',
-        '// centre, a station at a Lagrange point or a gateway at that point\'s',
-        '// container: what that leaves out is 4,037 km at most (HUR-L1), against',
-        '// distances shown to a tenth of a Gm. A gateway is named for where it',
-        '// leads and stands in `system`. Checks: Hurston to ArcCorp %.2f Gm,' % gm(at[('Hurston', 'Stanton')], at[('ArcCorp', 'Stanton')]),
-        '// Hurston to HUR-L1 %.2f Gm, ArcCorp to ARC-L1 %.2f Gm.' % (
+        '// centre, Stanton\'s Lagrange stations where their own containers put',
+        '// them, Pyro\'s stops and the gateways at their point\'s container. A',
+        '// gateway is named for where it leads and stands in `system`. Checks:',
+        '// Hurston to ArcCorp %.2f Gm, Hurston to HUR-L1 %.2f Gm, ArcCorp to ARC-L1 %.2f Gm.' % (
+            gm(at[('Hurston', 'Stanton')], at[('ArcCorp', 'Stanton')]),
             gm(at[('Hurston', 'Stanton')], at[('HUR-L1', 'Stanton')]), gm(at[('ArcCorp', 'Stanton')], at[('ARC-L1', 'Stanton')])),
         '',
         'namespace SCMiner {',
