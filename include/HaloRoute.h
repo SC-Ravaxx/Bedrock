@@ -64,8 +64,11 @@ const HaloPass* bestHaloPass(const std::vector<HaloPass>& passes);
 // How long the route is, km
 double routeKm(const NavPoint& from, const NavPoint& to);
 
-// Whether a route runs through the belt: through at least one band within
-// its height (bestHaloPass)
+// ...of those only the bands it runs through within their height: the ones
+// a ship that leaves quantum travel there actually reaches
+std::vector<HaloPass> haloBandsReached(const NavPoint& from, const NavPoint& to);
+
+// Whether a route runs through the belt: reaches at least one band
 bool runsThroughHalo(const NavPoint& from, const NavPoint& to);
 
 // The places a route can be planned from and to: Stanton's planets with

@@ -2138,6 +2138,13 @@ int runSelfTest() {
         allPassed &= check(heights, "a route over or under a band misses it: HUR-L1 to ARC-L1 over band 1 and in "
                                     "band 5, MIC-L2 to HUR-L5 under all ten, HUR-L1 to the Pyro Gateway "
                                     "millions of km under them");
+        // ...and only the bands a route reaches are listed
+        const std::vector<HaloPass> reached = SCMiner::haloBandsReached(at("HUR-L1"), at("ARC-L1"));
+        allPassed &= check(reached.size() == 9 && !band(reached, 1) && band(reached, 5) &&
+                               SCMiner::haloBandsReached(at("ARC-L1"), at("CRU-L4")).size() == 10 &&
+                               SCMiner::haloBandsReached(at("MIC-L2"), at("HUR-L5")).empty(),
+                           "only the bands a route reaches are listed: HUR-L1 to ARC-L1 nine, not band 1 it passes "
+                           "over; ARC-L1 to CRU-L4 all ten; MIC-L2 to HUR-L5, under all of them, none");
 
         // ...and none at all where it does not cross: inside the belt both
         // ends, or out of Stanton

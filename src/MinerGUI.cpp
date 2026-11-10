@@ -20010,7 +20010,7 @@ MinerGUI::HaloPlan MinerGUI::haloPlan() const {
         plan.to = nearestHaloDestination(plan.from);
         if (!plan.to.empty()) navPoint(plan.to, "Stanton", b);
     }
-    if (!plan.to.empty()) plan.passes = haloPasses(a, b);
+    if (!plan.to.empty()) plan.passes = haloBandsReached(a, b);
     return plan;
 }
 
@@ -20067,7 +20067,7 @@ float MinerGUI::drawHaloCard(Gdiplus::Graphics& g, float x, float y, float width
     }
     yy += fieldH + scaleF(8);
 
-    // The bands the route crosses, the one to go for marked
+    // The bands the route reaches, the one to go for marked
     const HaloPass* best = bestHaloPass(plan.passes);
     const float rowH = scaleF(23);
     if (best) {
@@ -20082,7 +20082,6 @@ float MinerGUI::drawHaloCard(Gdiplus::Graphics& g, float x, float y, float width
         for (const HaloPass& pass : plan.passes) {
             if (draw) {
                 const bool marked = &pass == best;
-                const bool reach = pass.inIt();
                 if (marked) {
                     fillRoundRect(g, Gdiplus::RectF(x, yy - scaleF(2), width, rowH), scaleF(R_CONTROL), tint(COL_GREEN, 34));
                     fillRoundRect(g, Gdiplus::RectF(x, yy - scaleF(2), scaleF(3), rowH), scaleF(1.5f), COL_GREEN);
@@ -20091,22 +20090,21 @@ float MinerGUI::drawHaloCard(Gdiplus::Graphics& g, float x, float y, float width
                 const float baseline = yy - scaleF(2) + rowH / 2 + scaleF(4.5f);
                 const std::wstring number = std::to_wstring(pass.band);
                 g.DrawString(number.c_str(), -1, &figureFont,
-                             Gdiplus::PointF(tx + scaleF(2), std::round(baseline - fontAscent(figureFont))),
-                             reach ? &textBrush : &faintBrush);
+                             Gdiplus::PointF(tx + scaleF(2), std::round(baseline - fontAscent(figureFont))), &textBrush);
                 const std::wstring exit = toW(gigametres(pass.exitKm * 1000));
-                g.DrawString(exit.c_str(), -1, &figureFont, Gdiplus::PointF(exitX, std::round(baseline - fontAscent(figureFont))),
-                             marked ? &accentBrush : reach ? &textBrush : &faintBrush);
-                const wchar_t* note = !reach                                 ? (pass.overIt() ? L"passes over" : L"passes under")
-                                      : pass.band == HALO_DENSEST_BAND ? L"densest"
-                                      : pass.band == HALO_SPARSE_BAND  ? L"sparse"
-                                                                       : L"";
+                g.DrawString(exit.c_str(), -1, &figureFont,
+                             Gdiplus::PointF(exitX, std::round(baseline - fontAscent(figureFont))),
+                             marked ? &accentBrush : &textBrush);
+                const wchar_t* note = pass.band == HALO_DENSEST_BAND ? L"densest"
+                                      : pass.band == HALO_SPARSE_BAND ? L"sparse"
+                                                                      : L"";
                 g.DrawString(note, -1, &noteFont, Gdiplus::PointF(noteX, std::round(baseline - fontAscent(noteFont))),
                              marked && pass.band == HALO_DENSEST_BAND ? &greenBrush : &faintBrush);
                 wchar_t window[48];
                 std::swprintf(window, 48, L"%.1f \u2013 %.1f", pass.enterKm / 1e6, pass.leaveKm / 1e6);
                 g.DrawString(window, -1, &windowFont,
                              Gdiplus::RectF(tx, std::round(baseline - fontAscent(windowFont)), tw, rowH), &rightAlign,
-                             reach ? &dimBrush : &faintBrush);
+                             &dimBrush);
             }
             yy += rowH;
         }

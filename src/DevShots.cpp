@@ -2609,8 +2609,9 @@ int runScreenshots(const std::string& dir) {
     // ...and the Aaron Halo's: under its ores the way in, band by band, for
     // the route plotted from ARC-L1 to CRU-L4; the list of places to go to
     // open over it (those a route from ARC-L1 runs through the belt to); and
-    // a route plotted that does not (Hurston to Crusader), for which the
-    // nearest place through band 5 stands
+    // a route plotted that does not (ARC-L1 to ArcCorp), for which the
+    // nearest place through band 5 stands: HUR-L5, nine bands - the route
+    // passes over band 1
     gui.setRoute("ARC-L1", "CRU-L4");
     gui.openHaloForShot("", "", 0);
     pump();
@@ -2618,7 +2619,7 @@ int runScreenshots(const std::string& dir) {
     gui.openHaloForShot("", "", 2);
     pump();
     if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_halo_to.png", true);
-    gui.setRoute("Hurston", "Crusader");
+    gui.setRoute("ARC-L1", "ArcCorp");
     gui.openHaloForShot("", "", 0);
     pump();
     if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_halo_suggest.png", true);

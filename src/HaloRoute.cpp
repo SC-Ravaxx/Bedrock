@@ -143,9 +143,14 @@ std::vector<HaloPass> haloPasses(const NavPoint& from, const NavPoint& to) {
     return out;
 }
 
+std::vector<HaloPass> haloBandsReached(const NavPoint& from, const NavPoint& to) {
+    std::vector<HaloPass> out = haloPasses(from, to);
+    out.erase(std::remove_if(out.begin(), out.end(), [](const HaloPass& pass) { return !pass.inIt(); }), out.end());
+    return out;
+}
+
 bool runsThroughHalo(const NavPoint& from, const NavPoint& to) {
-    const std::vector<HaloPass> passes = haloPasses(from, to);
-    return bestHaloPass(passes) != nullptr;
+    return !haloBandsReached(from, to).empty();
 }
 
 std::vector<const HaloPlace*> haloDestinations(const std::string& from) {

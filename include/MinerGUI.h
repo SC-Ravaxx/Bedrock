@@ -1558,7 +1558,7 @@ private:
     // nothing names one in Stanton; the end is only ever a place a route
     // from there runs through the belt to, and falls back on the nearest
     // through band 5), whether the end is the route plotted, and the bands
-    // on the way
+    // the way reaches
     struct HaloPlan {
         std::string from, to;
         bool plotted = false;
