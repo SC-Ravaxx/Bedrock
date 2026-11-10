@@ -233,7 +233,7 @@ int runSelfTest() {
                                ContractScan::bareTitle("Deep space hit \xC2\xB7 Easy \xC2\xB7 50 STD <EM4>[BP]</EM4>") ==
                                    "Deep space hit" &&
                                ContractScan::bareTitle("Rookie Hauler Needed for Small Shipment \xC2\xB7 Easy\xE2\x80\x93Hard "
-                                                       "\xC2\xB7 50\xE2\x80\x93" "1,000 Hauling \xC2\xB7 0\xE2\x80\x93" "50 AFF "
+                                                       "\xC2\xB7 50\xE2\x80\x93" "1,000 HAUL \xC2\xB7 0\xE2\x80\x93" "50 AFF "
                                                        "\xC2\xB7 Gaslight, ... > Canard View") ==
                                    "Rookie Hauler Needed for Small Shipment",
                            "a contract's title comes off the log without Bedrock's marks - how hard, what it brings, the "
@@ -2990,6 +2990,7 @@ int runSelfTest() {
                 "headhunters_EliminateSpecific_Asteroid_Generic_VE_title_001=Deep space hit\r\n"
                 "cfp_sabotage_generators_VE_title_001=Sabotage\r\n"
                 "EckhartSecurity_Defend_E_Title_001=Secure Site\r\n"
+                "BHG_Certification_Easy_Title=Tracker Beginner's Permit Certification\r\n"
                 "TheCollector_Recipes_Title_VGLflightsuit=Flight suit\r\n"
                 "RedWind_HaulCargo_AToB_desc_01=Haul text\r\n"
                 "Foxwell_ShipWaveAttack_ClearHostiles_Desc_M_001=Text\r\n";
@@ -3000,13 +3001,13 @@ int runSelfTest() {
             allPassed &= check(withRoutes.find("Rank - Direct Cargo Haul" + dot + "Easy" + dot + from + " > " + to +
                                                " <EM4>[BP]</EM4>\r\n") != std::string::npos &&
                                    withRoutes.find("RedWind_HaulCargo_AToB_title_01=Haul" + redWind + "50" + dash +
-                                                   "1,000 Hauling" + dot + "0" + dash + "50 AFF" + dot + from + " > " +
+                                                   "1,000 HAUL" + dot + "0" + dash + "50 AFF" + dot + from + " > " +
                                                    to + "\r\n") != std::string::npos &&
                                    withRoutes.find("RedWind_HaulCargo_MultiToSingle_title_01=Haul" + redWind + "200" + dash +
-                                                   "4,000 Hauling" + dot + "0" + dash + "50 AFF" + dot + from +
+                                                   "4,000 HAUL" + dot + "0" + dash + "50 AFF" + dot + from +
                                                    ", ... > " + to + "\r\n") != std::string::npos &&
                                    withRoutes.find("RedWind_HaulCargo_SingleToMulti_title_01=Haul" + redWind + "100" + dash +
-                                                   "4,000 Hauling" + dot + "0" + dash + "50 AFF" + dot + from +
+                                                   "4,000 HAUL" + dot + "0" + dash + "50 AFF" + dot + from +
                                                    " > ~mission(Destination1|Name), ...\r\n") != std::string::npos &&
                                    withRoutes.find("=Ling Shipment Recovery" + dot + "Easy" + dot + "100 STD" + dot + from +
                                                    " > " + to + "\r\n") != std::string::npos &&
@@ -3016,9 +3017,11 @@ int runSelfTest() {
                                        std::string::npos &&
                                    withRoutes.find("=Sabotage" + dot + "Easy" + dot + "25 STD" + dot +
                                                    "50 AFF <EM4>[BP]</EM4>\r\n") != std::string::npos &&
-                                   withRoutes.find("=Secure Site" + dot + "Normal" + dot + "500 Security\r\n") !=
+                                   withRoutes.find("=Secure Site" + dot + "Normal" + dot + "500 SEC\r\n") !=
                                        std::string::npos &&
-                                   withRoutes.find("=Flight suit" + dot + "10 Barter & Trade <EM4>[BP]</EM4>\r\n") !=
+                                   withRoutes.find("=Tracker Beginner's Permit Certification" + dot + "Easy" + dot +
+                                                   "50 BH\r\n") != std::string::npos &&
+                                   withRoutes.find("=Flight suit" + dot + "10 B&T <EM4>[BP]</EM4>\r\n") !=
                                        std::string::npos &&
                                    withRoutes.find("=Haul text\\n\\n<EM4>DIFFICULTY</EM4> Easy" + dash +
                                                    "Hard\\n<EM4>CAREER</EM4> 50" + dash + "1,000 Hauling\\n<EM4>AFFINITY</EM4> 0" +
