@@ -18090,6 +18090,14 @@ LRESULT MinerGUI::handlePlannerMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                         const auto& hit = planHits_[i];
                         if (hit.kind != 16 || !hit.rect.Contains(px, py)) continue;
                         (menu == 1 ? haloFrom_ : haloTo_) = hit.value;
+                        // a place picked to go to that no route from the new
+                        // start runs through the belt to is dropped
+                        NavPoint a, b;
+                        if (menu == 1 && !haloTo_.empty() &&
+                            !(navPoint(haloFrom_, "Stanton", a) && navPoint(haloTo_, "Stanton", b) &&
+                              runsThroughHalo(a, b))) {
+                            haloTo_.clear();
+                        }
                         break;
                     }
                     return 0;
@@ -19987,28 +19995,20 @@ MinerGUI::HaloPlan MinerGUI::haloPlan() const {
             break;
         }
     }
-    // To: picked by hand; else the route plotted; else the nearest place a
-    // route from there runs through the densest band to
-    if (haloTo_ != plan.from && inStanton(haloTo_, b)) {
+    // To: only a place a route from there runs through the belt to - picked
+    // by hand; else the route plotted; else the nearest such place through
+    // the densest band
+    auto through = [&](const std::string& name) {
+        return name != plan.from && inStanton(name, b) && runsThroughHalo(a, b);
+    };
+    if (through(haloTo_)) {
         plan.to = haloTo_;
-    } else if (haloTo_.empty() && routeTo_ != plan.from && inStanton(routeTo_, b)) {
+    } else if (through(routeTo_)) {
         plan.to = routeTo_;
         plan.plotted = true;
     } else {
-        double nearest = 0;
-        for (const HaloPlace& place : HALO_PLACES) {
-            NavPoint p;
-            if (plan.from == place.name || !navPoint(place.name, "Stanton", p)) continue;
-            const std::vector<HaloPass> passes = haloPasses(a, p);
-            const HaloPass* best = bestHaloPass(passes);
-            if (!best || best->band != HALO_DENSEST_BAND) continue;
-            const double km = routeKm(a, p);
-            if (plan.to.empty() || km < nearest) {
-                plan.to = place.name;
-                nearest = km;
-                b = p;
-            }
-        }
+        plan.to = nearestHaloDestination(plan.from);
+        if (!plan.to.empty()) navPoint(plan.to, "Stanton", b);
     }
     if (!plan.to.empty()) plan.passes = haloPasses(a, b);
     return plan;
@@ -20067,8 +20067,7 @@ float MinerGUI::drawHaloCard(Gdiplus::Graphics& g, float x, float y, float width
     }
     yy += fieldH + scaleF(8);
 
-    // The bands the route crosses, the one to go for marked; or why there
-    // are none
+    // The bands the route crosses, the one to go for marked
     const HaloPass* best = bestHaloPass(plan.passes);
     const float rowH = scaleF(23);
     if (best) {
@@ -20111,35 +20110,28 @@ float MinerGUI::drawHaloCard(Gdiplus::Graphics& g, float x, float y, float width
             }
             yy += rowH;
         }
-    } else {
-        // over or under every band it crosses: most of them decide which
-        int over = 0;
-        for (const HaloPass& pass : plan.passes) over += pass.overIt() ? 1 : 0;
-        const wchar_t* none = plan.passes.empty()                    ? L"This route does not cross the Aaron Halo."
-                              : over * 2 > (int)plan.passes.size() ? L"This route passes over the Aaron Halo."
-                                                                     : L"This route passes under the Aaron Halo.";
-        if (draw) g.DrawString(none, -1, &noteFont, Gdiplus::PointF(x, yy + scaleF(2)), &dimBrush);
-        yy += scaleF(22);
     }
 
-    // Where the figures come from, and what to do with them
-    std::wstring foot;
-    if (best) foot = L"Plot " + toW(plan.to) + L", then leave quantum travel at the distance left.\n";
-    foot += L"Bands from the Cornerstone survey.";
-    yy += scaleF(8);
-    Gdiplus::RectF footH;
-    g.MeasureString(foot.c_str(), -1, &noteFont, Gdiplus::RectF(0, 0, width, scaleF(200)), nullptr, &footH);
-    if (draw) {
-        g.DrawString(foot.c_str(), -1, &noteFont, Gdiplus::RectF(x, yy, width, footH.Height + scaleF(2)), nullptr,
-                     &faintBrush);
+    // ...and what to do with them
+    if (best) {
+        const std::wstring foot = L"Plot " + toW(plan.to) + L", then leave quantum travel at the distance left.";
+        yy += scaleF(8);
+        Gdiplus::RectF footH;
+        g.MeasureString(foot.c_str(), -1, &noteFont, Gdiplus::RectF(0, 0, width, scaleF(200)), nullptr, &footH);
+        if (draw) {
+            g.DrawString(foot.c_str(), -1, &noteFont, Gdiplus::RectF(x, yy, width, footH.Height + scaleF(2)), nullptr,
+                         &faintBrush);
+        }
+        yy += footH.Height + scaleF(4);
     }
-    yy += footH.Height + scaleF(4);
     return yy - y;
 }
 
 // The places a route can be planned from and to, over the Aaron Halo's
-// card: a planet and its moons to a row, then a planet's Lagrange points.
-// The other end of the route is not one to pick.
+// card: a planet and its moons to a row, then a planet's Lagrange points,
+// each place in its own column. To go to, only the places a route from the
+// start runs through the belt to; every place is one to set off from (each
+// has some). The other end of the route is not one to pick.
 void MinerGUI::paintHaloMenu(Gdiplus::Graphics& g, int ch) {
     haloMenuHitsFrom_ = planHits_.size();
     haloMenuList_ = Gdiplus::RectF();
@@ -20147,6 +20139,13 @@ void MinerGUI::paintHaloMenu(Gdiplus::Graphics& g, int ch) {
     const HaloPlan plan = haloPlan();
     const std::string& shown = haloMenu_ == 1 ? plan.from : plan.to;
     const std::string& other = haloMenu_ == 1 ? plan.to : plan.from;
+    std::vector<const HaloPlace*> places;
+    if (haloMenu_ == 2) {
+        places = haloDestinations(plan.from);
+    } else {
+        for (const HaloPlace& place : HALO_PLACES) places.push_back(&place);
+    }
+    if (places.empty()) return;
     Gdiplus::Font textFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush textBrush(COL_TEXT), faintBrush(COL_TEXT_FAINT), accentBrush(COL_ACCENT);
     Gdiplus::StringFormat oneLine;
@@ -20154,10 +20153,28 @@ void MinerGUI::paintHaloMenu(Gdiplus::Graphics& g, int ch) {
     oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
     oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
 
+    // the rows that keep a place, the planets and moons over the Lagrange
+    // points with a rule between them; a place's column is its own
+    int rowAt[HALO_PLACE_ROWS];
+    int rows = 0, bodyRows = 0;
+    for (int r = 0; r < HALO_PLACE_ROWS; r++) {
+        const bool kept =
+            std::any_of(places.begin(), places.end(), [r](const HaloPlace* place) { return place->row == r; });
+        rowAt[r] = kept ? rows++ : -1;
+        if (kept && r < HALO_BODY_ROWS) bodyRows++;
+    }
+    int columnOf[HALO_PLACE_COUNT];
+    for (int i = 0, row = -1, column = 0; i < HALO_PLACE_COUNT; i++) {
+        column = HALO_PLACES[i].row == row ? column + 1 : 0;
+        row = HALO_PLACES[i].row;
+        columnOf[i] = column;
+    }
+    const bool ruled = bodyRows > 0 && bodyRows < rows;
+
     const int columns = 5;
     const float entryH = scaleF(22), pad = scaleF(4), rule = scaleF(7);
     const float listW = haloMenuAnchor_.Width;
-    const float listH = entryH * (float)HALO_PLACE_ROWS + rule + 2 * pad;
+    const float listH = entryH * (float)rows + (ruled ? rule : 0.0f) + 2 * pad;
     const float lx = haloMenuAnchor_.X;
     float ly = haloMenuAnchor_.GetBottom() + scaleF(4);
     if (ly + listH > (float)ch - scaleF(8)) ly = (std::max)(scaleF(8), haloMenuAnchor_.Y - scaleF(4) - listH);
@@ -20165,26 +20182,25 @@ void MinerGUI::paintHaloMenu(Gdiplus::Graphics& g, int ch) {
     dropShadow(g, haloMenuList_, scaleF(R_CONTROL), scaleF(10));
     fillRoundRect(g, haloMenuList_, scaleF(R_CONTROL), COL_CARD_HI);
 
-    // the planets and moons over the Lagrange points, a rule between them
-    const int firstPoints = 4;
     const float cellW = (listW - 2 * pad) / (float)columns;
-    hairline(g, lx + pad + scaleF(8), ly + pad + entryH * (float)firstPoints + rule / 2, lx + listW - pad - scaleF(8));
-    int row = -1, column = 0;
-    for (const HaloPlace& place : HALO_PLACES) {
-        column = place.row == row ? column + 1 : 0;
-        row = place.row;
-        const float ey = ly + pad + entryH * (float)place.row + (place.row >= firstPoints ? rule : 0.0f);
-        const Gdiplus::RectF entry(lx + pad + cellW * (float)column, ey, cellW, entryH);
-        const bool held = shown == place.name;
-        const bool taken = other == place.name;
+    if (ruled) {
+        hairline(g, lx + pad + scaleF(8), ly + pad + entryH * (float)bodyRows + rule / 2, lx + listW - pad - scaleF(8));
+    }
+    for (const HaloPlace* place : places) {
+        const float ey =
+            ly + pad + entryH * (float)rowAt[place->row] + (ruled && place->row >= HALO_BODY_ROWS ? rule : 0.0f);
+        const Gdiplus::RectF entry(lx + pad + cellW * (float)columnOf[place - HALO_PLACES], ey, cellW, entryH);
+        const bool held = shown == place->name;
+        const bool taken = other == place->name;
         const bool hot = !taken && isHot(hoverPlan_, entry);
         if (held) fillRoundRect(g, entry, scaleF(4), tint(COL_ACCENT, hot ? 62 : 44));
         else if (hot) fillRoundRect(g, entry, scaleF(4), COL_HOVER);
-        const std::wstring name = toW(place.name);
+        const std::wstring name = toW(place->name);
         // (the whole cell but a little at its left: "microTech" takes most of it)
-        g.DrawString(name.c_str(), -1, &textFont, Gdiplus::RectF(entry.X + scaleF(6), entry.Y, entry.Width - scaleF(6), entryH),
-                     &oneLine, held ? &accentBrush : taken ? &faintBrush : &textBrush);
-        if (!taken) planHits_.push_back({entry, 16, place.name});
+        g.DrawString(name.c_str(), -1, &textFont,
+                     Gdiplus::RectF(entry.X + scaleF(6), entry.Y, entry.Width - scaleF(6), entryH), &oneLine,
+                     held ? &accentBrush : taken ? &faintBrush : &textBrush);
+        if (!taken) planHits_.push_back({entry, 16, place->name});
     }
 }
 

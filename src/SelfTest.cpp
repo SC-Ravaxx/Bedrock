@@ -2164,6 +2164,35 @@ int runSelfTest() {
         allPassed &= check(placed, "the places a route is planned from and to all stand somewhere, ARC-L1's station "
                                    "2,240 km over the plane, MIC-L4's 11,799 km under it, CRU-L2 (no station) on it");
 
+        // Only places a route runs through the belt to are offered to go
+        // to - from every place some -, and the nearest through band 5
+        // first
+        auto offers = [](const std::string& from, const std::string& to) {
+            for (const SCMiner::HaloPlace* place : SCMiner::haloDestinations(from)) {
+                if (to == place->name) return true;
+            }
+            return false;
+        };
+        bool offered = true;
+        size_t fewest = SCMiner::HALO_PLACE_COUNT;
+        for (const SCMiner::HaloPlace& place : SCMiner::HALO_PLACES) {
+            const NavPoint from = at(place.name);
+            const auto to = SCMiner::haloDestinations(place.name);
+            fewest = (std::min)(fewest, to.size());
+            for (const SCMiner::HaloPlace* end : to) {
+                offered &= end != &place && SCMiner::runsThroughHalo(from, at(end->name));
+            }
+        }
+        offered &= fewest > 0 && !offers("Hurston", "Crusader") && !offers("HUR-L1", "Crusader") &&
+                   offers("Hurston", "ARC-L4") && offers("ARC-L1", "CRU-L4") &&
+                   SCMiner::nearestHaloDestination("ARC-L1") == "HUR-L5" &&
+                   SCMiner::nearestHaloDestination("Hurston") == "ARC-L4" &&
+                   SCMiner::nearestHaloDestination("Aaron Halo").empty();
+        allPassed &= check(offered, "only places a route runs through the belt to are offered, at least " +
+                                        std::to_string(fewest) + " from each: from Hurston ARC-L4, not Crusader (both "
+                                        "inside the belt); the nearest through band 5 first (ARC-L1: HUR-L5, Hurston: "
+                                        "ARC-L4)");
+
         // The log's pick of a destination stands until the drive arrives,
         // and so does where its route set off: a moon streamed in on the way
         // moves the place, not the start, and a route the game plots to a

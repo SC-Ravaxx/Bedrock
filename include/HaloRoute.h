@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include "WhereToBuy.h"
@@ -63,6 +64,10 @@ const HaloPass* bestHaloPass(const std::vector<HaloPass>& passes);
 // How long the route is, km
 double routeKm(const NavPoint& from, const NavPoint& to);
 
+// Whether a route runs through the belt: through at least one band within
+// its height (bestHaloPass)
+bool runsThroughHalo(const NavPoint& from, const NavPoint& to);
+
 // The places a route can be planned from and to: Stanton's planets with
 // their moons, then its Lagrange points, a planet to a row
 struct HaloPlace {
@@ -71,6 +76,14 @@ struct HaloPlace {
 };
 inline constexpr int HALO_PLACE_COUNT = 36;
 inline constexpr int HALO_PLACE_ROWS = 8;
+inline constexpr int HALO_BODY_ROWS = 4;   // the rows of planets and moons; the Lagrange points' after them
 extern const HaloPlace HALO_PLACES[HALO_PLACE_COUNT];
+
+// The places a route from `from` (a place NavPlaces knows in Stanton) runs
+// through the belt to, in HALO_PLACES' order; and the one of them to
+// suggest: the nearest whose route runs through the densest band, else the
+// nearest; "" where there is none
+std::vector<const HaloPlace*> haloDestinations(const std::string& from);
+std::string nearestHaloDestination(const std::string& from);
 
 }  // namespace SCMiner

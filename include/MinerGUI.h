@@ -1555,9 +1555,10 @@ private:
     Gdiplus::RectF haloMenuList_;
     size_t haloMenuHitsFrom_ = 0;
     // ...as it stands: the two places (the start falls back on ARC-L1 where
-    // nothing names one in Stanton; the end on the nearest place a route
-    // from there runs through band 5 to), whether the end is the route
-    // plotted, and the bands on the way
+    // nothing names one in Stanton; the end is only ever a place a route
+    // from there runs through the belt to, and falls back on the nearest
+    // through band 5), whether the end is the route plotted, and the bands
+    // on the way
     struct HaloPlan {
         std::string from, to;
         bool plotted = false;

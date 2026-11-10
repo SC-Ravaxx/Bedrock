@@ -143,6 +143,45 @@ std::vector<HaloPass> haloPasses(const NavPoint& from, const NavPoint& to) {
     return out;
 }
 
+bool runsThroughHalo(const NavPoint& from, const NavPoint& to) {
+    const std::vector<HaloPass> passes = haloPasses(from, to);
+    return bestHaloPass(passes) != nullptr;
+}
+
+std::vector<const HaloPlace*> haloDestinations(const std::string& from) {
+    std::vector<const HaloPlace*> out;
+    NavPoint a;
+    if (from.empty() || !navPoint(from, "Stanton", a)) return out;
+    for (const HaloPlace& place : HALO_PLACES) {
+        NavPoint b;
+        if (from == place.name || !navPoint(place.name, "Stanton", b)) continue;
+        if (runsThroughHalo(a, b)) out.push_back(&place);
+    }
+    return out;
+}
+
+std::string nearestHaloDestination(const std::string& from) {
+    NavPoint a;
+    if (from.empty() || !navPoint(from, "Stanton", a)) return std::string();
+    const HaloPlace* nearest = nullptr;
+    bool densest = false;
+    double km = 0;
+    for (const HaloPlace* place : haloDestinations(from)) {
+        NavPoint b;
+        navPoint(place->name, "Stanton", b);
+        const std::vector<HaloPass> passes = haloPasses(a, b);
+        const bool five = bestHaloPass(passes)->band == HALO_DENSEST_BAND;
+        const double way = routeKm(a, b);
+        // through the densest band first, then the shortest way
+        if (!nearest || (five && !densest) || (five == densest && way < km)) {
+            nearest = place;
+            densest = five;
+            km = way;
+        }
+    }
+    return nearest ? std::string(nearest->name) : std::string();
+}
+
 const HaloPass* bestHaloPass(const std::vector<HaloPass>& passes) {
     const HaloPass* best = nullptr;
     for (const HaloPass& pass : passes) {
