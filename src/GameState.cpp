@@ -177,6 +177,13 @@ bool GameState::parse(std::string_view line, Event* out) {
             event.place = std::string(name);
             said = true;
         }
+        // ...and the destination, the word after "for route to destination "
+        static constexpr std::string_view TO = " for route to destination ";
+        if (line.compare(e, TO.size(), TO) == 0) {
+            const size_t d = e + TO.size();
+            const size_t end = line.find(' ', d);
+            event.routeTo = std::string(line.substr(d, end == std::string_view::npos ? std::string_view::npos : end - d));
+        }
     }
     // "Player has selected point pyro2 as their destination, routing locally"
     static constexpr std::string_view PICKED = "Player has selected point ";
@@ -584,7 +591,23 @@ bool GameState::applyOwn(const Event& event) {
             jumpTo_.clear();
         }
     }
-    if (!event.target.empty()) target_ = event.target;
+    // (a new pick counts as a change: what the route crosses - the Aaron
+    // Halo - is shown while it stands)
+    if (!event.target.empty() && event.target != target_) {
+        target_ = event.target;
+        routeStart_.clear();
+        changed = true;
+    }
+    // Where the route to it set off: its own line's start, open space ("")
+    // included - a line of a route to somewhere else (a mission's beacon the
+    // game routes to by itself) is not this route's
+    if (!event.routeTo.empty() && event.routeTo == target_) {
+        const std::string start = event.place.empty() ? std::string() : place_;
+        if (start != routeStart_) {
+            routeStart_ = start;
+            changed = true;
+        }
+    }
     if (event.arrived && !target_.empty()) {
         const std::string far = jumpDestination(target_);
         if (!far.empty()) {
@@ -608,6 +631,8 @@ bool GameState::applyOwn(const Event& event) {
         // any route names its start; an empty one only corrects itself if
         // the player happens to open the map.
         target_.clear();
+        routeStart_.clear();
+        changed = true;
     }
     // A hull destroyed with the player in it: gone, and said on to whoever
     // keeps fits by hull (lostHulls())
@@ -659,6 +684,7 @@ void GameState::setGameLog(const std::filesystem::path& log) {
     place_.clear();
     inSpace_ = false;
     target_.clear();
+    routeStart_.clear();
     jumpTo_.clear();
     ownShip_.clear();
     hull_.clear();
@@ -699,6 +725,7 @@ bool GameState::poll() {
         place_.clear();
         inSpace_ = false;
         target_.clear();
+        routeStart_.clear();
         jumpTo_.clear();
         ownShip_.clear();
         hull_.clear();

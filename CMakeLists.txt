@@ -249,6 +249,7 @@ set(CORE_SOURCES
     src/MiniJson.cpp
     src/UexPrices.cpp
     src/WhereToBuy.cpp
+    src/HaloRoute.cpp
     src/UexReports.cpp
     src/UexMarket.cpp
     src/ColourScheme.cpp
@@ -311,6 +312,7 @@ set(HEADERS
     include/UexPrices.h
     include/WhereToBuy.h
     include/NavPlaces.h
+    include/HaloRoute.h
     include/UexReports.h
     include/UexMarket.h
     include/ColourScheme.h

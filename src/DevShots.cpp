@@ -1087,6 +1087,16 @@ int runScreenshots(const std::string& dir) {
     pump();
 
     shoot(gui.windowHandle(), "main.png");
+    // ...and a route plotted through the Aaron Halo: the band to leave
+    // quantum travel in, between the place and the signature, until the
+    // next scan
+    gui.setPlace("Stanton - ARC-L1", "", true);
+    gui.setRoute("ARC-L1", "CRU-L4");
+    pump();
+    shoot(gui.windowHandle(), "main_halo.png");
+    gui.setRoute("", "");
+    gui.setPlace("Pyro - Monox", analyzer.placeFilter());
+    pump();
     // ...and the three matches the place rules out, opened from the line
     // they fold into
     gui.matchesOpenForShot(true);
@@ -2596,6 +2606,22 @@ int runScreenshots(const std::string& dir) {
     gui.openPlaceForShot();
     pump();
     if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_place.png", true);
+    // ...and the Aaron Halo's: under its ores the way in, band by band, for
+    // the route plotted from ARC-L1 to CRU-L4; the list of places to go to
+    // open over it; and a route by hand that passes under every band
+    gui.setRoute("ARC-L1", "CRU-L4");
+    gui.openHaloForShot("", "", 0);
+    pump();
+    if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_halo.png", true);
+    gui.openHaloForShot("", "", 2);
+    pump();
+    if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_halo_to.png", true);
+    gui.openHaloForShot("HUR-L1", "Pyro Gateway", 0);
+    pump();
+    if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_halo_under.png", true);
+    gui.openHaloForShot("", "", 0);
+    gui.setRoute("", "");
+    pump();
     // ...and a place in an ore's list under the pointer, then clicked: what
     // else is mined there, the ground's gems under the ship's ores, in the
     // system on the tabs. Then back by the ore on the left.

@@ -4324,6 +4324,14 @@ void Application::applyGameState() {
                       << std::endl;
         }
     }
+    // The quantum route plotted, for the Aaron Halo (MinerGUI::setRoute):
+    // where it set off and where it goes, as places
+    if (gui_) {
+        const GamePlace start = placeByLogName(gameState_.routeStart(), gameState_.system());
+        const GamePlace end = gameState_.target().empty() ? GamePlace()
+                                                          : placeByDestination(gameState_.target(), gameState_.system());
+        gui_->setRoute(start.known() ? start.name : std::string(), end.known() ? end.name : std::string());
+    }
     const std::string label = gameState_.shipLabel();
     g_ship = GameState::model(gameState_.ship());
     g_shipLabel = label;

@@ -27,6 +27,7 @@
 #include "UexPrices.h"
 #include "UexMarket.h"
 #include "WhereToBuy.h"
+#include "HaloRoute.h"
 #include "NoteBook.h"
 #include "Plugins.h"
 #include "Reputation.h"
@@ -148,7 +149,16 @@ public:
         wherePlace_ = place;
         whereSystem_ = system;
         if (moved && gearPage_ && hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+        // (and the Aaron Halo's way in sets off from there)
+        if (moved && plannerVisible_ && planner_) InvalidateRect(planner_, nullptr, FALSE);
     }
+    // The quantum route the player plotted in the star map, from the game
+    // log: where it set off and the destination picked, as GamePlaces names
+    // them ("" for a start out in space, a destination the map does not
+    // know, or no route). Where it crosses the Aaron Halo, the scan page
+    // names the band to leave quantum travel in - until the next scan -, and
+    // the Ore Finder plans the way in from it.
+    void setRoute(const std::string& from, const std::string& to);
     // The player's own conversations there (read with their key): a listing
     // they are talking about says so, and opens at their thread
     void setUexThreads(std::shared_ptr<const UexThreads> threads);
@@ -826,6 +836,10 @@ public:
     // shows the thing rather than an empty pane
     void openOreForShot(const char* ore = "Laranite");     // --screenshot only: an ore worth looking at
     void openPlaceForShot();     // ...and the same list turned round
+    // ...on the Aaron Halo's card: the way in from `from` to `to` ("" for
+    // where the player is and the route plotted), and the list of places to
+    // set off from (1) or to go to (2) open over it
+    void openHaloForShot(const std::string& from, const std::string& to, int menu);
     // ...and the pointer on one of its hits (kind and value as in
     // planHits_), or that hit clicked, where the window paints it now:
     // false when it paints no such hit, and the pointer off it then
@@ -998,6 +1012,20 @@ private:
     // by hand.
     bool rockInView_ = false;
     RockStats rock_;
+    // The quantum route plotted (setRoute) and the bands of the Aaron Halo
+    // it crosses. Its card stands on the scan page between the place and the
+    // signature until a scan says the player has got where they were going.
+    std::string routeFrom_, routeTo_;
+    std::vector<HaloPass> routePasses_;
+    bool routeCardDone_ = false;
+    static constexpr int HALO_CARD_H = 64;
+    const HaloPass* routeCardPass() const;   // the band the card names; null while there is no card
+    int haloCardShift() const;               // how far the card moves what lies under it
+    // Where the page under the place's card starts, below its own top: the
+    // notice while it stands, less the action row that is no more, and the
+    // route's card while it stands
+    int belowContext() const { return extraTop() - scanShift() + haloCardShift(); }
+    void drawHaloRouteCard(Gdiplus::Graphics& g, int cw);
     RockContents rockContents_;   // what it holds; no parts until its list was read
     std::vector<Trade> trades_;   // see setTrades
     // What the ship carries. It does not change between rocks, so it is set
@@ -1484,7 +1512,8 @@ private:
     // listings' order ("price", "newest"), 10 a place in the list (what else
     // is mined there), 11 a ROC gem of a place and 12 a hand-mined one (the
     // places of that gem), 13 a family's arrow (its gems' list), 14 a gem in
-    // that list ("" for all of them)
+    // that list ("" for all of them), 15 a field of the Aaron Halo's way in
+    // ("from", "to": its list of places), 16 a place in that list
     struct PlanHit { Gdiplus::RectF rect; int kind; std::string value; };
     std::vector<PlanHit> planHits_;
     static LRESULT CALLBACK PlannerProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -1516,6 +1545,29 @@ private:
     Gdiplus::RectF gemMenuList_;
     size_t gemMenuHitsFrom_ = 0;
     void paintGemMenu(Gdiplus::Graphics& g, int ch);
+    // The Aaron Halo's way in, on its card in the Ore Finder: where from and
+    // where to, picked by hand until the next route is plotted ("" follows
+    // where the player is and the route plotted), and the list of places
+    // open over the card (1 from, 2 to; 0 shut)
+    std::string haloFrom_, haloTo_;
+    int haloMenu_ = 0;
+    Gdiplus::RectF haloMenuAnchor_;
+    Gdiplus::RectF haloMenuList_;
+    size_t haloMenuHitsFrom_ = 0;
+    // ...as it stands: the two places (the start falls back on ARC-L1 where
+    // nothing names one in Stanton; the end on the nearest place a route
+    // from there runs through band 5 to), whether the end is the route
+    // plotted, and the bands on the way
+    struct HaloPlan {
+        std::string from, to;
+        bool plotted = false;
+        std::vector<HaloPass> passes;
+    };
+    HaloPlan haloPlan() const;
+    // ...drawn at x, y in `width` under the Aaron Halo's ores (`draw`
+    // false: only measured); how tall it is
+    float drawHaloCard(Gdiplus::Graphics& g, float x, float y, float width, const HaloPlan& plan, bool draw);
+    void paintHaloMenu(Gdiplus::Graphics& g, int ch);
     // the listings by price (the default), or the most lately renewed first:
     // the one sign of life the API gives (UEX has no feedback to sort by)
     bool marketByRecent_ = false;

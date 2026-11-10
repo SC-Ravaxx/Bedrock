@@ -97,6 +97,18 @@ public:
     // until any place is named again. Ground deposits cannot be where the
     // ship is then.
     bool inSpace() const { return inSpace_; }
+    // The quantum destination the player picked last, by the internal name
+    // the log gives it ("LOC_RR_S2_L4", "OOC_Stanton_2b_Daymar" - placeByDestination
+    // turns it into a place), from the pick until the drive arrives there;
+    // "" before and after. A route left before the end - out of quantum
+    // travel in the Aaron Halo - keeps it until the next pick.
+    const std::string& target() const { return target_; }
+    // ...and where that route set off, as the route's own line names it
+    // ("Projected Start Location is ARC-L1 Wide Forest Station for route to
+    // destination LOC_RR_S2_L4"), the name as place() has it: "ARC-L1". Not
+    // the place itself, which a moon streamed in on the way moves. "" out in
+    // open space, before that line and without a target.
+    const std::string& routeStart() const { return routeStart_; }
     // The last line that said where the ship is, for anyone of a different
     // opinion - the place set by hand, see Application::applyGameState. A
     // place the tables can put in a system, with that system; or "" and the
@@ -116,6 +128,7 @@ public:
         bool leaving = false;
         std::string place;    // the start location of a route, when it is a place
         std::string target;   // a quantum destination the player picked, internal name
+        std::string routeTo;  // the destination of the route whose start `place` is, internal name
         bool arrived = false; // the quantum drive reached its destination
         std::string zone;     // the body the ship is AT, internal name: the one whose object
                               // container just streamed in, or the one whose terrain the
@@ -168,6 +181,7 @@ private:
     std::string place_;
     bool inSpace_ = false;   // see inSpace()
     std::string target_;   // the last quantum destination picked, internal name
+    std::string routeStart_;   // where the route to it set off
     std::string jumpTo_;   // the far side of the jump point last arrived at, until seen there
     std::string ownShip_;  // entity id of the ship the player last acted in; "" until seen
     std::string hull_;       // see hull(): the last id a line of the player's own named...

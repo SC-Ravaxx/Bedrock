@@ -2292,6 +2292,7 @@ void MinerGUI::updateRock(const RockStats& read) {
         everRead_ = true;
         layoutControls();
     }
+    if (read.mass > 0) routeCardDone_ = true;   // (and so does a rock's)
     // A gadget the log saw go on a rock: where this is that rock, the panel
     // prints its figures with the gadget, and they are taken back to the
     // rock's own (see GadgetOnRock). One no rock was read for in ten minutes
@@ -2641,6 +2642,9 @@ void MinerGUI::updateResults(int signature, const std::vector<AnalysisResult>& r
     // borderless-window notice for this session. A typed number is not - it
     // says nothing about what the app can see, and confidence is below zero
     // for those.
+    // ...and says the player has got where a route through the Aaron Halo
+    // was taking them: its card has done its job
+    if (signature > 0 && confidence >= 0) routeCardDone_ = true;
     if (signature > 0 && confidence >= 0 && !everRead_) {
         everRead_ = true;
         // The notice retiring moves everything below it up by extraTop(),
@@ -3982,11 +3986,12 @@ void MinerGUI::paintWindowBody(Gdiplus::Graphics& g, int cw, int ch) {
             // when the panel does.
             matchesFoldHit_ = Gdiplus::RectF();
             drawRockCard(b, cw);
-            int y = drawRockOutput(b, cw, scale(LY_RESULTS) + extraTop() - scanShift() + (int)rockStripHeight());
+            int y = drawRockOutput(b, cw, scale(LY_RESULTS) + belowContext() + (int)rockStripHeight());
             drawRockAdvice(b, cw, y);
         } else {
+            drawHaloRouteCard(b, cw);
             drawSignatureCard(b, cw);
-            int y = drawResults(b, cw, scale(LY_RESULTS) + extraTop() - scanShift());
+            int y = drawResults(b, cw, scale(LY_RESULTS) + belowContext());
             y = drawDetailCard(b, cw, y);
             drawLocationCard(b, cw, y, ch);
         }
@@ -4779,7 +4784,7 @@ void MinerGUI::drawSignatureCard(Gdiplus::Graphics& g, int cw) {
     Gdiplus::SolidBrush accentBrush(COL_ACCENT);
 
     const float M = (float)scale(MARGIN);
-    const float top = (float)scale(LY_SIGCARD) + extraTop() - scanShift();
+    const float top = (float)scale(LY_SIGCARD) + belowContext();
     const float cardH = scaleF(76);
     Gdiplus::RectF card(M - scaleF(6), top, (float)cw - 2 * M + scaleF(12), cardH);
     mainscanCard(g, card, scaleF(1.0f));
@@ -4820,6 +4825,86 @@ void MinerGUI::cornerPill(Gdiplus::Graphics& g, const Gdiplus::RectF& card, cons
     centred.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
     Gdiplus::SolidBrush brush(ink);
     g.DrawString(words.c_str(), -1, &pillFont, pill, &centred, &brush);
+}
+
+// ---- the Aaron Halo on the way --------------------------------------------
+
+void MinerGUI::setRoute(const std::string& from, const std::string& to) {
+    if (from == routeFrom_ && to == routeTo_) return;
+    // A new destination is a new route: its card stands until a scan, and
+    // the way in the Ore Finder plans follows it again
+    if (to != routeTo_ && !to.empty()) {
+        routeCardDone_ = false;
+        haloFrom_.clear();
+        haloTo_.clear();
+    }
+    routeFrom_ = from;
+    routeTo_ = to;
+    routePasses_.clear();
+    NavPoint a, b;
+    if (!from.empty() && !to.empty() && navPoint(from, "Stanton", a) && navPoint(to, "Stanton", b)) {
+        routePasses_ = haloPasses(a, b);
+    }
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+    if (planner_ && plannerVisible_) InvalidateRect(planner_, nullptr, FALSE);
+}
+
+const HaloPass* MinerGUI::routeCardPass() const {
+    if (routeCardDone_ || rockInView_) return nullptr;
+    return bestHaloPass(routePasses_);
+}
+
+int MinerGUI::haloCardShift() const {
+    return routeCardPass() ? scale(HALO_CARD_H + 10) : 0;
+}
+
+// The band of the Aaron Halo the route plotted runs through, on a card
+// between the place and the signature: where to leave quantum travel for it
+void MinerGUI::drawHaloRouteCard(Gdiplus::Graphics& g, int cw) {
+    const HaloPass* pass = routeCardPass();
+    if (!pass) return;
+    Gdiplus::Font labelFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font wordFont(&markFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font figureFont(&numeralFamily(), scaleF(Type::TITLE), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font tailFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
+    Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
+    Gdiplus::SolidBrush textBrush(COL_TEXT);
+    Gdiplus::SolidBrush accentBrush(COL_ACCENT);
+
+    const float M = (float)scale(MARGIN);
+    const float top = (float)scale(LY_SIGCARD) + extraTop() - scanShift();
+    const Gdiplus::RectF card(M - scaleF(6), top, (float)cw - 2 * M + scaleF(12), scaleF(HALO_CARD_H));
+    mainscanCard(g, card, scaleF(1.0f));
+    const float left = M + scaleF(6);
+
+    // AARON HALO  ·  ARC-L1 -> CRU-L4
+    const std::wstring label = L"AARON HALO  \u00B7  ";
+    std::wstring way = toW(routeFrom_) + L"  \u2192  " + toW(routeTo_);
+    std::transform(way.begin(), way.end(), way.begin(), ::towupper);
+    g.DrawString(label.c_str(), -1, &labelFont, Gdiplus::PointF(left, top + scaleF(10)), &faintBrush);
+    g.DrawString(way.c_str(), -1, &labelFont,
+                 Gdiplus::PointF(left + tailOffset(g, label, way, labelFont), top + scaleF(10)), &textBrush);
+
+    // Exit at 14.3 Gm  band 5  ·  window 14.5 - 14.1, on one baseline (tops on whole
+    // pixels: ClearType sets a smaller face 1 px higher from a broken one)
+    const float baseline = top + scaleF(27) + fontAscent(figureFont);
+    auto widthOf = [&](const std::wstring& t, const Gdiplus::Font& f) {
+        Gdiplus::RectF w;
+        g.MeasureString(t.c_str(), (INT)t.size(), &f, Gdiplus::PointF(0, 0), &w);
+        return w.Width;
+    };
+    float x = left;
+    const std::wstring lead = L"Exit at";
+    g.DrawString(lead.c_str(), -1, &wordFont, Gdiplus::PointF(x, std::round(baseline - fontAscent(wordFont))), &textBrush);
+    x += widthOf(lead, wordFont) + scaleF(2);
+    const std::wstring figure = toW(gigametres(pass->exitKm * 1000));
+    g.DrawString(figure.c_str(), -1, &figureFont, Gdiplus::PointF(x, std::round(baseline - fontAscent(figureFont))), &accentBrush);
+    x += widthOf(figure, figureFont) + scaleF(4);
+    wchar_t tail[96];
+    std::swprintf(tail, 96, L"band %d  \u00B7  window %.1f \u2013 %.1f", pass->band, pass->enterKm / 1e6,
+                  pass->leaveKm / 1e6);
+    g.DrawString(tail, -1, &tailFont, Gdiplus::PointF(x, std::round(baseline - fontAscent(tailFont))), &dimBrush);
 }
 
 // Picking a ship sets a loadout up rather than leaving it blank: the head the
@@ -7156,7 +7241,7 @@ void MinerGUI::drawRockCard(Gdiplus::Graphics& g, int cw) {
     Gdiplus::SolidBrush accentBrush(COL_ACCENT);
 
     const float M = (float)scale(MARGIN);
-    const float top = (float)scale(LY_SIGCARD) + extraTop() - scanShift();
+    const float top = (float)scale(LY_SIGCARD) + belowContext();
     const float stripH = rockStripHeight();
     const float cardH = scaleF(76) + stripH;
     Gdiplus::RectF card(M - scaleF(6), top, (float)cw - 2 * M + scaleF(12), cardH);
@@ -17915,6 +18000,7 @@ void MinerGUI::togglePlanner() {
     plannerVisible_ = !plannerVisible_;
     railRepaint();   // the rail shows it open or shut
     gemMenu_.clear();   // a list of gems left open does not wait for its return
+    haloMenu_ = 0;      // ...nor one of places
     if (plannerVisible_) {
         plannerScroll_ = 0;
         placePlanner();
@@ -17993,6 +18079,26 @@ LRESULT MinerGUI::handlePlannerMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                     if (hit.kind == 13 && hit.value == family && hit.rect.Contains(px, py)) return 0;
                 }
             }
+            // ...and the Aaron Halo's list of places the same way: its field
+            // shuts it
+            if (haloMenu_) {
+                const int menu = haloMenu_;
+                haloMenu_ = 0;
+                InvalidateRect(hwnd, nullptr, FALSE);
+                if (haloMenuList_.Contains(px, py)) {
+                    for (size_t i = haloMenuHitsFrom_; i < planHits_.size(); i++) {
+                        const auto& hit = planHits_[i];
+                        if (hit.kind != 16 || !hit.rect.Contains(px, py)) continue;
+                        (menu == 1 ? haloFrom_ : haloTo_) = hit.value;
+                        break;
+                    }
+                    return 0;
+                }
+                const std::string field = menu == 1 ? "from" : "to";
+                for (const auto& hit : planHits_) {
+                    if (hit.kind == 15 && hit.value == field && hit.rect.Contains(px, py)) return 0;
+                }
+            }
             for (const auto& hit : planHits_) {
                 if (!hit.rect.Contains(px, py)) continue;
                 if (hit.kind == 5) {
@@ -18043,6 +18149,13 @@ LRESULT MinerGUI::handlePlannerMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                     InvalidateRect(hwnd, nullptr, FALSE);
                     return 0;
                 }
+                if (hit.kind == 15) {
+                    // a field of the Aaron Halo's way in: its list of places
+                    haloMenu_ = hit.value == "from" ? 1 : 2;
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                    return 0;
+                }
+                if (hit.kind == 16) return 0;   // (a place in a list that has just shut)
                 if (hit.kind == 1) {
                     plannerUex_ = false;
                     plannerSystem_ = hit.value;
@@ -18092,6 +18205,11 @@ LRESULT MinerGUI::handlePlannerMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                     }
                     if (!gemMenu_.empty()) {
                         gemMenu_.clear();
+                        InvalidateRect(hwnd, nullptr, FALSE);
+                        return 0;
+                    }
+                    if (haloMenu_) {
+                        haloMenu_ = 0;
                         InvalidateRect(hwnd, nullptr, FALSE);
                         return 0;
                     }
@@ -19854,6 +19972,230 @@ void MinerGUI::paintGemMenu(Gdiplus::Graphics& g, int ch) {
     }
 }
 
+// ---- the Aaron Halo's way in, in the Ore Finder ---------------------------
+
+MinerGUI::HaloPlan MinerGUI::haloPlan() const {
+    HaloPlan plan;
+    NavPoint a, b;
+    auto inStanton = [](const std::string& name, NavPoint& p) { return !name.empty() && navPoint(name, "Stanton", p); };
+    // From: picked by hand; else where the route plotted set off, or where
+    // the player is; else ARC-L1
+    const std::string here = _stricmp(whereSystem_.c_str(), "Stanton") == 0 ? wherePlace_ : std::string();
+    for (const std::string& name : {haloFrom_, routeFrom_, here, std::string("ARC-L1")}) {
+        if (inStanton(name, a)) {
+            plan.from = name;
+            break;
+        }
+    }
+    // To: picked by hand; else the route plotted; else the nearest place a
+    // route from there runs through the densest band to
+    if (haloTo_ != plan.from && inStanton(haloTo_, b)) {
+        plan.to = haloTo_;
+    } else if (haloTo_.empty() && routeTo_ != plan.from && inStanton(routeTo_, b)) {
+        plan.to = routeTo_;
+        plan.plotted = true;
+    } else {
+        double nearest = 0;
+        for (const HaloPlace& place : HALO_PLACES) {
+            NavPoint p;
+            if (plan.from == place.name || !navPoint(place.name, "Stanton", p)) continue;
+            const std::vector<HaloPass> passes = haloPasses(a, p);
+            const HaloPass* best = bestHaloPass(passes);
+            if (!best || best->band != HALO_DENSEST_BAND) continue;
+            const double km = routeKm(a, p);
+            if (plan.to.empty() || km < nearest) {
+                plan.to = place.name;
+                nearest = km;
+                b = p;
+            }
+        }
+    }
+    if (!plan.to.empty()) plan.passes = haloPasses(a, b);
+    return plan;
+}
+
+// Under the Aaron Halo's ores: the way in from one place to another, band by
+// band - where to leave quantum travel (the distance left to the
+// destination) and while how much is left the ship is still in the band
+float MinerGUI::drawHaloCard(Gdiplus::Graphics& g, float x, float y, float width, const HaloPlan& plan, bool draw) {
+    Gdiplus::Font labelFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font fieldFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font figureFont(&numeralFamily(), scaleF(Type::STRONG), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    Gdiplus::Font windowFont(&numeralFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::Font noteFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
+    Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
+    Gdiplus::SolidBrush textBrush(COL_TEXT);
+    Gdiplus::SolidBrush accentBrush(COL_ACCENT);
+    Gdiplus::SolidBrush greenBrush(COL_GREEN);
+    Gdiplus::StringFormat rightAlign;
+    rightAlign.SetAlignment(Gdiplus::StringAlignmentFar);
+    Gdiplus::StringFormat oneLine;
+    oneLine.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+
+    float yy = y + scaleF(12);
+    if (draw) g.DrawString(L"GETTING THERE", -1, &labelFont, Gdiplus::PointF(x, yy), &faintBrush);
+    yy += scaleF(20);
+    // From and to, each a field that drops the list of places
+    const float gap = scaleF(10);
+    const float fieldW = (width - gap) / 2;
+    const float fieldH = scaleF(26);
+    if (draw) {
+        g.DrawString(L"FROM", -1, &labelFont, Gdiplus::PointF(x, yy), &faintBrush);
+        g.DrawString(L"TO", -1, &labelFont, Gdiplus::PointF(x + fieldW + gap, yy), &faintBrush);
+    }
+    yy += scaleF(15);
+    for (int side = 1; draw && side <= 2; side++) {
+        const Gdiplus::RectF field(side == 1 ? x : x + fieldW + gap, yy, fieldW, fieldH);
+        const bool open = haloMenu_ == side;
+        mainscanField(g, field, scaleF(1.0f), isHot(hoverPlan_, field), open,
+                      !(side == 1 ? haloFrom_ : haloTo_).empty());
+        float tx = field.X + scaleF(10);
+        // the destination plotted in the star map: a green dot before it
+        if (side == 2 && plan.plotted) {
+            Gdiplus::SolidBrush dot(COL_GREEN);
+            g.FillEllipse(&dot, tx, field.Y + fieldH / 2 - scaleF(3.5f), scaleF(7), scaleF(7));
+            tx += scaleF(14);
+        }
+        const std::wstring name = toW(side == 1 ? plan.from : plan.to);
+        g.DrawString(name.c_str(), -1, &fieldFont, Gdiplus::RectF(tx, field.Y, field.GetRight() - scaleF(30) - tx, fieldH),
+                     &oneLine, &textBrush);
+        planHits_.push_back({field, 15, side == 1 ? "from" : "to"});
+        if (open) haloMenuAnchor_ = Gdiplus::RectF(x, field.Y, width, fieldH);
+    }
+    yy += fieldH + scaleF(8);
+
+    // The bands the route crosses, the one to go for marked; or why there
+    // are none
+    const HaloPass* best = bestHaloPass(plan.passes);
+    const float rowH = scaleF(23);
+    if (best) {
+        const float tx = x + scaleF(8), tw = width - scaleF(16);
+        const float exitX = tx + scaleF(56), noteX = tx + scaleF(132);
+        if (draw) {
+            g.DrawString(L"BAND", -1, &labelFont, Gdiplus::PointF(tx, yy), &faintBrush);
+            g.DrawString(L"EXIT AT", -1, &labelFont, Gdiplus::PointF(exitX, yy), &faintBrush);
+            g.DrawString(L"WINDOW", -1, &labelFont, Gdiplus::RectF(tx, yy, tw, scaleF(14)), &rightAlign, &faintBrush);
+        }
+        yy += scaleF(18);
+        for (const HaloPass& pass : plan.passes) {
+            if (draw) {
+                const bool marked = &pass == best;
+                const bool reach = pass.inIt();
+                if (marked) {
+                    fillRoundRect(g, Gdiplus::RectF(x, yy - scaleF(2), width, rowH), scaleF(R_CONTROL), tint(COL_GREEN, 34));
+                    fillRoundRect(g, Gdiplus::RectF(x, yy - scaleF(2), scaleF(3), rowH), scaleF(1.5f), COL_GREEN);
+                }
+                // all on one baseline, the figures' capitals in the middle of the row
+                const float baseline = yy - scaleF(2) + rowH / 2 + scaleF(4.5f);
+                const std::wstring number = std::to_wstring(pass.band);
+                g.DrawString(number.c_str(), -1, &figureFont,
+                             Gdiplus::PointF(tx + scaleF(2), std::round(baseline - fontAscent(figureFont))),
+                             reach ? &textBrush : &faintBrush);
+                const std::wstring exit = toW(gigametres(pass.exitKm * 1000));
+                g.DrawString(exit.c_str(), -1, &figureFont, Gdiplus::PointF(exitX, std::round(baseline - fontAscent(figureFont))),
+                             marked ? &accentBrush : reach ? &textBrush : &faintBrush);
+                const wchar_t* note = !reach                                 ? (pass.overIt() ? L"passes over" : L"passes under")
+                                      : pass.band == HALO_DENSEST_BAND ? L"densest"
+                                      : pass.band == HALO_SPARSE_BAND  ? L"sparse"
+                                                                       : L"";
+                g.DrawString(note, -1, &noteFont, Gdiplus::PointF(noteX, std::round(baseline - fontAscent(noteFont))),
+                             marked && pass.band == HALO_DENSEST_BAND ? &greenBrush : &faintBrush);
+                wchar_t window[48];
+                std::swprintf(window, 48, L"%.1f \u2013 %.1f", pass.enterKm / 1e6, pass.leaveKm / 1e6);
+                g.DrawString(window, -1, &windowFont,
+                             Gdiplus::RectF(tx, std::round(baseline - fontAscent(windowFont)), tw, rowH), &rightAlign,
+                             reach ? &dimBrush : &faintBrush);
+            }
+            yy += rowH;
+        }
+    } else {
+        // over or under every band it crosses: most of them decide which
+        int over = 0;
+        for (const HaloPass& pass : plan.passes) over += pass.overIt() ? 1 : 0;
+        const wchar_t* none = plan.passes.empty()                    ? L"This route does not cross the Aaron Halo."
+                              : over * 2 > (int)plan.passes.size() ? L"This route passes over the Aaron Halo."
+                                                                     : L"This route passes under the Aaron Halo.";
+        if (draw) g.DrawString(none, -1, &noteFont, Gdiplus::PointF(x, yy + scaleF(2)), &dimBrush);
+        yy += scaleF(22);
+    }
+
+    // Where the figures come from, and what to do with them
+    std::wstring foot;
+    if (best) foot = L"Plot " + toW(plan.to) + L", then leave quantum travel at the distance left.\n";
+    foot += L"Bands from the Cornerstone survey.";
+    yy += scaleF(8);
+    Gdiplus::RectF footH;
+    g.MeasureString(foot.c_str(), -1, &noteFont, Gdiplus::RectF(0, 0, width, scaleF(200)), nullptr, &footH);
+    if (draw) {
+        g.DrawString(foot.c_str(), -1, &noteFont, Gdiplus::RectF(x, yy, width, footH.Height + scaleF(2)), nullptr,
+                     &faintBrush);
+    }
+    yy += footH.Height + scaleF(4);
+    return yy - y;
+}
+
+// The places a route can be planned from and to, over the Aaron Halo's
+// card: a planet and its moons to a row, then a planet's Lagrange points.
+// The other end of the route is not one to pick.
+void MinerGUI::paintHaloMenu(Gdiplus::Graphics& g, int ch) {
+    haloMenuHitsFrom_ = planHits_.size();
+    haloMenuList_ = Gdiplus::RectF();
+    if (!haloMenu_ || haloMenuAnchor_.Width <= 0) return;
+    const HaloPlan plan = haloPlan();
+    const std::string& shown = haloMenu_ == 1 ? plan.from : plan.to;
+    const std::string& other = haloMenu_ == 1 ? plan.to : plan.from;
+    Gdiplus::Font textFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::SolidBrush textBrush(COL_TEXT), faintBrush(COL_TEXT_FAINT), accentBrush(COL_ACCENT);
+    Gdiplus::StringFormat oneLine;
+    oneLine.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    oneLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+
+    const int columns = 5;
+    const float entryH = scaleF(22), pad = scaleF(4), rule = scaleF(7);
+    const float listW = haloMenuAnchor_.Width;
+    const float listH = entryH * (float)HALO_PLACE_ROWS + rule + 2 * pad;
+    const float lx = haloMenuAnchor_.X;
+    float ly = haloMenuAnchor_.GetBottom() + scaleF(4);
+    if (ly + listH > (float)ch - scaleF(8)) ly = (std::max)(scaleF(8), haloMenuAnchor_.Y - scaleF(4) - listH);
+    haloMenuList_ = Gdiplus::RectF(lx, ly, listW, listH);
+    dropShadow(g, haloMenuList_, scaleF(R_CONTROL), scaleF(10));
+    fillRoundRect(g, haloMenuList_, scaleF(R_CONTROL), COL_CARD_HI);
+
+    // the planets and moons over the Lagrange points, a rule between them
+    const int firstPoints = 4;
+    const float cellW = (listW - 2 * pad) / (float)columns;
+    hairline(g, lx + pad + scaleF(8), ly + pad + entryH * (float)firstPoints + rule / 2, lx + listW - pad - scaleF(8));
+    int row = -1, column = 0;
+    for (const HaloPlace& place : HALO_PLACES) {
+        column = place.row == row ? column + 1 : 0;
+        row = place.row;
+        const float ey = ly + pad + entryH * (float)place.row + (place.row >= firstPoints ? rule : 0.0f);
+        const Gdiplus::RectF entry(lx + pad + cellW * (float)column, ey, cellW, entryH);
+        const bool held = shown == place.name;
+        const bool taken = other == place.name;
+        const bool hot = !taken && isHot(hoverPlan_, entry);
+        if (held) fillRoundRect(g, entry, scaleF(4), tint(COL_ACCENT, hot ? 62 : 44));
+        else if (hot) fillRoundRect(g, entry, scaleF(4), COL_HOVER);
+        const std::wstring name = toW(place.name);
+        // (the whole cell but a little at its left: "microTech" takes most of it)
+        g.DrawString(name.c_str(), -1, &textFont, Gdiplus::RectF(entry.X + scaleF(6), entry.Y, entry.Width - scaleF(6), entryH),
+                     &oneLine, held ? &accentBrush : taken ? &faintBrush : &textBrush);
+        if (!taken) planHits_.push_back({entry, 16, place.name});
+    }
+}
+
+void MinerGUI::openHaloForShot(const std::string& from, const std::string& to, int menu) {
+    haloFrom_ = from;
+    haloTo_ = to;
+    showPlaceFinderFor("Aaron Halo");
+    haloMenu_ = menu;
+    if (planner_) InvalidateRect(planner_, nullptr, TRUE);
+}
+
 std::string MinerGUI::marketOre() const {
     if (plannerMineral_ == "ROC deposits" || plannerMineral_ == "Hand minables") {
         const auto gems = gemsOf(plannerMineral_ == "ROC deposits" ? MiningFamily::ROC : MiningFamily::FPS);
@@ -20408,6 +20750,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
         // a list whose family is not in the system on the tabs goes with it
         if (gemMenuAnchor_.Width <= 0) gemMenu_.clear();
 
+        haloMenuAnchor_ = Gdiplus::RectF();   // (the Aaron Halo's fields set it while one's list is open)
         // The UEX tab puts the marketplace where the places are
         if (plannerUex_) {
             paintMarketColumn(g, cw, ch, M + leftW + M, listTop);
@@ -20817,9 +21160,18 @@ void MinerGUI::paintPlanner(HDC hdc) {
             const float dealCardH = deals.empty() ? 0.0f
                                                   : scaleF(34) + dealsH +
                                                         ((int)deals.size() > dealsShown ? scaleF(14) : 0.0f) + scaleF(4);
+            // For the Aaron Halo, the way into it under its ores, on the same
+            // card: the list above gives way to it
+            const bool haloPlace = byPlace && plannerPlace_ == "Aaron Halo";
+            HaloPlan halo;
+            float haloH = 0;
+            if (haloPlace) {
+                halo = haloPlan();
+                haloH = drawHaloCard(g, rx, 0, rw, halo, false);
+            }
             const float roomDown = (float)ch - scaleF(64) - ry - (rockCardH > 0 ? rockCardH + scaleF(10) : 0.0f) -
                                    (sellCardH > 0 ? sellCardH + scaleF(10) : 0.0f) -
-                                   (dealCardH > 0 ? dealCardH + scaleF(10) : 0.0f);
+                                   (dealCardH > 0 ? dealCardH + scaleF(10) : 0.0f) - haloH;
             // More rows than the card has room for and the wheel walks them;
             // a list of another ore, place or system starts at its top
             const std::string listKey = (byPlace ? "at " + plannerPlace_ : "ore " + plannerMineral_ + " " + pickedGem) +
@@ -20852,7 +21204,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
             const bool more = first > 0 || first + shown < (int)rows.size();
             const float listH = more ? (std::max)(rowsH, topH) : rowsH;
             const float cardBottom = ry + listH + (rows.empty() ? scaleF(22) : 0.0f) +
-                                     (more ? scaleF(14) : 0.0f) + scaleF(8);
+                                     (more ? scaleF(14) : 0.0f) + haloH + scaleF(8);
             const Gdiplus::RectF card(cardX, listTop - scaleF(6), (float)cw - M - cardX, cardBottom - (listTop - scaleF(6)));
             fillRoundRect(g, card, scaleF(R_CARD), COL_CARD);
             cardLight(g, card, scaleF(R_CARD), scaleF(44));
@@ -20947,6 +21299,10 @@ void MinerGUI::paintPlanner(HDC hdc) {
                 std::wstring moreText = L"+" + std::to_wstring((int)rows.size() - first) + L" more";
                 Gdiplus::RectF r(rx, rowsTop, rw, scaleF(12));
                 g.DrawString(moreText.c_str(), -1, &subFont, r, &rightAlign, &faintBrush);
+            }
+            if (haloPlace) {
+                drawHaloCard(g, rx, rowsTop + listH + (rows.empty() ? scaleF(22) : 0.0f) + (more ? scaleF(14) : 0.0f), rw,
+                             halo, true);
             }
 
             // ...and what a rock of the ore holds, on a card of its own
@@ -21165,8 +21521,11 @@ void MinerGUI::paintPlanner(HDC hdc) {
             if (M + longW.Width <= footerRoom) footer = longer;
         }
         g.DrawString(footer.c_str(), -1, &subFont, Gdiplus::PointF(M, fy), &faintBrush);
-        // a family's list of gems over all of it but the UEX card
+        // a family's list of gems over all of it but the UEX card, and the
+        // Aaron Halo's list of places
         paintGemMenu(g, ch);
+        if (haloMenuAnchor_.Width <= 0) haloMenu_ = 0;
+        paintHaloMenu(g, ch);
         // Report to UEX, over everything else
         if (uexCard_.step) drawUexCard(g, cw, ch, uexCard_, hoverPlan_);
         else uexCard_.hits.clear();
@@ -25147,10 +25506,10 @@ void MinerGUI::drawRockDemo(Gdiplus::Graphics& g, float x, float y, int width, i
     g.SetClip(Gdiplus::RectF(x, y, (float)width, bottom > y ? bottom - y : 4000.0f));
     // the view draws itself where it sits in the main window; moved so the
     // card's top lands at y
-    const float top = (float)scale(LY_SIGCARD) + extraTop() - scanShift();
+    const float top = (float)scale(LY_SIGCARD) + belowContext();
     g.TranslateTransform(x, y - top);
     drawRockCard(g, width);
-    const int below = drawRockOutput(g, width, scale(LY_RESULTS) + extraTop() - scanShift());
+    const int below = drawRockOutput(g, width, scale(LY_RESULTS) + belowContext());
     drawRockAdvice(g, width, below);
     g.Restore(state);
 

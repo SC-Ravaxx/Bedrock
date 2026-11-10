@@ -46,6 +46,7 @@
 #include "CommodityTerminal.h"
 #include "Datarunner.h"
 #include "UexPrices.h"
+#include "HaloRoute.h"
 #include "WhereToBuy.h"
 #include "UexReports.h"
 #include "UexMarket.h"
@@ -2052,6 +2053,152 @@ int runSelfTest() {
                                       "as many places as the line holds and how many more (got \"" +
                                           two + "\" / \"" + one + "\" / \"" + bare + "\")");
         }
+    }
+
+    // --- The Aaron Halo: where a quantum route crosses each band, as the
+    //     distance left to its destination (HaloRoute.h). Laid on the
+    //     places' points, the Cornerstone survey's bands give back its own
+    //     chart for ARC-L1 to CRU-L4 (3.16.1) ---
+    {
+        using SCMiner::HaloPass;
+        using SCMiner::NavPoint;
+        auto at = [](const std::string& name) {
+            NavPoint p;
+            SCMiner::navPoint(name, "Stanton", p);
+            return p;
+        };
+        auto band = [](const std::vector<HaloPass>& passes, int number) -> const HaloPass* {
+            for (const HaloPass& pass : passes) {
+                if (pass.band == number) return &pass;
+            }
+            return nullptr;
+        };
+        // the bands in order, each densest within its edges
+        bool ordered = true;
+        for (int i = 0; i < SCMiner::HALO_BAND_COUNT; i++) {
+            const SCMiner::HaloBand& b = SCMiner::HALO_BANDS[i];
+            ordered &= b.number == i + 1 && b.innerKm < b.outerKm && b.densestKm >= b.innerKm &&
+                       b.densestKm <= b.outerKm && (i == 0 || b.innerKm >= SCMiner::HALO_BANDS[i - 1].outerKm) &&
+                       b.aboveKm > 0 && b.belowKm > 0;
+        }
+        allPassed &= check(ordered, "the ten bands of the Aaron Halo lie one after another, each densest within its "
+                                    "edges");
+
+        // ARC-L1 to CRU-L4: every band, each where the survey's chart has it
+        // (km before CRU-L4), what is left of the difference the stations'
+        // moves since 3.16.1
+        const long long CHART[10] = {12744803, 13157847, 13510150, 13934165, 14292609,
+                                     14637246, 15058764, 15524706, 15938061, 16188952};
+        const std::vector<HaloPass> arc = SCMiner::haloPasses(at("ARC-L1"), at("CRU-L4"));
+        bool charted = arc.size() == 10;
+        double worst = 0;
+        for (int i = 0; charted && i < 10; i++) {
+            const HaloPass* pass = band(arc, i + 1);
+            charted = pass && pass->inIt() && pass->enterKm > pass->exitKm && pass->exitKm > pass->leaveKm;
+            if (pass) worst = (std::max)(worst, std::abs(pass->exitKm - (double)CHART[i]));
+        }
+        const HaloPass* five = band(arc, 5);
+        charted &= worst < 3000 && five && SCMiner::gigametres(five->exitKm * 1000) == "14.3 Gm" &&
+                   SCMiner::gigametres(five->enterKm * 1000) == "14.5 Gm" &&
+                   SCMiner::gigametres(five->leaveKm * 1000) == "14.1 Gm" && SCMiner::bestHaloPass(arc) == five;
+        allPassed &= check(charted, "ARC-L1 to CRU-L4 crosses all ten bands where the Cornerstone chart has them "
+                                    "(worst " + std::to_string((int)worst) + " km off), band 5 at 14.3 Gm before "
+                                    "CRU-L4, in it from 14.5 to 14.1 (got " +
+                                        (five ? SCMiner::gigametres(five->exitKm * 1000) : std::string("none")) + ")");
+
+        // Twice through the belt - in, across the hole, out again: the
+        // first time is the one named
+        const std::vector<HaloPass> across = SCMiner::haloPasses(at("ARC-L1"), at("microTech"));
+        const HaloPass* fiveAcross = band(across, 5);
+        allPassed &= check(across.size() == 10 && fiveAcross &&
+                               SCMiner::gigametres(fiveAcross->exitKm * 1000) == "47.3 Gm" &&
+                               band(across, 10)->exitKm > fiveAcross->exitKm,
+                           "ARC-L1 to microTech crosses the belt twice, and the bands are named on the way in: "
+                           "band 5 at 47.3 Gm before microTech (got " +
+                               (fiveAcross ? SCMiner::gigametres(fiveAcross->exitKm * 1000) : std::string("none")) +
+                               ")");
+
+        // Heights: from HUR-L1 the route is 1,276 km over the plane at band
+        // 1, which reaches 615 km up - over it -, and in the rest; from
+        // MIC-L2's station, 10,635 km under the plane, under every band on
+        // the way to HUR-L5; from the Pyro Gateway nowhere near
+        const std::vector<HaloPass> hurArc = SCMiner::haloPasses(at("HUR-L1"), at("ARC-L1"));
+        const HaloPass* hurOne = band(hurArc, 1);
+        const HaloPass* hurFive = band(hurArc, 5);
+        const std::vector<HaloPass> mic = SCMiner::haloPasses(at("MIC-L2"), at("HUR-L5"));
+        NavPoint gateway;
+        SCMiner::navPoint("Pyro Gateway", "Stanton", gateway);
+        const std::vector<HaloPass> gate = SCMiner::haloPasses(at("HUR-L1"), gateway);
+        const bool heights =
+            hurOne && hurOne->overIt() && !hurOne->inIt() && hurFive && hurFive->inIt() &&
+            SCMiner::bestHaloPass(hurArc) == hurFive && mic.size() == 10 &&
+            std::all_of(mic.begin(), mic.end(), [](const HaloPass& p) { return p.underIt(); }) &&
+            !SCMiner::bestHaloPass(mic) && !gate.empty() &&
+            std::all_of(gate.begin(), gate.end(), [](const HaloPass& p) { return p.heightKm < -1000000; });
+        allPassed &= check(heights, "a route over or under a band misses it: HUR-L1 to ARC-L1 over band 1 and in "
+                                    "band 5, MIC-L2 to HUR-L5 under all ten, HUR-L1 to the Pyro Gateway "
+                                    "millions of km under them");
+
+        // ...and none at all where it does not cross: inside the belt both
+        // ends, or out of Stanton
+        NavPoint pyro;
+        SCMiner::navPoint("Checkmate", "Pyro", pyro);
+        allPassed &= check(SCMiner::haloPasses(at("HUR-L1"), at("Crusader")).empty() &&
+                               SCMiner::haloPasses(at("Daymar"), at("CRU-L4")).empty() &&
+                               SCMiner::haloPasses(pyro, at("ARC-L1")).empty() &&
+                               SCMiner::haloPasses(at("ARC-L1"), at("ARC-L1")).empty(),
+                           "a route inside the belt, out of Stanton or nowhere crosses no band");
+
+        // The places to plan from and to: all of them points, in their rows;
+        // the stations where their own containers put them
+        bool placed = true;
+        int row = 0;
+        for (const SCMiner::HaloPlace& place : SCMiner::HALO_PLACES) {
+            NavPoint p;
+            placed &= SCMiner::navPoint(place.name, "Stanton", p) && place.row >= row &&
+                      place.row < SCMiner::HALO_PLACE_ROWS;
+            row = place.row;
+        }
+        const NavPoint arcL1 = at("ARC-L1"), cruL2 = at("CRU-L2"), micL4 = at("MIC-L4");
+        placed &= std::abs(arcL1.z / 1000 - 2240) < 1 && cruL2.z == 0 && std::abs(micL4.z / 1000 + 11799) < 1;
+        allPassed &= check(placed, "the places a route is planned from and to all stand somewhere, ARC-L1's station "
+                                   "2,240 km over the plane, MIC-L4's 11,799 km under it, CRU-L2 (no station) on it");
+
+        // The log's pick of a destination stands until the drive arrives,
+        // and so does where its route set off: a moon streamed in on the way
+        // moves the place, not the start, and a route the game plots to a
+        // mission's beacon by itself is another route
+        SCMiner::GameState route;
+        auto feed = [&](const std::string& line) {
+            SCMiner::GameState::Event event;
+            return SCMiner::GameState::parse(line, &event) && route.apply(event);
+        };
+        const std::string ship = "MISC_Prospector_824000000606[824000000606]";
+        const std::string calc = "<2026-10-17T11:57:37.025Z> [Notice] <Calculate Route> [ItemNavigation][CL][33972] | "
+                                 "NOT AUTH | " + ship + "|CSCItemNavigation::CalculateRoute|Projected Start Location is ";
+        const bool picked =
+            feed("<2026-10-17T11:57:37.025Z> [Notice] <Player Selected Quantum Target - Local> [ItemNavigation][CL]"
+                 "[33972] | NOT AUTH | " + ship + "|CSCItemNavigation::OnPlayerSelectedQuantumTarget|Player has "
+                 "selected point LOC_RR_S2_L4 as their destination, routing locally [Team_CGP4][QuantumTravel]");
+        const std::string before = route.routeStart();
+        feed(calc + "ARC-L1 Wide Forest Station for route to destination LOC_RR_S2_L4 [Team_CGP4][QuantumTravel]");
+        const std::string during = route.target(), from = route.routeStart();
+        feed("<2026-10-17T11:58:02.114Z> [Notice] <ProximitySensorMakingLocalHelper> Proximity sensor [3341], helper "
+             "is being made in zone [OOC_Stanton_2b_Daymar - Class(OrbitingObjectContainer) - Context(Unstreamable "
+             "Immovable) - Socpak(data/objectcontainers/pu/system/stanton/stanton2b.socpak)] [Team_CGP4]");
+        const std::string movedTo = route.place();
+        feed(calc + "Daymar for route to destination MISSION_QT_Kaboos_865816641754 [Team_CGP4][QuantumTravel]");
+        const std::string still = route.routeStart();
+        const bool arrived =
+            feed("<2026-10-17T11:59:37.868Z> [Notice] <Quantum Drive Arrived - Arrived at Final Destination> "
+                 "[ItemNavigation][CL][33972] | NOT AUTH | " + ship + "|CSCItemNavigation::OnQuantumDriveArrived|"
+                 "Quantum Drive has arrived at final destination [Team_CGP4][QuantumTravel]");
+        allPassed &= check(picked && before.empty() && during == "LOC_RR_S2_L4" && from == "ARC-L1" &&
+                               SCMiner::placeByDestination(during, "Stanton").name == "CRU-L4" &&
+                               movedTo == "Daymar" && still == "ARC-L1" && arrived && route.target().empty() &&
+                               route.routeStart().empty() && route.place() == "CRU-L4",
+                           "a quantum target picked stands, with where its route set off, until the drive arrives "
+                           "(got " + during + " from " + from + ", " + still + " after Daymar and a beacon)");
     }
 
     // --- Reporting to UEX: the refinery a job was placed at - only where
