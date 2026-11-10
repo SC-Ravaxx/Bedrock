@@ -361,7 +361,16 @@ GamePlace placeByDestination(std::string_view internalName, std::string_view sys
             return placeByLogName("PYR" + m[1].str() + " L" + m[2].str(), systemHint);
         }
     }
-    // rs_ext_arc-l001: Stanton's
+    // rs_ext_arc-l001: ARC-L2's station, not ARC-L1's. Its container
+    // (stanton3_l2) holds it under that name, made of rs_ext_arc-l2.socpak,
+    // and in the logs every arrival there opens RR_ARC_L2's terminals and
+    // sets off again from "ARC-L2 Lively Pathway Station". The other
+    // stations go by LOC_RR_S<planet>_L<n>.
+    {
+        static const std::regex arcL2(R"(^rs_ext_arc-l001$)", std::regex::icase);
+        if (std::regex_match(name.c_str(), m, arcL2)) return placeByLogName("ARC-L2", systemHint);
+    }
+    // rs_ext_hur-l1 and the like: a station by its container's own name
     {
         static const std::regex form(R"(^rs_ext_(hur|cru|arc|mic)-l0*([1-5])$)", std::regex::icase);
         if (std::regex_match(name.c_str(), m, form)) {

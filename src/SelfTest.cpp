@@ -4830,9 +4830,12 @@ int runSelfTest() {
                                placeByDestination("rs_ext_pyro2_l4", "").name == "PYR2 L4" &&
                                placeByDestination("P5_L3", "").name == "PYR5 L3" &&
                                placeByDestination("OOC_Stanton2_L2", "").name == "CRU-L2" &&
-                               placeByDestination("OOC_Stanton2_L2", "").oreLocation == "Lagrange E",
+                               placeByDestination("OOC_Stanton2_L2", "").oreLocation == "Lagrange E" &&
+                               placeByDestination("rs_ext_arc-l001", "").name == "ARC-L2" &&
+                               placeByDestination("LOC_RR_S3_L1", "").name == "ARC-L1",
                            "rs_ext_pyro3_leo is Orbituary, rs_ext_pyro6_leo Ruin Station, rs_ext_cru-leo1 Seraphim "
-                           "Station; rs_ext_pyro2_l4 and P5_L3 are Pyro's Lagrange points, OOC_Stanton2_L2 is CRU-L2");
+                           "Station; rs_ext_pyro2_l4 and P5_L3 are Pyro's Lagrange points, OOC_Stanton2_L2 is CRU-L2; "
+                           "rs_ext_arc-l001 is ARC-L2's station, LOC_RR_S3_L1 ARC-L1's");
         allPassed &= check(SCMiner::jumpDestination("rs_ext_nyx-pyro_jp1") == "Pyro" &&
                                SCMiner::jumpDestination("LOC_rs_ext_stan-magnus_jp1") == "Nyx" &&
                                SCMiner::jumpDestination("rs_ext_nyx-castra_jp1") == "Stanton" &&
