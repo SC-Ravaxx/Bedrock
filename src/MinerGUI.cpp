@@ -23831,6 +23831,9 @@ void MinerGUI::paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float t
     centredMid.SetAlignment(Gdiplus::StringAlignmentCenter);
     centredMid.SetLineAlignment(Gdiplus::StringAlignmentCenter);
     centredMid.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    Gdiplus::StringFormat rightTop;
+    rightTop.SetAlignment(Gdiplus::StringAlignmentFar);
+    rightTop.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
 
     const float M = (float)scale(MARGIN);
     const long long now = (long long)std::time(nullptr);
@@ -23877,7 +23880,25 @@ void MinerGUI::paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float t
         g.DrawString(count.c_str(), -1, &subFont, Gdiplus::RectF(M, y, (float)cw - 2 * M, scaleF(14)), &rightMid,
                      &faintBrush);
         y += scaleF(22);
-        const float cardH = scaleF(70), gap = scaleF(8);
+        // A row for each part: a card grows by a row for each part past the
+        // first, and the columns - material, quality, SCU - line up in all
+        const float cardH = scaleF(70), gap = scaleF(8), rowStep = scaleF(20);
+        auto partsDown = [&](const RefineryOrder& o) {
+            return (float)((std::max)(1, (int)o.parts.size()) - 1) * rowStep;
+        };
+        auto scuText = [](int cscu) {
+            std::wstringstream s;
+            s << std::fixed << std::setprecision(2) << (cscu / 100.0) << L" SCU";
+            return s.str();
+        };
+        float nameW = 0, scuW = 0;
+        for (const RefineryOrder& o : refineryOrders_) {
+            for (const RefineryOrder::Part& p : o.parts) {
+                nameW = (std::max)(nameW, lineWidth(g, toW(shortName(p.material)), rowFont));
+                scuW = (std::max)(scuW, lineWidth(g, scuText(p.yield), numFont));
+            }
+        }
+        const float qualityRight = nameW + scaleF(40), scuRight = qualityRight + scaleF(12) + scuW;
         const int total = (int)refineryOrders_.size();
         // The running order whose calendar code is unfolded under its card -
         // folded again once it is done or gone - and the code, made again
@@ -23894,7 +23915,7 @@ void MinerGUI::paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float t
             }
             if (refineryQrSize_ > 0) qrH = (float)(qrModule * (refineryQrSize_ + 2 * qrQuiet)) + scaleF(16);
         }
-        auto cardHeight = [&](int i) { return cardH + (i == unfolded ? qrH : 0.0f); };
+        auto cardHeight = [&](int i) { return cardH + partsDown(refineryOrders_[i]) + (i == unfolded ? qrH : 0.0f); };
         // As many cards as stand above the footer; with more orders than
         // that, the wheel walks them and the line under the last card says
         // so. The list goes as far as its last card at the foot, and a card
@@ -23943,28 +23964,31 @@ void MinerGUI::paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float t
                                            : L"Complete in " + span(o.due - now) + L"  ·  " + clock(o.due);
             g.DrawString(when.c_str(), -1, &statusFont, Gdiplus::RectF(x0, card.Y + scaleF(6), w, scaleF(20)), &rightMid,
                          done ? &goodBrush : &accentBrush);
-            // what comes out: material, its quality in its rarity's colour, SCU -
-            // two faces, set on one baseline rather than from the same top
-            float px = x0;
-            const float baseline = std::round(card.Y + scaleF(29) + fontAscent(rowFont));
-            const float nameTop = baseline - fontAscent(rowFont), figureTop = baseline - fontAscent(numFont);
-            for (const RefineryOrder::Part& p : o.parts) {
-                const std::wstring name = toW(shortName(p.material)) + L" ";
-                Gdiplus::RectF m;
-                g.MeasureString(name.c_str(), -1, &rowFont, Gdiplus::PointF(0, 0), &m);
-                g.DrawString(name.c_str(), -1, &rowFont, Gdiplus::PointF(px, nameTop), &textBrush);
-                px += m.Width;
-                const std::wstring q = std::to_wstring(p.quality) + L"  ";
+            // what comes out, the best quality first: material, its quality in
+            // its rarity's colour, SCU - two faces, set on one baseline rather
+            // than from the same top. The parts keep the terminal's order: the
+            // order's key and the calendar entry go by the first.
+            std::vector<const RefineryOrder::Part*> rows;
+            for (const RefineryOrder::Part& p : o.parts) rows.push_back(&p);
+            std::stable_sort(rows.begin(), rows.end(), [](const RefineryOrder::Part* a, const RefineryOrder::Part* b) {
+                return a->quality > b->quality;
+            });
+            for (size_t r = 0; r < rows.size(); r++) {
+                const RefineryOrder::Part& p = *rows[r];
+                const float baseline = std::round(card.Y + scaleF(29) + fontAscent(rowFont) + (float)r * rowStep);
+                const float nameTop = std::round(baseline - fontAscent(rowFont));
+                const float figureTop = std::round(baseline - fontAscent(numFont));
+                g.DrawString(toW(shortName(p.material)).c_str(), -1, &rowFont, Gdiplus::PointF(x0, nameTop),
+                             &textBrush);
+                const std::wstring q = std::to_wstring(p.quality);
                 Gdiplus::SolidBrush qb(qualityColor(p.quality));
-                g.MeasureString(q.c_str(), -1, &numFont, Gdiplus::PointF(0, 0), &m);
-                g.DrawString(q.c_str(), -1, &numFont, Gdiplus::PointF(px, figureTop), &qb);
-                px += m.Width;
-                std::wstringstream scu;
-                scu << std::fixed << std::setprecision(2) << (p.yield / 100.0) << L" SCU";
-                g.MeasureString(scu.str().c_str(), -1, &numFont, Gdiplus::PointF(0, 0), &m);
-                g.DrawString(scu.str().c_str(), -1, &numFont, Gdiplus::PointF(px, figureTop), &textBrush);
-                px += m.Width + scaleF(18);
+                const Gdiplus::RectF qualityBox(x0 + qualityRight - scaleF(40), figureTop, scaleF(40), scaleF(20));
+                g.DrawString(q.c_str(), -1, &numFont, qualityBox, &rightTop, &qb);
+                const std::wstring scu = scuText(p.yield);
+                const Gdiplus::RectF scuBox(x0 + qualityRight, figureTop, scuRight - qualityRight, scaleF(20));
+                g.DrawString(scu.c_str(), -1, &numFont, scuBox, &rightTop, &textBrush);
             }
+            const float down = partsDown(o);
             // how, what it cost, and when it went in
             std::wstring how;
             if (!o.method.empty()) how += toW(o.method);
@@ -23975,7 +23999,8 @@ void MinerGUI::paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float t
             }
             if (o.placed > 0) how += (how.empty() ? L"" : L"  ·  ") + std::wstring(L"placed ") + clock(o.placed);
             if (how.empty()) how = L"Read at terminal, " + clock(o.seen);
-            const Gdiplus::RectF collected(card.X + card.Width - in - scaleF(82), card.Y + scaleF(46), scaleF(82), scaleF(20));
+            const Gdiplus::RectF collected(card.X + card.Width - in - scaleF(82), card.Y + down + scaleF(46),
+                                           scaleF(82), scaleF(20));
             drawButton(g, collected, L"Collected", buttonFont, ButtonKind::Ghost, isHot(hoverRef_, collected),
                        scaleF(R_CONTROL));
             refHits_.push_back({collected, 9, i});
@@ -24002,7 +24027,7 @@ void MinerGUI::paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float t
                 buttonsLeft = calendar.X;
                 if (open && qrH > 0) {
                     const float side = (float)(qrModule * (refineryQrSize_ + 2 * qrQuiet));
-                    const float qx = std::round(x0), qy = std::round(card.Y + cardH + scaleF(2));
+                    const float qx = std::round(x0), qy = std::round(card.Y + cardH + down + scaleF(2));
                     drawQrCode(g, refineryQr_, refineryQrSize_, qx, qy, qrModule, qrQuiet, scaleF(R_CONTROL));
                     g.DrawString(L"Scan with the phone's camera", -1, &subFont,
                                  Gdiplus::RectF(qx + side + scaleF(14), qy, x0 + w - (qx + side + scaleF(14)), side),
@@ -24010,8 +24035,8 @@ void MinerGUI::paintRefineryOrders(Gdiplus::Graphics& g, int cw, int ch, float t
                 }
             }
             g.DrawString(how.c_str(), -1, &subFont,
-                         Gdiplus::RectF(x0, card.Y + scaleF(48), buttonsLeft - scaleF(14) - x0, scaleF(16)), &leftMid,
-                         &dimBrush);
+                         Gdiplus::RectF(x0, card.Y + down + scaleF(48), buttonsLeft - scaleF(14) - x0, scaleF(16)),
+                         &leftMid, &dimBrush);
             y += card.Height + gap;
         }
         if (first > 0 || last < total) {

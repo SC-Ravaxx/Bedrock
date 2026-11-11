@@ -2898,6 +2898,60 @@ int runScreenshots(const std::string& dir) {
             gui.openRefineryCalendarForShot(1);
             pump();
         }
+        // ...orders of up to six parts, as quotes shared on 9 November 2026
+        // had them: a row for each part, the best quality first, and the
+        // calendar code under the last one's rows
+        {
+            std::vector<SCMiner::RefineryOrder> many(4);
+            many[0].station = "MIC-L5 Modern Icarus Station";
+            many[0].number = 1;
+            many[0].parts = {{"Riccite (Ore)", 325, 94}, {"Riccite (Ore)", 671, 14}, {"Aluminum (Ore)", 783, 18},
+                             {"Aslarite (Raw)", 287, 89}, {"Aslarite (Raw)", 602, 7}, {"Agricium (Ore)", 588, 7}};
+            many[0].method = "Ferron Exchange";
+            many[0].cost = 1165;
+            many[0].seconds = 3312;
+            many[0].placed = now - 3312 - 25 * 60;
+            many[0].due = many[0].placed + 3312;
+            many[0].seen = many[0].placed + 5;
+            many[1].station = "MIC-L5 Modern Icarus Station";
+            many[1].number = 2;
+            many[1].parts = {{"Titanium (Ore)", 295, 210}, {"Titanium (Ore)", 784, 348}};
+            many[1].method = "Pyrometric Chromalysis";
+            many[1].cost = 1335;
+            many[1].seconds = 3524;
+            many[1].placed = now - 15 * 60;
+            many[1].due = many[1].placed + 3524;
+            many[1].seen = many[1].placed + 5;
+            many[2].station = "Levski";
+            many[2].number = 1;
+            many[2].parts = {{"Lindinium (Ore)", 305, 568}, {"Lindinium (Ore)", 618, 122}, {"Tungsten (Ore)", 662, 80},
+                             {"Savrilium (Ore)", 322, 446}, {"Savrilium (Ore)", 580, 100}};
+            many[2].method = "Dinyx Solventation";
+            many[2].cost = 9664;
+            many[2].seconds = 48060;
+            many[2].placed = now - 3600;
+            many[2].due = many[2].placed + 48060;
+            many[2].seen = many[2].placed + 5;
+            many[3].station = "ARC-L1 Wide Forest Station";
+            many[3].number = 1;
+            many[3].parts = {{"Iron (Ore)", 325, 375}, {"Iron (Ore)", 874, 268},
+                             {"Quantainium (Raw)", 344, 887}, {"Quantainium (Raw)", 514, 131},
+                             {"Laranite (Raw)", 298, 724}, {"Laranite (Raw)", 858, 166}};
+            many[3].method = "Dinyx Solventation";
+            many[3].cost = 12938;
+            many[3].seconds = 49920;
+            many[3].placed = now - 600;
+            many[3].due = many[3].placed + 49920;
+            many[3].seen = many[3].placed + 5;
+            gui.setRefineryOrders(many);
+            pump();
+            shoot(gui.refineryHandle(), "refinery_orders_parts.png", true);
+            const bool unfolded = gui.openRefineryCalendarForShot(3);
+            pump();
+            if (unfolded) shoot(gui.refineryHandle(), "refinery_orders_parts_qr.png", true);
+            gui.openRefineryCalendarForShot(3);
+            pump();
+        }
         gui.setRefineryOrders({});
         gui.showRefineryOrdersForShot(false);
         pump();
