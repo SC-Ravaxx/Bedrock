@@ -648,11 +648,20 @@ void BlueprintLibrary::save() {
     dirty_ = false;
 }
 
+// A file's time on disk in seconds, as the marks of what was read keep it (0:
+// nothing yet). Under Windows the file clock's count from 1601, as the marks
+// kept so far have it; under Linux Unix seconds, because GCC's file clock
+// counts from 2174 and puts every file below 0.
 std::int64_t BlueprintLibrary::writeTime(const std::filesystem::path& path) {
     std::error_code ec;
     const auto t = std::filesystem::last_write_time(path, ec);
     if (ec) return 0;
+#ifdef _WIN32
     return std::chrono::duration_cast<std::chrono::seconds>(t.time_since_epoch()).count();
+#else
+    return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::file_clock::to_sys(t).time_since_epoch())
+        .count();
+#endif
 }
 
 void BlueprintLibrary::setGameLog(const std::filesystem::path& gameLog) {

@@ -8002,6 +8002,32 @@ end
                                "started again reads the backups new since; a plugin removed is gone (" + first + " / " +
                                    second + ")");
         }
+        {
+            // The blueprint library reads them the same way: every backup
+            // once, and when started again only the ones new since
+            const std::filesystem::path live = root / "bp" / "LIVE";
+            write(live / "Game.log", "");
+            write(live / "logbackups" / "a.log", "<2026-10-01T10:00:00.000Z> other\n");
+            write(live / "logbackups" / "b.log", "<2026-10-02T10:00:00.000Z> other\n");
+            const auto now = std::filesystem::file_time_type::clock::now();
+            std::filesystem::last_write_time(live / "logbackups" / "a.log", now - std::chrono::hours(48), ec);
+            std::filesystem::last_write_time(live / "logbackups" / "b.log", now - std::chrono::hours(24), ec);
+            SCMiner::AppPaths::useDataFolder(root / "bpdata");
+            auto readNow = [&]() {
+                SCMiner::BlueprintLibrary lib;
+                lib.load();
+                lib.setGameLog(live / "Game.log");
+                for (int i = 0; i < 10 && lib.historyPending(); i++) lib.poll();
+                return lib.historyRead();
+            };
+            const int fresh = readNow();
+            write(live / "logbackups" / "c.log", "<2026-10-04T10:00:00.000Z> other\n");
+            const int again = readNow();
+            SCMiner::AppPaths::useDataFolder({});
+            allPassed &= check(fresh == 2 && again == 1,
+                               "the blueprint library reads the older logs once, and started again only the ones new "
+                               "since (" + std::to_string(fresh) + ", then " + std::to_string(again) + " read)");
+        }
         std::filesystem::remove_all(root, ec);
     }
 
