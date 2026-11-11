@@ -174,7 +174,8 @@ inline const GameTextMark GAME_TEXT_MARKS[] = {
     {"InterSec_ResourceGathering_Cryopods_Title", "{S}· Very hard · to ~mission(Destination|Name) {T7:192,241,1434,724,925,464,1522|[BP]}"},
     {"InterSec_ResourceGathering_Tech_Title", "{S}· Very hard · to ~mission(Destination|Name) {T7:192,241,1434,724,925,464,1522|[BP]}"},
     {"Intersec_BlueCryo_Title_001", "{S}· Very hard · to ~mission(Destination|Name) {T7:192,241,1434,724,925,464,1522|[BP]}"},
-    {"Intersec_ShipWaveAttack_DrawOutBoss_H_Van_Title_001", "{S}· Very hard–Extreme · 300 STD {T5:1585,1587,1589,1494,720|[BP*]}"},
+    {"Intersec_ShipWaveAttack_DrawOutBoss_VH_Van_Title_001", "{S}· Very hard · 300 STD {T2:1494,720|[BP]}"},
+    {"Intersec_ShipWaveAttack_DrawOutBoss_S_Van_Title_001", "{S}· Extreme · 300 STD {T3:1585,1587,1589|[BP]}"},
     {"Intersec_ShipWaveAttack_VH_Van_Title_001", "{S}· Very hard · 300 STD {T2:61,792|[BP]}"},
     {"Intersec_ShipWaveAttack_S_Van_Title_001", "{S}· Extreme · 300 STD {T2:1300,611|[BP]}"},
     {"Intersec_3Way_Title_VeryHard_001", "{S}· Very hard · 300 STD {T2:180,913|[BP]}"},
@@ -503,7 +504,8 @@ inline const GameTextMark GAME_TEXT_MARKS[] = {
     {"InterSec_ResourceGathering_Cryopods_Desc", "\\n\\n<EM4>DIFFICULTY</EM4> Very hard\\n\\n<EM4>BLUEPRINTS</EM4> · One of 7{O7:464,1522,724,1434,192,925,241}\\n{I464|• Pulse Laser Pistol}\\n{I1522|• Pulse Laser Pistol Battery (60 Cap)}\\n{I724|• Testudo Helmet Earthshake}\\n{I1434|• Testudo Core Earthshake}\\n{I192|• Testudo Arms Earthshake}\\n{I925|• Testudo Legs Earthshake}\\n{I241|• Testudo Backpack Earthshake}"},
     {"InterSec_ResourceGathering_Tech_Desc", "\\n\\n<EM4>DIFFICULTY</EM4> Very hard\\n\\n<EM4>BLUEPRINTS</EM4> · One of 7{O7:464,1522,724,1434,192,925,241}\\n{I464|• Pulse Laser Pistol}\\n{I1522|• Pulse Laser Pistol Battery (60 Cap)}\\n{I724|• Testudo Helmet Earthshake}\\n{I1434|• Testudo Core Earthshake}\\n{I192|• Testudo Arms Earthshake}\\n{I925|• Testudo Legs Earthshake}\\n{I241|• Testudo Backpack Earthshake}"},
     {"Intersec_BlueCryo_Desc_001", "\\n\\n<EM4>DIFFICULTY</EM4> Very hard\\n\\n<EM4>BLUEPRINTS</EM4> · One of 7{O7:464,1522,724,1434,192,925,241}\\n{I464|• Pulse Laser Pistol}\\n{I1522|• Pulse Laser Pistol Battery (60 Cap)}\\n{I724|• Testudo Helmet Earthshake}\\n{I1434|• Testudo Core Earthshake}\\n{I192|• Testudo Arms Earthshake}\\n{I925|• Testudo Legs Earthshake}\\n{I241|• Testudo Backpack Earthshake}"},
-    {"Intersec_ShipWaveAttack_DrawOutBoss_H_Van_Desc_001", "\\n\\n<EM4>DIFFICULTY</EM4> Very hard–Extreme · Up to 10 enemy ships at a time\\n<EM4>STANDING</EM4> 300\\n\\n<EM4>BLUEPRINTS</EM4> · One per group that fits{A5:1494,720,1587,1585,1589}\\nOnly some variants pay out\\n\\n<EM4>Very Hard · 03</EM4>{O1:1494}\\n{I1494|• Tailwind Flight Suit Raider Camo}\\n\\n<EM4>Very Hard · helmet 11</EM4>{O1:720}\\n{I720|• Tailwind Helmet Raider Camo}\\n\\n<EM4>Super · 2</EM4>{O1:1587}\\n{I1587|• M4A Cannon Raider Camo S2}\\n\\n<EM4>Super · 1</EM4>{O1:1585}\\n{I1585|• M3A Cannon Raider Camo S1}\\n\\n<EM4>Super · 3</EM4>{O1:1589}\\n{I1589|• M5A Cannon Raider Camo S3}"},
+    {"Intersec_ShipWaveAttack_DrawOutBoss_VH_Van_Desc_001", "\\n\\n<EM4>DIFFICULTY</EM4> Very hard · Up to 5 enemy ships at a time\\n<EM4>STANDING</EM4> 300\\n\\n<EM4>BLUEPRINTS</EM4> · All of these{O2:720,1494}\\n{I720|• Tailwind Helmet Raider Camo}\\n{I1494|• Tailwind Flight Suit Raider Camo}"},
+    {"Intersec_ShipWaveAttack_DrawOutBoss_S_Van_Desc_001", "\\n\\n<EM4>DIFFICULTY</EM4> Extreme · Up to 10 enemy ships at a time\\n<EM4>STANDING</EM4> 300\\n\\n<EM4>BLUEPRINTS</EM4> · All of these{O3:1585,1587,1589}\\n{I1585|• M3A Cannon Raider Camo S1}\\n{I1587|• M4A Cannon Raider Camo S2}\\n{I1589|• M5A Cannon Raider Camo S3}"},
     {"Intersec_ShipWaveAttack_VH_Van_Desc_001", "\\n\\n<EM4>DIFFICULTY</EM4> Very hard · Up to 8 enemy ships at a time\\n<EM4>STANDING</EM4> 300\\n\\n<EM4>BLUEPRINTS</EM4> · All of these{O2:61,792}\\n{I61|• Corbel Arms Raider Camo}\\n{I792|• Corbel Legs Raider Camo}"},
     {"Intersec_ShipWaveAttack_S_Van_Desc_001", "\\n\\n<EM4>DIFFICULTY</EM4> Extreme · Up to 8 enemy ships at a time\\n<EM4>STANDING</EM4> 300\\n\\n<EM4>BLUEPRINTS</EM4> · All of these{O2:611,1300}\\n{I611|• Corbel Helmet Raider Camo}\\n{I1300|• Corbel Core Raider Camo}"},
     {"Intersec_3Way_Desc_VeryHard_001", "\\n\\n<EM4>DIFFICULTY</EM4> Very hard · Up to 5 enemy ships at a time\\n<EM4>STANDING</EM4> 300\\n\\n<EM4>BLUEPRINTS</EM4> · All of these{O2:180,913}\\n{I180|• Palatino Arms Raider Camo}\\n{I913|• Palatino Legs Raider Camo}"},
@@ -914,6 +916,7 @@ inline const GameTextMark GAME_TEXT_MARKS[] = {
     {"Kaboos_Intro_Description", "\\n\\n<EM4>DIFFICULTY</EM4> Very hard · Up to 6 enemy ships at a time\\n<EM4>STANDING</EM4> 100"},
     {"Intersec_ShipWaveAttack_DrawOutBoss_VH_Desc_001", "\\n\\n<EM4>DIFFICULTY</EM4> Hard · Up to 4 enemy ships at a time\\n<EM4>STANDING</EM4> 250"},
     {"Intersec_ShipWaveAttack_DrawOutBoss_S_Desc_001", "\\n\\n<EM4>DIFFICULTY</EM4> Hard · Up to 6 enemy ships at a time\\n<EM4>STANDING</EM4> 300"},
+    {"Intersec_ShipWaveAttack_DrawOutBoss_H_Van_Desc_001", "\\n\\n<EM4>DIFFICULTY</EM4> Very hard · Up to 5 enemy ships at a time\\n<EM4>STANDING</EM4> 300"},
     {"Intersec_ShipWaveAttack_H_Van_Desc_001", "\\n\\n<EM4>DIFFICULTY</EM4> Hard · Up to 4 enemy ships at a time\\n<EM4>STANDING</EM4> 300"},
     {"Intersec_3Way_Desc_Hard_001", "\\n\\n<EM4>DIFFICULTY</EM4> Hard · Up to 3 enemy ships at a time\\n<EM4>STANDING</EM4> 300"},
     {"Northrock_Bounty_OLP_Boss_H_desc_001", "\\n\\n<EM4>DIFFICULTY</EM4> Normal\\n<EM4>STANDING</EM4> 150"},
@@ -1424,6 +1427,7 @@ inline const GameTextMark GAME_TEXT_MARKS[] = {
     {"Kaboos_Intro_Title", "{S}· Very hard · 100 STD"},
     {"Intersec_ShipWaveAttack_DrawOutBoss_VH_Title_001", "{S}· Hard · 250 STD"},
     {"Intersec_ShipWaveAttack_DrawOutBoss_S_Title_001", "{S}· Hard · 300 STD"},
+    {"Intersec_ShipWaveAttack_DrawOutBoss_H_Van_Title_001", "{S}· Very hard · 300 STD"},
     {"Intersec_ShipWaveAttack_H_Van_Title_001", "{S}· Hard · 300 STD"},
     {"Intersec_3Way_Title_Hard_001", "{S}· Hard · 300 STD"},
     {"Northrock_Bounty_OLP_Boss_H_title_001", "{S}· Normal · 150 STD"},
@@ -1686,7 +1690,7 @@ inline const GameTextMark GAME_TEXT_MARKS[] = {
     {"iasi_GoldBox_Delivery_Title,P", "{S}· Very easy · ~mission(Location|Name) > ~mission(Destination|Name)"},
     {"iasi_GoldBox_Delivery_Title_0,P", "{S}· Very easy · ~mission(Location|Name) > ~mission(Destination|Name)"},
 };
-inline constexpr int GAME_TEXT_MARK_COUNT = 1674;
+inline constexpr int GAME_TEXT_MARK_COUNT = 1678;
 
 // What a contract is sure to pay out of, by the English title the log
 // gives it ({*} where the game fills in a place or a name): the rows of
@@ -1731,6 +1735,7 @@ inline const ContractPayout CONTRACT_PAYOUTS[] = {
     {"Defenders needed against Headhunters", "1512"},
     {"Destroy Outlaw Data Servers", "21,24,355,397,409,511,560,753,756,1238,1262,1501,1509,1511"},
     {"Destroy XenoThreat Data Servers", "21,24,355,397,409,511,560,753,756,1238,1262,1501,1509,1511"},
+    {"Draw Out Maulers", "1585,1587,1589"},
     {"Driving CFP out", "51,349,350,352,603,782,1289,1500"},
     {"Drop a XenoThreat", "121,382,387,388,676,854,1362,1507"},
     {"ENTRY LVL. COURIER NEEDED IN NYX", "984,992,1031,1052,1062,1077"},
@@ -1759,6 +1764,7 @@ inline const ContractPayout CONTRACT_PAYOUTS[] = {
     {"Idea for Isaac", "248,249"},
     {"Intercept Vanduul Fleet", "611,1300"},
     {"Intercepted Supply Run", "122,153,359,453,483,649,687,855,886,1363,1395,1502,1519,1528"},
+    {"Interdict Vanduul Maulers", "720,1494"},
     {"JR. LVL. COURIER NEEDED IN STANTON", "984,992,1031,1052,1062,1077"},
     {"Jorrit Dossier: Updated Energy Anomaly Data", "59,79,230,401,500,609,654,790,810,1298,1319,1510"},
     {"Jorrit Dossier: Updated Power Usage Data", "62,80,82,232,398,612,655,657,793,811,813,1301,1320,1322,1510"},
@@ -1915,7 +1921,7 @@ inline const ContractPayout CONTRACT_PAYOUTS[] = {
     {"{*} has been greenlit", "51,349,350,352,603,782,1289,1500"},
     {"{*} Rank - Direct {*} Cargo Haul", "1056,1090,1096,1099,1105,1107,1215,1216,1219"},
 };
-inline constexpr int CONTRACT_PAYOUT_COUNT = 216;
+inline constexpr int CONTRACT_PAYOUT_COUNT = 218;
 
 // The same by the very contract, as the objective marker in Game.log names
 // it when it is taken ("generator/debug", sorted byte by byte): the rows
