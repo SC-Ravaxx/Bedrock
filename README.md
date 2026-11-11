@@ -6,7 +6,7 @@ made of, whether your laser can break it, where an ore is found and where it
 sells best, your refinery work orders, and your blueprints.
 
 It is free, needs no account and no installer, and runs on Windows and on
-Linux (AppImage, also SteamOS). Current version: 3.0.1.2, for Star Citizen 4.10.2.
+Linux (AppImage, also SteamOS). Current version: 3.0.2, for Star Citizen 4.10.3.
 
 **Download:** the [Releases](https://github.com/SC-Ravaxx/Bedrock/releases) page - on Windows,
 unzip it anywhere and start `Bedrock.exe`; on Linux, make the AppImage
@@ -29,6 +29,8 @@ executable and start it. The app tells you when a newer version is out.
 - **Ore Finder:** where an ore is found, what a rock of it usually holds, and
   where refined ore sells best right now (prices players report on
   [UEX](https://uexcorp.space)), next to your own trades from the game log.
+  Clicking the Aaron Halo in it opens a calculator: at which distance left to
+  leave quantum travel for each band.
 - **Gear:** the laser heads, modules and gadgets your ship takes, with the
   nearest shops that sell them and their prices from UEX.
 - **Refinery:** reads your work orders off the refinery terminal and shows
@@ -36,8 +38,9 @@ executable and start it. The app tells you when a newer version is out.
   players, so you can check a station before you fly there.
 - **Blueprints:** your blueprint library from the game log, every crafting
   recipe with what quality does to it, and the contracts that hand them out.
-  Optionally it marks contracts that pay out blueprints with `[BP]` in the
-  game's own contract list.
+  Optionally it writes into the game's own contract list: `[BP]` on
+  contracts that pay out blueprints, and on every contract how hard it is,
+  what it brings and where it goes.
 - **Refinery jobs to UEX (optional):** connect your UEX account and Bedrock
   adds the refinery jobs you start to it. Off unless you agree.
 - **UEX Datarunner (optional):** at a commodity terminal, Bedrock reads the
@@ -179,7 +182,7 @@ without it.
 
 ### Windows
 
-Use the versions `BUILDINFO.txt` names - for 3.0.1.2: Visual Studio 2022
+Use the versions `BUILDINFO.txt` names - for 3.0.2: Visual Studio 2022
 Build Tools with MSVC 19.44.35222 (toolset v143), Windows SDK 10.0.26100.0,
 CMake 3.31, and vcpkg; `vcpkg.json` pins every library to one vcpkg
 baseline, which vcpkg installs on its own when cmake runs.
@@ -265,12 +268,17 @@ Ticking "Show them in the game's contracts" in the Blueprints window makes
 Bedrock write `data\Localization\english\global.ini` beside the game's
 `Data.p4k`: the game's own text, taken out of `Data.p4k`, with `[BP]` on the
 titles of contracts that pay out blueprints and the blueprints listed under
-their descriptions (missing ones blue, owned ones plain). It is rewritten
-whenever the library changes, and again after a game patch; the game reads it
-at its next start. `user.cfg` gets `g_language = english` if it names no
-language. A language file that is not Bedrock's (a translation, a community
-pack) is left alone. Unticking the box deletes Bedrock's file and nothing
-else. See `include/GameTexts.h`.
+their descriptions (missing ones blue, owned ones plain). Every title also
+gets how hard the contract is and what it brings -
+`· Hard · 3,200 STD · 50 AFF` for Standing and Affinity, the Security, Bounty
+Hunting and Hauling careers as `SEC`, `BH` and `HAUL`, Wikelo's Barter & Trade
+as `B&T` - and a haul where it goes, the places filled in by the game; the
+description lists the difficulty, how many enemy ships come at once and the
+reputation. It is rewritten whenever the library changes, and again after a
+game patch; the game reads it at its next start. `user.cfg` gets
+`g_language = english` if it names no language. A language file that is not
+Bedrock's (a translation, a community pack) is left alone. Unticking the box
+deletes Bedrock's file and nothing else. See `include/GameTexts.h`.
 
 The box beside it, "Show class and grade in component names", puts the same
 file to a second use: each ship component's class, size and grade go before

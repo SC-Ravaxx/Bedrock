@@ -7,7 +7,9 @@ Reads the signature value off the mining marker in game (the number next to
 the map pin, e.g. "16,960") straight from the screen and tells you which ore
 in what amount is behind it. On top of that: a place map per ore (click a
 result row) and the ORE FINDER (key F), where you pick an ore BEFORE the trip
-and see where the odds stand - and where it sells best.
+and see where the odds stand - and where it sells best. Clicking the Aaron
+Halo there opens a calculator: at which distance left to leave quantum travel
+for each band.
 
 Getting started
 ---------------
@@ -99,8 +101,9 @@ work orders than the window has room for, the wheel scrolls the list.
 
 Work orders: when you use a refinery terminal (REFINEMENT CENTER), Bedrock
 reads your work orders off it and lists them under Work orders, the tab on
-the right: what comes out of each and when it's done. Refinery in the
-sidebar shows how many are done. Orders you collect at the terminal
+the right: what comes out of each, every material on a row of its own with
+its quality and SCU, the best quality first, and when it's done. Refinery in
+the sidebar shows how many are done. Orders you collect at the terminal
 come off the list by themselves, and "Collected" takes one off by hand.
 Bedrock only looks for the terminal while you're on foot, not while you're
 mining. Tested at Levski, Checkmate and Pyro Gateway.
@@ -108,10 +111,11 @@ mining. Tested at Levski, Checkmate and Pyro Gateway.
 Workloads: since 4.10.2, a busy refinery charges extra for new work orders,
 and only the refinery terminal shows how busy it is. Bedrock reads this when
 you use a terminal and shows it next to the station: the capacity in per
-cent, the workload in the game's words and how long ago it was read. With
-"Share refinery workloads" ticked (at the top of the window, on by default),
-Bedrock shares these readings and shows the workloads other players have
-seen - see What Bedrock sends.
+cent, the workload in the game's words and how long ago it was read. The
+colour goes with the workload: light green, moderate yellow, heavy orange,
+extreme red. With "Share refinery workloads" ticked (at the top of the
+window, on by default), Bedrock shares these readings and shows the
+workloads other players have seen - see What Bedrock sends.
 
 A dash means the station's profile names no modifier for that material -
 which is not the same as none, and the app will not print a nought it
@@ -202,13 +206,13 @@ that one number is the game's own arithmetic, not an average someone made up.
 Under it stands what the rating means in the game's own words: "player might
 die, ship could explode", "ship could get damaged, could lose cargo".
 
-Then: the time limit; ENEMY SHIPS, how many come at you at once (1 to 8;
-which ships they are sits behind spawn tags the game database does not spell
-out, so the count is all that can honestly be said); PARTY, how many players
-may take it; the cooldown after finishing and after abandoning (some
-contracts are gone for good once abandoned - that stands there in red); the
-blueprint chance; the reputation; the other blueprints from the same reward
-pool; and the full briefing text. Click anywhere or press Esc to close.
+Then: the time limit; ENEMY SHIPS, how many hostile ships come at you at once
+(1 to 8; which ships they are sits behind spawn tags the game database does
+not spell out, so the count is all that can honestly be said); the cooldown
+after finishing and after abandoning (some contracts are gone for good once
+abandoned - that stands there in red); the blueprint chance; the reputation;
+the other blueprints from the same reward pool; and the full briefing text.
+Click anywhere or press Esc to close.
 
 REPUTATION comes from the briefing, where the game writes "Reputation
 Awarded: 150" - 2,748 contracts say it there against 461 that put it in their
@@ -305,11 +309,16 @@ gets mixed up. Which channel is in force stands in debug\session.txt behind
 
 Your blueprints in the game's contracts: tick "Show them in the game's
 contracts" at the top of the Blueprints window, and the game's own mission
-texts carry what the app knows. Contracts that pay out blueprints get [BP]
-in their title - [BP*] where the same title is also used by a variant that
-pays out nothing - and their description lists the blueprints, one per line:
-the ones you are still missing in blue, the ones already in your library
-in plain white. The [BP] is blue while anything is missing. The game
+texts carry what the app knows. Contracts that pay out blueprints get [BP] in
+their title - [BP*] where the same title is also used by a variant that pays
+out nothing - and their description lists the blueprints, one per line: the
+ones you are still missing in blue, the ones already in your library in plain
+white. The [BP] is blue while anything is missing. Every contract title also
+says how hard the contract is (Very easy to Extreme) and what it brings: STD
+for Standing, AFF for Affinity, SEC, BH and HAUL for the Security, Bounty
+Hunting and Hauling careers, B&T for Wikelo's Barter & Trade. A haul's title
+says where it goes. The description lists the difficulty, how many enemy
+ships come at once and the reputation, each on a line of its own. The game
 reads its texts when it starts, so it shows your library as it stood then;
 the app writes the file again whenever a blueprint comes in, and the next
 start shows it.
@@ -430,7 +439,8 @@ Bedrock.exe, so that replacing or deleting the program folder on an update
 can never take your things with it. Backing up is copying that folder: your
 settings, your notes and your blueprint library come along. Or click
 "Backup / restore data" at the foot of the window: Back up writes all of it
-into one .bedrock file, Restore reads it back in (a .txt backup from an
+into one .bedrock file, with the newest Blackbox backups of your keybinds,
+settings and characters; Restore reads it back in (a .txt backup from an
 older version too). Leave that file as it is - edited in a text editor, it
 will not restore. A file called portable.txt beside Bedrock.exe keeps
 everything in the program folder instead, for a USB stick. Nothing is
