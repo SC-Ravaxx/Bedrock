@@ -37,6 +37,7 @@
 #include "RefiningData.h"
 #include "ScanPanel.h"
 #include "RockContents.h"
+#include "RockScans.h"
 #include "RefineryTerminal.h"
 #include "RefineryOrders.h"
 #include "TradeBook.h"
@@ -638,6 +639,56 @@ int runSelfTest() {
                                        " Useful ore clustering +60 Resistance -25 | Optimal charge window -30" &&
                                    eachBoth,
                                "a gadget's i lists what it helps with, the strongest first, then what it costs");
+        }
+
+        // Figures no rock can have, and the panel's first picture of a rock
+        // the game has not finished scanning - each one off his panels
+        {
+            auto rockOf = [](const char* ore, float mass, float scu, float resistance, float instability) {
+                SCMiner::RockStats r;
+                r.ore = ore;
+                r.mass = mass;
+                r.scu = scu;
+                r.resistance = resistance;
+                r.instability = instability;
+                return r;
+            };
+            using namespace SCMiner::RockScans;
+            const SCMiner::RockStats first = rockOf("Lindinium", 7822, 54.75f, 0, 0);       // 30 Oct, 12:38:17
+            const SCMiner::RockStats scanned = rockOf("Lindinium", 44059, 54.75f, 53, 581.9f);  // ...12:38:25
+            const SCMiner::RockStats ice = rockOf("Ice", 87, 0.61f, 0, 0);
+            const SCMiner::RockStats taranite = rockOf("Taranite", 25005, 32.38f, 36, 302.71f);
+            const SCMiner::RockStats noScu = rockOf("Lindinium", 7822, 0, 0, 0);
+            const bool waits = notScannedYet(first) && !notScannedYet(scanned) && !notScannedYet(ice) &&
+                               !notScannedYet(noScu) && !notScannedYet(rockOf("", 7822, 54.75f, 0, 0));
+            const bool plausible = impossible(first).empty() && impossible(scanned).empty() &&
+                                   impossible(ice).empty() && impossible(taranite).empty() &&
+                                   impossible(noScu).empty();
+            // an SCU with its comma lost, an Ice of 16.22 SCU read as 10.22,
+            // an Iron's mass with its first digits lost
+            const bool caught = impossible(rockOf("Stileron", 322, 474.54f, 63, 11.51f)) ==
+                                    "more SCU than the largest rock" &&
+                                impossible(rockOf("Ice", 2317, 10.22f, 0, 0)) == "heavier than its densest part" &&
+                                impossible(rockOf("Iron", 128, 21.3f, 0, 4.1f)) == "lighter than its volume";
+            // ...and the same impossible figures eight looks in a row are
+            // taken: a patch may have made rocks bigger than Bedrock knows
+            LookCheck look;
+            const SCMiner::RockStats big = rockOf("Stileron", 9000, 62.0f, 40, 30);
+            int waited = 0;
+            while (waited < 20 && !look.notTaken(big).empty()) waited++;
+            LookCheck flicker;
+            bool heldOff = true;
+            for (int i = 0; i < 12; i++) {
+                heldOff &= !flicker.notTaken(big).empty();
+                heldOff &= flicker.notTaken(scanned).empty();
+            }
+            LookCheck scan;
+            bool keepsWaiting = true;
+            for (int i = 0; i < 30; i++) keepsWaiting &= scan.notTaken(first) == "not scanned yet";
+            allPassed &= check(waits && plausible && caught && waited == 7 && heldOff && keepsWaiting &&
+                                   densestPart("Ice") == 1.0 && densestPart("Lindinium") == 19.35,
+                               "a rock's first picture before the game has scanned it, and figures no rock can "
+                               "have, wait - the same impossible figures on eight looks are taken");
         }
 
         // The gadget: what the panel prints with it on, taken back

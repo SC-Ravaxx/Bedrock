@@ -402,4 +402,52 @@ inline std::vector<OreLocation> bestOfFamily(MiningFamily family) {
     return out;
 }
 
+// Each ore's density as the game weighs a rock: its mass is its volume
+// times its parts' densities by their shares, the inert rest at 1.0. So
+// a rock weighs its volume in kg until the game knows what it holds -
+// a Lindinium of 54.75 SCU showed 7,822 kg for seven seconds, and then
+// 44,059 kg (30 October 2026).
+struct OreDensity {
+    const char* ore;
+    double density;
+};
+
+// 26 ores, game build 4.10.2-live.12913470
+inline const OreDensity ORE_DENSITIES[] = {
+    {"Agricium", 7.14},
+    {"Aluminium", 2.7},
+    {"Aslarite", 2.47},
+    {"Beryl", 2.74},
+    {"Bexalite", 6.97},
+    {"Borase", 4.2},
+    {"Copper", 9.03},
+    {"Corundum", 4.03},
+    {"Gold", 21.07},
+    {"Hephaestanite", 3.2},
+    {"Ice", 1},
+    {"Iron", 7.87},
+    {"Laranite", 11.49},
+    {"Lindinium", 10.69},
+    {"Ouratite", 1.12},
+    {"Quantainium", 20.46},
+    {"Quartz", 2.53},
+    {"Riccite", 1.61},
+    {"Savrilium", 17.59},
+    {"Silicon", 2.49},
+    {"Stileron", 4.75},
+    {"Taranite", 10.2},
+    {"Tin", 5.54},
+    {"Titanium", 4.48},
+    {"Torite", 2.8},
+    {"Tungsten", 19.35},
+};
+
+// The ore's density, or 0 for a name the table does not have
+inline double oreDensity(const std::string& ore) {
+    for (const auto& row : ORE_DENSITIES) {
+        if (ore == row.ore) return row.density;
+    }
+    return 0.0;
+}
+
 } // namespace SCMiner

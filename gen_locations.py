@@ -144,6 +144,39 @@ lines.append("    std::sort(out.begin(), out.end(), [](const OreLocation& a, con
 lines.append("    return out;")
 lines.append("}")
 lines.append("")
+# Each ship ore's density, by the name the signature table spells it: every
+# element that is part of a ship rock's composition
+ship_elements = {}
+for comp in comps.values():
+    for part in comp["parts"]:
+        el = d["mineableElements"].get(part["elementGuid"])
+        if not el or not el.get("density"): continue
+        if "scanSignature" not in el and "groundScanSignature" not in el: continue
+        ship_elements[base(el["name"])] = el["density"]
+lines.append("// Each ore's density as the game weighs a rock: its mass is its volume")
+lines.append("// times its parts' densities by their shares, the inert rest at 1.0. So")
+lines.append("// a rock weighs its volume in kg until the game knows what it holds -")
+lines.append("// a Lindinium of 54.75 SCU showed 7,822 kg for seven seconds, and then")
+lines.append("// 44,059 kg (30 October 2026).")
+lines.append("struct OreDensity {")
+lines.append("    const char* ore;")
+lines.append("    double density;")
+lines.append("};")
+lines.append("")
+lines.append(f"// {len(ship_elements)} ores, game build {d['version']}")
+lines.append("inline const OreDensity ORE_DENSITIES[] = {")
+for name in sorted(ship_elements):
+    lines.append(f'    {{"{esc(name)}", {ship_elements[name]:g}}},')
+lines.append("};")
+lines.append("")
+lines.append("// The ore's density, or 0 for a name the table does not have")
+lines.append("inline double oreDensity(const std::string& ore) {")
+lines.append("    for (const auto& row : ORE_DENSITIES) {")
+lines.append("        if (ore == row.ore) return row.density;")
+lines.append("    }")
+lines.append("    return 0.0;")
+lines.append("}")
+lines.append("")
 lines.append("} // namespace SCMiner")
 io.open(out, "w", encoding="utf-8", newline="\n").write("\n".join(lines) + "\n")
 print(f"{out}: {len(rows)} rows")

@@ -233,6 +233,7 @@ set(CORE_SOURCES
     src/LoadoutReader.cpp
     src/LaserRange.cpp
     src/RockContents.cpp
+    src/RockScans.cpp
     src/RefineryTerminal.cpp
     src/RefineryOrders.cpp
     src/RefineryShare.cpp
@@ -302,6 +303,7 @@ set(HEADERS
     include/LaserRange.h
     include/GaugeDigits.h
     include/RockContents.h
+    include/RockScans.h
     include/RefineryTerminal.h
     include/RefineryOrders.h
     include/TradeBook.h

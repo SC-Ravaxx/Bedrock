@@ -1303,7 +1303,8 @@ bool Application::rockViewWanted() {
 // Local time to the millisecond, because a video's file name says when it
 // started and nothing finer. Written only while a panel is on screen, so
 // flying about with nothing scanned writes nothing.
-void Application::logRockReading(const ScanPanel& panel, const RockStats* steady, int rangeMetres) {
+void Application::logRockReading(const ScanPanel& panel, const RockStats* steady, int rangeMetres,
+                                 const std::string& notTaken) {
     std::error_code ec;
     std::filesystem::create_directories(dataPath("debug"), ec);
     const std::string path = dataPath("debug") + "/rock_readings.csv";
@@ -1361,7 +1362,8 @@ void Application::logRockReading(const ScanPanel& panel, const RockStats* steady
     }
     out << rangeMetres << "," << (steady ? std::to_string((int)std::lround(steady->distance)) : std::string()) << ",";
     out << panel.box.x << "," << panel.box.y << "," << panel.box.width << ","
-        << panel.box.height << "," << quoted(panel.note) << std::endl;
+        << panel.box.height << ","
+        << quoted(notTaken.empty() ? panel.note : "not taken: " + notTaken + "; " + panel.note) << std::endl;
 }
 
 // The middle of the gauge's recent readings: the figure a flash or a
@@ -1636,9 +1638,12 @@ void Application::lookForRock() {
         rockReadings_.clear();
         RockStats rock;
         const bool settled = rockSteadier_.add(panel, rock);
-        rockSettling_ = !settled;
-        if (!settled) {
-            logRockReading(panel, nullptr, range.metres);
+        // ...and settled figures that cannot be the rock's are waited past
+        // the same way: the scan finishes, or the misread goes
+        const std::string why = settled ? rockCheck_.notTaken(rock) : std::string();
+        rockSettling_ = !settled || !why.empty();
+        if (rockSettling_) {
+            logRockReading(panel, nullptr, range.metres, why);
             // A panel that will not settle for twelve seconds is not the
             // rock the view shows any more
             if (++rockUnsettled_ >= 16) {
@@ -1690,6 +1695,33 @@ void Application::lookForRock() {
             cv::imwrite(dataPath("debug/panel_miss_" + std::to_string(rockMissShots_) + ".png"), frame);
             std::cout << "[rock] kept a picture of the panel the shapes missed: debug/panel_miss_"
                       << rockMissShots_ << ".png" << std::endl;
+        }
+        // A look whose figures cannot be the rock's stays out of the five:
+        // the game's first picture of a rock it has not finished scanning -
+        // looked at again on the next scan, the figures follow in a moment -
+        // or a misread. One that names no ore is told by the ore the looks
+        // before it named. Twelve seconds of nothing else, and the rock on
+        // view is not the one in front of the ship any more.
+        {
+            RockStats probe = panel.stats;
+            if (probe.ore.empty() && !rockReadings_.empty()) probe.ore = steadyRock(rockReadings_).ore;
+            const std::string why = rockCheck_.notTaken(probe);
+            if (!why.empty()) {
+                logRockReading(panel, nullptr, range.metres, why);
+                rockSettling_ = true;
+                if (++rockUnsettled_ >= 16) {
+                    rockUnsettled_ = 0;
+                    if (rockSeen_) {
+                        rockSeen_ = false;
+                        std::cout << "\n[rock] gone" << std::endl;
+                    }
+                    clearRockView();
+                    shownMass_ = 0;
+                    rangeReadings_.clear();
+                }
+                return;
+            }
+            rockUnsettled_ = 0;
         }
         // A mass a long way off the last one is a different rock, not a
         // misread: start the window again rather than average two rocks.

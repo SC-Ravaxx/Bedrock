@@ -23,6 +23,7 @@
 #include "TextLineReader.h"
 #include "LoadoutReader.h"
 #include "RockContents.h"
+#include "RockScans.h"
 #include "RefineryOrders.h"
 #include "FrameRecorder.h"
 #include "UexPrices.h"
@@ -186,7 +187,8 @@ private:
     // was read, and what the median made of it. steady is null for a look that
     // did not name enough figures to count. rangeMetres is what the LASER
     // RANGE gauge read on the same look, 0 for nothing.
-    void logRockReading(const ScanPanel& panel, const RockStats* steady, int rangeMetres);
+    void logRockReading(const ScanPanel& panel, const RockStats* steady, int rangeMetres,
+                        const std::string& notTaken = std::string());
     // The laser's range to the rock: the middle of the gauge's last five
     // readings, none older than RANGE_KEPT; 0 when there is none, which the
     // rock view reads as full power. A look that reads no gauge leaves the
@@ -225,6 +227,7 @@ private:
     // reader cannot find the panel's labels at all.
     PanelSteadier rockSteadier_;
     int rockUnsettled_ = 0;       // looks in a row that found a panel and settled nothing
+    RockScans::LookCheck rockCheck_;  // figures no rock can have wait, as unsettled ones do
     bool rockLabelsOnly_ = false; // the last look found the labels and no figures
     int rockQuickLooks_ = 0;      // ...and how many looks in a row came straight after
     bool rockSettling_ = false;   // the last look found a panel whose figures have not settled
