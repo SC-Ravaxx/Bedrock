@@ -422,6 +422,8 @@ files that remember your choices (the place set by hand, the ores you look
 for, the loadout, the shopping list, the window, the colours, the phone's
 address) and, in the folder debug\:
   - scan_log.csv   a text log with one line per scan, rotates at 10 MB
+  - rock_scans.csv one line per rock the rock view showed: its figures, its
+                   composition where it was read, the place and the ship
   - session.txt    what the app found at this start (monitors, game window,
                    search area, capture path, game log) - one file, it gets
                    overwritten
@@ -448,7 +450,7 @@ written to the registry.
 
 What Bedrock sends
 ------------------
-Four network requests of its own, and three more only if you switch them on:
+Five network requests of its own, and three more only if you switch them on:
 
 - The update check: one small text file from the-forsaken.org, once at start
   and once an hour. It carries the version, whether it is the Windows or the
@@ -477,6 +479,15 @@ Four network requests of its own, and three more only if you switch them on:
   sends a lot of readings that can't be right is held back from sharing
   for ten minutes. While the Refinery window is open, Bedrock fetches the
   latest workload of every station every five minutes, ticked or not.
+- Rock scans (on unless you untick "Share rock scans" in Settings): Bedrock
+  sends Bedrock's server (the-forsaken.org) each rock the rock view showed:
+  ore, mass, SCU, resistance, instability, the composition where it was
+  read, the laser's range, the ship type, the place and the game's
+  version, with your install's number and a random number made at each
+  start that groups one session's rocks. Nothing about you goes along, and
+  as with the refinery workloads the server doesn't keep your IP address.
+  The rocks are for working out rock sizes, densities and how the game
+  sets resistance and instability. At most one report every two minutes.
 - Plugins: the first time you open Plugins after a start, Bedrock downloads
   the list of plugins from the-forsaken.org, and a plugin when you click
   Install. A plugin's download carries your install's number (see below),
@@ -527,10 +538,11 @@ Four network requests of its own, and three more only if you switch them on:
 Your install's number: the first time it starts, Bedrock makes a random
 number for this install and keeps it in install_id.txt in its data folder
 (%LOCALAPPDATA%\Bedrock). It is made of nothing of you, your PC or the game.
-It goes along with the update check, the refinery workloads and plugin
-downloads, so that I can count installs instead of IP addresses: Bedrock's
-statistics keep the number instead of your IP address. A backup doesn't
-carry it. To leave it out, close Bedrock and set stats=0 in region_config.txt.
+It goes along with the update check, the refinery workloads, the rock scans
+and plugin downloads, so that I can count installs instead of IP addresses:
+Bedrock's statistics keep the number instead of your IP address. A backup
+doesn't carry it. To leave it out, close Bedrock and set stats=0 in
+region_config.txt.
 
 A cleanly read value no table knows (e.g. 70,000) is shown as read after four
 identical scans, with the nearest table values beside it - as an unknown

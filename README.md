@@ -80,12 +80,13 @@ language file into the game folder, the way language packs do.
 Network: an update check, the plugin list and the plugins you install
 (official builds only), UEX's public price lists while the Ore Finder or the
 Gear page is open,
-refinery workloads to and from Bedrock's server (official builds only; untick
-"Share refinery workloads" in the Refinery window to stop sending - what is
-sent is listed in `dist/README.txt`), your refinery jobs to UEX only if you
+refinery workloads to and from Bedrock's server and the rocks you scan to it
+(official builds only; untick "Share refinery workloads" in the Refinery
+window or "Share rock scans" in Settings to stop sending - what is sent is
+listed in `dist/README.txt`), your refinery jobs to UEX only if you
 switch that on, and terminal prices to UEX only if you switch the UEX
-Datarunner on and click Send. The update check, the refinery workloads and
-plugin downloads carry a random number made for the install
+Datarunner on and click Send. The update check, the refinery workloads, the
+rock scans and plugin downloads carry a random number made for the install
 (`install_id.txt`), so that installs are counted rather than addresses;
 `stats=0` in `region_config.txt` leaves it out.
 
@@ -151,9 +152,9 @@ are on your PATH.
 - `-DBEDROCK_UPDATE_URL=<https address>` sets where the app looks for a newer
   version. Without it, the build never checks for updates. Official builds set
   it; please don't point a changed build at the official address.
-- `-DBEDROCK_REFINERY_URL=<https address>` sets the refinery workload service
-  (`server/refinery`). Without it, the build neither sends nor fetches
-  workloads. Official builds set it; here too, please don't point a changed
+- `-DBEDROCK_REFINERY_URL=<https address>` sets the service for refinery
+  workloads and rock scans (`server/refinery`). Without it, the build neither
+  sends nor fetches workloads and sends no rock scans. Official builds set it; here too, please don't point a changed
   build at the official address.
 - UEX: a build works without a UEX app token. Prices are still loaded;
   sending refinery jobs to UEX is switched off. If you have your own UEX app token,
@@ -239,7 +240,7 @@ to the exe instead, for a USB stick. See `include/AppPaths.h`.
 | `resources/` | icons, fonts, the text-line recognition model, embedded pictures |
 | `tests/` | pictures the self-test reads |
 | `dist/README.txt` | the README that ships to players |
-| `server/refinery/` | the service that keeps the refinery workloads players share (Python and SQLite) |
+| `server/refinery/` | the service that keeps the refinery workloads and rock scans players share (Python and SQLite) |
 | `tools/` | release and packaging scripts |
 
 ## The signature model (Star Citizen 4.10)
