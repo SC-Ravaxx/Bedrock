@@ -16205,6 +16205,29 @@ void MinerGUI::drawWhatsNewCard(Gdiplus::Graphics& g, int cw, int ch) {
     // however softly put, turns that into a collection. The jar sits behind the
     // ? button and along the foot of the main window. Plain words, like a patch
     // note.
+    version(L"3.0.3", L"12 November");
+    group(L"NEW");
+    item(L"Rock scans");
+    note(L"Each rock you scan now goes to Bedrock\u2019s server automatically: ore, mass,");
+    note(L"SCU, resistance, instability and what the rock is made of, with your");
+    note(L"distance to it, the place and the ship type. A scan is enough: you don\u2019t");
+    note(L"need to mine the rock, and there is nothing to click. Nothing about you");
+    note(L"goes along, and the server doesn\u2019t keep your IP address.");
+    gap(6);
+    item(L"Why");
+    note(L"Whether your laser breaks a rock depends on things the game files don\u2019t");
+    note(L"show, such as how a rock\u2019s resistance comes from its parts. Scans from");
+    note(L"many players show it. Once there are enough real scans, Bedrock\u2019s break");
+    note(L"calculation is refined to match the game, and the Ore Finder can show");
+    note(L"what is really found at each place instead of the theoretical percentages");
+    note(L"per planet. Thank you to everyone who shares their rock scans to help");
+    note(L"improve Bedrock.");
+    gap(6);
+    item(L"To turn it off");
+    note(L"Open Settings at the bottom of the sidebar and untick Share rock scans at");
+    note(L"the top right. Bedrock keeps your own scans in rock_scans.csv in its");
+    note(L"debug folder either way.");
+    gap(10);
     version(L"3.0.2", L"11 November");
     group(L"NEW");
     item(L"Gear");
