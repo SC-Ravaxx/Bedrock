@@ -24,7 +24,9 @@ class ServiceTest(unittest.TestCase):
         self.store = app.Store(os.path.join(self.folder.name, "refinery.db"))
         self.limiter = app.Limiter(per_address=1000, overall=100000)
         self.rock_limiter = app.Limiter(per_address=1000, overall=100000)
-        self.server = app.serve(self.store, self.limiter, host="127.0.0.1", port=0, rock_limiter=self.rock_limiter)
+        self.rock_count_limiter = app.Limiter(per_address=100000, overall=1000000)
+        self.server = app.serve(self.store, self.limiter, host="127.0.0.1", port=0, rock_limiter=self.rock_limiter,
+                                rock_count_limiter=self.rock_count_limiter)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base = "http://127.0.0.1:%d%s" % (self.server.server_address[1], app.PREFIX)
@@ -639,14 +641,17 @@ class ServiceTest(unittest.TestCase):
             self.rock(ore="Ice", mass=1000, scu=1, parts=[]),                         # density 7
             self.rock(mass=4629, scu=32.4, resistance=0, instability=0, parts=[]),    # the panel's first picture
             self.rock(parts=[{"ore": "Taranite", "percent": 9.37, "quality": 957}, {"inert": True, "percent": 52.11}]),
+            # 958: no Taranite comes out at that
+            self.rock(parts=[{"ore": "Taranite", "percent": 9.37, "quality": 958},
+                             {"ore": "Taranite", "percent": 38.51, "quality": 310}, {"inert": True, "percent": 52.11}]),
         ]
         # the sender is not told
-        self.assertEqual(self.send_rocks(rocks), (201, {"ok": True, "stored": 7, "duplicates": 0}))
+        self.assertEqual(self.send_rocks(rocks), (201, {"ok": True, "stored": 8, "duplicates": 0}))
         self.assertEqual([r["implausible"] for r in self.rock_rows()],
                          [None, None, "bigger than any rock", "lighter than its volume", "heavier than its parts",
-                          "not scanned yet", "parts do not add up"])
+                          "not scanned yet", "parts do not add up", "a quality its ore does not have"])
         today = self.today()
-        self.assertEqual((today["rocks:accepted"], today["rocks:implausible"]), (2, 5))
+        self.assertEqual((today["rocks:accepted"], today["rocks:implausible"]), (2, 6))
 
     def test_rocks_at_the_edges_of_what_the_game_makes_fit(self):
         def at(ore, mass, scu, resistance=20, instability=50, parts=()):
@@ -663,6 +668,14 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(at("Taranite", 82908, 59.22), "")           # the largest rock model, at density 9.8
         self.assertEqual(at("Iron", 7000, 10, parts=[{"inert": True, "percent": 100.4}]), "")
         self.assertEqual(at("Iron", 7000, 10, parts=[{"inert": True, "percent": 97.9}]), "parts do not add up")
+        # each quality one its ore has: Iron at 664 and 325, as a panel showed them
+        iron = [{"ore": "Iron", "percent": 10.55, "quality": 664}, {"ore": "Iron", "percent": 36.10, "quality": 325},
+                {"inert": True, "percent": 53.35}]
+        self.assertEqual(at("Iron", 7000, 10, parts=iron), "")
+        iron[1] = dict(iron[1], quality=326)
+        self.assertEqual(at("Iron", 7000, 10, parts=iron), "a quality its ore does not have")
+        self.assertEqual(sorted(app.ORE_QUALITIES), sorted(app.ROCK_ORES))
+        self.assertTrue(all(len(set(values)) == 8 for values in app.ORE_QUALITIES.values()))
 
     def test_rocks_that_do_not_fit_hold_no_one_back_but_batches_turned_down_do(self):
         for _ in range(app.MISFITS_PER_HOUR + 1):
@@ -690,6 +703,38 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(today["rocks:limited"], 1)
         self.assertNotIn("limited", today)
 
+    def test_rocks_are_counted_as_rocks_as_well(self):
+        self.rock_count_limiter.per_address = 5
+        self.assertEqual(self.send_rocks([self.rock() for _ in range(3)], address="192.0.2.1")[0], 201)
+        # three more would be six: the whole batch waits
+        self.assertEqual(self.send_rocks([self.rock() for _ in range(3)], address="192.0.2.1"),
+                         (429, {"ok": False, "error": "too many rocks, try again later"}))
+        self.assertEqual(self.send_rocks([self.rock() for _ in range(2)], address="192.0.2.1")[0], 201)
+        self.assertEqual(self.send_rocks([self.rock()], address="192.0.2.1")[0], 429)
+        self.assertEqual(self.send_rocks([self.rock() for _ in range(5)], address="192.0.2.2")[0], 201)
+        self.assertEqual(self.store.rock_count(), 10)
+        self.assertEqual(self.today()["rocks:limited"], 2)
+        # ...and an hour on, the first three are let go, the two after them not yet
+        limiter = app.Limiter(per_address=5, overall=100)
+        self.assertTrue(limiter.allow("192.0.2.1", 1000, 3))
+        self.assertFalse(limiter.allow("192.0.2.1", 1001, 3))
+        self.assertTrue(limiter.allow("192.0.2.1", 1001, 2))
+        self.assertTrue(limiter.allow("192.0.2.1", 4600, 3))
+        self.assertFalse(limiter.allow("192.0.2.1", 4600, 1))
+
+    def test_each_rock_says_which_of_its_senders_rocks_of_the_day_it_was(self):
+        first = [self.rock(), self.rock()]
+        self.send_rocks(first, address="198.51.100.7")
+        self.send_rocks(first + [self.rock()], address="198.51.100.7")     # the two again: not counted again
+        self.send_rocks([self.rock()], address="198.51.100.8")
+        self.send_rocks([self.rock()], address="198.51.100.7", install=self.ONE)
+        self.assertEqual([r["sender_nth"] for r in self.rock_rows()], [1, 2, 3, 1, 4])
+        # another day, another token: counted from one again
+        tomorrow = self.now + 86400
+        batch = app.validate_rocks(self.batch([self.rock()]), self.now)
+        self.store.add_rocks(batch, tomorrow, self.store.source("198.51.100.7", tomorrow), [""])
+        self.assertEqual(self.rock_rows()[-1]["sender_nth"], 1)
+
     def test_rocks_lose_the_senders_token_after_two_days_and_stay(self):
         self.send_rocks([self.rock()], address="198.51.100.7", install=self.ONE)
         self.send(address="198.51.100.7")
@@ -716,11 +761,11 @@ class ServiceTest(unittest.TestCase):
         code, text = self.call("/v1/rocks/export.csv")
         self.assertEqual(code, 200)
         lines = text.split("\n")
-        self.assertEqual(lines[0], "id,received,observed,bedrock,game,channel,session,ore,mass,scu,resistance,"
-                                   "printed,instability,range_m,ship,place,parts,implausible")
+        self.assertEqual(lines[0], "id,received,observed,bedrock,game,channel,session,sender_nth,ore,mass,scu,"
+                                   "resistance,printed,instability,range_m,ship,place,parts,implausible")
         self.assertEqual(lines[1].split(",", 3)[2:], [
-            app.utc_iso(rock["observed"]), "3.0.3,4.10.2,LIVE,9f3a1c2b7d4e6f80,Taranite,25005,32.38,36,white,302.71,"
-            "27,prospector,Pyro - Pyro II,Taranite 9.37 957; Taranite 38.51 310; inert 52.11,"])
+            app.utc_iso(rock["observed"]), "3.0.3,4.10.2,LIVE,9f3a1c2b7d4e6f80,1,Taranite,25005,32.38,36,white,"
+            "302.71,27,prospector,Pyro - Pyro II,Taranite 9.37 957; Taranite 38.51 310; inert 52.11,"])
         self.assertTrue(lines[2].endswith(",Ice,76,0.54," + self.BARE), lines[2])
         self.assertEqual(len(lines), 4)
         self.assertEqual(self.today()["req:rocks-export"], 1)       # the one through nginx

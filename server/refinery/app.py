@@ -37,7 +37,9 @@ printed and the rock's composition - unless sharing is turned off in its
 Settings. They are kept to work out rock sizes, densities and the game's
 resistance and instability, grouped by a random number Bedrock makes at
 each start and with nothing of the player. A rock whose figures do not fit
-together is kept but marked (judge_rock); only the operator gets them out.
+together is kept but marked (judge_rock), and each says which of its
+sender's rocks of the day it was, so that no one sender outweighs the rest;
+only the operator gets them out.
 
 Standard library only, SQLite beside it. See README.md.
 """
@@ -70,6 +72,12 @@ POSTS_PER_HOUR = int(os.environ.get("BEDROCK_API_POSTS_PER_HOUR", "120"))       
 POSTS_PER_HOUR_ALL = int(os.environ.get("BEDROCK_API_POSTS_PER_HOUR_ALL", "20000"))  # from everyone
 ROCK_POSTS_PER_HOUR = int(os.environ.get("BEDROCK_API_ROCK_POSTS_PER_HOUR", "60"))  # batches of rocks, from one address
 ROCK_POSTS_PER_HOUR_ALL = int(os.environ.get("BEDROCK_API_ROCK_POSTS_PER_HOUR_ALL", "20000"))  # ...from everyone
+# ...and the rocks in them. A player mining hard scans about 100 rocks in an
+# hour (99 at most in an hour of Bedrock's own rock logs, September to
+# November 2026); three times that leaves room for a few players behind one
+# address, and holds one sender to what a few players send.
+ROCKS_PER_HOUR = int(os.environ.get("BEDROCK_API_ROCKS_PER_HOUR", "300"))
+ROCKS_PER_HOUR_ALL = int(os.environ.get("BEDROCK_API_ROCKS_PER_HOUR_ALL", "100000"))
 MAX_BODY = 16 * 1024
 MAX_ROCK_BODY = 64 * 1024     # a batch of rocks: up to 50, each with its composition
 STATION_DAYS = 7              # /stations: how old a station's last reading may be
@@ -149,6 +157,38 @@ ROCK_DENSITY_MAX = {
     "Titanium": 7.14, "Torite": 2.8, "Tungsten": 19.35,
 }
 ROCK_ORES = tuple(ROCK_DENSITY_MAX)
+# The eight values each ore's quality comes out at - what the scan panel
+# prints beside a part - from the game data (4.10.2, as Bedrock's ORE_BANDS;
+# recheck with each patch). Bedrock takes a composition only where every
+# quality in it is one of these, so another one was not read off a panel.
+ORE_QUALITIES = {
+    "Agricium": (346, 588, 667, 796, 852, 943, 971, 1000),
+    "Aluminium": (318, 511, 614, 783, 896, 919, 953, 1000),
+    "Aslarite": (287, 575, 602, 741, 854, 927, 963, 1000),
+    "Beryl": (324, 547, 677, 717, 860, 937, 955, 1000),
+    "Bexalite": (302, 597, 632, 756, 875, 941, 959, 1000),
+    "Borase": (359, 584, 676, 743, 892, 903, 976, 1000),
+    "Copper": (359, 593, 652, 742, 855, 917, 958, 1000),
+    "Corundum": (309, 504, 665, 793, 886, 904, 971, 1000),
+    "Gold": (264, 553, 644, 786, 864, 916, 959, 1000),
+    "Hephaestanite": (330, 572, 692, 758, 896, 916, 975, 1000),
+    "Ice": (322, 561, 659, 714, 873, 922, 966, 1000),
+    "Iron": (325, 521, 664, 710, 874, 907, 970, 1000),
+    "Laranite": (298, 510, 698, 707, 858, 910, 975, 1000),
+    "Lindinium": (305, 585, 618, 729, 853, 930, 954, 1000),
+    "Ouratite": (310, 523, 647, 779, 860, 912, 960, 1000),
+    "Quantainium": (344, 514, 669, 762, 852, 901, 974, 1000),
+    "Quartz": (330, 522, 641, 710, 899, 914, 969, 1000),
+    "Riccite": (325, 525, 671, 743, 870, 942, 965, 1000),
+    "Savrilium": (322, 580, 636, 776, 878, 905, 967, 1000),
+    "Silicon": (310, 510, 672, 782, 889, 926, 968, 1000),
+    "Stileron": (330, 517, 681, 747, 874, 947, 972, 1000),
+    "Taranite": (310, 525, 646, 718, 853, 925, 957, 1000),
+    "Tin": (340, 537, 664, 704, 880, 940, 964, 1000),
+    "Titanium": (295, 516, 622, 784, 866, 916, 959, 1000),
+    "Torite": (262, 528, 661, 785, 873, 944, 951, 1000),
+    "Tungsten": (363, 530, 662, 787, 858, 902, 964, 1000),
+}
 ROCK_SHIPS = ("prospector", "mole", "golem")
 # how the panel printed the resistance: white, or green or red once a laser
 # on the rock had changed it
@@ -477,7 +517,8 @@ def judge_rock(rock):
     mass to a kilogram and the volume to 0.01 SCU. The panel's first
     picture, before the game knows what the rock is made of, shows density 1
     and neither resistance nor instability - only ice is like that once
-    scanned. Where the composition was read, its shares add up to 100 %.
+    scanned. Where the composition was read, its shares add up to 100 % and
+    each quality is one its ore has (ORE_QUALITIES).
     A rock that does not fit is kept, marked and left out of the analysis;
     it does not hold its sender back, as a panel is easily misread."""
     mass, scu = rock["mass"], rock["scu"]
@@ -492,6 +533,8 @@ def judge_rock(rock):
         return "not scanned yet"
     if rock["parts"] and not 98 <= sum(part["percent"] for part in rock["parts"]) <= 100.5:
         return "parts do not add up"
+    if any(not part.get("inert") and part["quality"] not in ORE_QUALITIES[part["ore"]] for part in rock["parts"]):
+        return "a quality its ore does not have"
     return ""
 
 
@@ -565,6 +608,7 @@ CREATE TABLE IF NOT EXISTS rocks (
     received INTEGER NOT NULL,        -- server time, UTC seconds
     observed INTEGER NOT NULL,        -- when the scan panel showed it
     source TEXT,                      -- tells senders apart; NULL after SOURCE_HOURS
+    sender_nth INTEGER,               -- which of its sender's rocks of the UTC day it was, 1 for the first
     session TEXT NOT NULL,            -- the random number of the Bedrock start that sent it
     bedrock TEXT,
     game TEXT,
@@ -584,6 +628,8 @@ CREATE TABLE IF NOT EXISTS rocks (
 );
 -- the prune's: only the rocks of the last two days still have a token
 CREATE INDEX IF NOT EXISTS rocks_token ON rocks (received) WHERE source IS NOT NULL;
+-- ...and add_rocks', counting a sender's rocks of the day
+CREATE INDEX IF NOT EXISTS rocks_source ON rocks (source) WHERE source IS NOT NULL;
 """
 
 
@@ -692,23 +738,31 @@ class Store:
 
     def add_rocks(self, batch, now, source, reasons):
         """Keeps a checked batch of rocks, each with what did not fit ('' where
-        it all did); for each rock whether it is new - the same rock sent
-        twice is kept once"""
+        it all did) and which of its sender's rocks of the day it is; for each
+        rock whether it is new - the same rock sent twice is kept once"""
         new = []
         with self.lock:
             db = self._db()
             try:
                 with db:
+                    # A token is one sender's for one UTC day, so its rocks are
+                    # that day's: the analysis counts no sender for more than so
+                    # many, and one who sends thousands weighs no more than a
+                    # player who mined all day. (A restart of the service starts
+                    # the day's count again: the salt dies with it.)
+                    nth = db.execute("SELECT COUNT(*) FROM rocks WHERE source = ?", (source,)).fetchone()[0]
                     for rock, reason in zip(batch["rocks"], reasons):
                         parts = json.dumps(rock["parts"], separators=(",", ":")) if rock["parts"] else None
                         cur = db.execute(
-                            "INSERT OR IGNORE INTO rocks (received, observed, source, session, bedrock, game, channel,"
-                            " ore, mass, scu, resistance, printed, instability, range_m, ship, place, parts,"
-                            " implausible) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                            (now, rock["observed"], source, batch["session"], batch["bedrock"], batch["game"],
-                             batch["channel"], rock["ore"], rock["mass"], rock["scu"], rock["resistance"],
-                             rock["printed"], rock["instability"], rock["range"], rock["ship"], rock["place"],
-                             parts, reason or None))
+                            "INSERT OR IGNORE INTO rocks (received, observed, source, sender_nth, session, bedrock,"
+                            " game, channel, ore, mass, scu, resistance, printed, instability, range_m, ship, place,"
+                            " parts, implausible) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            (now, rock["observed"], source, nth + 1, batch["session"], batch["bedrock"],
+                             batch["game"], batch["channel"], rock["ore"], rock["mass"], rock["scu"],
+                             rock["resistance"], rock["printed"], rock["instability"], rock["range"], rock["ship"],
+                             rock["place"], parts, reason or None))
+                        if cur.rowcount == 1:
+                            nth += 1
                         new.append(cur.rowcount == 1)
                 return new
             finally:
@@ -941,12 +995,14 @@ class Store:
         db = self._db()
         try:
             w = csv.writer(out, lineterminator="\n")
-            w.writerow(["id", "received", "observed", "bedrock", "game", "channel", "session", "ore", "mass", "scu",
-                        "resistance", "printed", "instability", "range_m", "ship", "place", "parts", "implausible"])
+            w.writerow(["id", "received", "observed", "bedrock", "game", "channel", "session", "sender_nth", "ore",
+                        "mass", "scu", "resistance", "printed", "instability", "range_m", "ship", "place", "parts",
+                        "implausible"])
             n = 0
             for row in db.execute("SELECT * FROM rocks ORDER BY id"):
                 w.writerow([row["id"], utc_iso(row["received"]), utc_iso(row["observed"]), row["bedrock"],
-                            row["game"], row["channel"], row["session"], row["ore"], _figure(row["mass"]),
+                            row["game"], row["channel"], row["session"], row["sender_nth"], row["ore"],
+                            _figure(row["mass"]),
                             _figure(row["scu"]), _figure(row["resistance"]), row["printed"],
                             _figure(row["instability"]), row["range_m"], row["ship"], row["place"],
                             parts_text(row["parts"]), row["implausible"]])
@@ -1041,7 +1097,9 @@ class Limiter:
         self.seen = {}
         self.everyone = collections.deque()
 
-    def allow(self, address, now):
+    def allow(self, address, now, n=1):
+        """Whether n more fit into the last hour - a report, or the rocks of
+        a batch - and if so, they are counted"""
         key = hashlib.sha256(self.salt + address.encode("utf-8", "replace")).digest()
         hour = now - 3600
         with self.lock:
@@ -1050,10 +1108,10 @@ class Limiter:
             times = self.seen.setdefault(key, collections.deque())
             while times and times[0] <= hour:
                 times.popleft()
-            if len(times) >= self.per_address or len(self.everyone) >= self.overall:
+            if len(times) + n > self.per_address or len(self.everyone) + n > self.overall:
                 return False
-            times.append(now)
-            self.everyone.append(now)
+            times.extend([now] * n)
+            self.everyone.extend([now] * n)
             if len(self.seen) > 10000:
                 for k in [k for k, v in self.seen.items() if not v or v[-1] <= hour]:
                     del self.seen[k]
@@ -1107,6 +1165,7 @@ class Handler(BaseHTTPRequestHandler):
     store = None
     limiter = None
     rock_limiter = None
+    rock_count_limiter = None
     misfits = None
 
     def log_message(self, fmt, *args):
@@ -1295,6 +1354,10 @@ class Handler(BaseHTTPRequestHandler):
             self.misfits.add(misfit, now)
             self.store.tally(now, "rocks:rejected", "rocks:rejected:" + e.code)
             return self._fail(400, str(e))
+        # ...and the rocks in it, counted as rocks: a batch of fifty is fifty
+        if not self.rock_count_limiter.allow(address, now, len(batch["rocks"])):
+            self.store.tally(now, "rocks:limited")
+            return self._fail(429, "too many rocks, try again later")
         reasons = [judge_rock(rock) for rock in batch["rocks"]]
         new = self.store.add_rocks(batch, now, self.store.source(address, now), reasons)
         stored = sum(new)
@@ -1307,13 +1370,14 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(201 if stored else 200, {"ok": True, "stored": stored, "duplicates": len(new) - stored})
 
 
-def serve(store, limiter, host="0.0.0.0", port=PORT, misfits=None, rock_limiter=None):
+def serve(store, limiter, host="0.0.0.0", port=PORT, misfits=None, rock_limiter=None, rock_count_limiter=None):
     """The service, not started yet: serve_forever() on the result. A thread
-    beside it prunes every ten minutes (Store.prune). The rocks have a limit
-    of their own (ROCK_POSTS_PER_HOUR)."""
+    beside it prunes every ten minutes (Store.prune). The rocks have limits
+    of their own: batches (ROCK_POSTS_PER_HOUR) and rocks (ROCKS_PER_HOUR)."""
     handler = type("BoundHandler", (Handler,), {
         "store": store, "limiter": limiter, "misfits": misfits or Misfits(),
-        "rock_limiter": rock_limiter or Limiter(ROCK_POSTS_PER_HOUR, ROCK_POSTS_PER_HOUR_ALL)})
+        "rock_limiter": rock_limiter or Limiter(ROCK_POSTS_PER_HOUR, ROCK_POSTS_PER_HOUR_ALL),
+        "rock_count_limiter": rock_count_limiter or Limiter(ROCKS_PER_HOUR, ROCKS_PER_HOUR_ALL)})
     server = ThreadingHTTPServer((host, port), handler)
     server.daemon_threads = True
 
@@ -1384,7 +1448,8 @@ def main(argv=None):
                                    else "would be taken out - again with --yes to do it"))
         return 0
     server = serve(store, Limiter(POSTS_PER_HOUR, POSTS_PER_HOUR_ALL),
-                   rock_limiter=Limiter(ROCK_POSTS_PER_HOUR, ROCK_POSTS_PER_HOUR_ALL))
+                   rock_limiter=Limiter(ROCK_POSTS_PER_HOUR, ROCK_POSTS_PER_HOUR_ALL),
+                   rock_count_limiter=Limiter(ROCKS_PER_HOUR, ROCKS_PER_HOUR_ALL))
     print("bedrock-api: %s on port %d, %d stations known, %s" % (
         DB_PATH, PORT, len(STATIONS), "refining model loaded" if TABLES else "no refining model"), flush=True)
     try:

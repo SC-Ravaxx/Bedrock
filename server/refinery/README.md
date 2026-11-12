@@ -107,7 +107,11 @@ neither installs nor players apart.
 
 Nothing about the player is kept: no name, no account, no IP address and
 no install number. Like a refinery reading, each rock gets a token to tell
-senders apart and loses it after 48 hours. The rocks themselves are kept.
+senders apart and loses it after 48 hours. Each rock also keeps which of its
+sender's rocks of that day (UTC) it was, 1 for the first, so that the
+analysis can count no sender for more than so many rocks a day: one who
+sends thousands weighs no more than a player who mined all day. The number
+says nothing of who sent it. The rocks themselves are kept.
 
 A batch that does not fit the format is turned down whole with `400`, and
 counts towards holding an install back, as for refinery readings. A rock
@@ -116,11 +120,13 @@ analysis: bigger than the largest rock (59.22 SCU), lighter than its volume
 at density 1 or heavier than the densest element its ore can hold (with
 room for the panel's rounding), the panel's first figures before the game
 knows what the rock is made of (density 1, no resistance, no instability;
-ice aside), or a composition that does not add up to 100 %. The answer does
-not say which, and such rocks do not hold the sender back, as a panel is
-easily misread.
+ice aside), a composition that does not add up to 100 %, or a quality its
+ore never comes out at (each ore has eight). The answer does not say which,
+and such rocks do not hold the sender back, as a panel is easily misread.
 
-An address can send 60 batches an hour, and everyone together 20000.
+An address can send 60 batches and 300 rocks an hour, and everyone together
+20000 batches and 100000 rocks; more is turned down with `429`. A player
+mining hard scans about 100 rocks an hour.
 
 The rocks are not handed out: only the operator can download them, from
 inside the containers' network (`/v1/rocks/export.csv`) or with
@@ -247,7 +253,8 @@ refinery reading; a `400` turns down the whole batch.
 
 For the operator, from inside the containers' network only, like
 `/v1/stats`. Every rock stored, as CSV, with why it was marked
-(`implausible`), but never the token. The same as
+(`implausible`) and which of its sender's rocks of the day it was
+(`sender_nth`), but never the token. The same as
 `python app.py --rocks-export FILE`.
 
 ### `GET /v1/health`
@@ -283,8 +290,9 @@ Python 3.12 or newer, nothing else:
 The environment variables `BEDROCK_API_DB`, `BEDROCK_API_PORT`,
 `BEDROCK_API_PREFIX`, `BEDROCK_API_STATIONS`, `BEDROCK_API_TABLES`,
 `BEDROCK_API_POSTS_PER_HOUR`, `BEDROCK_API_POSTS_PER_HOUR_ALL`,
-`BEDROCK_API_ROCK_POSTS_PER_HOUR` and `BEDROCK_API_ROCK_POSTS_PER_HOUR_ALL`
-change the defaults.
+`BEDROCK_API_ROCK_POSTS_PER_HOUR`, `BEDROCK_API_ROCK_POSTS_PER_HOUR_ALL`,
+`BEDROCK_API_ROCKS_PER_HOUR` and `BEDROCK_API_ROCKS_PER_HOUR_ALL` change the
+defaults.
 
 ## Deploying it behind nginx with Docker Compose
 
