@@ -7,7 +7,7 @@ time by its current workload, and only the terminal shows that workload
 small surcharge will be added."). With readings from many players, Bedrock
 can show how busy each refinery is and what it quotes.
 
-Bedrock only sends readings when the player has agreed to it.
+Bedrock only sends refinery readings when the player has agreed to it.
 
 ## What is kept
 
@@ -89,6 +89,43 @@ nothing is taken on its word:
    again by the rules as they stand, after one was found too strict, and
    takes those that pass as plausible with `--yes`.
 
+## Rock scans
+
+Bedrock also sends the rocks the player scanned, unless sharing is turned
+off in Bedrock's Settings. They are kept to work out rock sizes, densities
+and the game's formulas for resistance and instability.
+
+For each rock: when it was scanned, the ore, mass, volume in SCU,
+resistance and instability as the scan panel printed them, whether the
+resistance was printed in colour (a laser on the rock had changed it), the
+distance to the rock, the ship and the place, and the composition: each ore
+with its share and quality, and the inert share. The Bedrock version and
+the game's version and channel go with it, and a random number Bedrock
+makes fresh at each start, so that one session's rocks can be looked at
+together, such as a rock and the pieces it broke into. That number tells
+neither installs nor players apart.
+
+Nothing about the player is kept: no name, no account, no IP address and
+no install number. Like a refinery reading, each rock gets a token to tell
+senders apart and loses it after 48 hours. The rocks themselves are kept.
+
+A batch that does not fit the format is turned down whole with `400`, and
+counts towards holding an install back, as for refinery readings. A rock
+whose figures do not fit together is kept but marked, and left out of the
+analysis: bigger than the largest rock (59.22 SCU), lighter than its volume
+at density 1 or heavier than the densest element its ore can hold (with
+room for the panel's rounding), the panel's first figures before the game
+knows what the rock is made of (density 1, no resistance, no instability;
+ice aside), or a composition that does not add up to 100 %. The answer does
+not say which, and such rocks do not hold the sender back, as a panel is
+easily misread.
+
+An address can send 60 batches an hour, and everyone together 20000.
+
+The rocks are not handed out: only the operator can download them, from
+inside the containers' network (`/v1/rocks/export.csv`) or with
+`python app.py --rocks-export FILE`.
+
 ## API
 
 All paths start with `/bedrock/api`. Answers are JSON unless noted.
@@ -159,19 +196,76 @@ newest first, optionally for one station, at most 5000.
 
 Every reading stored, as CSV, with `plausible` and `reason`.
 
+### `POST /v1/rocks/observations`
+
+The rocks scanned, 1 to 50 in a batch, `Content-Type: application/json`, at
+most 64 KB:
+
+```json
+{
+  "v": 1,
+  "bedrock": "3.0.3",
+  "game": "4.10.2",
+  "channel": "LIVE",
+  "session": "9f3a1c2b7d4e6f80",
+  "rocks": [
+    {"observed": 1793000000, "ore": "Taranite", "mass": 25005, "scu": 32.38,
+     "resistance": 36, "printed": "white", "instability": 302.71,
+     "range": 27, "ship": "prospector", "place": "Pyro - Pyro II",
+     "parts": [{"ore": "Taranite", "percent": 9.37, "quality": 957},
+               {"ore": "Taranite", "percent": 38.51, "quality": 310},
+               {"inert": true, "percent": 52.11}]}
+  ]
+}
+```
+
+- `session` is 16 lowercase hex characters, made fresh at each start of
+  Bedrock.
+- `observed` is UTC seconds. Rocks up to three days old are accepted.
+- `ore` is one of Agricium, Aluminium, Aslarite, Beryl, Bexalite, Borase,
+  Copper, Corundum, Gold, Hephaestanite, Ice, Iron, Laranite, Lindinium,
+  Ouratite, Quantainium, Quartz, Riccite, Savrilium, Silicon, Stileron,
+  Taranite, Tin, Titanium, Torite or Tungsten.
+- `mass` is in kg, `scu` from 0.01 to 100, `resistance` in per cent as
+  printed and `instability` as printed; either is `-1` when it was not read.
+- `printed` is `white`, or `colour` when the panel printed the resistance
+  green or red because a laser on the rock had changed it.
+- `range` is the distance in metres (`0` when not known), `ship` is
+  `prospector`, `mole` or `golem`, and `place` takes the characters of a
+  station's name, up to 64.
+- `parts` is the composition in the panel's order, up to 8 lines: an ore
+  with its share in per cent and its quality (0 to 1000), or the inert
+  share. It is empty when the list was not read whole.
+- `game`, `channel`, `printed`, `range`, `ship`, `place` and `parts` are
+  optional.
+
+The answer is `201 {"ok": true, "stored": 2, "duplicates": 0}`, or `200`
+with `"stored": 0` when every rock was already stored. Errors as for a
+refinery reading; a `400` turns down the whole batch.
+
+### `GET /v1/rocks/export.csv`
+
+For the operator, from inside the containers' network only, like
+`/v1/stats`. Every rock stored, as CSV, with why it was marked
+(`implausible`), but never the token. The same as
+`python app.py --rocks-export FILE`.
+
 ### `GET /v1/health`
 
-The number of readings stored, and today's counts:
-`{"ok": true, "version": 1, "observations": N, "today": {"accepted": …,
-"duplicate": …, "implausible": …, "limited": …, "held": …, "rejected": …}}`
+The number of readings and of rocks stored, and today's counts for the
+readings: `{"ok": true, "version": 1, "observations": N, "rocks": N,
+"today": {"accepted": …, "duplicate": …, "implausible": …, "limited": …,
+"held": …, "rejected": …}}`
 
 ### `GET /v1/stats?days=90`
 
 For the operator's admin page, from inside the containers' network only: a
 request through nginx (it carries `X-Real-IP`) gets a 404. The counters by
 day (`req:<route>`, `agent:<version>`, `platform:<os>`, `clients`,
-`senders` and the outcomes above), the requests by hour, the readings and
-quotes received by day, each station's state and how often it was read.
+`senders` and the outcomes above, and for rocks `rock-senders` and the
+same outcomes as `rocks:accepted` and so on), the requests by hour, the
+readings and quotes received by day, each station's state and how often it
+was read.
 
 ## Running it
 
@@ -183,12 +277,14 @@ Python 3.12 or newer, nothing else:
     python app.py --purge --since 2026-10-11T08:00 --until 2026-10-11T09:00 --station Checkmate
     python app.py --purge --since 2026-10-11T08:00 --implausible --yes
     python app.py --backup FILE        # a consistent copy while the service runs
+    python app.py --rocks-export FILE  # the rock scans as CSV
     python make_tables.py              # tables.json again, after the refining headers change
 
 The environment variables `BEDROCK_API_DB`, `BEDROCK_API_PORT`,
 `BEDROCK_API_PREFIX`, `BEDROCK_API_STATIONS`, `BEDROCK_API_TABLES`,
-`BEDROCK_API_POSTS_PER_HOUR` and `BEDROCK_API_POSTS_PER_HOUR_ALL` change
-the defaults.
+`BEDROCK_API_POSTS_PER_HOUR`, `BEDROCK_API_POSTS_PER_HOUR_ALL`,
+`BEDROCK_API_ROCK_POSTS_PER_HOUR` and `BEDROCK_API_ROCK_POSTS_PER_HOUR_ALL`
+change the defaults.
 
 ## Deploying it behind nginx with Docker Compose
 

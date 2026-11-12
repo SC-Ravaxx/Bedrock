@@ -23,7 +23,8 @@ class ServiceTest(unittest.TestCase):
         self.folder = tempfile.TemporaryDirectory()
         self.store = app.Store(os.path.join(self.folder.name, "refinery.db"))
         self.limiter = app.Limiter(per_address=1000, overall=100000)
-        self.server = app.serve(self.store, self.limiter, host="127.0.0.1", port=0)
+        self.rock_limiter = app.Limiter(per_address=1000, overall=100000)
+        self.server = app.serve(self.store, self.limiter, host="127.0.0.1", port=0, rock_limiter=self.rock_limiter)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base = "http://127.0.0.1:%d%s" % (self.server.server_address[1], app.PREFIX)
@@ -510,6 +511,248 @@ class ServiceTest(unittest.TestCase):
         for _ in range(3):
             misfits.add(["203.0.113.1"], 4800)                            # turned down, or not: the same
         self.assertTrue(misfits.held(["203.0.113.1", "install:z"], 4801))
+
+    # ---------------------------------------------------------------- rock scans
+
+    SESSION = "9f3a1c2b7d4e6f80"
+    BARE = ",".join([""] * 8)    # resistance to implausible, none of them read
+
+    def rock(self, **changes):
+        # Taranite in Pyro as a Prospector's panel showed it, each a little
+        # earlier than the last, so no two are the same rock
+        self.tick += 1
+        r = {"observed": self.now - 60 - self.tick, "ore": "Taranite", "mass": 25005, "scu": 32.38,
+             "resistance": 36, "printed": "white", "instability": 302.71, "range": 27, "ship": "prospector",
+             "place": "Pyro - Pyro II",
+             "parts": [{"ore": "Taranite", "percent": 9.37, "quality": 957},
+                       {"ore": "Taranite", "percent": 38.51, "quality": 310},
+                       {"inert": True, "percent": 52.11}]}
+        r.update(changes)
+        return r
+
+    def batch(self, rocks, **changes):
+        b = {"v": 1, "bedrock": "3.0.3", "game": "4.10.2", "channel": "LIVE", "session": self.SESSION, "rocks": rocks}
+        b.update(changes)
+        return b
+
+    def send_rocks(self, rocks, address="203.0.113.1", install=None, **changes):
+        return self.call("/v1/rocks/observations", self.batch(rocks, **changes), address=address, install=install)
+
+    def rock_rows(self):
+        db = sqlite3.connect(self.store.path)
+        db.row_factory = sqlite3.Row
+        try:
+            return db.execute("SELECT * FROM rocks ORDER BY id").fetchall()
+        finally:
+            db.close()
+
+    def today(self):
+        return self.store.counters(app.utc_day(time.time()))[app.utc_day(time.time())]
+
+    def test_a_batch_of_rocks_is_kept_once(self):
+        body = self.batch([self.rock(), self.rock()])
+        self.assertEqual(self.call("/v1/rocks/observations", body), (201, {"ok": True, "stored": 2, "duplicates": 0}))
+        self.assertEqual(self.call("/v1/rocks/observations", body), (200, {"ok": True, "stored": 0, "duplicates": 2}))
+        rows = self.rock_rows()
+        self.assertEqual(len(rows), 2)
+        r = rows[0]
+        self.assertEqual((r["observed"], r["session"], r["bedrock"], r["game"], r["channel"], r["ore"], r["mass"],
+                          r["scu"], r["resistance"], r["printed"], r["instability"], r["range_m"], r["ship"],
+                          r["place"], r["implausible"]),
+                         (body["rocks"][0]["observed"], self.SESSION, "3.0.3", "4.10.2", "LIVE", "Taranite", 25005,
+                          32.38, 36, "white", 302.71, 27, "prospector", "Pyro - Pyro II", None))
+        self.assertEqual(r["parts"], '[{"ore":"Taranite","percent":9.37,"quality":957},'
+                                     '{"ore":"Taranite","percent":38.51,"quality":310},{"inert":true,"percent":52.11}]')
+        self.assertEqual(len(r["source"]), 16)
+        today = self.get("/v1/stats")[1]["counters"][app.utc_day(time.time())]
+        self.assertEqual((today["req:rocks"], today["rocks:accepted"], today["rocks:duplicate"], today["rock-senders"]),
+                         (2, 2, 2, 1))
+        self.assertNotIn("rocks:implausible", today)
+        self.assertNotIn("accepted", today)     # the refinery's own counts stay apart
+
+    def test_what_was_not_read_is_kept_as_nothing(self):
+        bare = {"observed": self.now - 30, "ore": "Quartz", "mass": 9520, "scu": 26.4, "resistance": -1,
+                "instability": -1}
+        blank = self.rock(resistance=-1, instability=-1, printed="", range=0, ship="", place="", parts=[])
+        # at density 1, but -1 is not read, not 0: no first picture of the panel
+        unread = self.rock(mass=4629, scu=32.4, resistance=-1, instability=-1, parts=[])
+        self.assertEqual(self.send_rocks([bare, blank, unread], game=None, channel=None)[0], 201)
+        for r in self.rock_rows():
+            self.assertEqual((r["game"], r["channel"], r["resistance"], r["instability"], r["implausible"]),
+                             (None, None, None, None, None))
+        self.assertEqual([(r["printed"], r["range_m"], r["ship"], r["place"], r["parts"]) for r in self.rock_rows()[:2]],
+                         [(None, None, None, None, None)] * 2)
+
+    def test_a_batch_that_does_not_fit_the_format_is_turned_down_whole(self):
+        bad = [
+            self.batch([self.rock()], v=2),
+            self.batch([self.rock()], session="9F3A1C2B7D4E6F80"),
+            self.batch([self.rock()], session="9f3a1c2b7d4e6f8"),
+            self.batch([self.rock()], session=None),
+            self.batch([self.rock() for _ in range(51)]),
+            self.batch([]),
+            self.batch([self.rock(), self.rock(ore="Unobtainium")]),     # one rock wrong, none kept
+            self.batch([self.rock(observed=self.now - 4 * 86400)]),
+            self.batch([self.rock(mass=0)]),
+            self.batch([self.rock(scu="32.38")]),
+            self.batch([self.rock(resistance=-2)]),
+            self.batch([self.rock(instability=None)]),
+            self.batch([self.rock(printed="green")]),
+            self.batch([self.rock(ship="carrack")]),
+            self.batch([self.rock(range=2001)]),
+            self.batch([self.rock(place="Pyro " + "I" * 60)]),
+            self.batch([self.rock(parts=[{"inert": True, "percent": 11}] * 9)]),
+            self.batch([self.rock(parts=[{"ore": "Taranite", "percent": 9.37}])]),
+            self.batch([self.rock(parts=[{"ore": "Hadanite", "percent": 9.37, "quality": 500}])]),
+            self.batch([self.rock(parts=[{"inert": "yes", "percent": 52.11}])]),
+            [self.rock()],
+        ]
+        # (each from an address of its own: five from one would hold it back)
+        for i, body in enumerate(bad):
+            code, answer = self.call("/v1/rocks/observations", body, address="192.0.2.%d" % i)
+            self.assertEqual(code, 400, json.dumps(body)[:200])
+            self.assertFalse(answer["ok"])
+        self.assertEqual(self.call("/v1/rocks/observations", raw=b"{not json", address="192.0.2.99")[0], 400)
+        self.assertEqual(self.call("/v1/rocks/observations", raw=b"[" * 60000, address="192.0.2.98")[0], 400)
+        self.assertEqual(self.store.rock_count(), 0)
+        today = self.today()
+        self.assertEqual(today["rocks:rejected"], len(bad) + 2)
+        self.assertEqual((today["rocks:rejected:session"], today["rocks:rejected:ore"], today["rocks:rejected:json"]),
+                         (3, 2, 2))
+        self.assertNotIn("rejected", today)
+
+    def test_a_batch_may_be_larger_than_a_refinery_reading_up_to_64_kb(self):
+        body = json.dumps(self.batch([self.rock() for _ in range(50)])).encode("utf-8")
+        self.assertGreater(len(body), app.MAX_BODY)
+        self.assertEqual(self.call("/v1/refinery/observations", raw=body)[0], 413)    # its 16 KB stay
+        self.assertEqual(self.call("/v1/rocks/observations", raw=body),
+                         (201, {"ok": True, "stored": 50, "duplicates": 0}))
+        self.assertEqual(self.call("/v1/rocks/observations", raw=b"x" * (app.MAX_ROCK_BODY + 1))[0], 413)
+        self.assertEqual(self.call("/v1/rocks/observations", self.batch([self.rock()]), kind="text/plain")[0], 415)
+
+    def test_rocks_whose_figures_do_not_fit_together_are_kept_but_marked(self):
+        rocks = [
+            self.rock(),                                                              # as the panel read it
+            self.rock(ore="Ice", mass=76, scu=0.54, resistance=0, instability=0, parts=[]),   # ice: density 1
+            self.rock(mass=90000, scu=60),
+            self.rock(mass=1000, scu=10),                                             # density 0.7
+            self.rock(ore="Ice", mass=1000, scu=1, parts=[]),                         # density 7
+            self.rock(mass=4629, scu=32.4, resistance=0, instability=0, parts=[]),    # the panel's first picture
+            self.rock(parts=[{"ore": "Taranite", "percent": 9.37, "quality": 957}, {"inert": True, "percent": 52.11}]),
+        ]
+        # the sender is not told
+        self.assertEqual(self.send_rocks(rocks), (201, {"ok": True, "stored": 7, "duplicates": 0}))
+        self.assertEqual([r["implausible"] for r in self.rock_rows()],
+                         [None, None, "bigger than any rock", "lighter than its volume", "heavier than its parts",
+                          "not scanned yet", "parts do not add up"])
+        today = self.today()
+        self.assertEqual((today["rocks:accepted"], today["rocks:implausible"]), (2, 5))
+
+    def test_rocks_at_the_edges_of_what_the_game_makes_fit(self):
+        def at(ore, mass, scu, resistance=20, instability=50, parts=()):
+            return app.judge_rock({"ore": ore, "mass": mass, "scu": scu, "resistance": resistance,
+                                   "instability": instability, "parts": list(parts)})
+        self.assertEqual(at("Gold", 30100, 10), "")                  # all of it gold: density 21.07
+        self.assertEqual(at("Gold", 30800, 10), "heavier than its parts")
+        self.assertEqual(at("Quartz", 143, 1.0), "")                 # density 1: 142.857 kg, printed as 143
+        self.assertEqual(at("Quartz", 138, 1.0), "lighter than its volume")
+        self.assertEqual(at("Ice", 1, 0.01, 0, 0), "")               # the smallest figures the panel shows
+        self.assertEqual(at("Quartz", 3571, 10, 0, 0), "")           # no resistance, but scanned: density 2.5
+        self.assertEqual(at("Quartz", 1429, 10, 0, 0), "not scanned yet")
+        self.assertEqual(at("Quartz", 1429, 10, 0, 1), "")
+        self.assertEqual(at("Taranite", 82908, 59.22), "")           # the largest rock model, at density 9.8
+        self.assertEqual(at("Iron", 7000, 10, parts=[{"inert": True, "percent": 100.4}]), "")
+        self.assertEqual(at("Iron", 7000, 10, parts=[{"inert": True, "percent": 97.9}]), "parts do not add up")
+
+    def test_rocks_that_do_not_fit_hold_no_one_back_but_batches_turned_down_do(self):
+        for _ in range(app.MISFITS_PER_HOUR + 1):
+            self.assertEqual(self.send_rocks([self.rock(mass=1000, scu=10)], install=self.ONE)[0], 201)
+        for _ in range(app.MISFITS_PER_HOUR):
+            self.assertEqual(self.send_rocks([self.rock()], install=self.ONE, v=2)[0], 400)
+        code, answer = self.send_rocks([self.rock()], install=self.ONE)
+        self.assertEqual(code, 429)
+        self.assertIn("did not fit", answer["error"])
+        # ...and its refinery readings with them: an install is held back once
+        self.assertEqual(self.send(install=self.ONE)[0], 429)
+        today = self.today()
+        self.assertEqual((today["rocks:implausible"], today["rocks:rejected"], today["rocks:held"], today["held"]),
+                         (app.MISFITS_PER_HOUR + 1, app.MISFITS_PER_HOUR, 1, 1))
+
+    def test_rocks_have_a_limit_of_their_own(self):
+        self.rock_limiter.per_address = 3
+        for _ in range(3):
+            self.assertEqual(self.send_rocks([self.rock()], address="192.0.2.1")[0], 201)
+        self.assertEqual(self.send_rocks([self.rock()], address="192.0.2.1"),
+                         (429, {"ok": False, "error": "too many reports, try again later"}))
+        self.assertEqual(self.send_rocks([self.rock()], address="192.0.2.2")[0], 201)
+        self.assertEqual(self.send(address="192.0.2.1")[0], 201)    # the refinery's limit is another
+        today = self.today()
+        self.assertEqual(today["rocks:limited"], 1)
+        self.assertNotIn("limited", today)
+
+    def test_rocks_lose_the_senders_token_after_two_days_and_stay(self):
+        self.send_rocks([self.rock()], address="198.51.100.7", install=self.ONE)
+        self.send(address="198.51.100.7")
+        self.assertEqual(self.rock_rows()[0]["source"], self.rows()[0]["source"])    # a reading's token
+        self.store.prune(self.now + 3600)
+        self.assertIsNotNone(self.rock_rows()[0]["source"])
+        self.store.prune(self.now + 49 * 3600)
+        self.assertIsNone(self.rock_rows()[0]["source"])
+        self.assertEqual(self.store.rock_count(), 1)
+        kept = b""
+        for path in (self.store.path, self.store.path + "-wal"):
+            if os.path.exists(path):
+                with open(path, "rb") as f:
+                    kept += f.read()
+        self.assertNotIn(b"198.51.100", kept)
+        self.assertNotIn(self.ONE.encode(), kept)
+
+    def test_the_rocks_are_for_the_operator_alone(self):
+        rock = self.rock()
+        ice = self.rock(ore="Ice", mass=76, scu=0.54, resistance=-1, instability=-1, printed="", range=0, ship="",
+                        place="", parts=[])
+        self.send_rocks([rock, ice])
+        self.assertEqual(self.get("/v1/rocks/export.csv", "198.51.100.7"), (404, {"ok": False, "error": "not found"}))
+        code, text = self.call("/v1/rocks/export.csv")
+        self.assertEqual(code, 200)
+        lines = text.split("\n")
+        self.assertEqual(lines[0], "id,received,observed,bedrock,game,channel,session,ore,mass,scu,resistance,"
+                                   "printed,instability,range_m,ship,place,parts,implausible")
+        self.assertEqual(lines[1].split(",", 3)[2:], [
+            app.utc_iso(rock["observed"]), "3.0.3,4.10.2,LIVE,9f3a1c2b7d4e6f80,Taranite,25005,32.38,36,white,302.71,"
+            "27,prospector,Pyro - Pyro II,Taranite 9.37 957; Taranite 38.51 310; inert 52.11,"])
+        self.assertTrue(lines[2].endswith(",Ice,76,0.54," + self.BARE), lines[2])
+        self.assertEqual(len(lines), 4)
+        self.assertEqual(self.today()["req:rocks-export"], 1)       # the one through nginx
+        # ...and the same from the command line
+        target = os.path.join(self.folder.name, "rocks.csv")
+        out = io.StringIO()
+        app.DB_PATH, kept = self.store.path, app.DB_PATH
+        try:
+            with contextlib.redirect_stdout(out):
+                app.main(["--rocks-export", target])
+        finally:
+            app.DB_PATH = kept
+        self.assertIn("2 rocks written to", out.getvalue())
+        with open(target, encoding="utf-8", newline="") as f:
+            self.assertEqual(f.read(), text)
+
+    def test_health_counts_the_rocks(self):
+        self.send_rocks([self.rock(), self.rock()])
+        code, answer = self.call("/v1/health")
+        self.assertEqual((code, answer["observations"], answer["rocks"]), (200, 0, 2))
+
+    def test_a_database_from_before_the_rocks_gets_their_table(self):
+        self.send()
+        db = sqlite3.connect(self.store.path)
+        try:
+            with db:
+                db.execute("DROP TABLE rocks")
+        finally:
+            db.close()
+        app.Store(self.store.path)
+        self.assertEqual(self.send_rocks([self.rock()])[0], 201)
+        self.assertEqual((self.store.count(), self.store.rock_count()), (1, 1))
 
 
 if __name__ == "__main__":

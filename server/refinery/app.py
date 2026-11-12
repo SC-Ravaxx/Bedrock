@@ -32,6 +32,13 @@ Since anyone can send anything, nothing sent is taken on its word:
     easily made up
   - what slipped through can be found and taken out (--purge, --stats)
 
+Bedrock also sends the rocks a player scanned - what the mining scan panel
+printed and the rock's composition - unless sharing is turned off in its
+Settings. They are kept to work out rock sizes, densities and the game's
+resistance and instability, grouped by a random number Bedrock makes at
+each start and with nothing of the player. A rock whose figures do not fit
+together is kept but marked (judge_rock); only the operator gets them out.
+
 Standard library only, SQLite beside it. See README.md.
 """
 
@@ -61,7 +68,10 @@ DB_PATH = os.environ.get("BEDROCK_API_DB", "/data/refinery.db")
 PORT = int(os.environ.get("BEDROCK_API_PORT", "8080"))
 POSTS_PER_HOUR = int(os.environ.get("BEDROCK_API_POSTS_PER_HOUR", "120"))          # from one address
 POSTS_PER_HOUR_ALL = int(os.environ.get("BEDROCK_API_POSTS_PER_HOUR_ALL", "20000"))  # from everyone
+ROCK_POSTS_PER_HOUR = int(os.environ.get("BEDROCK_API_ROCK_POSTS_PER_HOUR", "60"))  # batches of rocks, from one address
+ROCK_POSTS_PER_HOUR_ALL = int(os.environ.get("BEDROCK_API_ROCK_POSTS_PER_HOUR_ALL", "20000"))  # ...from everyone
 MAX_BODY = 16 * 1024
+MAX_ROCK_BODY = 64 * 1024     # a batch of rocks: up to 50, each with its composition
 STATION_DAYS = 7              # /stations: how old a station's last reading may be
 QUOTE_DAYS_MAX = 60           # /quotes: the most days asked for at once
 QUOTES_MAX = 5000
@@ -94,6 +104,8 @@ ROUTE_NAMES = {
     ("GET", "/v1/refinery/export.csv"): "export",
     ("GET", "/v1/health"): "health",
     ("POST", "/v1/refinery/observations"): "observations",
+    ("POST", "/v1/rocks/observations"): "rocks",
+    ("GET", "/v1/rocks/export.csv"): "rocks-export",
 }
 # Bedrock's own User-Agent: "Bedrock/2.6.6 (Windows)", "(Linux)" - the
 # version and the platform, which is all it says
@@ -119,6 +131,32 @@ CHANNELS = ("LIVE", "PTU", "EPTU", "TECH-PREVIEW", "HOTFIX")
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .'()\-]{0,63}$")
 METHOD = re.compile(r"^[A-Z][A-Z_]{2,39}$")
 VERSION = re.compile(r"^\d{1,3}(\.\d{1,4}){1,3}$")
+
+# The rocks a player scanned (POST /v1/rocks/observations): what the mining
+# scan panel printed for each, and its composition
+ROCKS_MAX = 50                # rocks in one batch
+ROCK_PARTS_MAX = 8            # lines of a rock's composition
+ROCK_KG_PER_SCU = 142.857     # at density 1: one SCU of rock is 142.857 m3
+ROCK_SCU_MAX = 59.3           # the largest rock model holds 59.22 SCU
+# The densest element a rock of each ore can hold, from the game's element
+# densities (game data 4.10.2, recheck with each patch): no rock of that ore
+# weighs more per SCU
+ROCK_DENSITY_MAX = {
+    "Agricium": 7.14, "Aluminium": 4.03, "Aslarite": 7.14, "Beryl": 2.74, "Bexalite": 21.07, "Borase": 21.07,
+    "Copper": 9.03, "Corundum": 4.03, "Gold": 21.07, "Hephaestanite": 3.2, "Ice": 1.0, "Iron": 7.87,
+    "Laranite": 19.35, "Lindinium": 19.35, "Ouratite": 7.14, "Quantainium": 20.46, "Quartz": 3.2,
+    "Riccite": 11.49, "Savrilium": 21.07, "Silicon": 3.2, "Stileron": 10.2, "Taranite": 10.2, "Tin": 9.03,
+    "Titanium": 7.14, "Torite": 2.8, "Tungsten": 19.35,
+}
+ROCK_ORES = tuple(ROCK_DENSITY_MAX)
+ROCK_SHIPS = ("prospector", "mole", "golem")
+# how the panel printed the resistance: white, or green or red once a laser
+# on the rock had changed it
+ROCK_PRINTED = ("white", "colour")
+# A random number Bedrock makes at each start: one session's rocks - a rock
+# and the pieces it broke into - go together, and no install or player is
+# told apart by it
+SESSION = re.compile(r"^[0-9a-f]{16}\Z")
 
 
 def load_stations(path):
@@ -154,6 +192,10 @@ def utc_day(t):
 
 def utc_hour(t):
     return time.strftime("%Y-%m-%d %H", time.gmtime(t))
+
+
+def utc_iso(t):
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
 
 
 # ---------------------------------------------------------------- a report
@@ -334,6 +376,141 @@ def consensus(readings):
             "sources": len(readings), "confirmed": backing >= 1}
 
 
+# ---------------------------------------------------------------- a batch of rocks
+
+def _real(value, low, high, what):
+    """As _number, but the value as it was sent: SCU, shares and instability
+    have decimals"""
+    _number(value, low, high, what)
+    return value
+
+
+def _read(value, high, what):
+    """A figure the panel printed, 0 to `high` - or -1 where Bedrock could
+    not read it, kept as None"""
+    if value == -1 and not isinstance(value, bool):
+        return None
+    return _real(value, 0, high, what)
+
+
+def _choice(value, choices, what):
+    """One of `choices`, or None where it is left out or empty"""
+    if value is None or value == "":
+        return None
+    if value not in choices:
+        raise Invalid(what, "unknown " + what)
+    return value
+
+
+def _part(part):
+    """A line of a rock's composition: an ore with its share in per cent and
+    its quality, or the inert materials with their share"""
+    if not isinstance(part, dict):
+        raise Invalid("part", "a part is not an object")
+    inert = part.get("inert")
+    if inert is not None and not isinstance(inert, bool):
+        raise Invalid("inert", "inert is not true or false")
+    percent = _real(part.get("percent"), 0, 100, "percent")
+    if inert:
+        return {"inert": True, "percent": percent}
+    if part.get("ore") not in ROCK_ORES:
+        raise Invalid("ore", "unknown ore")
+    return {"ore": part["ore"], "percent": percent, "quality": _number(part.get("quality"), 0, 1000, "quality")}
+
+
+def _rock(rock, now):
+    if not isinstance(rock, dict):
+        raise Invalid("rock", "a rock is not an object")
+    if rock.get("ore") not in ROCK_ORES:
+        raise Invalid("ore", "unknown ore")
+    parts = rock.get("parts")
+    if parts is None:
+        parts = []
+    if not isinstance(parts, list) or len(parts) > ROCK_PARTS_MAX:
+        raise Invalid("parts", "a rock has 0 to %d parts" % ROCK_PARTS_MAX)
+    place = rock.get("place")
+    return {
+        "observed": _number(rock.get("observed"), now - OBSERVED_PAST, now + OBSERVED_FUTURE, "observed"),
+        "ore": rock["ore"],
+        "mass": _real(rock.get("mass"), 1, 1000000, "mass"),             # kg
+        "scu": _real(rock.get("scu"), 0.01, 100, "scu"),
+        "resistance": _read(rock.get("resistance"), 100, "resistance"),  # per cent, as printed
+        "printed": _choice(rock.get("printed"), ROCK_PRINTED, "printed"),
+        "instability": _read(rock.get("instability"), 100000, "instability"),
+        # metres to the rock; 0 where not known
+        "range": _number(rock.get("range"), 0, 2000, "range", optional=True) or None,
+        "ship": _choice(rock.get("ship"), ROCK_SHIPS, "ship"),
+        "place": None if place in (None, "") else _text(place, NAME, "place"),
+        # in the panel's order; none where the list was not read whole
+        "parts": [_part(part) for part in parts],
+    }
+
+
+def validate_rocks(body, now):
+    """A batch of rocks as Bedrock sends it (README.md), checked and put in
+    order; Invalid where anything in it is not what the scan panel can show,
+    and the whole batch is turned down"""
+    if not isinstance(body, dict):
+        raise Invalid("report", "the report is not a JSON object")
+    if body.get("v") != API_VERSION:
+        raise Invalid("version", "unknown report version")
+    channel = body.get("channel")
+    if channel is not None and channel not in CHANNELS:
+        raise Invalid("channel", "unknown channel")
+    rocks = body.get("rocks")
+    if not isinstance(rocks, list) or not 1 <= len(rocks) <= ROCKS_MAX:
+        raise Invalid("rocks", "a report has 1 to %d rocks" % ROCKS_MAX)
+    return {
+        "bedrock": _text(body.get("bedrock"), VERSION, "bedrock"),
+        "game": _text(body.get("game"), VERSION, "game", optional=True),
+        "channel": channel,
+        "session": _text(body.get("session"), SESSION, "session"),
+        "rocks": [_rock(rock, now) for rock in rocks],
+    }
+
+
+def judge_rock(rock):
+    """'' where a rock's figures fit together, else what does not.
+
+    Its mass has to lie between that of its volume at density 1 and at the
+    densest element its ore can hold, with room for the panel rounding the
+    mass to a kilogram and the volume to 0.01 SCU. The panel's first
+    picture, before the game knows what the rock is made of, shows density 1
+    and neither resistance nor instability - only ice is like that once
+    scanned. Where the composition was read, its shares add up to 100 %.
+    A rock that does not fit is kept, marked and left out of the analysis;
+    it does not hold its sender back, as a panel is easily misread."""
+    mass, scu = rock["mass"], rock["scu"]
+    if scu > ROCK_SCU_MAX:
+        return "bigger than any rock"
+    if (mass + 1) / max(0.001, scu - 0.01) < ROCK_KG_PER_SCU * 0.99:
+        return "lighter than its volume"
+    if (mass - 1) / (scu + 0.01) > ROCK_KG_PER_SCU * ROCK_DENSITY_MAX[rock["ore"]] * 1.01:
+        return "heavier than its parts"
+    if (rock["ore"] != "Ice" and rock["resistance"] == 0 and rock["instability"] == 0
+            and abs(mass - ROCK_KG_PER_SCU * scu) <= max(1.5, 0.006 * mass)):
+        return "not scanned yet"
+    if rock["parts"] and not 98 <= sum(part["percent"] for part in rock["parts"]) <= 100.5:
+        return "parts do not add up"
+    return ""
+
+
+def _figure(x):
+    """A figure as it was sent: 25005, not 25005.0"""
+    if x is None:
+        return ""
+    return "%d" % x if x == int(x) else repr(x)
+
+
+def parts_text(parts):
+    """A rock's composition as kept (JSON) on one line, "Taranite 9.37 957;
+    inert 52.11" - each ore with its share and quality, the inert share"""
+    if not parts:
+        return ""
+    return "; ".join("inert " + _figure(p["percent"]) if p.get("inert")
+                     else "%s %s %d" % (p["ore"], _figure(p["percent"]), p["quality"]) for p in json.loads(parts))
+
+
 # ---------------------------------------------------------------- the store
 
 SCHEMA = """
@@ -371,7 +548,9 @@ CREATE TABLE IF NOT EXISTS quote_items (
 CREATE TABLE IF NOT EXISTS counters (
     day TEXT NOT NULL,                -- UTC
     name TEXT NOT NULL,               -- accepted, duplicate, implausible, limited, held, rejected, rejected:<field>;
-                                      -- req:<route>, agent:<version>, platform:<os>, clients, senders
+                                      -- req:<route>, agent:<version>, platform:<os>, clients, senders;
+                                      -- rocks:accepted, rocks:duplicate, rocks:implausible (each rock), rocks:limited,
+                                      -- rocks:held, rocks:rejected, rocks:rejected:<field> (each batch), rock-senders
     count INTEGER NOT NULL,
     PRIMARY KEY (day, name)
 );
@@ -381,6 +560,30 @@ CREATE TABLE IF NOT EXISTS hourly (
     count INTEGER NOT NULL,
     PRIMARY KEY (hour, name)
 );
+CREATE TABLE IF NOT EXISTS rocks (
+    id INTEGER PRIMARY KEY,
+    received INTEGER NOT NULL,        -- server time, UTC seconds
+    observed INTEGER NOT NULL,        -- when the scan panel showed it
+    source TEXT,                      -- tells senders apart; NULL after SOURCE_HOURS
+    session TEXT NOT NULL,            -- the random number of the Bedrock start that sent it
+    bedrock TEXT,
+    game TEXT,
+    channel TEXT,
+    ore TEXT NOT NULL,
+    mass REAL NOT NULL,               -- kg
+    scu REAL NOT NULL,
+    resistance REAL,                  -- per cent, as printed; NULL where it was not read
+    printed TEXT,                     -- white, or colour: a laser on the rock had changed it
+    instability REAL,                 -- NULL where it was not read
+    range_m INTEGER,                  -- metres to the rock; NULL where not known
+    ship TEXT,
+    place TEXT,
+    parts TEXT,                       -- the composition as JSON, in the panel's order; NULL where not read whole
+    implausible TEXT,                 -- what does not fit (judge_rock); NULL where it all does
+    UNIQUE (session, observed, ore, mass, scu)   -- the same rock sent twice is kept once
+);
+-- the prune's: only the rocks of the last two days still have a token
+CREATE INDEX IF NOT EXISTS rocks_token ON rocks (received) WHERE source IS NOT NULL;
 """
 
 
@@ -487,19 +690,51 @@ class Store:
             finally:
                 db.close()
 
-    def tally(self, now, *names):
-        """One more of each, today - and this hour, for the requests (req:)"""
+    def add_rocks(self, batch, now, source, reasons):
+        """Keeps a checked batch of rocks, each with what did not fit ('' where
+        it all did); for each rock whether it is new - the same rock sent
+        twice is kept once"""
+        new = []
         with self.lock:
             db = self._db()
             try:
                 with db:
-                    for name in names:
-                        db.execute("INSERT INTO counters VALUES (?, ?, 1)"
-                                   " ON CONFLICT (day, name) DO UPDATE SET count = count + 1", (utc_day(now), name))
+                    for rock, reason in zip(batch["rocks"], reasons):
+                        parts = json.dumps(rock["parts"], separators=(",", ":")) if rock["parts"] else None
+                        cur = db.execute(
+                            "INSERT OR IGNORE INTO rocks (received, observed, source, session, bedrock, game, channel,"
+                            " ore, mass, scu, resistance, printed, instability, range_m, ship, place, parts,"
+                            " implausible) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            (now, rock["observed"], source, batch["session"], batch["bedrock"], batch["game"],
+                             batch["channel"], rock["ore"], rock["mass"], rock["scu"], rock["resistance"],
+                             rock["printed"], rock["instability"], rock["range"], rock["ship"], rock["place"],
+                             parts, reason or None))
+                        new.append(cur.rowcount == 1)
+                return new
+            finally:
+                db.close()
+
+    def tally(self, now, *names):
+        """One more of each, today - and this hour, for the requests (req:)"""
+        self.tally_many(now, [(name, 1) for name in names])
+
+    def tally_many(self, now, counts):
+        """As tally, n more of each (name, n) - a batch of rocks counts every
+        rock; nothing where n is 0"""
+        with self.lock:
+            db = self._db()
+            try:
+                with db:
+                    for name, n in counts:
+                        if n < 1:
+                            continue
+                        db.execute("INSERT INTO counters VALUES (?, ?, ?)"
+                                   " ON CONFLICT (day, name) DO UPDATE SET count = count + excluded.count",
+                                   (utc_day(now), name, n))
                         if name.startswith("req:"):
-                            db.execute("INSERT INTO hourly VALUES (?, ?, 1)"
-                                       " ON CONFLICT (hour, name) DO UPDATE SET count = count + 1",
-                                       (utc_hour(now), name))
+                            db.execute("INSERT INTO hourly VALUES (?, ?, ?)"
+                                       " ON CONFLICT (hour, name) DO UPDATE SET count = count + excluded.count",
+                                       (utc_hour(now), name, n))
             finally:
                 db.close()
 
@@ -528,6 +763,13 @@ class Store:
         db = self._db()
         try:
             return db.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
+        finally:
+            db.close()
+
+    def rock_count(self):
+        db = self._db()
+        try:
+            return db.execute("SELECT COUNT(*) FROM rocks").fetchone()[0]
         finally:
             db.close()
 
@@ -566,14 +808,16 @@ class Store:
                 "totals": {"observations": total[0], "quotes": total[1], "stations": total[2]}}
 
     def prune(self, now):
-        """Readings lose their sender's token after SOURCE_HOURS, counters go
-        after COUNTER_DAYS and the hourly ones after HOURLY_DAYS, only today's
-        and yesterday's salt stay, and only today's tokens seen"""
+        """Readings and rocks lose their sender's token after SOURCE_HOURS,
+        counters go after COUNTER_DAYS and the hourly ones after HOURLY_DAYS,
+        only today's and yesterday's salt stay, and only today's tokens seen"""
         with self.lock:
             db = self._db()
             try:
                 with db:
                     db.execute("UPDATE observations SET source = NULL WHERE source IS NOT NULL AND received < ?",
+                               (now - SOURCE_HOURS * 3600,))
+                    db.execute("UPDATE rocks SET source = NULL WHERE source IS NOT NULL AND received < ?",
                                (now - SOURCE_HOURS * 3600,))
                     db.execute("DELETE FROM counters WHERE day < ?", (utc_day(now - COUNTER_DAYS * 86400),))
                     db.execute("DELETE FROM hourly WHERE hour < ?", (utc_hour(now - HOURLY_DAYS * 86400),))
@@ -690,6 +934,26 @@ class Store:
             db.close()
 
     # -- for whoever runs it
+
+    def rocks_csv(self, out):
+        """Every rock kept, as CSV into `out`, for whoever runs the service -
+        with what did not fit, never who sent it; how many rocks"""
+        db = self._db()
+        try:
+            w = csv.writer(out, lineterminator="\n")
+            w.writerow(["id", "received", "observed", "bedrock", "game", "channel", "session", "ore", "mass", "scu",
+                        "resistance", "printed", "instability", "range_m", "ship", "place", "parts", "implausible"])
+            n = 0
+            for row in db.execute("SELECT * FROM rocks ORDER BY id"):
+                w.writerow([row["id"], utc_iso(row["received"]), utc_iso(row["observed"]), row["bedrock"],
+                            row["game"], row["channel"], row["session"], row["ore"], _figure(row["mass"]),
+                            _figure(row["scu"]), _figure(row["resistance"]), row["printed"],
+                            _figure(row["instability"]), row["range_m"], row["ship"], row["place"],
+                            parts_text(row["parts"]), row["implausible"]])
+                n += 1
+            return n
+        finally:
+            db.close()
 
     def purge(self, since, until, station=None, implausible_only=False, really=False):
         """The readings observed from `since` to `until` (UTC seconds), of one
@@ -842,6 +1106,7 @@ class Handler(BaseHTTPRequestHandler):
     sys_version = ""
     store = None
     limiter = None
+    rock_limiter = None
     misfits = None
 
     def log_message(self, fmt, *args):
@@ -920,6 +1185,7 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/v1/health":
             today = self.store.counters(utc_day(now)).get(utc_day(now), {})
             return self._send(200, {"ok": True, "version": API_VERSION, "observations": self.store.count(),
+                                    "rocks": self.store.rock_count(),
                                     "today": {name: today.get(name, 0) for name in
                                               ("accepted", "duplicate", "implausible", "limited", "held",
                                                "rejected")}})
@@ -939,20 +1205,30 @@ class Handler(BaseHTTPRequestHandler):
                                     "quotes": self.store.quotes(now, days, station)})
         if route == "/v1/refinery/export.csv":
             return self._send(200, self.store.export_csv().encode("utf-8"), "text/csv; charset=utf-8")
+        if route == "/v1/rocks/export.csv":
+            # the operator's, like /v1/stats: through nginx it is not there
+            if self.headers.get("X-Real-IP"):
+                return self._fail(404, "not found")
+            out = io.StringIO()
+            self.store.rocks_csv(out)
+            return self._send(200, out.getvalue().encode("utf-8"), "text/csv; charset=utf-8")
         return self._fail(404, "not found")
 
     do_HEAD = do_GET
 
     def do_POST(self):
         now = int(time.time())
-        self._count(now, self._route())
-        if self._route() != "/v1/refinery/observations":
+        route = self._route()
+        self._count(now, route)
+        # a refinery reading comes alone, the rocks in batches
+        largest = {"/v1/refinery/observations": MAX_BODY, "/v1/rocks/observations": MAX_ROCK_BODY}.get(route)
+        if largest is None:
             return self._fail(404, "not found")
         try:
             length = int(self.headers.get("Content-Length", ""))
         except ValueError:
             return self._fail(411, "length required")
-        if length < 0 or length > MAX_BODY:
+        if length < 0 or length > largest:
             return self._fail(413, "too large")
         if self.headers.get("Content-Type", "").split(";")[0].strip().lower() != "application/json":
             return self._fail(415, "send application/json")
@@ -963,6 +1239,8 @@ class Handler(BaseHTTPRequestHandler):
         # easily made up
         install = self._install()
         misfit = [address] + (["install:" + install] if install else [])
+        if route == "/v1/rocks/observations":
+            return self._rocks(now, address, misfit, length)
         if self.misfits.held(misfit, now):
             self.store.tally(now, "held")
             return self._fail(429, "too many readings that did not fit, try again in a few minutes")
@@ -996,12 +1274,46 @@ class Handler(BaseHTTPRequestHandler):
         # forger what passes
         return self._send(201 if stored else 200, {"ok": True, "stored": stored})
 
+    def _rocks(self, now, address, misfit, length):
+        """A batch of rocks (POST /v1/rocks/observations), kept whole where it
+        fits the format; a rock whose figures do not fit together is marked
+        (judge_rock), and the sender is neither told nor held back for it"""
+        if self.misfits.held(misfit, now):
+            self.store.tally(now, "rocks:held")
+            return self._fail(429, "too many readings that did not fit, try again in a few minutes")
+        if not self.rock_limiter.allow(address, now):
+            self.store.tally(now, "rocks:limited")
+            return self._fail(429, "too many reports, try again later")
+        raw = self.rfile.read(length)
+        try:
+            batch = validate_rocks(json.loads(raw.decode("utf-8")), now)
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):   # the last: nested too deep to parse
+            self.misfits.add(misfit, now)
+            self.store.tally(now, "rocks:rejected", "rocks:rejected:json")
+            return self._fail(400, "not JSON")
+        except Invalid as e:
+            self.misfits.add(misfit, now)
+            self.store.tally(now, "rocks:rejected", "rocks:rejected:" + e.code)
+            return self._fail(400, str(e))
+        reasons = [judge_rock(rock) for rock in batch["rocks"]]
+        new = self.store.add_rocks(batch, now, self.store.source(address, now), reasons)
+        stored = sum(new)
+        counts = [("rocks:accepted", sum(1 for n, r in zip(new, reasons) if n and not r)),
+                  ("rocks:implausible", sum(1 for n, r in zip(new, reasons) if n and r)),
+                  ("rocks:duplicate", len(new) - stored)]
+        if self.store.first_today("rock-senders", self.store.source(self._who(address), now), now):
+            counts.append(("rock-senders", 1))
+        self.store.tally_many(now, counts)
+        return self._send(201 if stored else 200, {"ok": True, "stored": stored, "duplicates": len(new) - stored})
 
-def serve(store, limiter, host="0.0.0.0", port=PORT, misfits=None):
+
+def serve(store, limiter, host="0.0.0.0", port=PORT, misfits=None, rock_limiter=None):
     """The service, not started yet: serve_forever() on the result. A thread
-    beside it prunes every ten minutes (Store.prune)."""
-    handler = type("BoundHandler", (Handler,), {"store": store, "limiter": limiter,
-                                                "misfits": misfits or Misfits()})
+    beside it prunes every ten minutes (Store.prune). The rocks have a limit
+    of their own (ROCK_POSTS_PER_HOUR)."""
+    handler = type("BoundHandler", (Handler,), {
+        "store": store, "limiter": limiter, "misfits": misfits or Misfits(),
+        "rock_limiter": rock_limiter or Limiter(ROCK_POSTS_PER_HOUR, ROCK_POSTS_PER_HOUR_ALL)})
     server = ThreadingHTTPServer((host, port), handler)
     server.daemon_threads = True
 
@@ -1030,6 +1342,7 @@ def parse_time(text):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Bedrock's refinery observations")
     parser.add_argument("--backup", metavar="FILE", help="write a consistent copy of the database to FILE and exit")
+    parser.add_argument("--rocks-export", metavar="FILE", help="write the rocks kept to FILE as CSV and exit")
     parser.add_argument("--stats", action="store_true", help="what came in over the last 14 days, and exit")
     parser.add_argument("--purge", action="store_true",
                         help="take readings out: those observed from --since to --until (UTC), of --station or "
@@ -1048,6 +1361,11 @@ def main(argv=None):
         store.backup(args.backup)
         print("backed up to", args.backup)
         return 0
+    if args.rocks_export:
+        with open(args.rocks_export, "w", encoding="utf-8", newline="") as f:
+            n = store.rocks_csv(f)
+        print("%d rock%s written to %s" % (n, "" if n == 1 else "s", args.rocks_export))
+        return 0
     if args.stats:
         for day, names in sorted(store.counters(utc_day(time.time() - 13 * 86400)).items()):
             print(day, "  ".join("%s %d" % (name, n) for name, n in sorted(names.items())))
@@ -1065,7 +1383,8 @@ def main(argv=None):
         print("%d reading%s %s" % (found, "" if found == 1 else "s", "taken out" if args.yes and found
                                    else "would be taken out - again with --yes to do it"))
         return 0
-    server = serve(store, Limiter(POSTS_PER_HOUR, POSTS_PER_HOUR_ALL))
+    server = serve(store, Limiter(POSTS_PER_HOUR, POSTS_PER_HOUR_ALL),
+                   rock_limiter=Limiter(ROCK_POSTS_PER_HOUR, ROCK_POSTS_PER_HOUR_ALL))
     print("bedrock-api: %s on port %d, %d stations known, %s" % (
         DB_PATH, PORT, len(STATIONS), "refining model loaded" if TABLES else "no refining model"), flush=True)
     try:
