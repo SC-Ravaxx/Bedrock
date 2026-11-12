@@ -1346,6 +1346,33 @@ int runScreenshots(const std::string& dir) {
         pump();
         shoot(gui.windowHandle(), "rock_near.png");
 
+        // ...and the panel's first picture of a rock the game has not
+        // finished scanning - its volume for its mass, no resistance, no
+        // instability - which the view took for some seconds until
+        // RockScans held it back, beside the rock once scanned (a
+        // Lindinium, 30 October 2026)
+        {
+            SCMiner::RockStats first;
+            first.ore = "Lindinium";
+            first.mass = 7822;
+            first.resistance = 0;
+            first.instability = 0;
+            first.scu = 54.75f;
+            first.distance = 27.0f;
+            gui.updateRock(first);
+            pump();
+            shoot(gui.windowHandle(), "rock_unscanned.png");
+            SCMiner::RockStats scanned = first;
+            scanned.mass = 44059;
+            scanned.resistance = 53;
+            scanned.instability = 581.9f;
+            gui.updateRock(scanned);
+            pump();
+            shoot(gui.windowHandle(), "rock_unscanned_scanned.png");
+            gui.updateRock(rock);
+            pump();
+        }
+
         // ...and in a MOLE's turret, the player's own head known by its HUD
         // (setTurretLaser) and not: the MOLE fitted as it was flown - two
         // crafted Helix II with three Rieger-C3 each, a crafted Hofstede-S2
