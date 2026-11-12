@@ -566,6 +566,8 @@ Application::Application() {
 
 Application::~Application() {
     stop();
+    rockScans_.gone();
+    keepRockScans();
     destroyOverlay();
     g_appInstance = nullptr;
 }
@@ -1661,6 +1663,7 @@ void Application::lookForRock() {
         rockUnsettled_ = 0;
         rockToView(rock, now);
         logRockReading(panel, &shownRock_, range.metres);
+        noteRockScan(panel.stats);
         loadoutCheckForRock(rock.mass);
         shownMass_ = rock.mass;
         shownOre_ = rock.ore;
@@ -1745,6 +1748,7 @@ void Application::lookForRock() {
         // gauge beside it, where that is read - see laserRange
         rockToView(rock, now);
         logRockReading(panel, &shownRock_, range.metres);
+        noteRockScan(panel.stats);
         loadoutCheckForRock(rock.mass);
         shownMass_ = rock.mass;
         shownOre_ = rock.ore;
@@ -2102,10 +2106,57 @@ void Application::takeSeenLoadout(const SeenLoadout& seen, const MiningShip& kin
 
 void Application::clearRockView() {
     if (contentsFor_ > 0) logRockList("off", contentsFor_, 0, nullptr, contentsTries_, "the rock went off view");
+    rockScans_.gone();
+    keepRockScans();
     gui_->clearRock();
     contentsFor_ = 0;
     contentsWanted_ = 0;
     contentsTries_ = 0;
+}
+
+// The rock the view took, for rock_scans.csv: where and from which ship -
+// the place as the header names it, a place set by hand as well
+void Application::noteRockScan(const RockStats& look) {
+    std::string place = placeLine_;
+    const std::string byHand = " (set manually)";
+    if (place.size() > byHand.size() && place.compare(place.size() - byHand.size(), byHand.size(), byHand) == 0) {
+        place.resize(place.size() - byHand.size());
+    }
+    const long long observed = (long long)std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    rockScans_.taken(shownRock_, look, observed, RockScans::shipKind(gameState_.ship()), place);
+    keepRockScans();
+}
+
+// Each rock gone off view, a line in debug/rock_scans.csv: its figures, the
+// list where the view read it, the place and the ship - in a release too,
+// for what the player wants to work out from their own rocks
+void Application::keepRockScans() {
+    const std::vector<RockScans::Scan> done = rockScans_.done();
+    if (done.empty()) return;
+    std::error_code ec;
+    std::filesystem::create_directories(dataPath("debug"), ec);
+    const std::string path = dataPath("debug") + "/rock_scans.csv";
+    // a file with other columns in it starts over
+    if (std::filesystem::exists(path, ec)) {
+        std::ifstream in(path);
+        std::string first;
+        std::getline(in, first);
+        in.close();
+        while (!first.empty() && (first.back() == '\r' || first.back() == '\n')) first.pop_back();
+        if (first != RockScans::CSV_HEADER) std::filesystem::rename(path, dataPath("debug") + "/rock_scans.old.csv", ec);
+    }
+    const bool fresh = !std::filesystem::exists(path, ec);
+    std::ofstream out(path, std::ios::app);
+    if (!out.is_open()) return;
+    if (fresh) out << RockScans::CSV_HEADER << std::endl;
+    for (const RockScans::Scan& scan : done) {
+        const std::time_t secs = (std::time_t)scan.observed;
+        std::tm local{};
+        localtime_s(&local, &secs);
+        char when[40] = {};
+        std::strftime(when, sizeof(when), "%Y-%m-%d %H:%M:%S", &local);
+        out << RockScans::csvLine(scan, when) << std::endl;
+    }
 }
 
 // What the rock on view holds: the composition list under the panel's
@@ -2254,6 +2305,11 @@ void Application::takeRockContents(const RockContents& read, const RockStats& ro
     contentsShown_ = key;
     contentsTries_ = 0;
     gui_->setRockContents(read);
+    {
+        std::vector<RockScans::ScanPart> parts;
+        for (const RockPartRead& part : read.parts) parts.push_back({part.ore, part.inert, part.percent, part.quality});
+        rockScans_.listed(rock.mass, parts);
+    }
     // ...and what players on UEX pay for a part this good
     uexRockOres_.clear();
     for (const RockPartRead& part : read.parts) {

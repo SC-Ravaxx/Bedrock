@@ -691,6 +691,56 @@ int runSelfTest() {
                                "have, wait - the same impossible figures on eight looks are taken");
         }
 
+        // The rocks of a session for rock_scans.csv, a line each
+        {
+            using namespace SCMiner::RockScans;
+            auto rockOf = [](const char* ore, float mass, float scu, float resistance, bool colour, float instability) {
+                SCMiner::RockStats r;
+                r.ore = ore;
+                r.mass = mass;
+                r.scu = scu;
+                r.resistance = resistance;
+                r.resistanceAdjusted = colour;
+                r.instability = instability;
+                return r;
+            };
+            // a Taranite first seen with a laser on it and its instability
+            // not read, then white, then with its range and its list;
+            // another rock; the Taranite again
+            SCMiner::RockStats taranite = rockOf("Taranite", 25005, 32.38f, 24, true, 302.71f);
+            SCMiner::RockStats unread = taranite;
+            unread.instability = -1;
+            const SCMiner::RockStats lindinium = rockOf("Lindinium", 44059, 54.75f, 53, false, 581.9f);
+            Recorder recorder;
+            recorder.taken(taranite, unread, 1794000000, "prospector", "Pyro - Pyro II");
+            const SCMiner::RockStats white = rockOf("Taranite", 25005, 32.38f, 36, false, 302.71f);
+            recorder.taken(white, white, 1794000003, "prospector", "Pyro - Pyro II");
+            SCMiner::RockStats ranged = white;
+            ranged.distance = 27;
+            recorder.taken(ranged, ranged, 1794000004, "prospector", "Pyro - Pyro II");
+            recorder.listed(25005, {{"Taranite", false, 9.37f, 957}, {"Taranite", false, 38.51f, 310}, {"", true, 52.11f, 0}});
+            const bool open = recorder.done().empty();
+            recorder.taken(lindinium, lindinium, 1794000030, "mole", "Pyro - Pyro II");
+            recorder.taken(white, white, 1794000060, "prospector", "Pyro - Pyro II");
+            recorder.gone();
+            const std::vector<Scan> scans = recorder.done();
+            const bool two = scans.size() == 2 && scans[0].ore == "Taranite" && scans[1].ore == "Lindinium" &&
+                             scans[0].observed == 1794000000 && scans[0].resistance == 36 && !scans[0].inColour &&
+                             std::abs(scans[0].instability - 302.71f) < 0.01f && scans[0].rangeMetres == 27 && scans[0].parts.size() == 3 &&
+                             scans[1].parts.empty() && scans[1].instability > 581;
+            const std::string line = two ? csvLine(scans[0], "2026-11-08 12:54:16") : std::string();
+            const bool written =
+                line == "2026-11-08 12:54:16,\"Taranite\",25005,32.38,36,white,302.71,27,\"prospector\",\"Pyro - Pyro II\","
+                        "\"Taranite 9.37 957; Taranite 38.51 310; inert 52.11\"";
+            const bool ships = shipKind("MISC_Prospector") == "prospector" && shipKind("ARGO_MOLE") == "mole" &&
+                               shipKind("DRAK_Golem") == "golem" && shipKind("GRIN_ROC").empty() &&
+                               shipKind("").empty();
+            allPassed &= check(open && two && written && ships,
+                               "each rock the view took is a line of rock_scans.csv - its own resistance over one a "
+                               "laser changed, its range and its list - and a rock looked at again counts once");
+            if (!written) std::cout << "    rock_scans.csv line: " << line << std::endl;
+        }
+
         // The gadget: what the panel prints with it on, taken back
         const SCMiner::MiningGadget* sabir = SCMiner::gadgetById("shin_sabir");
         SCMiner::RockStats rock;

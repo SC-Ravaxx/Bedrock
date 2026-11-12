@@ -189,6 +189,8 @@ private:
     // RANGE gauge read on the same look, 0 for nothing.
     void logRockReading(const ScanPanel& panel, const RockStats* steady, int rangeMetres,
                         const std::string& notTaken = std::string());
+    void noteRockScan(const RockStats& look);
+    void keepRockScans();
     // The laser's range to the rock: the middle of the gauge's last five
     // readings, none older than RANGE_KEPT; 0 when there is none, which the
     // rock view reads as full power. A look that reads no gauge leaves the
@@ -228,6 +230,7 @@ private:
     PanelSteadier rockSteadier_;
     int rockUnsettled_ = 0;       // looks in a row that found a panel and settled nothing
     RockScans::LookCheck rockCheck_;  // figures no rock can have wait, as unsettled ones do
+    RockScans::Recorder rockScans_;   // the rocks the view took, for rock_scans.csv
     bool rockLabelsOnly_ = false; // the last look found the labels and no figures
     int rockQuickLooks_ = 0;      // ...and how many looks in a row came straight after
     bool rockSettling_ = false;   // the last look found a panel whose figures have not settled

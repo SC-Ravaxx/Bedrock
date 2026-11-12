@@ -15,7 +15,9 @@
 // 2026, 13,631 read an ore, a mass and SCU: 151 showed a rock the game had
 // not finished scanning (below), 221 a figure misread - an SCU of 1.00, 7.00
 // or 474.54 - and the median over five looks passed some of both to the view.
+#include <map>
 #include <string>
+#include <vector>
 
 namespace SCMiner {
 
@@ -57,6 +59,62 @@ private:
     float mass_ = 0, scu_ = 0;
     int looks_ = 0;
 };
+
+// One rock as the view took it: a line of rock_scans.csv, and what goes to
+// the service where the player shares (sharerocks=1).
+struct ScanPart {
+    std::string ore;         // as the signature table spells it; "" for the inert rest
+    bool inert = false;
+    float percent = 0;       // of the rock
+    int quality = 0;         // 0 for the inert rest
+};
+
+struct Scan {
+    long long observed = 0;  // UTC seconds: the look that took it
+    std::string ore;
+    float mass = 0, scu = 0;
+    float resistance = -1;   // per cent, as printed; -1 not read
+    bool inColour = false;   // ...in colour: a laser on the rock had had its say
+    float instability = -1;  // -1 not read
+    int rangeMetres = 0;     // the laser's range to it; 0 not read
+    std::string ship;        // "prospector", "mole" or "golem"; "" for another
+    std::string place;       // as the window's header names it; "" unknown
+    std::vector<ScanPart> parts;   // the list in the panel's order, where the view read it whole
+};
+
+// The rocks of a session, a Scan each. A rock comes in with the first look
+// the view takes of it and goes out when another rock comes on view or the
+// view empties. Looks of the same rock in between - the same ore, mass and
+// SCU - add what the first did not have: the resistance in white, the
+// instability, the range, the list. A rock looked at again later counts
+// once, or twice where only the second time read its list.
+class Recorder {
+public:
+    // The rock on view - the figures the view shows - and the look that
+    // showed them, which says whether the instability was read at all
+    void taken(const RockStats& shown, const RockStats& look, long long observed, const std::string& ship,
+               const std::string& place);
+    // The list the view shows, read at that mass
+    void listed(float mass, const std::vector<ScanPart>& parts);
+    void gone();
+    // The rocks gone out since the last call
+    std::vector<Scan> done();
+
+private:
+    bool open_ = false;
+    Scan scan_;
+    std::vector<Scan> done_;
+    std::map<std::string, bool> counted_;   // rocks gone out, and whether with their list
+};
+
+// "prospector", "mole" or "golem" for the ship the log names; "" for any other
+std::string shipKind(const std::string& logShip);
+// "Taranite 9.37 957; Taranite 38.51 310; inert 52.11"
+std::string partsText(const std::vector<ScanPart>& parts);
+// rock_scans.csv: its header, and a rock's line under it - `time` as the
+// caller writes it
+extern const char* const CSV_HEADER;
+std::string csvLine(const Scan& scan, const std::string& time);
 
 }  // namespace RockScans
 }  // namespace SCMiner
