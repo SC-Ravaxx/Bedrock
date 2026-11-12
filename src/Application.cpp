@@ -609,6 +609,7 @@ bool Application::initialize() {
     // workloads carry it too: the service holds back an install that sends
     // too many readings that do not fit.
     installId_ = statsWanted_ ? Updater::installId(AppPaths::file(INSTALL_ID_FILE)) : std::string();
+    rockSession_ = RockScans::newSession();
     updater_.setInstallId(installId_);
     updater_.checkInBackground();
     lastUpdateCheck_ = std::chrono::steady_clock::now();
@@ -844,6 +845,9 @@ void Application::runWithGUI(HINSTANCE hInstance) {
     // The Refinery window's box that shares refinery workloads
     gui_->setRefineryShare(refineryShare_, !refineryServiceUrl().empty());
     gui_->setRefineryShareCallback([this](bool on) { setRefineryShare(on); });
+    // ...and the Settings window's box that shares rock scans
+    gui_->setRockShare(rockShare_, !refineryServiceUrl().empty());
+    gui_->setRockShareCallback([this](bool on) { setRockShare(on); });
     loadPlaceOverride();
     gui_->setLiveModeCallback([this](bool active) { applyLiveMode(active); });
     // The update strip: one click fetches, the next installs. Nothing
@@ -1112,6 +1116,7 @@ void Application::runWithGUI(HINSTANCE hInstance) {
         lookForRefinery();
         handRefineryOrdersToUex();
         serviceRefineryShare();
+        serviceRockShare();
 
         // Live mode
         if (liveModeActive_) {
@@ -2156,6 +2161,60 @@ void Application::keepRockScans() {
         char when[40] = {};
         std::strftime(when, sizeof(when), "%Y-%m-%d %H:%M:%S", &local);
         out << RockScans::csvLine(scan, when) << std::endl;
+        // ...and to the service, where the player shares
+        if (rockShare_ && !refineryServiceUrl().empty() && RockScans::sendable(scan)) rockShareQueue_.push_back(scan);
+    }
+    while (rockShareQueue_.size() > 500) rockShareQueue_.pop_front();
+}
+
+void Application::setRockShare(bool on) {
+    rockShare_ = on;
+    if (!on) rockShareQueue_.clear();
+    saveRegionConfig();
+    if (gui_) gui_->setRockShare(rockShare_, !refineryServiceUrl().empty());
+}
+
+// The rocks, fifty at most to a report, off the UI thread: the first at
+// once, then every two minutes while there are any, or as soon as fifty
+// wait. Where the service could not be reached or was busy they wait two
+// minutes, where it has had enough from this address ten; a report it
+// turned down goes.
+void Application::serviceRockShare() {
+    const std::string base = refineryServiceUrl();
+    if (base.empty()) return;
+    const auto now = std::chrono::steady_clock::now();
+    if (rockShareJob_.valid() && rockShareJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        const int status = rockShareJob_.get();
+        if (status == 0 || status >= 500 || status == 429) {
+            if (rockShare_) rockShareQueue_.insert(rockShareQueue_.begin(), rockShareSending_.begin(), rockShareSending_.end());
+            rockShareRetry_ = now + std::chrono::minutes(status == 429 ? 10 : 2);
+        } else if (status >= 400) {
+            std::cout << "\nRock scans: the service turned a report down (" << status << ")" << std::endl;
+        }
+        rockShareSending_.clear();
+    }
+    if (rockShareJob_.valid() || !rockShare_ || rockShareQueue_.empty() || now < rockShareRetry_) return;
+    if (now < rockShareNext_ && rockShareQueue_.size() < RockScans::ROCKS_PER_REPORT) return;
+    while (!rockShareQueue_.empty() && rockShareSending_.size() < RockScans::ROCKS_PER_REPORT) {
+        rockShareSending_.push_back(rockShareQueue_.front());
+        rockShareQueue_.pop_front();
+    }
+    rockShareNext_ = now + std::chrono::minutes(2);
+    const int game = library_.channel().rfind("LIVE", 0) == 0 ? library_.liveGameVersion() : 0;
+    std::vector<std::string> headers = installHeader();
+    headers.push_back("Content-Type: application/json");
+    try {
+        rockShareJob_ = std::async(std::launch::async, [url = base + "/v1/rocks/observations", headers,
+                                                        body = RockScans::body(rockShareSending_, BEDROCK_VERSION, game,
+                                                                               library_.channel(), rockSession_)]() {
+            HttpAnswer answer;
+            httpsPost(url, headers, body, answer, 64 * 1024);
+            return answer.status;
+        });
+    } catch (const std::system_error&) {
+        // no thread to be had: they go on the next round
+        rockShareQueue_.insert(rockShareQueue_.begin(), rockShareSending_.begin(), rockShareSending_.end());
+        rockShareSending_.clear();
     }
 }
 
@@ -3944,6 +4003,8 @@ void Application::saveRegionConfig() {
         // RefineryShare. On until then; an earlier test build's
         // "refineryshare" was off before anyone could choose, and is let go.
         file << "sharerefinery=" << (refineryShare_ ? 1 : 0) << std::endl;
+        // sharerocks=0: the box in Settings unticked - see RockScans
+        file << "sharerocks=" << (rockShare_ ? 1 : 0) << std::endl;
         // uex=0: the Ore Finder never asks uexcorp.space for prices
         file << "uex=" << (uexWanted_ ? 1 : 0) << std::endl;
         // Reporting to UEX: 0, or when the player agreed to it (on a UEX
@@ -4043,6 +4104,7 @@ void Application::loadRegionConfig() {
                 // gamenames=1: the box beside it, for the components' names
                 else if (key == "gamenames") gameNamesWanted_ = (value != 0);
                 else if (key == "sharerefinery") refineryShare_ = (value != 0);
+                else if (key == "sharerocks") rockShare_ = (value != 0);
                 else if (key == "hudscale") hudScalePercent_ = std::clamp(value, 0, 500);
                 else if (key == "uiscale") uiScalePercent_ = std::clamp(value, 0, 250);
                 else if (key == "viewx") storedViewport.x = value;

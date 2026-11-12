@@ -741,6 +741,54 @@ int runSelfTest() {
             if (!written) std::cout << "    rock_scans.csv line: " << line << std::endl;
         }
 
+        // ...and the report that shares them with the service
+        // (server/refinery/README.md, "Rock scans")
+        {
+            using namespace SCMiner::RockScans;
+            Scan taranite;
+            taranite.observed = 1794000000;
+            taranite.ore = "Taranite";
+            taranite.mass = 25005;
+            taranite.scu = 32.38f;
+            taranite.resistance = 36;
+            taranite.instability = 302.71f;
+            taranite.rangeMetres = 27;
+            taranite.ship = "prospector";
+            taranite.place = "Pyro - Pyro II";
+            taranite.parts = {{"Taranite", false, 9.37f, 957}, {"Taranite", false, 38.51f, 310}, {"", true, 52.11f, 0}};
+            Scan lindinium;
+            lindinium.observed = 1794000030;
+            lindinium.ore = "Lindinium";
+            lindinium.mass = 44059;
+            lindinium.scu = 54.75f;
+            lindinium.resistance = 37;
+            lindinium.inColour = true;
+            lindinium.place = "Nyx / Glaciem Ring";   // a character the service does not take: left out
+            const std::string report = body({taranite, lindinium}, "3.0.3", 41002, "LIVE + HOTFIX", "0123456789abcdef");
+            const bool same =
+                report ==
+                "{\"v\":1,\"bedrock\":\"3.0.3\",\"game\":\"4.10.2\",\"channel\":\"LIVE\",\"session\":\"0123456789abcdef\","
+                "\"rocks\":[{\"observed\":1794000000,\"ore\":\"Taranite\",\"mass\":25005,\"scu\":32.38,\"resistance\":36,"
+                "\"printed\":\"white\",\"instability\":302.71,\"range\":27,\"ship\":\"prospector\",\"place\":\"Pyro - Pyro "
+                "II\",\"parts\":[{\"ore\":\"Taranite\",\"percent\":9.37,\"quality\":957},{\"ore\":\"Taranite\",\"percent\":"
+                "38.51,\"quality\":310},{\"inert\":true,\"percent\":52.11}]},{\"observed\":1794000030,\"ore\":\"Lindinium\","
+                "\"mass\":44059,\"scu\":54.75,\"resistance\":37,\"printed\":\"colour\",\"instability\":-1,\"range\":0,"
+                "\"parts\":[]}]}";
+            Scan gem = taranite;
+            gem.ore = "Hadanite";
+            Scan comma = taranite;
+            comma.scu = 474.54f;
+            Scan oddPart = taranite;
+            oddPart.parts[0].quality = 1200;
+            const std::string a = newSession(), b = newSession();
+            const bool drawn = a.size() == 16 && a.find_first_not_of("0123456789abcdef") == std::string::npos && a != b;
+            allPassed &= check(same && sendable(taranite) && sendable(lindinium) && !sendable(gem) && !sendable(comma) &&
+                                   !sendable(oddPart) && drawn,
+                               "the rocks go to the service as it takes them, and only rocks it takes - a ship ore, "
+                               "figures in its ranges");
+            if (!same) std::cout << "    report: " << report << std::endl;
+        }
+
         // The gadget: what the panel prints with it on, taken back
         const SCMiner::MiningGadget* sabir = SCMiner::gadgetById("shin_sabir");
         SCMiner::RockStats rock;

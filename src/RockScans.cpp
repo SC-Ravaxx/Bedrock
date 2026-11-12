@@ -3,11 +3,15 @@
 #include "MiningAdvice.h"
 #include "MiningHardware.h"
 #include "MiningLocations.h"
+#include "UexReports.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <random>
+#include <sstream>
 
 namespace SCMiner {
 namespace RockScans {
@@ -164,6 +168,90 @@ std::string csvLine(const Scan& scan, const std::string& time) {
     }
     return line + "," + std::to_string(scan.rangeMetres) + "," + quoted(scan.ship) + "," + quoted(scan.place) + "," +
            quoted(partsText(scan.parts));
+}
+
+std::string newSession() {
+    std::random_device device;
+    std::mt19937_64 draw(((std::uint64_t)device() << 32) ^ device());
+    char text[17];
+    std::snprintf(text, sizeof(text), "%016llx", (unsigned long long)draw());
+    return text;
+}
+
+bool sendable(const Scan& scan) {
+    if (oreDensity(scan.ore) <= 0) return false;   // a ship ore
+    if (scan.mass < 1 || scan.mass > 1000000 || scan.scu < 0.01f || scan.scu > 100) return false;
+    if (scan.resistance > 100 || scan.instability > 100000) return false;
+    if (scan.rangeMetres < 0 || scan.rangeMetres > 2000) return false;
+    if (scan.parts.size() > 8) return false;
+    for (const ScanPart& part : scan.parts) {
+        if (part.percent < 0 || part.percent > 100) return false;
+        if (!part.inert && (oreDensity(part.ore) <= 0 || part.quality < 0 || part.quality > 1000)) return false;
+    }
+    return true;
+}
+
+// A place as the service takes it: letters, digits, spaces and . ' ( ) -,
+// up to 64, beginning with a letter or digit
+static bool placeTaken(const std::string& place) {
+    if (place.empty() || place.size() > 64 || !std::isalnum((unsigned char)place[0])) return false;
+    for (char c : place) {
+        if (!std::isalnum((unsigned char)c) && c != ' ' && c != '.' && c != '\'' && c != '(' && c != ')' && c != '-') {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::string body(const std::vector<Scan>& scans, const std::string& bedrockVersion, int gameVersion,
+                 const std::string& channel, const std::string& session) {
+    using UexReports::jsonText;
+    std::ostringstream out;
+    out << "{\"v\":1,\"bedrock\":" << jsonText(bedrockVersion);
+    if (gameVersion > 0) {
+        char game[32];
+        std::snprintf(game, sizeof(game), "%d.%d.%d", gameVersion / 10000, gameVersion / 100 % 100, gameVersion % 100);
+        out << ",\"game\":" << jsonText(game);
+    }
+    // "LIVE + HOTFIX" is LIVE's
+    std::string kind = channel.rfind("LIVE", 0) == 0 ? std::string("LIVE") : channel;
+    if (kind == "LIVE" || kind == "PTU" || kind == "EPTU" || kind == "TECH-PREVIEW" || kind == "HOTFIX") {
+        out << ",\"channel\":" << jsonText(kind);
+    }
+    out << ",\"session\":" << jsonText(session) << ",\"rocks\":[";
+    char text[96];
+    for (size_t i = 0; i < scans.size(); i++) {
+        const Scan& s = scans[i];
+        out << (i ? "," : "") << "{\"observed\":" << s.observed << ",\"ore\":" << jsonText(s.ore);
+        std::snprintf(text, sizeof(text), ",\"mass\":%.0f,\"scu\":%.2f", s.mass, s.scu);
+        out << text;
+        if (s.resistance >= 0) {
+            std::snprintf(text, sizeof(text), ",\"resistance\":%.0f,\"printed\":\"%s\"", s.resistance,
+                          s.inColour ? "colour" : "white");
+        } else {
+            std::snprintf(text, sizeof(text), ",\"resistance\":-1");
+        }
+        out << text;
+        if (s.instability >= 0) std::snprintf(text, sizeof(text), ",\"instability\":%.2f", s.instability);
+        else std::snprintf(text, sizeof(text), ",\"instability\":-1");
+        out << text << ",\"range\":" << s.rangeMetres;
+        if (!s.ship.empty()) out << ",\"ship\":" << jsonText(s.ship);
+        if (placeTaken(s.place)) out << ",\"place\":" << jsonText(s.place);
+        out << ",\"parts\":[";
+        for (size_t p = 0; p < s.parts.size(); p++) {
+            const ScanPart& part = s.parts[p];
+            if (part.inert) {
+                std::snprintf(text, sizeof(text), "{\"inert\":true,\"percent\":%.2f}", part.percent);
+                out << (p ? "," : "") << text;
+            } else {
+                std::snprintf(text, sizeof(text), ",\"percent\":%.2f,\"quality\":%d}", part.percent, part.quality);
+                out << (p ? "," : "") << "{\"ore\":" << jsonText(part.ore) << text;
+            }
+        }
+        out << "]}";
+    }
+    out << "]}";
+    return out.str();
 }
 
 }  // namespace RockScans

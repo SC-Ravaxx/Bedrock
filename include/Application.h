@@ -191,6 +191,8 @@ private:
                         const std::string& notTaken = std::string());
     void noteRockScan(const RockStats& look);
     void keepRockScans();
+    void setRockShare(bool on);
+    void serviceRockShare();
     // The laser's range to the rock: the middle of the gauge's last five
     // readings, none older than RANGE_KEPT; 0 when there is none, which the
     // rock view reads as full power. A look that reads no gauge leaves the
@@ -231,6 +233,15 @@ private:
     int rockUnsettled_ = 0;       // looks in a row that found a panel and settled nothing
     RockScans::LookCheck rockCheck_;  // figures no rock can have wait, as unsettled ones do
     RockScans::Recorder rockScans_;   // the rocks the view took, for rock_scans.csv
+    // ...and sent to the service (RockScans) unless the player takes the tick
+    // off in Settings (sharerocks=0), where the build carries the service's
+    // address
+    bool rockShare_ = true;
+    std::string rockSession_;                       // drawn at each start
+    std::deque<RockScans::Scan> rockShareQueue_;    // rocks waiting to go
+    std::vector<RockScans::Scan> rockShareSending_;
+    std::future<int> rockShareJob_;                 // a report going: the status it was answered with
+    std::chrono::steady_clock::time_point rockShareNext_{}, rockShareRetry_{};
     bool rockLabelsOnly_ = false; // the last look found the labels and no figures
     int rockQuickLooks_ = 0;      // ...and how many looks in a row came straight after
     bool rockSettling_ = false;   // the last look found a panel whose figures have not settled

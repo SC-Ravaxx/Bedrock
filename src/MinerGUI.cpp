@@ -2434,6 +2434,12 @@ void MinerGUI::setRefineryShare(bool on, bool available) {
     if (refinery_) InvalidateRect(refinery_, nullptr, FALSE);
 }
 
+void MinerGUI::setRockShare(bool on, bool available) {
+    rockShareOn_ = on;
+    rockShareAvailable_ = available;
+    if (settings_) InvalidateRect(settings_, nullptr, FALSE);
+}
+
 bool MinerGUI::refineryShown() const {
     return refinery_ && IsWindowVisible(refinery_);
 }
@@ -27537,6 +27543,34 @@ void MinerGUI::paintSettings(HDC hdc) {
         g.DrawString(L"Colours of all windows and the overlay, overlay display, "
                      L"and Bedrock on a phone  \u00B7  Changes apply immediately",
                      -1, &subFont, Gdiplus::PointF(M + scaleF(15), (float)scale(36)), &dimBrush);
+        // The box that shares rock scans (RockScans), drawn as the Refinery
+        // window draws its own: a quiet button carrying its tick, at the top
+        // right. Only where the build can share.
+        if (rockShareAvailable_) {
+            const wchar_t* label = L"Share rock scans";
+            Gdiplus::Font buttonFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+            Gdiplus::StringFormat leftMid;
+            leftMid.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+            leftMid.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+            const float boxS = scaleF(11), pad = scaleF(10);
+            const float bw = pad + boxS + scaleF(7) + widthOf(label, buttonFont) + pad;
+            const Gdiplus::RectF b((float)cw - M - bw, (float)scale(14), bw, scaleF(28));
+            const bool hot = isHot(hoverSettings_, b);
+            drawButton(g, b, L"", buttonFont, ButtonKind::Secondary, hot, scaleF(R_CONTROL));
+            const Gdiplus::RectF box(b.X + pad, b.Y + (b.Height - boxS) / 2.0f, boxS, boxS);
+            if (rockShareOn_) {
+                fillRoundRect(g, box, scaleF(2), COL_ACCENT);
+                Gdiplus::Pen tick(COL_ACCENT_INK, scaleF(1.8f));
+                g.DrawLine(&tick, box.X + scaleF(2.5f), box.Y + scaleF(5.5f), box.X + scaleF(4.5f), box.Y + scaleF(8));
+                g.DrawLine(&tick, box.X + scaleF(4.5f), box.Y + scaleF(8), box.X + scaleF(8.5f), box.Y + scaleF(3));
+            } else {
+                strokeRoundRect(g, box, scaleF(2), hot ? COL_TEXT_DIM : COL_TEXT_FAINT);
+            }
+            Gdiplus::SolidBrush ink(hot ? COL_TEXT : tint(COL_TEXT, 215));
+            g.DrawString(label, -1, &buttonFont, Gdiplus::RectF(box.GetRight() + scaleF(7), b.Y, b.GetRight() - box.GetRight(), b.Height),
+                         &leftMid, &ink);
+            settingsHits_.push_back({b, 9, 0});
+        }
 
         const float leftX = M, leftW = scaleF(440);
         // ...and the phone's column at the right edge, PHONE_COLUMN wide
@@ -27968,6 +28002,10 @@ LRESULT MinerGUI::handleSettingsMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
                     }
                     case 8:
                         newPhoneToken();
+                        break;
+                    case 9:
+                        rockShareOn_ = !rockShareOn_;
+                        if (onRockShare_) onRockShare_(rockShareOn_);
                         break;
                 }
                 InvalidateRect(hwnd, nullptr, FALSE);

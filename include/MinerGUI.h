@@ -566,6 +566,10 @@ public:
     void setRefineryShareCallback(RefineryShareCallback callback) { onRefineryShare_ = std::move(callback); }
     void setRefineryShare(bool on, bool available);
     bool refineryShown() const;
+    // The Settings window's box that shares rock scans (RockScans), the same way
+    using RockShareCallback = std::function<void(bool on)>;
+    void setRockShareCallback(RockShareCallback callback) { onRockShare_ = std::move(callback); }
+    void setRockShare(bool on, bool available);
     void setGameTexts(bool on, const std::string& note) {
         gameTextsOn_ = on;
         gameTextsNote_ = note;
@@ -1472,6 +1476,9 @@ private:
     bool refineryShareOn_ = false;
     bool refineryShareAvailable_ = false;
     RefineryShareCallback onRefineryShare_;
+    bool rockShareOn_ = false;
+    bool rockShareAvailable_ = false;
+    RockShareCallback onRockShare_;
 
     // The card that goes up by itself once, on the first start after an
     // update: what changed, and a word of thanks. Same shape as the ? card -

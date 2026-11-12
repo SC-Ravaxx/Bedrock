@@ -116,5 +116,23 @@ std::string partsText(const std::vector<ScanPart>& parts);
 extern const char* const CSV_HEADER;
 std::string csvLine(const Scan& scan, const std::string& time);
 
+// Sharing them (server/refinery/README.md, "Rock scans"): sent unless the
+// player takes the tick off in Settings (sharerocks=0), to work out rock
+// sizes, densities and how the game sets resistance and instability.
+// Nothing of the player goes along; the session's number - sixteen hex
+// digits drawn at each start - groups one session's rocks, a rock and the
+// pieces it broke into, and says nothing more.
+constexpr size_t ROCKS_PER_REPORT = 50;
+std::string newSession();
+// Whether the service takes the rock as it stands: a ship ore, its figures
+// in the ranges the service checks. A report with one it does not take is
+// turned down whole.
+bool sendable(const Scan& scan);
+// The report: the game's version as Game.log's header gives it, 41002 for
+// 4.10.2, 0 leaves it out; a channel the service does not know is left out,
+// and so is a place with a character the service does not take
+std::string body(const std::vector<Scan>& scans, const std::string& bedrockVersion, int gameVersion,
+                 const std::string& channel, const std::string& session);
+
 }  // namespace RockScans
 }  // namespace SCMiner

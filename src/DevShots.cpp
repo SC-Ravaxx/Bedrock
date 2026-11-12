@@ -1131,6 +1131,9 @@ int runScreenshots(const std::string& dir) {
     // the main window painted with one of the sets; and a colour of one's own
     {
         using namespace SCMiner;
+        // the box that shares rock scans, as a release shows it: this build
+        // carries no service's address
+        gui.setRockShare(true, true);
         gui.openSettingsForShot();
         pump();
         shoot(gui.settingsHandle(), "settings.png", true);
@@ -1151,6 +1154,10 @@ int runScreenshots(const std::string& dir) {
         gui.settingsColourForShot(Colours::Epic, 0xD25AB4);
         pump();
         shoot(gui.settingsHandle(), "settings_own.png", true);
+        gui.setRockShare(false, true);
+        pump();
+        shoot(gui.settingsHandle(), "settings_rocks_off.png", true);
+        gui.setRockShare(true, true);
         // ...and the overlay let see more of the game, in the preview at its
         // real size; put back after
         gui.settingsForShot((int)Colours::Set::Bedrock, Colours::Legendary, 0);
