@@ -193,10 +193,12 @@ private:
     // The rocks done (Recorder::done) to rock_scans.csv and the share queue:
     // those whose wait is over, or with `all` every rock off view
     void keepRockScans(bool all = false);
-    // Once a second: the rocks whose wait is over, and with the game gone
-    // every rock - nothing more is read of them
+    // Once a second: the rocks whose wait is over; the game put away, the
+    // rock on view waits too; the game closed, every rock is done and goes
+    // to the service at once
     void tendRockScans();
     std::chrono::steady_clock::time_point rockScansTended_{};
+    bool rockGameUp_ = false;   // the game's window seen since the game last closed (tendRockScans)
     void setRockShare(bool on);
     void serviceRockShare();
     // The laser's range to the rock: the middle of the gauge's last five

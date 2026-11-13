@@ -5,6 +5,7 @@
 #include "LaserRange.h"
 #include "MiningHardware.h"
 #include "GamePlaces.h"
+#include "GameFiles.h"
 #include <cctype>
 
 #include "AppPaths.h"
@@ -2178,11 +2179,24 @@ void Application::tendRockScans() {
     const auto now = std::chrono::steady_clock::now();
     if (now - rockScansTended_ < std::chrono::seconds(1)) return;
     rockScansTended_ = now;
-    if (!rockScans_.holding()) return;
-    // The game gone, or put away: the rock on view waits as one off view
-    // does, and is done half a minute on rather than when Bedrock closes -
-    // and goes to the service while Bedrock runs
-    if (!ScreenCapture::gameViewport()) rockScans_.gone();
+    if (ScreenCapture::gameViewport()) {
+        rockGameUp_ = true;
+        keepRockScans();
+        return;
+    }
+    if (!rockScans_.holding() && !rockGameUp_) return;
+    // The game put away: the rock on view waits as one off view does, and is
+    // done half a minute on rather than when Bedrock closes
+    rockScans_.gone();
+    if (rockGameUp_ && !GameFiles::gameRunning()) {
+        // ...or closed: none of its rocks comes back on view, so each is done
+        // now, and what waits for the service goes at once rather than with
+        // the next report two minutes on - Bedrock may well be closed next
+        rockGameUp_ = false;
+        keepRockScans(true);
+        if (!rockShareQueue_.empty()) rockShareNext_ = now;
+        return;
+    }
     keepRockScans();
 }
 

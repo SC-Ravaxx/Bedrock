@@ -487,7 +487,8 @@ Five network requests of its own, and three more only if you switch them on:
   start that groups one session's rocks. Nothing about you goes along, and
   as with the refinery workloads the server doesn't keep your IP address.
   The rocks are for working out rock sizes, densities and how the game
-  sets resistance and instability. At most one report every two minutes.
+  sets resistance and instability. At most one report every two minutes,
+  and one when the game closes.
 - Plugins: the first time you open Plugins after a start, Bedrock downloads
   the list of plugins from the-forsaken.org, and a plugin when you click
   Install. A plugin's download carries your install's number (see below),
