@@ -190,7 +190,13 @@ private:
     void logRockReading(const ScanPanel& panel, const RockStats* steady, int rangeMetres,
                         const std::string& notTaken = std::string());
     void noteRockScan(const RockStats& look);
-    void keepRockScans();
+    // The rocks done (Recorder::done) to rock_scans.csv and the share queue:
+    // those whose wait is over, or with `all` every rock off view
+    void keepRockScans(bool all = false);
+    // Once a second: the rocks whose wait is over, and with the game gone
+    // every rock - nothing more is read of them
+    void tendRockScans();
+    std::chrono::steady_clock::time_point rockScansTended_{};
     void setRockShare(bool on);
     void serviceRockShare();
     // The laser's range to the rock: the middle of the gauge's last five
@@ -303,11 +309,17 @@ private:
     // the panel's figures, read off the window's thread while the view has
     // none for this rock, and handed to it once two readings say the same.
     void readContentsOnHud(const cv::Mat& frame, const ScanPanel& panel, const RockStats& rock);
+    // A reading come back, before the look: to the rock it was read for, and
+    // to that rock's line of rock_scans.csv whichever rock is on view by now.
+    // True: it was the first of two for the rock on view, and the second is
+    // read off a look taken at once rather than 0.7 s later.
+    bool collectRockContents();
     void takeRockContents(const RockContents& read, const RockStats& rock);
     void clearRockView();                    // the rock off the view, and its list with it
     void rockGone(const char* why);          // ...and what was read of it: the view is the signatures'
     std::future<RockContents> contentsJob_;  // a reading under way
     float contentsJobMass_ = 0;              // ...and the rock it was asked for
+    RockScans::ListReadings listReadings_;   // the lists read whole, a few rocks back (rock_scans.csv)
     float contentsFor_ = 0;                  // the mass of the rock the view's list is of; 0: it has none
     std::string contentsOre_;                // ...and its ore
     std::string contentsShown_;              // ...and the list itself, as one line

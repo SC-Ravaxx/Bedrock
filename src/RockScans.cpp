@@ -10,6 +10,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <iterator>
 #include <random>
 #include <sstream>
 
@@ -65,59 +67,205 @@ std::string LookCheck::notTaken(const RockStats& rock) {
     return looks_ >= 8 ? std::string() : why;
 }
 
-static bool sameRock(const Scan& scan, const RockStats& rock) {
-    return scan.ore == rock.ore && std::fabs(scan.mass - rock.mass) <= 1.0f && std::fabs(scan.scu - rock.scu) <= 0.011f;
+bool oneNumeralApart(float a, float b, int places) {
+    if (a <= 0 || b <= 0) return false;
+    char x[32], y[32];
+    std::snprintf(x, sizeof(x), "%.*f", places, a);
+    std::snprintf(y, sizeof(y), "%.*f", places, b);
+    const size_t n = std::strlen(x);
+    if (n != std::strlen(y)) return false;
+    int differ = 0;
+    for (size_t i = 0; i < n; i++) differ += x[i] != y[i] ? 1 : 0;
+    return differ <= 1;
+}
+
+bool anotherRock(const RockStats& held, const RockStats& look) {
+    if (held.mass <= 0 || look.mass <= 0) return false;
+    if (std::fabs(held.mass - look.mass) <= 1.0f || oneNumeralApart(held.mass, look.mass, 0)) return false;
+    // ...and another figure: each where both have it
+    const bool scus = held.scu > 0 && look.scu > 0;
+    const bool instabilities = held.instability > 0 && look.instability > 0;
+    const bool resistances =
+        held.resistance >= 0 && look.resistance >= 0 && held.resistanceAdjusted == look.resistanceAdjusted;
+    if (scus && std::fabs(held.scu - look.scu) > 0.011f && !oneNumeralApart(held.scu, look.scu, 2)) return true;
+    if (instabilities && std::fabs(held.instability - look.instability) > 0.011f &&
+        !oneNumeralApart(held.instability, look.instability, 2)) {
+        return true;
+    }
+    // (a resistance of 0 is a reading: one numeral off it is 1 to 9)
+    if (resistances && std::fabs(held.resistance - look.resistance) > 0.5f &&
+        !oneNumeralApart(held.resistance + 1000, look.resistance + 1000, 0)) {
+        return true;
+    }
+    if (scus || instabilities || resistances) return false;
+    return std::fabs(look.mass - held.mass) > held.mass * 0.25f;
+}
+
+static int hundredths(float scu) {
+    return (int)std::lround(scu * 100.0f);
+}
+
+bool Recorder::ofMass(const Rock& rock, float mass) {
+    for (const auto& seen : rock.masses) {
+        if (std::fabs((float)seen.first - mass) <= 1.0f) return true;
+    }
+    return false;
+}
+
+bool Recorder::sameRock(const Rock& rock, const RockStats& shown) {
+    if (rock.scan.ore != shown.ore) return false;
+    if (ofMass(rock, shown.mass)) return true;
+    if (!oneNumeralApart(rock.scan.mass, shown.mass, 0)) return false;
+    for (const auto& seen : rock.shown) {
+        if (seen.first == hundredths(shown.scu)) return true;
+    }
+    return false;
 }
 
 void Recorder::taken(const RockStats& shown, const RockStats& look, long long observed, const std::string& ship,
                      const std::string& place) {
     if (shown.ore.empty() || shown.mass <= 0 || shown.scu <= 0) return;
-    const float instability = look.instability >= 0 ? (std::max)(0.0f, shown.instability) : -1.0f;
-    if (open_ && sameRock(scan_, shown)) {
-        // the rock's own resistance, printed white, over one a laser changed
-        if (shown.resistance >= 0 && (scan_.resistance < 0 || (scan_.inColour && !shown.resistanceAdjusted))) {
-            scan_.resistance = shown.resistance;
-            scan_.inColour = shown.resistanceAdjusted;
+    release(observed);
+    if (!open_ || !sameRock(rock_, shown)) {
+        gone();
+        // a rock still waiting is the same rock, back on view
+        const auto back =
+            std::find_if(waiting_.rbegin(), waiting_.rend(), [&](const Rock& r) { return sameRock(r, shown); });
+        if (back != waiting_.rend()) {
+            rock_ = *back;
+            waiting_.erase(std::next(back).base());
+        } else {
+            rock_ = Rock();
+            rock_.scan.observed = observed;
+            rock_.scan.ore = shown.ore;
+            rock_.scan.mass = shown.mass;
+            rock_.scan.scu = shown.scu;
+            rock_.scan.ship = ship;
+            rock_.scan.place = place;
         }
-        if (scan_.instability < 0) scan_.instability = instability;
-        if (scan_.rangeMetres <= 0 && shown.distance > 0) scan_.rangeMetres = (int)std::lround(shown.distance);
-        return;
+        open_ = true;
     }
-    gone();
-    open_ = true;
-    scan_ = Scan();
-    scan_.observed = observed;
-    scan_.ore = shown.ore;
-    scan_.mass = shown.mass;
-    scan_.scu = shown.scu;
-    scan_.resistance = shown.resistance >= 0 ? shown.resistance : -1.0f;
-    scan_.inColour = scan_.resistance >= 0 && shown.resistanceAdjusted;
-    scan_.instability = instability;
-    scan_.rangeMetres = shown.distance > 0 ? (int)std::lround(shown.distance) : 0;
-    scan_.ship = ship;
-    scan_.place = place;
+    Scan& scan = rock_.scan;
+    rock_.last = observed;
+    // the rock's own resistance, printed white, over one a laser changed
+    if (shown.resistance >= 0 && (scan.resistance < 0 || (scan.inColour && !shown.resistanceAdjusted))) {
+        scan.resistance = shown.resistance;
+        scan.inColour = shown.resistanceAdjusted;
+    }
+    if (scan.instability < 0 && look.instability >= 0) scan.instability = (std::max)(0.0f, shown.instability);
+    if (scan.rangeMetres <= 0 && shown.distance > 0) scan.rangeMetres = (int)std::lround(shown.distance);
+    rock_.masses[(int)std::lround(shown.mass)]++;
+    rock_.shown[hundredths(shown.scu)]++;
+    if (look.scu > 0 && look.mass > 0 && ofMass(rock_, look.mass)) rock_.read[hundredths(look.scu)]++;
 }
 
 void Recorder::listed(float mass, const std::vector<ScanPart>& parts) {
-    if (open_ && !parts.empty() && std::fabs(scan_.mass - mass) <= 1.0f) scan_.parts = parts;
+    if (parts.empty()) return;
+    if (open_ && ofMass(rock_, mass)) {
+        rock_.scan.parts = parts;
+        return;
+    }
+    for (auto it = waiting_.rbegin(); it != waiting_.rend(); ++it) {
+        if (ofMass(*it, mass)) {
+            it->scan.parts = parts;
+            return;
+        }
+    }
 }
 
 void Recorder::gone() {
     if (!open_) return;
     open_ = false;
-    char key[96];
-    std::snprintf(key, sizeof(key), "%s|%.0f|%.2f", scan_.ore.c_str(), scan_.mass, scan_.scu);
-    const bool listedNow = !scan_.parts.empty();
-    const auto it = counted_.find(key);
-    if (it != counted_.end() && (it->second || !listedNow)) return;
-    counted_[key] = listedNow;
-    done_.push_back(scan_);
+    waiting_.push_back(rock_);
 }
 
-std::vector<Scan> Recorder::done() {
+void Recorder::release(long long now) {
+    for (auto it = waiting_.begin(); it != waiting_.end();) {
+        if (now - it->last >= HOLD_SECONDS) {
+            finish(*it);
+            it = waiting_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void Recorder::finish(Rock& rock) {
+    Scan& scan = rock.scan;
+    // The mass the view showed most, the first on a tie
+    int mostMass = 0;
+    for (const auto& seen : rock.masses) mostMass = (std::max)(mostMass, seen.second);
+    const auto first = rock.masses.find((int)std::lround(scan.mass));
+    if (first == rock.masses.end() || first->second < mostMass) {
+        for (const auto& seen : rock.masses) {
+            if (seen.second == mostMass) {
+                scan.mass = (float)seen.first;
+                break;
+            }
+        }
+    }
+    // The SCU most looks read with the rock's mass; where none did, the one
+    // the view showed most. A tie goes to the one the view showed more.
+    const std::map<int, int>& votes = rock.read.empty() ? rock.shown : rock.read;
+    int best = 0, most = 0, mostShown = 0;
+    for (const auto& [scu, looks] : votes) {
+        const auto shown = rock.shown.find(scu);
+        const int onView = shown == rock.shown.end() ? 0 : shown->second;
+        if (looks > most || (looks == most && onView > mostShown)) {
+            best = scu;
+            most = looks;
+            mostShown = onView;
+        }
+    }
+    if (best > 0) scan.scu = best / 100.0f;
+    // A rock back on view after its wait counts once, its SCU read one
+    // numeral off or not (39.56 and 39.58 for one 54,501 kg rock) - a second
+    // time only with a list it did not have the first time
+    const bool listedNow = !scan.parts.empty();
+    for (Counted& seen : counted_) {
+        if (seen.ore != scan.ore || std::fabs(seen.mass - scan.mass) > 1.0f) continue;
+        if (std::fabs(seen.scu - scan.scu) > 0.011f && !oneNumeralApart(seen.scu, scan.scu, 2)) continue;
+        if (seen.listed || !listedNow) return;
+        seen.listed = true;
+        done_.push_back(scan);
+        return;
+    }
+    counted_.push_back({scan.ore, scan.mass, scan.scu, listedNow});
+    done_.push_back(scan);
+}
+
+std::vector<Scan> Recorder::done(long long now) {
+    release(now);
     std::vector<Scan> out;
     out.swap(done_);
+    std::stable_sort(out.begin(), out.end(), [](const Scan& a, const Scan& b) { return a.observed < b.observed; });
     return out;
+}
+
+static std::string listKey(const std::vector<ScanPart>& parts) {
+    std::string key;
+    char text[96];
+    for (const ScanPart& part : parts) {
+        std::snprintf(text, sizeof(text), "%s:%.2f:%d;", part.inert ? "-" : part.ore.c_str(), part.percent,
+                      part.quality);
+        key += text;
+    }
+    return key;
+}
+
+bool ListReadings::confirms(float mass, const std::vector<ScanPart>& parts) {
+    if (mass <= 0 || parts.empty()) return false;
+    const std::string key = listKey(parts);
+    for (Kept& kept : kept_) {
+        if (std::fabs(kept.mass - mass) > 1.0f && !oneNumeralApart(kept.mass, mass, 0)) continue;
+        if (kept.key == key) return true;
+        // another reading of that rock's list: the next has to say this one
+        kept.key = key;
+        return false;
+    }
+    kept_.push_back({mass, key});
+    if (kept_.size() > 8) kept_.erase(kept_.begin());
+    return false;
 }
 
 std::string shipKind(const std::string& logShip) {

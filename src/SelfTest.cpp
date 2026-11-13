@@ -741,6 +741,132 @@ int runSelfTest() {
             if (!written) std::cout << "    rock_scans.csv line: " << line << std::endl;
         }
 
+        // ...a rock with another rock's SCU on view, a list read after the
+        // next rock came, and a look of the same rock back - each once, with
+        // what it has (the MOLE's turret, 12 November 2026: 15,223 kg came in
+        // once with the 4.73 SCU of the rock before it and once with 5.88)
+        {
+            using namespace SCMiner::RockScans;
+            auto rockOf = [](float mass, float scu, float resistance, float instability) {
+                SCMiner::RockStats r;
+                r.ore = "Savrilium";
+                r.mass = mass;
+                r.scu = scu;
+                r.resistance = resistance;
+                r.instability = instability;
+                return r;
+            };
+            const std::vector<ScanPart> list = {{"Savrilium", false, 11.09f, 580}, {"Savrilium", false, 28.99f, 322},
+                                                {"Gold", false, 9.85f, 553}, {"", true, 50.06f, 0}};
+            const SCMiner::RockStats before = rockOf(12229, 4.73f, 65, 130.88f);
+            const SCMiner::RockStats next = rockOf(15223, 5.88f, 61, 162.09f);
+            SCMiner::RockStats chimera = next;
+            chimera.scu = 4.73f;
+            Recorder recorder;
+            const long long t = 1794515246;
+            recorder.taken(before, before, t, "mole", "Nyx - Levski");
+            recorder.taken(before, before, t + 1, "mole", "Nyx - Levski");
+            recorder.taken(chimera, next, t + 59, "mole", "Nyx - Levski");   // the view still held the SCU
+            recorder.taken(next, next, t + 60, "mole", "Nyx - Levski");
+            recorder.taken(next, next, t + 61, "mole", "Nyx - Levski");
+            const bool waits = recorder.done(t + 61).size() == 1 && recorder.holding();
+            // the 15,223 kg rock leaves the view, its list comes back while
+            // the next is on view, and it is back within the wait
+            const SCMiner::RockStats third = rockOf(6069, 4.77f, 43, 54.97f);
+            recorder.taken(third, third, t + 70, "mole", "Nyx - Levski");
+            recorder.listed(15223, list);
+            recorder.taken(next, next, t + 80, "mole", "Nyx - Levski");
+            // a settled 15,223 read again as 15,228 with its SCU is that rock
+            SCMiner::RockStats misread = next;
+            misread.mass = 15228;
+            recorder.taken(misread, misread, t + 81, "mole", "Nyx - Levski");
+            recorder.gone();
+            const bool heldBack = recorder.done(t + 100).size() == 1;   // 6,069 kg: 30 s after its look
+            const std::vector<Scan> rest = recorder.done();
+            const bool once = rest.size() == 1 && rest[0].mass == 15223 && std::abs(rest[0].scu - 5.88f) < 0.005f &&
+                              rest[0].parts.size() == 4 && rest[0].observed == t + 59 && !recorder.holding();
+            Recorder late;
+            late.taken(before, before, t, "mole", "Nyx - Levski");
+            late.taken(next, next, t + 2, "mole", "Nyx - Levski");
+            late.listed(12229, list);
+            late.gone();
+            const std::vector<Scan> both = late.done();
+            const bool listedLate = both.size() == 2 && both[0].mass == 12229 && both[0].parts.size() == 4 &&
+                                    both[1].parts.empty();
+            // ...and a rock back after its wait counts once, its SCU read one
+            // numeral off (the MOLE's 54,501 kg rock: 39.56 SCU with its list,
+            // then 39.58 under the laser 109 s on)
+            Recorder again;
+            const SCMiner::RockStats first = rockOf(54501, 39.56f, 64, 502.04f);
+            SCMiner::RockStats lasered = rockOf(54501, 39.58f, 22, 184.08f);
+            lasered.resistanceAdjusted = true;
+            again.taken(first, first, t, "mole", "Nyx - Levski");
+            again.listed(54501, list);
+            again.gone();
+            again.taken(lasered, lasered, t + 109, "mole", "Nyx - Levski");
+            again.gone();
+            const std::vector<Scan> backAfter = again.done();
+            const bool countedOnce = backAfter.size() == 1 && backAfter[0].parts.size() == 4 &&
+                                     std::abs(backAfter[0].scu - 39.56f) < 0.005f;
+            // two readings alike for one mass, whichever rock is on view by
+            // the second; another reading in between starts it again
+            ListReadings readings;
+            const std::vector<ScanPart> other = {{"Savrilium", false, 11.09f, 580}, {"Savrilium", false, 28.99f, 322},
+                                                 {"Gold", false, 9.83f, 553}, {"", true, 50.08f, 0}};
+            const bool firstOnly = !readings.confirms(12229, list);
+            const bool notAnother = !readings.confirms(15223, list);
+            const bool second = readings.confirms(12229, list);
+            const bool misreadMass = readings.confirms(12223, list);   // one numeral off
+            const bool startsAgain = !readings.confirms(12229, other) && !readings.confirms(12229, list) &&
+                                     readings.confirms(12229, list);
+            allPassed &= check(waits && heldBack && once && listedLate && countedOnce && firstOnly && notAnother &&
+                                   second && misreadMass && startsAgain,
+                               "a rock is its ore and mass: an SCU the view held from the rock before does not make "
+                               "it two, it waits 30 s off view for a list read late, and two readings alike for one "
+                               "mass make the list that rock's");
+        }
+
+        // The face reader's looks are summed as one rock until a look is
+        // another rock's: its mass off by more than one numeral, and another
+        // figure with it
+        {
+            using namespace SCMiner::RockScans;
+            auto rockOf = [](float mass, float scu, float resistance, bool colour, float instability) {
+                SCMiner::RockStats r;
+                r.mass = mass;
+                r.scu = scu;
+                r.resistance = resistance;
+                r.resistanceAdjusted = colour;
+                r.instability = instability;
+                return r;
+            };
+            // the MOLE's turret, 12 November: 12,229 kg and then 15,223 kg,
+            // a quarter apart
+            const bool turret =
+                anotherRock(rockOf(12229, 4.73f, 65, false, 130.88f), rockOf(15223, 5.88f, 61, false, 162.09f));
+            // his Stileron of 17 September: 570 kg without its SCU read, then
+            // 457 kg at nearly the same instability - the resistance tells
+            const bool stileron =
+                anotherRock(rockOf(570, 0, 57, false, 12.30f), rockOf(457, 1.09f, 42, false, 12.35f));
+            // misreads: one numeral of the mass, or the mass alone off
+            const bool numeral =
+                !anotherRock(rockOf(21460, 30.12f, 36, false, 302.71f), rockOf(21464, 30.12f, 36, false, 302.71f));
+            const bool massAlone =
+                !anotherRock(rockOf(17474, 3.35f, 27, false, 50.1f), rockOf(1747, 3.35f, 27, false, 50.1f));
+            // a laser on the rock changes its resistance, not the rock
+            const bool laser =
+                !anotherRock(rockOf(17474, 3.35f, 27, false, 50.1f), rockOf(1747, 3.35f, 9, true, 50.1f));
+            // nothing else read on both: a quarter off says it
+            const bool byMass = anotherRock(rockOf(1000, 0, -1, false, -1), rockOf(1450, 0, -1, false, -1)) &&
+                                !anotherRock(rockOf(1000, 0, -1, false, -1), rockOf(1150, 0, -1, false, -1));
+            const bool numerals = oneNumeralApart(21460, 21464, 0) && !oneNumeralApart(6087, 6052, 0) &&
+                                  oneNumeralApart(39.56f, 39.58f, 2) && !oneNumeralApart(9, 10, 0) &&
+                                  !oneNumeralApart(0, 0, 0);
+            allPassed &= check(turret && stileron && numeral && massAlone && laser && byMass && numerals,
+                               "a look is another rock's when its mass is more than a misread off and another figure "
+                               "is too - not for a quarter off alone");
+        }
+
         // ...and the report that shares them with the service
         // (server/refinery/README.md, "Rock scans")
         {

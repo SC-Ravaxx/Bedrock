@@ -567,7 +567,7 @@ Application::Application() {
 Application::~Application() {
     stop();
     rockScans_.gone();
-    keepRockScans();
+    keepRockScans(true);
     destroyOverlay();
     g_appInstance = nullptr;
 }
@@ -1116,6 +1116,7 @@ void Application::runWithGUI(HINSTANCE hInstance) {
         lookForRefinery();
         handRefineryOrdersToUex();
         serviceRefineryShare();
+        tendRockScans();
         serviceRockShare();
 
         // Live mode
@@ -1386,7 +1387,8 @@ float Application::laserRange(std::chrono::steady_clock::time_point now) const {
 }
 
 void Application::rockToView(RockStats rock, std::chrono::steady_clock::time_point look) {
-    if (shownMass_ > 0 && std::fabs(rock.mass - shownMass_) > shownMass_ * 0.25f) {
+    // another rock: the range read at the last one is not this one's
+    if (shownMass_ > 0 && RockScans::anotherRock(shownRock_, rock)) {
         while (!rangeReadings_.empty() && rangeReadings_.front().first < look) rangeReadings_.pop_front();
     }
     rock.distance = laserRange(look);
@@ -1524,6 +1526,10 @@ bool Application::shipCanMine() const {
 void Application::lookForRock() {
     if (!gui_ || !rockViewWanted()) return;
     const auto now = std::chrono::steady_clock::now();
+    // A list reading come back is taken before the look; where it was the
+    // first of two for the rock on view, the look comes now and the second
+    // reading starts off it
+    const bool listAgain = collectRockContents();
     // While a panel is up its figures settle over several looks, so it is
     // looked at twice as often then; with none on screen, every second and a
     // half is enough to notice one come up. A panel whose labels are up and
@@ -1548,7 +1554,7 @@ void Application::lookForRock() {
     // that agrees, and at 700 ms between looks that second look comes 0.9 to
     // 1.0 s after the first.
     const bool settling = rockSettling_ && rockSettlingLooks_ < 4;
-    int waitMs = quick || settling ? 0 : (panelUp ? 700 : 1500);
+    int waitMs = quick || settling || listAgain ? 0 : (panelUp ? 700 : 1500);
     // The glance: between two full looks, with nothing on screen, the place
     // the last panel stood is captured on its own - a few hundred pixels
     // each way - and looked at for that one column at that one size. A few
@@ -1731,13 +1737,11 @@ void Application::lookForRock() {
             }
             rockUnsettled_ = 0;
         }
-        // A mass a long way off the last one is a different rock, not a
-        // misread: start the window again rather than average two rocks.
-        if (!rockReadings_.empty()) {
-            const float was = steadyRock(rockReadings_).mass;
-            if (was > 0 && std::fabs(panel.stats.mass - was) > was * 0.25f) {
-                rockReadings_.clear();
-            }
+        // Another rock's look starts the window again rather than average
+        // two rocks: its mass off by more than a misread, and another figure
+        // with it (RockScans::anotherRock)
+        if (!rockReadings_.empty() && RockScans::anotherRock(steadyRock(rockReadings_), panel.stats)) {
+            rockReadings_.clear();
         }
         rockReadings_.push_back(panel.stats);
         while (rockReadings_.size() > 5) rockReadings_.pop_front();
@@ -2132,11 +2136,13 @@ void Application::noteRockScan(const RockStats& look) {
     keepRockScans();
 }
 
-// Each rock gone off view, a line in debug/rock_scans.csv: its figures, the
-// list where the view read it, the place and the ship - in a release too,
-// for what the player wants to work out from their own rocks
-void Application::keepRockScans() {
-    const std::vector<RockScans::Scan> done = rockScans_.done();
+// Each rock gone off view, a line in debug/rock_scans.csv once its wait is
+// over (Recorder): its figures, the list where the view read it, the place
+// and the ship - in a release too, for what the player wants to work out
+// from their own rocks
+void Application::keepRockScans(bool all) {
+    const long long now = (long long)std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    const std::vector<RockScans::Scan> done = all ? rockScans_.done() : rockScans_.done(now);
     if (done.empty()) return;
     std::error_code ec;
     std::filesystem::create_directories(dataPath("debug"), ec);
@@ -2165,6 +2171,18 @@ void Application::keepRockScans() {
         if (rockShare_ && !refineryServiceUrl().empty() && RockScans::sendable(scan)) rockShareQueue_.push_back(scan);
     }
     while (rockShareQueue_.size() > 500) rockShareQueue_.pop_front();
+}
+
+void Application::tendRockScans() {
+    const auto now = std::chrono::steady_clock::now();
+    if (now - rockScansTended_ < std::chrono::seconds(1)) return;
+    rockScansTended_ = now;
+    if (!rockScans_.holding()) return;
+    // The game gone, or put away: the rock on view waits as one off view
+    // does, and is done half a minute on rather than when Bedrock closes -
+    // and goes to the service while Bedrock runs
+    if (!ScreenCapture::gameViewport()) rockScans_.gone();
+    keepRockScans();
 }
 
 void Application::setRockShare(bool on) {
@@ -2249,6 +2267,43 @@ static bool sameMassRead(float a, float b) {
     return differ == 1;
 }
 
+bool Application::collectRockContents() {
+    if (!contentsJob_.valid() || contentsJob_.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        return false;
+    }
+    // (as the loadout's: an exception in the job is a list not read)
+    RockContents read;
+    try {
+        read = contentsJob_.get();
+    } catch (const std::exception& e) {
+        std::cerr << "[rock] list reading failed: " << e.what() << std::endl;
+    }
+    if (DEV_ENV("SCMINER_CONTENTS_LOG")) {
+        std::cout << "\n[rock] list for " << (int)contentsJobMass_ << " kg at " << (int)shownMass_ << " kg: "
+                  << (read.whole ? "whole" : "not whole") << ", " << read.parts.size() << " lines, sum " << read.sum
+                  << "; " << read.note << std::endl;
+    }
+    // The rock's line of rock_scans.csv: two readings alike for the mass the
+    // view had when each picture was taken, whichever rock is on view now -
+    // a pilot who scans the next rock within a second or two would leave
+    // every list behind otherwise
+    if (read.whole) {
+        std::vector<RockScans::ScanPart> parts;
+        for (const RockPartRead& part : read.parts) parts.push_back({part.ore, part.inert, part.percent, part.quality});
+        if (listReadings_.confirms(contentsJobMass_, parts)) rockScans_.listed(contentsJobMass_, parts);
+    }
+    const bool thisRock = rockSeen_ && sameMassRead(contentsJobMass_, shownMass_);
+    logRockList("result", contentsJobMass_, shownMass_, &read, contentsTries_,
+                thisRock ? "for this rock" : "for another mass than on view: dropped");
+    if (!thisRock) return false;
+    RockStats rock;
+    rock.mass = shownMass_;
+    rock.ore = shownOre_;
+    const bool firstOfTwo = read.whole && contentsFor_ <= 0;
+    takeRockContents(read, rock);
+    return firstOfTwo && contentsFor_ <= 0;
+}
+
 void Application::readContentsOnHud(const cv::Mat& frame, const ScanPanel& panel, const RockStats& rock) {
     if (!gui_ || !textLines_.ready() || rock.mass <= 0) return;
     // Under 900 lines the list's figures are a few pixels high: at 720 a
@@ -2256,25 +2311,7 @@ void Application::readContentsOnHud(const cv::Mat& frame, const ScanPanel& panel
     // from 1080 up none did across nine resolutions tested. No list rather
     // than a wrong one.
     if (frame.rows < 900) return;
-    if (contentsJob_.valid()) {
-        if (contentsJob_.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
-        // (as the loadout's: an exception in the job is a list not read)
-        RockContents read;
-        try {
-            read = contentsJob_.get();
-        } catch (const std::exception& e) {
-            std::cerr << "[rock] list reading failed: " << e.what() << std::endl;
-        }
-        if (DEV_ENV("SCMINER_CONTENTS_LOG")) {
-            std::cout << "\n[rock] list for " << (int)contentsJobMass_ << " kg at " << (int)rock.mass << " kg: "
-                      << (read.whole ? "whole" : "not whole") << ", " << read.parts.size() << " lines, sum " << read.sum
-                      << "; " << read.note << std::endl;
-        }
-        const bool thisRock = sameMassRead(contentsJobMass_, rock.mass);
-        logRockList("result", contentsJobMass_, rock.mass, &read, contentsTries_,
-                    thisRock ? "for this rock" : "for another mass than on view: dropped");
-        if (thisRock) takeRockContents(read, rock);
-    }
+    if (contentsJob_.valid()) return;   // a reading under way: collectRockContents takes it
     if (sameMassRead(rock.mass, contentsFor_)) return;   // read, and on view
     // Another mass than the list on view was read at. It may be that rock
     // still - with less of it left, or its mass read another way: the same
@@ -2364,11 +2401,6 @@ void Application::takeRockContents(const RockContents& read, const RockStats& ro
     contentsShown_ = key;
     contentsTries_ = 0;
     gui_->setRockContents(read);
-    {
-        std::vector<RockScans::ScanPart> parts;
-        for (const RockPartRead& part : read.parts) parts.push_back({part.ore, part.inert, part.percent, part.quality});
-        rockScans_.listed(rock.mass, parts);
-    }
     // ...and what players on UEX pay for a part this good
     uexRockOres_.clear();
     for (const RockPartRead& part : read.parts) {

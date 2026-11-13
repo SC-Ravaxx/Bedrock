@@ -15,6 +15,7 @@
 // 2026, 13,631 read an ore, a mass and SCU: 151 showed a rock the game had
 // not finished scanning (below), 221 a figure misread - an SCU of 1.00, 7.00
 // or 474.54 - and the median over five looks passed some of both to the view.
+#include <climits>
 #include <map>
 #include <string>
 #include <vector>
@@ -60,6 +61,23 @@ private:
     int looks_ = 0;
 };
 
+// Whether two readings of a figure can be one: the same as the panel prints
+// it (`places` after the point), or one numeral apart - 21,460 and 21,464 on
+// one Copper rock, look by look. False where either is not above 0.
+bool oneNumeralApart(float a, float b, int places);
+
+// Whether a look is another rock's than the readings the view holds, whose
+// middle is `held`: its mass more than one numeral off, and another figure
+// besides - the SCU, the instability, or the resistance printed the same way.
+// A misread puts one figure wrong; another rock has them all different. Where
+// no other figure was read on both, a mass a quarter or more off says it.
+//
+// Only a quarter off, the readings of two rocks went into one middle: in the
+// MOLE's turret, 15,223 kg showed with the SCU of the 12,229 kg rock before
+// it, and of his 1,079 looks of 17 September 2026 by the face reader, 16
+// showed figures no look had read together.
+bool anotherRock(const RockStats& held, const RockStats& look);
+
 // One rock as the view took it: a line of rock_scans.csv, and what goes to
 // the service where the player shares (sharerocks=1).
 struct ScanPart {
@@ -82,29 +100,81 @@ struct Scan {
     std::vector<ScanPart> parts;   // the list in the panel's order, where the view read it whole
 };
 
-// The rocks of a session, a Scan each. A rock comes in with the first look
-// the view takes of it and goes out when another rock comes on view or the
-// view empties. Looks of the same rock in between - the same ore, mass and
-// SCU - add what the first did not have: the resistance in white, the
-// instability, the range, the list. A rock looked at again later counts
-// once, or twice where only the second time read its list.
+// The rocks of a session, a Scan each. A rock - its ore and its mass - comes
+// in with the first look the view takes of it. Looks of it after that add
+// what the first did not have: the resistance in white, the instability, the
+// range, the list. Its SCU is the one most of its looks read in the same
+// picture as its mass: a misread SCU, or one the view still held from the
+// rock before, does not make it a second rock.
+//
+// Off view, a rock waits HOLD_SECONDS before it is done: a list whose second
+// reading comes back after the next rock came on view is still its own, and
+// a rock looked at again within that time is the same rock. A rock looked at
+// again later counts once, or twice where only the second time read its list.
 class Recorder {
 public:
+    static constexpr long long HOLD_SECONDS = 30;
     // The rock on view - the figures the view shows - and the look that
-    // showed them, which says whether the instability was read at all
+    // showed them: whether the instability was read at all, and the SCU read
+    // with the mass
     void taken(const RockStats& shown, const RockStats& look, long long observed, const std::string& ship,
                const std::string& place);
-    // The list the view shows, read at that mass
+    // The list read twice alike while the view showed a rock of that mass:
+    // that rock's, on view or waiting
     void listed(float mass, const std::vector<ScanPart>& parts);
+    // The rock on view went off it
     void gone();
-    // The rocks gone out since the last call
-    std::vector<Scan> done();
+    // The rocks done by `now` (UTC seconds), the first seen first; by
+    // default every rock off view, waiting or not
+    std::vector<Scan> done(long long now = LLONG_MAX);
+    // Whether a rock is on view or waiting
+    bool holding() const { return open_ || !waiting_.empty(); }
 
 private:
+    struct Rock {
+        Scan scan;
+        long long last = 0;           // its last look
+        std::map<int, int> masses;    // the masses the view showed for it, kg: looks
+        std::map<int, int> read;      // SCU in hundredths: looks that read it with the rock's mass
+        std::map<int, int> shown;     // ...and looks the view showed it on
+    };
+    // The rock the view shows: the same ore, and a mass the view showed for
+    // it - or one numeral off that, with an SCU it showed (a settled 21,460
+    // read again as 21,464)
+    static bool sameRock(const Rock& rock, const RockStats& shown);
+    static bool ofMass(const Rock& rock, float mass);
+    void release(long long now);
+    void finish(Rock& rock);
     bool open_ = false;
-    Scan scan_;
+    Rock rock_;
+    std::vector<Rock> waiting_;
     std::vector<Scan> done_;
-    std::map<std::string, bool> counted_;   // rocks gone out, and whether with their list
+    struct Counted {
+        std::string ore;
+        float mass = 0;
+        float scu = 0;
+        bool listed = false;
+    };
+    std::vector<Counted> counted_;   // rocks done, and whether with their list
+};
+
+// Which rock a list is of. A whole reading of the list says the same as
+// another of the same rock's: two pictures that read alike for one mass make
+// it that rock's list, whichever rock the view has moved on to by the time
+// the second reading comes back. The last eight rocks' first readings are
+// kept.
+class ListReadings {
+public:
+    // A whole reading of the list, read while the view showed `mass`. True:
+    // it says what the kept one for that mass said.
+    bool confirms(float mass, const std::vector<ScanPart>& parts);
+
+private:
+    struct Kept {
+        float mass = 0;
+        std::string key;
+    };
+    std::vector<Kept> kept_;
 };
 
 // "prospector", "mole" or "golem" for the ship the log names; "" for any other
