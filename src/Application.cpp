@@ -768,14 +768,14 @@ void Application::run() {
 
             if (elapsed >= captureIntervalMs_) {
                 lastScanTime_ = now;
-                processScanLive();
+                if (gameUp()) processScanLive();
             }
         }
 
         // Manual scan if requested
         if (scanRequested_) {
             scanRequested_ = false;
-            processScan();
+            if (gameUp()) processScan();
         }
 
         // Short sleep to spare the CPU
@@ -1129,20 +1129,36 @@ void Application::runWithGUI(HINSTANCE hInstance) {
             if (elapsed >= wait) {
                 g_intervalMs = (double)wait;   // logged, so it can be checked
                 lastScanTime_ = now;
-                processScanWithGUI();
+                // ...while the game runs: without it the screen is other
+                // programs', and nothing on it is Bedrock's to read
+                if (gameUp()) processScanWithGUI();
             }
         }
 
         // Single scan
         if (scanRequested_) {
             scanRequested_ = false;
-            processScanWithGUI();
+            if (gameUp()) processScanWithGUI();
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     std::cout << "Application closed." << std::endl;
+}
+
+// Whether Star Citizen runs: its window on screen, or else its process - a
+// minimised game is still running, and a game whose window class changed in
+// a patch is still found by its process. Nothing reads the screen without
+// it. The process list is gone through every two seconds at the most.
+bool Application::gameUp() {
+    if (ScreenCapture::gameViewport()) return true;
+    const auto now = std::chrono::steady_clock::now();
+    if (now - gameProcessChecked_ >= std::chrono::seconds(2)) {
+        gameProcessChecked_ = now;
+        gameProcess_ = GameFiles::gameRunning();
+    }
+    return gameProcess_;
 }
 
 // How long to wait before the next scan. The base is what the player
@@ -2188,7 +2204,7 @@ void Application::tendRockScans() {
     // The game put away: the rock on view waits as one off view does, and is
     // done half a minute on rather than when Bedrock closes
     rockScans_.gone();
-    if (rockGameUp_ && !GameFiles::gameRunning()) {
+    if (rockGameUp_ && !gameUp()) {
         // ...or closed: none of its rocks comes back on view, so each is done
         // now, and what waits for the service goes at once rather than with
         // the next report two minutes on - Bedrock may well be closed next
@@ -6945,7 +6961,10 @@ void Application::saveSnapshot() {
     }
 
     const cv::Rect picture = pictureFor(signatureRegion_);
-    cv::Mat frame = grabGamePicture();
+    // No picture without the game: the screen is then other programs'
+    const bool game = gameUp();
+    cv::Mat frame;
+    if (game) frame = grabGamePicture();
     noteCapture(frame);   // the note describes THIS picture
     CaptureRegion whole;
     whole.x = picture.x;
@@ -6955,8 +6974,10 @@ void Application::saveSnapshot() {
     std::ofstream note(base + ".txt", std::ios::trunc);
     if (note.is_open()) {
         describeSetup(note);
-        note << "snapshot: " << (frame.empty() ? "capture FAILED" : "the game picture") << " at "
-             << whole.x << "," << whole.y << "\n";
+        const char* what = !game ? "none, Star Citizen is not running"
+                           : frame.empty() ? "capture FAILED"
+                                           : "the game picture";
+        note << "snapshot: " << what << " at " << whole.x << "," << whole.y << "\n";
     }
     bool saved = false;
     if (!frame.empty()) saved = cv::imwrite(base + ".png", frame);
