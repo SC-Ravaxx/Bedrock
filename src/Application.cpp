@@ -1837,6 +1837,7 @@ void Application::lookForRock() {
             RockStats shown;
             shown.mass = shownMass_;
             shown.ore = shownOre_;
+            shown.scu = shownRock_.mass == shownMass_ ? shownRock_.scu : 0.0f;
             readContentsOnHud(frame, panel, shown);
         }
         return;
@@ -2360,12 +2361,16 @@ void Application::readContentsOnHud(const cv::Mat& frame, const ScanPanel& panel
     logRockList("start", rock.mass, rock.mass, nullptr, contentsTries_, shown ? "again, its list on view" : "");
     ScanPanel moved = panel;
     moved.labels -= part.tl();
+    // ...and its kg per SCU, which names the lines Hephaestanite and Quartz
+    // share (nameContentsByRock)
+    const double kgPerScu = rock.scu > 0 ? rock.mass / rock.scu : 0.0;
     try {
-        contentsJob_ = std::async(std::launch::async, [this, picture = frame(part).clone(), moved, ore = rock.ore]() {
-            RockContents read;
-            readRockContents(picture, moved, ore, textLines_, read);
-            return read;
-        });
+        contentsJob_ = std::async(std::launch::async,
+                                  [this, picture = frame(part).clone(), moved, ore = rock.ore, kgPerScu]() {
+                                      RockContents read;
+                                      readRockContents(picture, moved, ore, textLines_, read, kgPerScu);
+                                      return read;
+                                  });
     } catch (const std::system_error&) {
         // no thread to be had: the reading waits for the next look
     }

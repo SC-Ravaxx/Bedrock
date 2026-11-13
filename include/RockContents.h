@@ -65,8 +65,10 @@ bool qualityOfOre(const std::string& ore, int quality);
 // line is the ore whose value its quality is - within what that part of the
 // rock can come to. The line without a quality is the inert rest. Fills in
 // `ore`/`inert` and says yes when every line's quality is one ore's and no
-// other's.
-bool nameContentsByRock(const std::string& rockOre, RockContents& contents);
+// other's - or, where two ores have the value (Hephaestanite and Quartz at
+// 330), when the rock's other lines or its weight leave one: `kgPerScu` is
+// the panel's mass over its SCU, 0 where not known.
+bool nameContentsByRock(const std::string& rockOre, RockContents& contents, double kgPerScu = 0);
 
 // Whether named lines can be a rock's of that kind, or a piece of one: a rock
 // has one part of its ore that comes at any quality and one out of the two
@@ -86,10 +88,11 @@ bool contentsHold(RockContents& contents);
 // labels, labelScale). `rockOre` is the name the panel's own heading gave,
 // "" when it was not read: with it the lines' names follow from the rock's
 // kind and only shares and qualities are read; without it, or where that
-// does not fit, the names are read too. Some 50 ms a word, 200 to 350 ms a
-// list, so not on a window's thread.
+// does not fit, the names are read too. `kgPerScu`, the rock's mass over its
+// SCU, helps name the lines by the rock's kind (nameContentsByRock). Some
+// 50 ms a word, 200 to 350 ms a list, so not on a window's thread.
 bool readRockContents(const cv::Mat& frame, const ScanPanel& panel, const std::string& rockOre,
-                      TextLineReader& lines, RockContents& out);
+                      TextLineReader& lines, RockContents& out, double kgPerScu = 0);
 
 // The part of the picture the list is looked for in - all the reader looks
 // at, so a caller that reads on another thread need keep no more than this:

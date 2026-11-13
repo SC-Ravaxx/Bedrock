@@ -1751,11 +1751,36 @@ int runSelfTest() {
         piece.parts = {{"", false, 100.0f, 325}};
         const bool pieceNamed = SCMiner::nameContentsByRock("Iron", piece) && SCMiner::contentsHold(piece) &&
                                 partsAre(piece, {{"Iron", 100.0f, 325}});
-        // Hephaestanite and Quartz both begin at 330: that line's name has to be read
+        // Hephaestanite and Quartz both begin at 330. His rock of 12 November
+        // (17,080 kg, 51.39 SCU) has its Quartz at 522, so its 330 is the
+        // Hephaestanite's bulk
         RockContents heph;
-        heph.parts = {{"", false, 3.71f, 510}, {"", false, 6.43f, 572}, {"", false, 57.79f, 330},
-                      {"", false, 2.92f, 522}, {"", true, 29.12f, 0}};
-        const bool twoOres = !SCMiner::nameContentsByRock("Hephaestanite", heph);
+        heph.parts = {{"", false, 4.65f, 510}, {"", false, 3.90f, 572}, {"", false, 51.56f, 330},
+                      {"", false, 2.66f, 522}, {"", true, 37.20f, 0}};
+        const bool byParts = SCMiner::nameContentsByRock("Hephaestanite", heph) && SCMiner::contentsHold(heph) &&
+                             SCMiner::contentsFitRock("Hephaestanite", heph) &&
+                             partsAre(heph, {{"Silicon", 4.65f, 510}, {"Hephaestanite", 3.90f, 572},
+                                             {"Hephaestanite", 51.56f, 330}, {"Quartz", 2.66f, 522}, {"", 37.20f, 0}});
+        // ...both at 330: the rock's weight says which is the bulk (344.9 kg
+        // an SCU named so, 295.2 the other way round)
+        RockContents both;
+        both.parts = {{"", false, 4.0f, 510}, {"", false, 4.5f, 572}, {"", false, 55.0f, 330}, {"", false, 3.0f, 330},
+                      {"", true, 33.5f, 0}};
+        const bool byWeight = SCMiner::nameContentsByRock("Hephaestanite", both, 344.9) && SCMiner::contentsHold(both) &&
+                              partsAre(both, {{"Silicon", 4.0f, 510}, {"Hephaestanite", 4.5f, 572},
+                                              {"Hephaestanite", 55.0f, 330}, {"Quartz", 3.0f, 330}, {"", 33.5f, 0}});
+        // ...a piece all at 330, 3.2 to Hephaestanite's 2.53; and not where the
+        // weight cannot tell - 3 % of a piece moves it 2 % - or is not known
+        RockContents heavy, light, small, unweighed;
+        heavy.parts = {{"", false, 100.0f, 330}};
+        light.parts = heavy.parts;
+        unweighed.parts = heavy.parts;
+        small.parts = {{"", false, 3.0f, 330}, {"", true, 97.0f, 0}};
+        const bool pieceByWeight =
+            SCMiner::nameContentsByRock("Hephaestanite", heavy, 457.0) && heavy.parts[0].ore == "Hephaestanite" &&
+            SCMiner::nameContentsByRock("Hephaestanite", light, 361.4) && light.parts[0].ore == "Quartz";
+        const bool twoOres = !SCMiner::nameContentsByRock("Hephaestanite", small, 152.3) &&
+                             !SCMiner::nameContentsByRock("Hephaestanite", unweighed);
         // ...and a quality no ore of the rock has names nothing
         RockContents wrong;
         wrong.parts = {{"", false, 10.55f, 654}, {"", false, 36.1f, 325}, {"", true, 53.33f, 0}};
@@ -1771,6 +1796,10 @@ int runSelfTest() {
         allPassed &= check(named && pieceNamed && twoOres && noOre,
                            "a line is the ore whose value its quality is, in any order and at any share - and has "
                            "to be read by name where two ores of the rock share the value (got " + partsAs(bexalite) + ")");
+        allPassed &= check(byParts && byWeight && pieceByWeight,
+                           "...unless the rock's other lines or its weight leave one: Hephaestanite's bulk at 330 "
+                           "beside its Quartz at 522, or the heavier way to name two lines at 330 (got " +
+                               partsAs(heph) + " | " + partsAs(both) + ")");
 
         auto holds = [](std::vector<SCMiner::RockPartRead> parts) {
             RockContents c;
