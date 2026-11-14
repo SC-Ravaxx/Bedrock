@@ -5623,6 +5623,248 @@ int runSelfTest() {
                                !SCMiner::contradictsHandPlace("Nowhere Special", "Lyria", "Stanton"),
                            "...and not by itself, by its own system, by nothing, or when the tables do not know it");
 
+        // The place a rock scan is sent with (rockPlace): a place of the ore
+        // tables where ships mine, or nothing - never the station, gateway or
+        // cluster the header may name. By name first...
+        {
+            using SCMiner::RockPlaceState;
+            auto rockAt = [](const std::string& place,
+                             RockPlaceState::Terrain terrain = RockPlaceState::Terrain::Unknown) {
+                RockPlaceState state;
+                state.place = place;
+                state.terrain = terrain;
+                return SCMiner::rockPlace(state);
+            };
+            auto said = [](const std::string& place) { return place.empty() ? std::string("nothing") : place; };
+            // ...each station by what lies around it
+            const std::pair<const char*, const char*> AROUND[] = {
+                {"Levski", "Nyx - Glaciem Ring"},
+                {"Grim HEX", "Stanton - Yela Asteroid Belt"},
+                {"People's Service Station Alpha", "Nyx - Keeger Belt"},
+                {"People's Service Station Delta", "Nyx - Keeger Belt"},
+                {"People's Service Station Lambda", "Nyx - Keeger Belt"},
+                {"People's Service Station Theta", "Nyx - Keeger Belt"},
+                {"Lorville", "Stanton - Hurston"},
+                {"New Babbage", "Stanton - microTech"}};
+            for (const auto& [station, around] : AROUND) {
+                allPassed &= check(rockAt(station) == around, std::string("a rock by ") + station + " is in " + around +
+                                                                  " (got " + said(rockAt(station)) + ")");
+            }
+            allPassed &= check(rockAt("Checkmate").empty() && rockAt("Gaslight").empty() && rockAt("Ruin Station").empty(),
+                               "a rock by a Pyro rest stop has its Lagrange point's place, which the tables do not list - "
+                               "and one by a station in low orbit none (got " + said(rockAt("Checkmate")) + ")");
+            // ...a body, belt or ring as the header spells it
+            allPassed &= check(rockAt("Monox") == "Pyro - Monox" && rockAt("Pyro I") == "Pyro - Pyro I" &&
+                                   rockAt("Daymar") == "Stanton - Daymar" && rockAt("Terminus Ring") == "Pyro - Terminus Ring" &&
+                                   rockAt("Glaciem Ring") == "Nyx - Glaciem Ring" && rockAt("Keeger Belt") == "Nyx - Keeger Belt",
+                               "a rock on a body, in a belt or a ring has the header's place: Pyro - Monox, not Pyro II "
+                               "(Monox) (got " + said(rockAt("Monox")) + ")");
+            allPassed &= check(rockAt("Magda\xC2\xA0") == "Stanton - Magda" && rockAt("Ariel") == "Stanton - Arial",
+                               "...Magda with the no-break space some routes give it, and Arial by the engine's \"Ariel\" "
+                               "(got " + said(rockAt("Magda\xC2\xA0")) + ", " + said(rockAt("Ariel")) + ")");
+            allPassed &= check(rockAt("Crusader").empty() && rockAt("ArcCorp").empty() && rockAt("Pyro V").empty(),
+                               "...and none on a body the tables have no ship rocks for");
+            // ...a Lagrange point by the tables' group whose note lists it
+            allPassed &= check(rockAt("HUR-L1") == "Stanton - Lagrange A" && rockAt("HUR L2") == "Stanton - Lagrange F" &&
+                                   rockAt("CRU-L1 Ambitious Dream Station") == "Stanton - Lagrange E" &&
+                                   rockAt("MIC L4") == "Stanton - Lagrange D",
+                               "a rock at a Lagrange point is in its group of the tables: HUR-L1 Lagrange A (got " +
+                                   said(rockAt("HUR-L1")) + ")");
+            allPassed &= check(rockAt("PYR2 L4").empty() && rockAt("PYR5 L2").empty(),
+                               "...and nowhere at a point of Pyro's, which no group of the tables lists (got " +
+                                   said(rockAt("PYR2 L4")) + ")");
+            // ...and nothing else
+            const char* const NOWHERE[] = {"Area18", "Orison", "Everus Harbor", "Seraphim Station", "Port Tressler",
+                                           "Baijini Point", "QV Breaker Station", "Stanton Gateway", "Nyx Gateway",
+                                           "Stanton-Pyro Jump Point", "Asteroid Cluster", "Keeger Belt Cluster",
+                                           "RAB-CHARLIE", "OM-3", "<= UNINITIALIZED =>", "Stanton", ""};
+            std::string somewhere;
+            for (const char* place : NOWHERE) {
+                if (!rockAt(place).empty()) somewhere += std::string(somewhere.empty() ? "" : ", ") + place;
+            }
+            allPassed &= check(somewhere.empty(), "a rock by another station or city, a gateway, a jump point, an "
+                                                  "Asteroid Cluster, a name the tables do not know, a system alone or "
+                                                  "open space has no place (got one at: " + said(somewhere) + ")");
+            // ...under way, or after arriving where the log has no name
+            RockPlaceState away;
+            away.place = "Monox";
+            away.travelling = true;
+            RockPlaceState lost;
+            lost.place = "Levski";
+            lost.unnamed = true;
+            allPassed &= check(SCMiner::rockPlace(away).empty() && SCMiner::rockPlace(lost).empty(),
+                               "...nor under way from Monox, or after an arrival without a name beside Levski");
+            // ...Yela by its terrain: the belt lies in the moon's own container
+            allPassed &= check(rockAt("Yela").empty() && rockAt("Yela", RockPlaceState::Terrain::Loaded) == "Stanton - Yela" &&
+                                   rockAt("Yela", RockPlaceState::Terrain::None) == "Stanton - Yela Asteroid Belt",
+                               "a rock at Yela is on the moon with its terrain loaded, in the belt after a round of "
+                               "statistics with none, and nowhere before either");
+            // ...and a place set by hand when it is one of the tables'
+            allPassed &= check(SCMiner::rockPlaceByHand("Wala") == "Stanton - Wala" &&
+                                   SCMiner::rockPlaceByHand("Yela") == "Stanton - Yela" &&
+                                   SCMiner::rockPlaceByHand("HUR-L3") == "Stanton - Lagrange E" &&
+                                   SCMiner::rockPlaceByHand("Grim HEX") == "Stanton - Yela Asteroid Belt" &&
+                                   SCMiner::rockPlaceByHand("Asteroid clusters") == "Pyro - Asteroid clusters" &&
+                                   SCMiner::rockPlaceByHand("Nowhere Special").empty() &&
+                                   SCMiner::rockPlaceByHand("Area18").empty(),
+                               "a place set by hand goes with a rock when the tables have it (got " +
+                                   said(SCMiner::rockPlaceByHand("HUR-L3")) + " for HUR-L3)");
+        }
+        // ...then off the log, line by line, on lines as the game writes them
+        {
+            SCMiner::GameState rock;
+            auto feedRock = [&](const std::string& line) {
+                SCMiner::GameState::Event event;
+                if (SCMiner::GameState::parse(line, &event)) rock.apply(event);
+            };
+            auto said = [](const std::string& place) { return place.empty() ? std::string("nothing") : place; };
+            const std::string PICK = "[Notice] <Player Selected Quantum Target - Local> [ItemNavigation][CL][41716] | NOT AUTH "
+                                     "| MISC_Prospector_830000000101[830000000101]|CSCItemNavigation::"
+                                     "OnPlayerSelectedQuantumTarget|Player has selected point ";
+            const std::string PICKED = " as their destination, routing locally [Team_CGP4][QuantumTravel]";
+            const std::string ROUTE = "[Notice] <Calculate Route> [ItemNavigation][CL][41716] | NOT AUTH | "
+                                      "MISC_Prospector_830000000101[830000000101]|CSCItemNavigation::CalculateRoute|"
+                                      "Projected Start Location is ";
+            const std::string ARRIVED = "[Notice] <Quantum Drive Arrived - Arrived at Final Destination> [ItemNavigation]"
+                                        "[CL][41716] | NOT AUTH | MISC_Prospector_830000000101[830000000101]|"
+                                        "CSCItemNavigation::OnQuantumDriveArrived|Quantum Drive has arrived at final "
+                                        "destination [Team_CGP4][QuantumTravel]";
+            const std::string TERMINAL = "[Notice] <RequestLocationInventory> Player[<player>] requested inventory for "
+                                         "Location[";
+            const std::string TEAM = "] [Team_CoreGameplayFeatures][Inventory]";
+            auto cells = [&](const char* stamp, const char* body, int count) {
+                char text[200];
+                std::snprintf(text, sizeof(text), "<%s>   planet cells: %4d [%5d] meshes:    0 [    0] name: %s", stamp,
+                              count, count > 0 ? 16384 : 0, body);
+                feedRock(text);
+            };
+            // A login at Levski, out of the station into the ring: no line
+            // in between, and the ring it is
+            feedRock("<2026-10-29T14:50:29.000Z> Loading screen for Nyx : SC_Frontend closed after 21.00 seconds");
+            const std::string spawned = rock.rockPlace();
+            feedRock("<2026-10-29T14:50:30.000Z> " + TERMINAL + "Nyx_Levski" + TEAM);
+            feedRock("<2026-10-29T14:52:47.570Z> [Notice] <SHUDEvent_OnNotification> Added notification \"Leaving "
+                     "Armistice Zone - Caution Advised: \" [6] to queue. New queue size: 2, MissionId: "
+                     "[00000000-0000-0000-0000-000000000000], ObjectiveId: [] [Team_CoreGameplayFeatures][Missions][Comms]");
+            allPassed &= check(spawned.empty() && rock.rockPlace() == "Nyx - Glaciem Ring" && rock.place() == "Levski",
+                               "spawned at Levski and out into the ring: no place before the terminal, then the Glaciem "
+                               "Ring - the header still at Levski (got " + said(rock.rockPlace()) + ")");
+            // A contract's coordinates from there: a pick, a nav point without
+            // a name - the geodes of a QV Breaker Station, not the ring
+            feedRock("<2026-10-29T15:00:00.000Z> " + PICK + "NavPoint_Dynamic_830000000202" + PICKED);
+            feedRock("<2026-10-29T15:00:00.001Z> " + ROUTE + "Levski for route to destination NavPoint_Dynamic_830000000202 "
+                     "[Team_CGP4][QuantumTravel]");
+            const std::string picked = rock.rockPlace();
+            feedRock("<2026-10-29T15:03:10.000Z> " + ARRIVED);
+            allPassed &= check(picked.empty() && rock.rockPlace().empty() && rock.place() == "Levski",
+                               "...a pick from Levski and the arrival at a nav point: no place on the way or after, with "
+                               "the header still at Levski (got " + said(picked) + ", " + said(rock.rockPlace()) + ")");
+            // ...a round of statistics says nothing there, and a terminal of a
+            // code without a name neither
+            feedRock("<2026-10-29T15:08:00.000Z> PHYSICS INSTANCE STATS BEGIN 3");
+            cells("2026-10-29T15:08:00.000Z", "OOC_Stanton_2c_Yela", 0);
+            feedRock("<2026-10-29T15:08:00.001Z> PHYSICS INSTANCE STATS END");
+            const std::string round = rock.rockPlace();
+            feedRock("<2026-10-29T15:10:00.000Z> " + TERMINAL + "Nyx_Kaboos" + TEAM);
+            allPassed &= check(round.empty() && rock.rockPlace().empty(),
+                               "...and none after a round of statistics or at a terminal the app has no name for (got " +
+                                   said(round) + ", " + said(rock.rockPlace()) + ")");
+            // ...until the next place line: back at Levski's terminals
+            feedRock("<2026-10-29T15:30:00.000Z> " + TERMINAL + "Nyx_Levski" + TEAM);
+            allPassed &= check(rock.rockPlace() == "Nyx - Glaciem Ring",
+                               "...until a place line: back at Levski, the ring again (got " + said(rock.rockPlace()) + ")");
+            // A pick that ends without an arrival line, at Levski's terminal
+            // (6 November: picked Levski from the ring, docked, mined again)
+            feedRock("<2026-11-06T17:53:34.000Z> " + PICK + "levski_all-001" + PICKED);
+            feedRock("<2026-11-06T17:53:34.001Z> " + ROUTE + "Nyx System for route to destination levski_all-001 "
+                     "[Team_CGP4][QuantumTravel]");
+            const std::string toLevski = rock.rockPlace();
+            feedRock("<2026-11-06T17:54:32.000Z> " + TERMINAL + "Nyx_Levski" + TEAM);
+            allPassed &= check(toLevski.empty() && rock.rockPlace() == "Nyx - Glaciem Ring",
+                               "...a pick from open space has none, and Levski's terminal without an arrival line ends it "
+                               "(got " + said(toLevski) + ", " + said(rock.rockPlace()) + ")");
+            // An Asteroid Cluster in Nyx says nothing: the Glaciem or the Keeger
+            feedRock("<2026-11-06T18:20:00.000Z> " + ROUTE + "Asteroid Cluster for route to destination levski_all-001 "
+                     "[Team_CGP4][QuantumTravel]");
+            allPassed &= check(rock.place() == "Asteroid Cluster" && rock.rockPlace().empty(),
+                               "a route from an Asteroid Cluster in Nyx: no place for a rock (got " +
+                                   said(rock.rockPlace()) + ")");
+            // Grim HEX: Yela's belt
+            feedRock("<2026-09-21T18:23:35.000Z> " + TERMINAL + "GrimHEX" + TEAM);
+            allPassed &= check(rock.rockPlace() == "Stanton - Yela Asteroid Belt",
+                               "a terminal at Grim HEX: Yela's belt (got " + said(rock.rockPlace()) + ")");
+            // Yela itself, as a route out of Grim HEX starts: neither moon nor
+            // belt until the statistics say which. A round begun before that
+            // place line is not a whole one since, and a round without bodies
+            // (before the universe loads) says nothing.
+            feedRock("<2026-09-21T18:28:07.000Z> PHYSICS INSTANCE STATS BEGIN 4");
+            feedRock("<2026-09-21T18:28:07.000Z> " + ROUTE + "Yela for route to destination MISSION_QT_Quantum_Beacon_1 "
+                     "[Team_CGP4][QuantumTravel]");
+            const std::string fromYela = rock.rockPlace();
+            cells("2026-09-21T18:28:07.000Z", "OOC_Stanton_2c_Yela", 0);
+            cells("2026-09-21T18:28:07.000Z", "OOC_Stanton_2b_Daymar", 0);
+            feedRock("<2026-09-21T18:28:07.001Z> PHYSICS INSTANCE STATS END");
+            const std::string halfRound = rock.rockPlace();
+            feedRock("<2026-09-21T18:30:00.000Z> PHYSICS INSTANCE STATS BEGIN 5");
+            feedRock("<2026-09-21T18:30:00.001Z> PHYSICS INSTANCE STATS END");
+            const std::string noBodies = rock.rockPlace();
+            feedRock("<2026-09-21T18:38:07.000Z> PHYSICS INSTANCE STATS BEGIN 6");
+            cells("2026-09-21T18:38:07.000Z", "OOC_Stanton_2c_Yela", 0);
+            cells("2026-09-21T18:38:07.000Z", "OOC_Stanton_2b_Daymar", 0);
+            feedRock("<2026-09-21T18:38:07.001Z> PHYSICS INSTANCE STATS END");
+            allPassed &= check(rock.place() == "Yela" && fromYela.empty() && halfRound.empty() && noBodies.empty() &&
+                                   rock.rockPlace() == "Stanton - Yela Asteroid Belt",
+                               "at Yela no place for a rock until a whole round of statistics since passed without "
+                               "terrain - then Yela's belt (got " + said(fromYela) + ", " + said(halfRound) + ", " +
+                                   said(noBodies) + ", " + said(rock.rockPlace()) + ")");
+            // ...an arrival at the moon starts over, and its terrain loaded
+            // says the moon
+            feedRock("<2026-09-21T18:45:00.000Z> " + PICK + "OOC_Stanton_2c_Yela" + PICKED);
+            feedRock("<2026-09-21T18:47:38.000Z> " + ARRIVED);
+            const std::string atYela = rock.rockPlace();
+            feedRock("<2026-09-21T18:48:07.000Z> PHYSICS INSTANCE STATS BEGIN 7");
+            cells("2026-09-21T18:48:07.000Z", "OOC_Stanton_2c_Yela", 317);
+            const std::string moon = rock.rockPlace();
+            cells("2026-09-21T18:48:07.000Z", "OOC_Stanton_2b_Daymar", 0);
+            feedRock("<2026-09-21T18:48:07.001Z> PHYSICS INSTANCE STATS END");
+            allPassed &= check(atYela.empty() && moon == "Stanton - Yela" && rock.rockPlace() == "Stanton - Yela",
+                               "...an arrival at the moon has none, its terrain loaded the moon (got " + said(atYela) +
+                                   ", " + said(rock.rockPlace()) + ")");
+            // Another body's terrain: that body, as the header has it
+            cells("2026-09-21T19:08:07.000Z", "OOC_Stanton_2b_Daymar", 125);
+            allPassed &= check(rock.place() == "Daymar" && rock.rockPlace() == "Stanton - Daymar",
+                               "terrain loaded on Daymar: a rock there is on Daymar (got " + said(rock.rockPlace()) + ")");
+            // A rest stop at a Lagrange point: the point's group of the tables
+            feedRock("<2026-09-21T19:30:00.000Z> " + TERMINAL + "RR_HUR_L1" + TEAM);
+            allPassed &= check(rock.place() == "HUR-L1" && rock.rockPlace() == "Stanton - Lagrange A",
+                               "a terminal at HUR-L1: Lagrange A for a rock, HUR-L1 in the header (got " +
+                                   said(rock.rockPlace()) + ")");
+            // Out of quantum travel half way - the Aaron Halo - with no
+            // arrival line: the place set off from is behind the ship
+            feedRock("<2026-09-21T19:40:00.000Z> " + PICK + "OOC_Stanton_2b_Daymar" + PICKED);
+            feedRock("<2026-09-21T19:40:00.001Z> " + ROUTE + "HUR-L1 Green Glade Station for route to destination "
+                     "OOC_Stanton_2b_Daymar [Team_CGP4][QuantumTravel]");
+            allPassed &= check(rock.place() == "HUR-L1" && rock.rockPlace().empty(),
+                               "...and none from the pick on, the route's own start included (got " +
+                                   said(rock.rockPlace()) + ")");
+            // Monox, as on 12 November: Checkmate, a pick, the arrival
+            feedRock("<2026-11-12T10:50:00.000Z> " + TERMINAL + "RR_P2_L4" + TEAM);
+            const std::string checkmate = rock.rockPlace();
+            feedRock("<2026-11-12T10:55:08.000Z> " + PICK + "pyro2" + PICKED);
+            feedRock("<2026-11-12T10:55:08.001Z> " + ROUTE + "Checkmate for route to destination pyro2 "
+                     "[Team_CGP4][QuantumTravel]");
+            const std::string toMonox = rock.rockPlace();
+            feedRock("<2026-11-12T10:56:15.000Z> " + ARRIVED);
+            allPassed &= check(checkmate.empty() && toMonox.empty() && rock.rockPlace() == "Pyro - Monox",
+                               "Checkmate has no place for a rock, nor the way to Monox; Monox has Pyro - Monox (got " +
+                                   said(checkmate) + ", " + said(toMonox) + ", " + said(rock.rockPlace()) + ")");
+            // A spawn: nothing until a place line says where
+            feedRock("<2026-11-12T12:29:41.000Z> Loading screen for Pyro : SC_Frontend closed after 21.00 seconds");
+            allPassed &= check(rock.rockPlace().empty() && rock.place() == "Monox",
+                               "a loading screen leaves the header's place, but a rock none until a place line (got " +
+                                   said(rock.rockPlace()) + ")");
+        }
+
         // The SCAN RESULTS panel, found by structure rather than by place.
         // It is anchored to the rock in 3D and slides with the view, so there
         // is no crop to take - the search looks for the one arrangement no

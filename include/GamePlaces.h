@@ -62,4 +62,33 @@ const std::vector<GamePlace>& minablePlaces();
 // tables cannot put in a system.
 bool contradictsHandPlace(std::string_view handPlace, std::string_view namedPlace, std::string_view namedSystem);
 
+// What the log has said about where the ship is, as far as the place a
+// rock is sent with goes. GameState keeps it (GameState::rockPlace).
+struct RockPlaceState {
+    std::string place;          // GameState::place(): "Levski", "HUR-L1", "Yela"; "" in open space
+    bool travelling = false;    // a quantum target picked, and neither its arrival nor a place line since
+    bool unnamed = false;       // arrived where the app has no name - a nav point, a beacon, a party
+                                // member, a terminal of an unknown code, a fresh spawn - and no
+                                // place line since
+    // The ten-minute physics statistics since the place line: the terrain
+    // of the place's own body loaded, or a whole round of them with no
+    // terrain loaded anywhere, or neither yet
+    enum class Terrain { Unknown, Loaded, None };
+    Terrain terrain = Terrain::Unknown;
+};
+
+// The place a rock scan is sent with, for checking the ore tables:
+// "<System> - <Name>" only for a place of theirs where ships mine - a
+// body, belt or ring as the header spells it ("Pyro - Monox"), a Lagrange
+// point's group ("Stanton - Lagrange A"), what lies around a station
+// ("Nyx - Glaciem Ring" at Levski) - and "" wherever the log cannot say:
+// under way, after arriving somewhere without a name, at other stations
+// and cities, gateways, "Asteroid Cluster", in open space, with a system
+// alone or a name the app does not know. Never taken from the rock's ore:
+// the rocks check the tables, and a place read off the ore would check
+// the tables against themselves.
+std::string rockPlace(const RockPlaceState& state);
+// ...and for a place set by hand: sent when it is such a place, else ""
+std::string rockPlaceByHand(std::string_view handPlace);
+
 }  // namespace SCMiner

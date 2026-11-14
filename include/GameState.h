@@ -1,4 +1,5 @@
 #pragma once
+#include "GamePlaces.h"
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -118,6 +119,12 @@ public:
     const std::string& namedPlace() const { return namedPlace_; }
     const std::string& namedSystem() const { return namedSystem_; }
     const std::string& namedStamp() const { return namedStamp_; }
+    // The place a rock scan is sent with (rockPlace in GamePlaces.h): a
+    // place of the ore tables, or "" where the log cannot say which. Not
+    // the header's place: under way, after arriving somewhere without a
+    // name, and at Yela until the statistics tell the moon from its belt
+    // it is "", and a station gives what lies around it.
+    std::string rockPlace() const;
 
     // One log line, everything it says
     struct Event {
@@ -133,6 +140,10 @@ public:
         std::string zone;     // the body the ship is AT, internal name: the one whose object
                               // container just streamed in, or the one whose terrain the
                               // ten-minute statistics list as loaded
+        int cells = -1;       // a body in those statistics, loaded or not: its terrain cells...
+        std::string cellsBody;     // ...and its internal name; -1 and "" on any other line
+        bool statsBegin = false;   // the statistics begin ("PHYSICS INSTANCE STATS BEGIN 2")...
+        bool statsEnd = false;     // ...and end ("PHYSICS INSTANCE STATS END")
         std::string navShip;  // the ship a navigation line is about, by entity id
         bool playerAct = false;   // ...and the player acting in it: their own ship
         std::string hull;     // the player's own hull, by entity id: a target picked in it, or its seat left
@@ -144,7 +155,7 @@ public:
         std::string location;      // a terminal opened at this place: the inventory request's Location[...]
         bool any() const {
             return !system.empty() || !ship.empty() || !place.empty() || !target.empty() ||
-                   !zone.empty() || arrived || !location.empty();
+                   !zone.empty() || arrived || !location.empty() || cells >= 0 || statsBegin || statsEnd;
         }
     };
     static bool parse(std::string_view line, Event* out);
@@ -198,6 +209,18 @@ private:
     Event heldRoute_;
     bool holding_ = false;
     std::string namedPlace_, namedSystem_, namedStamp_;   // see namedPlace()
+    // For rockPlace(): a quantum target picked, until it is arrived at or a
+    // place line other than its own route says where the ship is...
+    bool travelling_ = false;
+    // ...arrived at a target, a terminal or a spawn the app has no name
+    // for, until the next place line...
+    bool unnamed_ = false;
+    // ...and what the ten-minute statistics said since the place line. A
+    // round of them counts once it began after that line (statsWhole_), and
+    // says "no terrain" when it listed bodies and none had any.
+    RockPlaceState::Terrain terrain_ = RockPlaceState::Terrain::Unknown;
+    bool statsWhole_ = false, statsBodies_ = false, statsTerrain_ = false;
+    void rockPlaceFresh();   // a new place line: what the statistics said before is old
 };
 
 }  // namespace SCMiner

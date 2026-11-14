@@ -254,16 +254,33 @@ bool GameState::parse(std::string_view line, Event* out) {
             p++;
         }
         const size_t n = digits > 0 ? line.find(CELLS_NAME, p) : std::string_view::npos;
-        if (cells > 0 && n != std::string_view::npos) {
+        if (n != std::string_view::npos) {
             std::string_view name = line.substr(n + CELLS_NAME.size());
             while (!name.empty() && (name.back() == ' ' || name.back() == '\r' || name.back() == '\n')) {
                 name.remove_suffix(1);
             }
             if (!name.empty()) {
-                event.zone = std::string(name);
+                if (cells > 0) event.zone = std::string(name);
+                // ...and every body, with terrain or without, for the round
+                // with none at all (rockPlace: Yela's belt)
+                event.cells = cells;
+                event.cellsBody = std::string(name);
                 said = true;
             }
         }
+    }
+    // The round of statistics begins and ends:
+    //   PHYSICS INSTANCE STATS BEGIN 2
+    //   PHYSICS INSTANCE STATS END
+    // with the 28 bodies between the two in every round of eight logs from
+    // September to November 2026 - and none in the round before the
+    // universe is loaded or after it is left
+    if (line.find("PHYSICS INSTANCE STATS BEGIN") != std::string_view::npos) {
+        event.statsBegin = true;
+        said = true;
+    } else if (line.find("PHYSICS INSTANCE STATS END") != std::string_view::npos) {
+        event.statsEnd = true;
+        said = true;
     }
     // "Loading screen for Nyx : SC_Frontend closed after 44.25 seconds"
     static constexpr std::string_view LOADING = "Loading screen for ";
@@ -523,6 +540,7 @@ bool GameState::applyOwn(const Event& event) {
                 const GamePlace here = placeByLogName(place_, "");
                 if (!here.system.empty() && here.system != system_) {
                     place_.clear();
+                    rockPlaceFresh();
                 }
             }
         }
@@ -532,16 +550,37 @@ bool GameState::applyOwn(const Event& event) {
         if (place != place_) {
             place_ = place;
             changed = true;
+            rockPlaceFresh();
         }
         if (!place.empty()) inSpace_ = false;   // a place, whatever it is, is not open space
     };
+    // For rockPlace(), which lines say where the ship is NOW: a route's start
+    // - but not that of the route to the target just picked, which the ship
+    // is about to leave - a body, a terminal the app knows. Each ends the
+    // wait after a pick and after an arrival somewhere without a name.
+    const bool setsOff = !event.routeTo.empty() && event.routeTo == target_;
+    auto placeSaid = [&](bool leaving) {
+        unnamed_ = false;
+        if (!leaving) travelling_ = false;
+    };
+    // ...and which say the place last named is not where the ship is, while
+    // naming none the tables know: a loading screen (a spawn), a terminal of
+    // a code the app has no name for (an outpost, a QV station)
+    auto placeUnnamed = [&]() {
+        unnamed_ = true;
+        travelling_ = false;
+        rockPlaceFresh();
+    };
     setSystem(event.system);
     if (!event.system.empty()) name("", event.system);
+    if (!event.system.empty() && !event.systemFromRoute) placeUnnamed();
     if (event.systemFromRoute) {
         setPlace("");   // out in space: no place any more
         inSpace_ = true;
+        placeSaid(setsOff);
     }
     if (!event.place.empty()) {
+        placeSaid(setsOff);
         const GamePlace place = placeByLogName(event.place, system_);
         if (!place.system.empty()) name(place.name, place.system);
         setPlace(place.known() ? place.name : event.place);
@@ -578,6 +617,9 @@ bool GameState::applyOwn(const Event& event) {
             setPlace(place.name);
             if (!place.system.empty()) setSystem(place.system);
             jumpTo_.clear();
+            placeSaid(false);
+            // ...from the statistics: the terrain of the body it is at
+            if (event.cells > 0) terrain_ = RockPlaceState::Terrain::Loaded;
         }
     }
     if (!event.location.empty()) {
@@ -589,8 +631,13 @@ bool GameState::applyOwn(const Event& event) {
             setPlace(place.name);
             if (!place.system.empty()) setSystem(place.system);
             jumpTo_.clear();
+            placeSaid(false);
+        } else if (event.location != "INVALID_LOCATION_ID") {
+            placeUnnamed();
         }
     }
+    // A pick: under way from here on, as far as a rock's place goes
+    if (!event.target.empty()) travelling_ = true;
     // (a new pick counts as a change: what the route crosses - the Aaron
     // Halo - is shown while it stands)
     if (!event.target.empty() && event.target != target_) {
@@ -610,6 +657,10 @@ bool GameState::applyOwn(const Event& event) {
     }
     if (event.arrived && !target_.empty()) {
         const std::string far = jumpDestination(target_);
+        // For rockPlace(): arrived, and somewhere the app names or not
+        travelling_ = false;
+        rockPlaceFresh();
+        unnamed_ = far.empty() && !placeByDestination(target_, system_).known();
         if (!far.empty()) {
             // At the jump point, still on this side; the crossing itself
             // is not logged, the next place seen tells (see jumpTo_)
@@ -633,6 +684,22 @@ bool GameState::applyOwn(const Event& event) {
         target_.clear();
         routeStart_.clear();
         changed = true;
+    }
+    // The ten-minute statistics, for rockPlace(): a round begun since the
+    // place line, with bodies listed and terrain loaded for none, says the
+    // ship is out in space (Yela's belt rather than the moon)
+    if (event.statsBegin) {
+        statsWhole_ = true;
+        statsBodies_ = false;
+        statsTerrain_ = false;
+    }
+    if (event.cells >= 0) {
+        statsBodies_ = true;
+        if (event.cells > 0) statsTerrain_ = true;
+    }
+    if (event.statsEnd) {
+        if (statsWhole_ && statsBodies_ && !statsTerrain_) terrain_ = RockPlaceState::Terrain::None;
+        statsWhole_ = false;
     }
     // A hull destroyed with the player in it: gone, and said on to whoever
     // keeps fits by hull (lostHulls())
@@ -675,6 +742,20 @@ std::string GameState::hull() const {
     return !hull_.empty() && hullShip_ == ship_ ? hull_ : std::string();
 }
 
+std::string GameState::rockPlace() const {
+    RockPlaceState state;
+    state.place = place_;
+    state.travelling = travelling_;
+    state.unnamed = unnamed_;
+    state.terrain = terrain_;
+    return SCMiner::rockPlace(state);
+}
+
+void GameState::rockPlaceFresh() {
+    terrain_ = RockPlaceState::Terrain::Unknown;
+    statsWhole_ = false;
+}
+
 void GameState::setGameLog(const std::filesystem::path& log) {
     log_ = log;
     offset_ = 0;
@@ -700,6 +781,9 @@ void GameState::setGameLog(const std::filesystem::path& log) {
     namedPlace_.clear();
     namedSystem_.clear();
     namedStamp_.clear();
+    travelling_ = false;
+    unnamed_ = false;
+    rockPlaceFresh();
     if (log_.empty()) return;
     std::error_code ec;
     const auto size = std::filesystem::file_size(log_, ec);
@@ -743,6 +827,9 @@ bool GameState::poll() {
         // one before it, and a reset would let the loadout read for that seat
         // stand for this one's
         holding_ = false;
+        travelling_ = false;
+        unnamed_ = false;
+        rockPlaceFresh();
     }
     if (size > offset_) changed = readFrom(offset_, &offset_, false) > 0 || changed;
     return changed;

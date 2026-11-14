@@ -3894,7 +3894,8 @@ int runMotionCheck(int seconds) {
 #endif  // BEDROCK_DEV_TOOLS
 // Replays a Game.log through the state reader and prints every change of
 // system, ship or seat with the log's own time stamp: what the app would
-// have known, and when.
+// have known, and when - and of the place a rock scan would have been sent
+// with (GameState::rockPlace).
 int runGameLog(const std::string& file) {
     std::ifstream in(file, std::ios::binary);
     if (!in.is_open()) {
@@ -3905,6 +3906,7 @@ int runGameLog(const std::string& file) {
     SCMiner::GameState state;
     std::string line;
     std::string system, ship, place;
+    std::string rockAt;
     bool inSeat = false;
     int changes = 0;
     int gadgets = 0;
@@ -3946,7 +3948,17 @@ int runGameLog(const std::string& file) {
         }
         SCMiner::GameState::Event event;
         if (!SCMiner::GameState::parse(line, &event)) continue;
-        if (!state.apply(event)) continue;
+        // The place a rock scan would be sent with: it moves on lines that
+        // change nothing else as well (the end of a round of statistics)
+        auto rockPlaceChanged = [&] {
+            if (state.rockPlace() == rockAt) return;
+            rockAt = state.rockPlace();
+            std::cout << stamp << "  rock place: " << (rockAt.empty() ? std::string("(none)") : rockAt) << std::endl;
+        };
+        if (!state.apply(event)) {
+            rockPlaceChanged();
+            continue;
+        }
         if (state.gadgetChanges() != gadgets) {
             gadgets = state.gadgetChanges();
             std::cout << stamp << "  gadget  "
@@ -3974,6 +3986,7 @@ int runGameLog(const std::string& file) {
             std::cout << stamp << "  ship    " << SCMiner::GameState::label(ship)
                       << (inSeat ? "" : "  (left the seat)") << std::endl;
         }
+        rockPlaceChanged();
     }
     std::cout << changes << " change(s). Now: system " << (system.empty() ? "?" : system)
               << ", place " << (place.empty() ? "?" : place) << ", ship "

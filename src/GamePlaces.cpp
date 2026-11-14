@@ -78,6 +78,19 @@ const Named NAMED[] = {
     {"Keeger Belt", "Nyx", "Keeger Belt", 0},
 };
 
+// The tables' note on a Lagrange group lists its points - "HUR-L1,
+// HUR-L4" - and `key` ("HUR-L1") is one of them
+bool listsPoint(const std::string& note, const std::string& key) {
+    size_t at = 0;
+    while ((at = note.find(key, at)) != std::string::npos) {
+        const size_t end = at + key.size();
+        const bool starts = at == 0 || note[at - 1] == ',' || note[at - 1] == ' ';
+        if (starts && (end == note.size() || note[end] == ',' || note[end] == ' ')) return true;
+        at = end;
+    }
+    return false;
+}
+
 // "HUR-L1", "HUR L1", "HUR-L1 Green Glade Station" -> the ore tables'
 // Lagrange group, read off their own notes ("HUR-L1, HUR-L4" under
 // "Lagrange A"), so the data stays the one authority
@@ -93,15 +106,9 @@ GamePlace lagrange(std::string_view name) {
     for (const auto& row : ORE_LOCATIONS) {
         if (std::strcmp(row.kind, "lagrange") != 0 || std::strcmp(row.system, "Stanton") != 0) continue;
         // the note lists the points: "HUR-L1, HUR-L4"
-        const std::string note = row.note;
-        size_t at = 0;
-        while ((at = note.find(key, at)) != std::string::npos) {
-            const size_t end = at + key.size();
-            if (end == note.size() || note[end] == ',' || note[end] == ' ') {
-                place.oreLocation = row.location;
-                return place;
-            }
-            at = end;
+        if (listsPoint(row.note, key)) {
+            place.oreLocation = row.location;
+            return place;
         }
     }
     return place;
@@ -110,6 +117,16 @@ GamePlace lagrange(std::string_view name) {
 // Pyro's Lagrange points hold asteroid clusters, and the ore tables put
 // every Pyro cluster, RAB and RMB under one heading
 const char* const PYRO_CLUSTERS = "Pyro Deep Space Asteroids";
+
+// Pyro's rest stops by the point they stand at, as UEX lists them ("Monox
+// Lagrange Point 4" is Checkmate, Ruin Station orbits Terminus)
+struct PyroStop { int planet; const char* point; const char* name; };
+const PyroStop PYRO_STOPS[] = {{2, "L4", "Checkmate"},          {3, "L1", "Starlight Service Station"},
+                               {3, "L3", "Patch City"},         {3, "LEO", "Orbituary"},
+                               {5, "L2", "Gaslight"},           {5, "L4", "Rod's Fuel 'N Supplies"},
+                               {5, "L5", "Rat's Nest"},         {6, "L3", "Endgame"},
+                               {6, "L4", "Dudley & Daughters"}, {6, "L5", "Megumi Refueling"},
+                               {6, "LEO", "Ruin Station"}};
 
 std::string systemOfAbbreviation(std::string_view s) {
     if (sameName(s, "stan") || sameName(s, "stanton")) return "Stanton";
@@ -231,9 +248,7 @@ GamePlace placeByLogName(std::string_view logName, std::string_view systemHint) 
 // (Nyx_Levski, Stanton1_Lorville), Grim HEX, the planets' stations in low
 // orbit (RR_HUR_LEO), the rest stops at Lagrange points (RR_HUR_L1,
 // RR_P2_L4), the gateways (RR_JP_StantonPyro: in Stanton, to Pyro) - and
-// outposts, which say nothing here. Pyro's rest stops by the point they
-// stand at, as UEX lists them ("Monox Lagrange Point 4" is Checkmate,
-// Ruin Station orbits Terminus).
+// outposts, which say nothing here. Pyro's rest stops by PYRO_STOPS.
 GamePlace placeByLocationCode(std::string_view code, std::string_view systemHint) {
     const std::string name = trimmed(code);
     if (name.empty() || sameName(name, "INVALID_LOCATION_ID")) return {};
@@ -265,15 +280,8 @@ GamePlace placeByLocationCode(std::string_view code, std::string_view systemHint
     {
         static const std::regex form(R"(^RR_P([1-6])_(LEO|L([1-5]))$)", std::regex::icase);
         if (std::regex_match(name.c_str(), m, form)) {
-            struct Stop { int planet; const char* point; const char* name; };
-            static const Stop STOPS[] = {{2, "L4", "Checkmate"},          {3, "L1", "Starlight Service Station"},
-                                         {3, "L3", "Patch City"},         {3, "LEO", "Orbituary"},
-                                         {5, "L2", "Gaslight"},           {5, "L4", "Rod's Fuel 'N Supplies"},
-                                         {5, "L5", "Rat's Nest"},         {6, "L3", "Endgame"},
-                                         {6, "L4", "Dudley & Daughters"}, {6, "L5", "Megumi Refueling"},
-                                         {6, "LEO", "Ruin Station"}};
             const int planet = m[1].str()[0] - '0';
-            for (const Stop& s : STOPS) {
+            for (const PyroStop& s : PYRO_STOPS) {
                 if (s.planet == planet && sameName(m[2].str(), s.point)) {
                     const GamePlace known = placeByLogName(s.name, systemHint);
                     return {known.known() ? known.name : std::string(s.name), "Pyro", known.oreLocation,
@@ -431,6 +439,130 @@ bool contradictsHandPlace(std::string_view handPlace, std::string_view namedPlac
     const std::string system = trimmed(namedSystem);
     if (system.empty()) return false;
     return !sameName(system, hand.system);
+}
+
+namespace {
+
+// The place as GameState holds it, as the tables would know it: a no-break
+// space after the name goes ("Magda\xC2\xA0" starts 132 routes in the
+// logs, a Magda the header then does not know), and so does the engine's
+// old spelling of Arial ("OOC_Stanton_1a_Ariel": 41 terrain lines and 4
+// quantum targets in the logs, never another)
+std::string plainName(std::string_view s) {
+    static constexpr std::string_view NO_BREAK = "\xC2\xA0";
+    for (bool more = true; more;) {
+        more = false;
+        while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))) s.remove_prefix(1);
+        while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) s.remove_suffix(1);
+        if (s.size() >= 2 && s.substr(0, 2) == NO_BREAK) {
+            s.remove_prefix(2);
+            more = true;
+        }
+        if (s.size() >= 2 && s.substr(s.size() - 2) == NO_BREAK) {
+            s.remove_suffix(2);
+            more = true;
+        }
+    }
+    if (sameName(s, "Ariel")) return "Arial";
+    return std::string(s);
+}
+
+// Stations and cities by what lies around them, where every rock in reach
+// belongs to one place of the tables. Any other station says nothing about
+// a rock.
+struct Around { const char* station; const char* place; };
+const Around AROUND[] = {
+    // Levski is itself a segment of the Glaciem Ring, 15.00 Gm out: the
+    // ring's players leave it into the ring with no other place line
+    {"Levski", "Glaciem Ring"},
+    // Grim HEX stands in Yela's belt
+    {"Grim HEX", "Yela Asteroid Belt"},
+    // the People's Service Stations stand in the Keeger Belt (quantum
+    // markers rs_asmbl_keeger_0N, terminals AsteroidClusterBase_Nyx_Social_Keeger_N)
+    {"People's Service Station Alpha", "Keeger Belt"},
+    {"People's Service Station Delta", "Keeger Belt"},
+    {"People's Service Station Lambda", "Keeger Belt"},
+    {"People's Service Station Theta", "Keeger Belt"},
+    // the two cities on a body the tables have ore for: its ground
+    {"Lorville", "Hurston"},
+    {"New Babbage", "microTech"},
+};
+
+// "HUR-L1", "HUR L1", "HUR-L1 Green Glade Station", "PYR2 L4": a Lagrange
+// point, and `group` the row of the tables whose note lists it - or
+// nullptr, as for every point of Pyro's, which the tables do not list
+bool lagrangePoint(std::string_view name, const OreLocation** group) {
+    static const std::regex form(R"(^(HUR|CRU|ARC|MIC|PYR[1-6])[- ]?L([1-5])\b)", std::regex::icase);
+    std::cmatch m;
+    const std::string text(name);
+    if (!std::regex_search(text.c_str(), m, form)) return false;
+    std::string key = m[1].str();
+    for (char& c : key) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    key += "-L" + m[2].str();
+    *group = nullptr;
+    for (const auto& row : ORE_LOCATIONS) {
+        if (row.family == MiningFamily::Ship && std::strcmp(row.kind, "lagrange") == 0 && listsPoint(row.note, key)) {
+            *group = &row;
+            break;
+        }
+    }
+    return true;
+}
+
+// What a place's name alone says a rock is at: what lies around a station,
+// a Lagrange point's group, a body, belt or ring ships mine at, spelled
+// the way the header spells it ("Pyro - Monox" for Pyro II (Monox)) - and
+// "" for anything else
+std::string tablePlace(const std::string& name) {
+    if (name.empty()) return "";
+    for (const Around& around : AROUND) {
+        if (sameName(name, around.station)) return tablePlace(around.place);
+    }
+    // a Pyro rest stop stands at its Lagrange point; one in low orbit at none
+    std::string point = name;
+    for (const PyroStop& stop : PYRO_STOPS) {
+        if (!sameName(name, stop.name)) continue;
+        if (std::strcmp(stop.point, "LEO") == 0) return "";
+        point = "PYR" + std::to_string(stop.planet) + " " + stop.point;
+    }
+    const OreLocation* group = nullptr;
+    if (lagrangePoint(point, &group)) return group ? std::string(group->system) + " - " + group->location : "";
+    // NAMED by the header's name, where the tables' location under it has
+    // ship rocks (Grim HEX, the one station there with a location, is
+    // AROUND's)
+    for (const Named& n : NAMED) {
+        if (!sameName(name, n.name)) continue;
+        for (const auto& row : ORE_LOCATIONS) {
+            if (row.family == MiningFamily::Ship && *n.ore && std::strcmp(row.location, n.ore) == 0) {
+                return std::string(n.system) + " - " + n.name;
+            }
+        }
+        return "";
+    }
+    return "";
+}
+
+}  // namespace
+
+std::string rockPlace(const RockPlaceState& state) {
+    // Under way, or arrived where the log has no name: the place it named
+    // last is behind the ship
+    if (state.travelling || state.unnamed) return "";
+    const std::string name = plainName(state.place);
+    // Yela's belt lies in the moon's own container, and a route from
+    // either starts at "Yela". Only the statistics tell them apart: the
+    // moon's terrain loaded, or none anywhere in a whole round of them
+    // (at Grim HEX they list OOC_Stanton_2c_Yela with 0 cells).
+    if (sameName(name, "Yela")) {
+        if (state.terrain == RockPlaceState::Terrain::Loaded) return tablePlace("Yela");
+        if (state.terrain == RockPlaceState::Terrain::None) return tablePlace("Yela Asteroid Belt");
+        return "";
+    }
+    return tablePlace(name);
+}
+
+std::string rockPlaceByHand(std::string_view handPlace) {
+    return tablePlace(plainName(handPlace));
 }
 
 }  // namespace SCMiner

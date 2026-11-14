@@ -2155,13 +2155,11 @@ void Application::clearRockView() {
 }
 
 // The rock the view took, for rock_scans.csv: where and from which ship -
-// the place as the header names it, a place set by hand as well
+// the place as rockPlace() decides it, a place of the ore tables or none
+// (the header may say more: a station, a gateway), and a place set by hand
+// when it is such a place
 void Application::noteRockScan(const RockStats& look, int rows, float labelScale) {
-    std::string place = placeLine_;
-    const std::string byHand = " (set manually)";
-    if (place.size() > byHand.size() && place.compare(place.size() - byHand.size(), byHand.size(), byHand) == 0) {
-        place.resize(place.size() - byHand.size());
-    }
+    const std::string place = placeOverride_.empty() ? gameState_.rockPlace() : rockPlaceByHand(placeOverride_);
     const long long observed = (long long)std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     rockScans_.taken(shownRock_, look, observed, RockScans::shipKind(gameState_.ship()), place, rows, labelScale);
     keepRockScans();
