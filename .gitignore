@@ -33,5 +33,7 @@ uex_key.dat
 
 # Local editor and tool state
 .vs/
-.vscode/
+.vscode/*
+!.vscode/tasks.json
+!.vscode/tasks.ps1
 *.user

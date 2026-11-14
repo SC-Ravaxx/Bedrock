@@ -2797,7 +2797,8 @@ bool MinerGUI::processMessages() {
         //
         // Esc and Enter still arrive either way: the window procedure closes
         // the list and leaves the field on them.
-        const bool typingHere = (lookingOpen_ || datarunnerOpen_ || (loadoutOpen_ && (craftedEditing_ || nameEditing_)) ||
+        const bool typingHere = (lookingOpen_ || datarunnerOpen_ ||
+                                 (loadoutOpen_ && (craftedEditing_ || nameEditing_ || modulePicker_ >= 0)) ||
                                  (pluginPageUp() && !pluginTyping_.empty())) &&
             msg.hwnd == hwnd_ &&
             (msg.message == WM_KEYDOWN || msg.message == WM_KEYUP ||
@@ -3155,6 +3156,24 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             return 0;
         }
         case WM_MOUSEMOVE:
+            if (moduleScrollDrag_) {
+                // The thumb was taken at moduleScrollDragY_ with the list at
+                // moduleScrollDragScroll_. The same travel that paints the
+                // thumb carries the rows, so it stays under the pointer.
+                const float py = (float)(short)HIWORD(lParam);
+                const float travel = moduleScrollTrack_.Height - moduleScrollThumb_.Height;
+                if (travel > 1.0f && moduleListMax_ > 0) {
+                    int next = moduleScrollDragScroll_ +
+                               (int)std::lround((py - moduleScrollDragY_) / travel * (float)moduleListMax_);
+                    if (next < 0) next = 0;
+                    if (next > moduleListMax_) next = moduleListMax_;
+                    if (next != moduleListScroll_) {
+                        moduleListScroll_ = next;
+                        InvalidateRect(hwnd, nullptr, FALSE);
+                    }
+                }
+                return 0;
+            }
             if (gripDragging_) {
                 dragOverlayGrip();
                 return 0;
@@ -3162,12 +3181,20 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             trackHover(hwnd, hoverMain_, lParam);
             break;
         case WM_LBUTTONUP:
+            if (moduleScrollDrag_) {
+                ReleaseCapture();   // WM_CAPTURECHANGED ends the drag
+                return 0;
+            }
             if (gripDragging_) {
                 ReleaseCapture();   // WM_CAPTURECHANGED ends the drag
                 return 0;
             }
             break;
         case WM_CAPTURECHANGED:
+            if (moduleScrollDrag_) {
+                moduleScrollDrag_ = false;
+                InvalidateRect(hwnd, nullptr, FALSE);
+            }
             if (gripDragging_) {
                 // the size it was left at, kept; the fit takes its height on
                 gripDragging_ = false;
@@ -3297,6 +3324,22 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 InvalidateRect(hwnd, nullptr, TRUE);
                 return 0;
             }
+            // The open module field. Whatever is typed is a substring of the
+            // name or of a figure, and the list below keeps the matches.
+            // Esc still arrives as a key, and closes the list there.
+            if (loadoutOpen_ && modulePicker_ >= 0) {
+                const wchar_t c = (wchar_t)wParam;
+                if (c == VK_BACK) {
+                    if (!moduleFilter_.empty()) moduleFilter_.pop_back();
+                } else if (c >= L' ' && moduleFilter_.size() < 32) {
+                    moduleFilter_ += c;
+                } else {
+                    return 0;
+                }
+                moduleListScroll_ = 0;
+                InvalidateRect(hwnd, nullptr, TRUE);
+                return 0;
+            }
             // The crafted-bonus field, while it has the cursor. Digits, one
             // point, and a leading minus - a crafted head can come out worse
             // than stock, and refusing to type that would be a lie about what
@@ -3335,6 +3378,15 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
         }
 
         case WM_KEYDOWN:
+            if (loadoutOpen_ && (modulePicker_ >= 0 || laserPickerOpen_) && wParam == VK_ESCAPE) {
+                if (modulePicker_ >= 0) {
+                    modulePicker_ = -1;
+                    moduleFilter_.clear();
+                    if (moduleScrollDrag_) ReleaseCapture();
+                } else laserPickerOpen_ = false;
+                InvalidateRect(hwnd, nullptr, TRUE);
+                return 0;
+            }
             if (lookingOpen_ && (wParam == VK_ESCAPE || wParam == VK_RETURN)) {
                 setLookingOpen(false);
                 return 0;
@@ -3356,9 +3408,17 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             break;
 
         case WM_MOUSEWHEEL:
-            // Over the what's-new card the wheel reads it. Elsewhere it
-            // scrolls what scrolls: the Datarunner's card, a plugin's page,
-            // the Gear page's list.
+            // The module list, while it is down: six rows show, and the wheel
+            // moves the rest. Elsewhere the wheel reads the what's-new
+            // card, or scrolls the Datarunner's card, a plugin's page, the
+            // Gear page's list.
+            if (loadoutOpen_ && modulePicker_ >= 0) {
+                moduleListScroll_ -= GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
+                if (moduleListScroll_ < 0) moduleListScroll_ = 0;
+                if (moduleListScroll_ > moduleListMax_) moduleListScroll_ = moduleListMax_;
+                InvalidateRect(hwnd, nullptr, FALSE);
+                return 0;
+            }
             if (whatsNewOpen_) {
                 scrollWhatsNew(-GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA * scaleF(56));
                 return 0;
@@ -3395,9 +3455,8 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
         case WM_RBUTTONDOWN: {
             // The only thing the right button does anywhere in the window:
-            // take one module back off the head. A left click adds, because
-            // the same module can go in more than one slot, so removing
-            // needed a gesture of its own.
+            // empty the module slot under it. The list is how a slot is
+            // filled; this is how one is cleared without opening the list.
             if (!loadoutOpen_) break;
             // (left of the page the rail, which has nothing for it)
             const int rw = phoneTapping_ ? 0 : railWidth();
@@ -3405,8 +3464,8 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             const float px = (float)((short)LOWORD(lParam) - rw);
             const float py = (float)(short)HIWORD(lParam);
             for (const auto& hit : loadoutHits_) {
-                if (hit.kind != 1 || !hit.rect.Contains(px, py)) continue;
-                takeHeadModule(&MINING_MODULES[hit.value]);
+                if (hit.kind != 9 || !hit.rect.Contains(px, py)) continue;
+                setSlotModule(hit.value, nullptr);
                 storeHead();
                 saveLoadout();
                 InvalidateRect(hwnd, nullptr, TRUE);
@@ -3590,6 +3649,108 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 return 0;
             }
             if (loadoutOpen_) {
+                // The laser list lies over the card. While it is down it takes
+                // the click: a head in it is fitted, and anywhere else - the
+                // field included - only puts the list away. A phone's picture
+                // draws the field closed, so a tap there is the card's.
+                if (laserPickerOpen_ && !phoneTapping_) {
+                    for (const auto& hit : loadoutHits_) {
+                        if (hit.kind != 0 || !hit.rect.Contains(px, py)) continue;
+                        putHeadLaser(&MINING_LASERS[hit.value]);
+                        craftedEntry_.clear();
+                        if (loadout_.craftedPower != 0.0f) {
+                            char buf[32];
+                            std::snprintf(buf, sizeof(buf), "%.2f", loadout_.craftedPower);
+                            craftedEntry_ = buf;
+                        }
+                        storeHead();
+                        saveLoadout();
+                        break;
+                    }
+                    laserPickerOpen_ = false;
+                    modulePicker_ = -1;
+                    moduleFilter_.clear();
+                    craftedEditing_ = false;
+                    endNameEditing(true);
+                    removeArmed_ = false;
+                    InvalidateRect(hwnd, nullptr, TRUE);
+                    return 0;
+                }
+                // The module list lies over the card the same way. A row
+                // fills the slot the list belongs to, the bar on its right
+                // moves the rows, the field the list dropped from is where
+                // the filter is typed so a click there leaves it open,
+                // another slot's field moves the list there, and anywhere
+                // else puts it away.
+                if (modulePicker_ >= 0) {
+                    auto jumpScroll = [&]() {
+                        const float travel = moduleScrollTrack_.Height - moduleScrollThumb_.Height;
+                        if (travel <= 1.0f || moduleListMax_ <= 0) return;
+                        float frac = (py - moduleScrollTrack_.Y - moduleScrollThumb_.Height * 0.5f) / travel;
+                        if (frac < 0) frac = 0;
+                        if (frac > 1) frac = 1;
+                        moduleListScroll_ = (int)std::lround(frac * (float)moduleListMax_);
+                    };
+                    for (const auto& hit : loadoutHits_) {
+                        if (hit.kind != 12 || !hit.rect.Contains(px, py)) continue;
+                        if (phoneTapping_) {
+                            jumpScroll();
+                            InvalidateRect(hwnd, nullptr, FALSE);
+                            return 0;
+                        }
+                        moduleScrollDrag_ = true;
+                        moduleScrollDragScroll_ = moduleListScroll_;
+                        moduleScrollDragY_ = py;
+                        SetCapture(hwnd);
+                        return 0;
+                    }
+                    for (const auto& hit : loadoutHits_) {
+                        if (hit.kind != 13 || !hit.rect.Contains(px, py)) continue;
+                        jumpScroll();
+                        InvalidateRect(hwnd, nullptr, FALSE);
+                        return 0;
+                    }
+                    bool picked = false;
+                    bool moved = false;
+                    bool kept = false;
+                    for (const auto& hit : loadoutHits_) {
+                        if (hit.kind != 11 || !hit.rect.Contains(px, py)) continue;
+                        const MiningModule* m = hit.value >= 0 && hit.value < MINING_MODULE_COUNT
+                                                    ? &MINING_MODULES[hit.value]
+                                                    : nullptr;
+                        setSlotModule(modulePicker_, m);
+                        storeHead();
+                        saveLoadout();
+                        picked = true;
+                        break;
+                    }
+                    if (!picked) {
+                        for (const auto& hit : loadoutHits_) {
+                            if (hit.kind != 9 || !hit.rect.Contains(px, py)) continue;
+                            if (hit.value == modulePicker_) {
+                                kept = true;
+                                SetFocus(hwnd);
+                                break;
+                            }
+                            modulePicker_ = hit.value;
+                            moduleFilter_.clear();
+                            moduleListScroll_ = 0;
+                            moduleListReveal_ = true;
+                            moved = true;
+                            SetFocus(hwnd);
+                            break;
+                        }
+                    }
+                    if (!moved && !kept) {
+                        modulePicker_ = -1;
+                        moduleFilter_.clear();
+                    }
+                    craftedEditing_ = false;
+                    endNameEditing(true);
+                    removeArmed_ = false;
+                    InvalidateRect(hwnd, nullptr, TRUE);
+                    return 0;
+                }
                 for (const auto& hit : loadoutHits_) {
                     if (!hit.rect.Contains(px, py)) continue;
                     // A title being typed is kept by a click anywhere else,
@@ -3620,14 +3781,30 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                     }
                     if (hit.kind == 0) {
                         putHeadLaser(&MINING_LASERS[hit.value]);
-                    } else if (hit.kind == 1) {
-                        addHeadModule(&MINING_MODULES[hit.value]);
                     } else if (hit.kind == 2) {
                         pickGadget(&MINING_GADGETS[hit.value]);
                     } else if (hit.kind == 3) {
                         if (phoneTapping_) return 0;
                         craftedEditing_ = true;
                         SetFocus(hwnd);   // the digits have to land here
+                    } else if (hit.kind == 8) {
+                        if (phoneTapping_) return 0;
+                        craftedEditing_ = false;
+                        modulePicker_ = -1;
+                        moduleFilter_.clear();
+                        laserPickerOpen_ = true;
+                        InvalidateRect(hwnd, nullptr, TRUE);
+                        return 0;
+                    } else if (hit.kind == 9) {
+                        craftedEditing_ = false;
+                        laserPickerOpen_ = false;
+                        modulePicker_ = hit.value;
+                        moduleFilter_.clear();
+                        moduleListScroll_ = 0;
+                        moduleListReveal_ = true;
+                        SetFocus(hwnd);   // the filter is typed into the field
+                        InvalidateRect(hwnd, nullptr, TRUE);
+                        return 0;
                     } else if (hit.kind == 4) {
                         storeHead();
                         showLoadout(false);
@@ -5408,13 +5585,15 @@ void MinerGUI::useHead(int index) {
     if (index < 0 || index >= (int)heads_.size()) return;
     storeHead();
     headShown_ = index;
+    laserPickerOpen_ = false;
+    modulePicker_ = -1;
+    moduleFilter_.clear();
     loadout_ = heads_[index];
     craftedEntry_.clear();
     if (loadout_.craftedPower != 0.0f) {
-        wchar_t buf[32];
-        std::swprintf(buf, 32, L"%.2f", loadout_.craftedPower);
-        const std::wstring wide(buf);
-        craftedEntry_.assign(wide.begin(), wide.end());
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%.2f", loadout_.craftedPower);
+        craftedEntry_ = buf;
     }
     craftedEditing_ = false;
 }
@@ -5457,6 +5636,9 @@ void MinerGUI::showLoadout(bool open) {
     endNameEditing(true);    // a title half typed is kept, as a click elsewhere keeps it
     removeArmed_ = false;
     loadoutOpen_ = open;
+    laserPickerOpen_ = false;
+    modulePicker_ = -1;
+    moduleFilter_.clear();
     craftedEditing_ = false;
     layoutControls();   // the four buttons go under the card, and come back
     // The card's one text field is painted, not a real edit control, so it
@@ -5465,10 +5647,9 @@ void MinerGUI::showLoadout(bool open) {
     // crafted-% field. The ore list takes the focus for the same reason.
     if (open) SetFocus(hwnd_);
     if (open && loadout_.craftedPower != 0.0f) {
-        wchar_t buf[32];
-        std::swprintf(buf, 32, L"%.2f", loadout_.craftedPower);
-        const std::wstring wide(buf);
-        craftedEntry_.assign(wide.begin(), wide.end());
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%.2f", loadout_.craftedPower);
+        craftedEntry_ = buf;
     } else if (open) {
         craftedEntry_.clear();
     }
@@ -5490,11 +5671,12 @@ static std::string moduleShortName(const MiningModule& m) {
     return name;
 }
 
-// The one figure a module is worth fitting for: the biggest thing it moves,
-// with the word for what that is. Power is a factor, the rest are per cent.
-// Power alone says nothing about a Focus III (0.95 power, +40 window), nor
-// about the eleven modules that leave power where it is. Empty means it
-// moves nothing, and then it is not a module worth a row.
+// Every figure the module moves, the biggest first and the rest in the order
+// they are stored. The first segment says whether it is fired or always on.
+// Power is a factor, the rest are per cent. Power alone says nothing about a
+// Focus III (0.95 power, +40 window), nor about the modules that leave power
+// where it is. Empty means it moves nothing, and then it is not a module
+// worth a row.
 static std::wstring moduleEffect(const MiningModule& m) {
     struct Moved { float by; const wchar_t* what; };
     const Moved all[] = {
@@ -5506,6 +5688,7 @@ static std::wstring moduleEffect(const MiningModule& m) {
         {m.instability, L"inst"},
         {m.shatter, L"shat"},
         {m.danger, L"dngr"},
+        {m.extraction, L"extr"},
     };
     const Moved* best = nullptr;
     for (const Moved& one : all) {
@@ -5513,9 +5696,52 @@ static std::wstring moduleEffect(const MiningModule& m) {
         if (!best || std::fabs(one.by) > std::fabs(best->by)) best = &one;
     }
     if (!best) return std::wstring();
-    wchar_t out[32];
-    std::swprintf(out, 32, L"%+.0f%% %s", best->by, best->what);
+    std::wstring out;
+    auto piece = [](const Moved& one) {
+        wchar_t text[32];
+        std::swprintf(text, 32, L"%+.0f%% %s", one.by, one.what);
+        return std::wstring(text);
+    };
+    out = m.active ? L"act" : L"pas";
+    out += L" / ";
+    out += piece(*best);
+    for (const Moved& one : all) {
+        if (one.by == 0 || &one == best) continue;
+        out += L" / "; // L" \u00B7 ";
+        out += piece(one);
+    }
     return out;
+}
+
+// What a typed filter is matched against: the short name, the line of
+// figures the row shows, and the longer word for each figure that moved.
+// "win" finds what the row says; "window" finds the same modules.
+static std::wstring moduleSearchText(const MiningModule& m) {
+    std::wstring text = toW(moduleShortName(m));
+    const std::wstring effect = moduleEffect(m);
+    if (!effect.empty()) {
+        text += L' ';
+        text += effect;
+    }
+    text += m.active ? L" active" : L" passive";
+    struct Word { float by; const wchar_t* name; };
+    const Word words[] = {
+        {(m.power - 1.0f) * 100.0f, L"power"},
+        {m.window, L"window"},
+        {m.rate, L"rate"},
+        {m.filter, L"filter"},
+        {m.resistance, L"resistance"},
+        {m.instability, L"instability"},
+        {m.shatter, L"shatter"},
+        {m.danger, L"danger"},
+        {m.extraction, L"extraction"},
+    };
+    for (const Word& w : words) {
+        if (w.by == 0) continue;
+        text += L' ';
+        text += w.name;
+    }
+    return text;
 }
 
 // The modules worth a row, as Edit ship and the Gear page list them: by
@@ -5554,7 +5780,6 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
     Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
     Gdiplus::SolidBrush faintBrush(COL_TEXT_FAINT);
     Gdiplus::SolidBrush accentBrush(COL_ACCENT);
-    Gdiplus::SolidBrush greenBrush(COL_GREEN);
     Gdiplus::SolidBrush yellowBrush(COL_YELLOW);
     Gdiplus::StringFormat right;
     right.SetAlignment(Gdiplus::StringAlignmentFar);
@@ -5713,6 +5938,19 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
     }
 
     // --- the head
+    // A field, not a standing list: six heads open took the room the stats
+    // need. The list drops under the field, drawn last so it lies over the
+    // card, and a click anywhere else puts it away. A phone's picture keeps
+    // the field closed: the head is picked at the PC, as the crafted figure is typed there.
+    auto laserStock = [](const MiningLaser& l) {
+        wchar_t stats[96];
+        std::swprintf(stats, 96, L"%.0f  ·  %.0f m  ·  %d slot%s", l.fracture, l.fullRange, l.slots,
+                      l.slots == 1 ? L"" : L"s");
+        return std::wstring(stats);
+    };
+    Gdiplus::RectF laserField;
+    std::vector<int> laserChoices;
+    const bool laserListOpen = laserPickerOpen_ && !phonePainting_;
     g.DrawString(L"LASER HEAD", -1, &labelFont, Gdiplus::PointF(left, y), &faintBrush);
     // A one-seat ship shows what it carries on its mining HUD, and what is
     // read there is this fit's from then on (setSeenLoadout) - said here, or
@@ -5723,30 +5961,37 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
     }
     y += scaleF(17);
     if (ship_) {
-        const float rowH = scaleF(24);
         for (int i = 0; i < MINING_LASER_COUNT; i++) {
-            const MiningLaser& l = MINING_LASERS[i];
-            if (!laserFits(l, *ship_)) continue;
-            Gdiplus::RectF row(left, y, wide, rowH);
-            const bool chosen = (loadout_.laser == &l);
-            if (chosen) {
-                selectionFrame(g, row, scaleF(R_CONTROL));
-            } else if (isHot(hoverMain_, row)) {
-                fillRoundRect(g, row, scaleF(R_CONTROL), COL_HOVER);
-            }
-            g.DrawString(toW(l.name).c_str(), -1, &rowFont,
-                         Gdiplus::PointF(left + scaleF(12), y + scaleF(4)),
-                         chosen ? &accentBrush : &textBrush);
-            wchar_t stats[96];
-            std::swprintf(stats, 96, L"%.0f  ·  %.0f m  ·  %d slot%s",
-                          l.fracture, l.fullRange, l.slots, l.slots == 1 ? L"" : L"s");
-            g.DrawString(stats, -1, &noteFont,
-                         Gdiplus::RectF(left, y + scaleF(6), wide - scaleF(12), rowH),
-                         &right, chosen ? &dimBrush : &faintBrush);
-            loadoutHits_.push_back({row, 0, i});
-            y += rowH + scaleF(2);
+            if (laserFits(MINING_LASERS[i], *ship_)) laserChoices.push_back(i);
         }
-        y += scaleF(8);
+        laserField = Gdiplus::RectF(left, y, wide, scaleF(26));
+        const bool fieldHot = isHot(hoverMain_, laserField);
+        mainscanField(g, laserField, scaleF(1.0f), fieldHot, laserListOpen, false);
+        Gdiplus::StringFormat mid;
+        mid.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+        mid.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+        mid.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+        const float chevronRoom = scaleF(32);
+        if (loadout_.laser) {
+            const std::wstring stock = laserStock(*loadout_.laser);
+            Gdiplus::RectF stockW;
+            g.MeasureString(stock.c_str(), -1, &noteFont, Gdiplus::PointF(0, 0), &stockW);
+            const float stockX = laserField.GetRight() - chevronRoom - stockW.Width;
+            g.DrawString(toW(loadout_.laser->name).c_str(), -1, &rowFont,
+                         Gdiplus::RectF(laserField.X + scaleF(12), laserField.Y,
+                                        (std::max)(scaleF(40), stockX - laserField.X - scaleF(20)), laserField.Height),
+                         &mid, &textBrush);
+            g.DrawString(stock.c_str(), -1, &noteFont,
+                         Gdiplus::RectF(stockX, laserField.Y, stockW.Width + scaleF(4), laserField.Height), &mid,
+                         &dimBrush);
+        } else {
+            g.DrawString(L"Select a laser head", -1, &rowFont,
+                         Gdiplus::RectF(laserField.X + scaleF(12), laserField.Y, laserField.Width - chevronRoom,
+                                        laserField.Height),
+                         &mid, &faintBrush);
+        }
+        loadoutHits_.push_back({laserField, 8, 0});
+        y += laserField.Height + scaleF(8);
     }
 
     // --- what a crafted head prints on itself
@@ -5802,82 +6047,163 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
         }
     }
 
-    // --- the modules it has room for
-    const int slots = loadout_.laser ? loadout_.laser->slots : 0;
-    g.DrawString(L"MODULES", -1, &labelFont, Gdiplus::PointF(left, y), &faintBrush);
-    {
-        // how full the head is, a figure beside the label rather than in it
-        Gdiplus::RectF labelW;
-        g.MeasureString(L"MODULES", -1, &labelFont, Gdiplus::PointF(0, 0), &labelW);
-        wchar_t count[32];
-        std::swprintf(count, 32, L"%d of %d", (int)loadout_.modules.size(), slots);
-        g.DrawString(count, -1, &labelFont, Gdiplus::PointF(left + labelW.Width + scaleF(4), y), &dimBrush);
-    }
-    if (slots > 1) {
-        // Three slots can take three of the same module - passive ones stack, and
-        // so does Surge - so a click adds one rather than toggling the row. Taking
-        // one back needs its own gesture.
-        g.DrawString(L"Click to add  \u00B7  Right-click to remove", -1, &noteFont,
-                     Gdiplus::RectF(left, y + scaleF(1), wide, scaleF(14)), &right, &faintBrush);
+    // --- what the head puts out. Two rows of the same five figures: the
+    // laser on its own, then that laser once the modules and the craft have
+    // had their say. Both come from outputOf, so the card and the rock
+    // cannot disagree, and a stock head with nothing fitted prints the same
+    // number twice. Power is the fracture figure. The other four are the
+    // change from a stock 100, the way instability already was: 90 reads
+    // as -10 %.
+    if (heads_.size() > 1) {
+        const std::wstring statsLabel = L"LASER STATS  ·  " + headPlace(headShown_);
+        g.DrawString(statsLabel.c_str(), -1, &labelFont, Gdiplus::PointF(left, y), &faintBrush);
+    } else {
+        g.DrawString(L"LASER STATS", -1, &labelFont, Gdiplus::PointF(left, y), &faintBrush);
     }
     y += scaleF(17);
-    if (slots == 0) {
-        g.DrawString(L"No module slots on this laser head", -1, &noteFont,
-                     Gdiplus::PointF(left, y), &faintBrush);
+    if (!loadout_.laser) {
+        g.DrawString(L"Select a laser head", -1, &noteFont, Gdiplus::PointF(left, y), &faintBrush);
         y += scaleF(20);
     } else {
-        // Alphabetical, by the name that is on the row. Fitted modules are not
-        // lifted to the front: that would shuffle rows under the cursor as one is
-        // added. A fitted module is washed in green where it stands.
-        const std::vector<int> order = modulesByName();
-
-        // Three columns, so every module fits: two hold only twelve, and a list
-        // cut short makes a module look missing. The names all end in "Module", so
-        // that word is dropped and the room goes to the figure instead.
-        const float colW = wide / 3 - scaleF(6);
-        float x = left;
-        int shownCount = 0;
-        for (size_t oi = 0; oi < order.size(); oi++) {
-            const int i = order[oi];
-            const MiningModule& m = MINING_MODULES[i];
-            int howMany = 0;
-            for (const MiningModule* f : loadout_.modules) if (f == &m) howMany++;
-            const bool fitted = howMany > 0;
-            const bool room = (int)loadout_.modules.size() < slots;
-            Gdiplus::RectF row(x, y, colW, scaleF(22));
-            if (fitted) {
-                selectionFrame(g, row, scaleF(R_CONTROL), COL_GREEN);
-            } else if (isHot(hoverMain_, row)) {
-                fillRoundRect(g, row, scaleF(R_CONTROL), COL_HOVER);
-            }
-            // The name, and what it does right behind it in a quieter
-            // colour. The effects are in units of their own - pwr, win,
-            // inert, rate - so lining them up down a column would compare
-            // nothing, and beside its own name no figure is left guessing
-            // which module it belongs to.
-            std::wstring name = toW(moduleShortName(m));
-            if (howMany > 1) {
-                wchar_t times[12];
-                std::swprintf(times, 12, L" \u00D7%d", howMany);
-                name += times;
-            }
-            g.DrawString(name.c_str(), -1, &noteFont, Gdiplus::PointF(x + scaleF(8), y + scaleF(5)),
-                         fitted ? &greenBrush : (room ? &textBrush : &faintBrush));
-            Gdiplus::RectF nameW;
-            g.MeasureString(name.c_str(), -1, &noteFont, Gdiplus::PointF(0, 0), &nameW);
-            Gdiplus::SolidBrush effectBrush(fitted ? tint(COL_GREEN, 190) : room ? COL_TEXT_DIM : COL_TEXT_FAINT);
-            g.DrawString(moduleEffect(m).c_str(), -1, &noteFont,
-                         Gdiplus::PointF(x + scaleF(8) + nameW.Width + scaleF(6), y + scaleF(5)), &effectBrush);
-            loadoutHits_.push_back({row, 1, i});
-            shownCount++;
-            if (shownCount % 3 == 0) { x = left; y += scaleF(24); }
-            else x += colW + scaleF(8);
+        MiningLoadout bare;
+        bare.laser = loadout_.laser;
+        const LaserOutput base = outputOf(bare);
+        const LaserOutput out = outputOf(loadout_);
+        auto lineOf = [](const LaserOutput& o) {
+            // Window, rate and resistance arrive as a percent of stock.
+            // Instability arrives as the change itself. All four print as
+            // that change: 90 is -10 %.
+            auto rel = [](double fromStock) {
+                const long n = std::lround(fromStock);
+                return (n >= 0 ? L"+" : L"") + std::to_wstring(n) + L"%";
+            };
+            return std::array<std::wstring, 5>{
+                formatNumber((int)std::lround(o.fracture)),
+                rel(o.window - 100.0),
+                rel(o.rate - 100.0),
+                rel(o.resistance - 100.0),
+                rel(o.instability),
+            };
+        };
+        const std::array<std::wstring, 5> baseFigures = lineOf(base);
+        const std::array<std::wstring, 5> finalFigures = lineOf(out);
+        Gdiplus::Font statFont(&numeralFamily(), scaleF(Type::NUMBER), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        const float tagW = scaleF(48);
+        const float colW = (wide - tagW) / 5.0f;
+        static const wchar_t* const names[5] = {L"POWER", L"WINDOW", L"RATE", L"RESIST", L"INSTAB"};
+        for (int i = 0; i < 5; i++) {
+            g.DrawString(names[i], -1, &labelFont,
+                         Gdiplus::PointF(left + tagW + colW * (float)i, y), &faintBrush);
         }
-        if (shownCount % 3 != 0) y += scaleF(24);
-        // Of the active modules that cut each other off, only one runs at a
-        // time - a second Stampede replaces the first, a Brandt fired after
-        // it ends it - so of those one counts here, and the card says which.
-        // Surge is the exception and counts every time (see countedModules).
+        auto drawRow = [&](const wchar_t* tag, const std::array<std::wstring, 5>& figures,
+                           const Gdiplus::SolidBrush& ink) {
+            y += scaleF(16);
+            g.DrawString(tag, -1, &labelFont, Gdiplus::PointF(left, y + scaleF(3)), &faintBrush);
+            for (int i = 0; i < 5; i++) {
+                g.DrawString(figures[(size_t)i].c_str(), -1, &statFont,
+                             Gdiplus::PointF(left + tagW + colW * (float)i, y), &ink);
+            }
+        };
+        drawRow(L"BASE", baseFigures, dimBrush);
+        drawRow(L"FINAL", finalFigures, textBrush);
+        y += scaleF(24);
+    }
+    y += scaleF(6);
+
+    // --- one field per slot. Three always, in a row: a head with fewer
+    // leaves the spare fields where they are and dead, so the row does not
+    // change shape as the laser changes. The open field's list is drawn
+    // last, over the card.
+    const int slots = loadout_.laser ? loadout_.laser->slots : 0;
+    if (modulePicker_ >= slots) {
+        modulePicker_ = -1;
+        moduleFilter_.clear();
+    }
+    int fittedCount = 0;
+    for (const MiningModule* m : loadout_.modules)
+        if (m) fittedCount++;
+    g.DrawString(L"MODULES", -1, &labelFont, Gdiplus::PointF(left, y), &faintBrush);
+    {
+        Gdiplus::RectF labelW;
+        g.MeasureString(L"MODULES", -1, &labelFont, Gdiplus::PointF(0, 0), &labelW);
+        if (slots > 0) {
+            wchar_t count[32];
+            std::swprintf(count, 32, L"%d of %d", fittedCount, slots);
+            g.DrawString(count, -1, &labelFont, Gdiplus::PointF(left + labelW.Width + scaleF(4), y), &dimBrush);
+        }
+    }
+    g.DrawString(slots == 0 ? L"No module slots on this laser head" : L"Right-click a slot to empty it", -1, &noteFont,
+                 Gdiplus::RectF(left, y + scaleF(1), wide, scaleF(14)), &right, &faintBrush);
+    y += scaleF(17);
+    const float moduleGap = scaleF(8);
+    const float moduleW = (wide - 2 * moduleGap) / 3.0f;
+    const float moduleH = scaleF(26);
+    Gdiplus::RectF moduleFields[3];
+    Gdiplus::StringFormat moduleLine;
+    moduleLine.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    moduleLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    moduleLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+    for (int s = 0; s < 3; s++) {
+        moduleFields[s] = Gdiplus::RectF(left + (moduleW + moduleGap) * (float)s, y, moduleW, moduleH);
+        const Gdiplus::RectF& field = moduleFields[s];
+        const bool enabled = s < slots;
+        const MiningModule* in = s < (int)loadout_.modules.size() ? loadout_.modules[(size_t)s] : nullptr;
+        if (!enabled) {
+            fillRoundRect(g, field, scaleF(R_CONTROL), COL_CARD);
+            strokeRoundRect(g, field, scaleF(R_CONTROL), COL_BORDER);
+            g.DrawString(L"—", -1, &rowFont,
+                         Gdiplus::RectF(field.X + scaleF(12), field.Y, field.Width - scaleF(20), field.Height),
+                         &moduleLine, &faintBrush);
+            continue;
+        }
+        const bool open = modulePicker_ == s;
+        mainscanField(g, field, scaleF(1.0f), isHot(hoverMain_, field), open, false);
+        const std::wstring fitted = in ? toW(moduleShortName(*in)) : std::wstring(L"None");
+        const Gdiplus::RectF textBox(field.X + scaleF(12), field.Y, field.Width - scaleF(40), field.Height);
+        // Open, the field is where the filter is typed. Closed, it names
+        // what the slot holds. A phone's picture has no caret: the letters
+        // are typed at the PC, and an empty filter there still shows the fit.
+        if (open && !phonePainting_) {
+            Gdiplus::StringFormat typedLine;
+            typedLine.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+            typedLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap |
+                                     Gdiplus::StringFormatFlagsMeasureTrailingSpaces);
+            typedLine.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+            const float pad = rowFont.GetSize() / 6.0f;
+            float typedW = 0;
+            if (!moduleFilter_.empty()) {
+                Gdiplus::RectF w;
+                g.MeasureString(moduleFilter_.c_str(), -1, &rowFont, Gdiplus::PointF(0, 0), &typedLine, &w);
+                typedW = (std::max)(0.0f, w.Width - 2 * pad);
+                g.DrawString(moduleFilter_.c_str(), -1, &rowFont, textBox, &typedLine, &textBrush);
+            }
+            // A bar, not a "|": the glyph hangs below the line into the frame.
+            const float barH = std::round(scaleF(14));
+            const float barY = std::round(field.Y + field.Height / 2 - barH / 2);
+            float caretX = textBox.X + typedW + (moduleFilter_.empty() ? 0.0f : scaleF(2));
+            const float caretMax = textBox.GetRight() - scaleF(2);
+            if (caretX > caretMax) caretX = caretMax;
+            caretX = std::round(caretX);
+            g.FillRectangle(&textBrush,
+                            Gdiplus::RectF(caretX, barY, (std::max)(1.0f, std::round(scaleF(1.5f))), barH));
+            if (moduleFilter_.empty()) {
+                g.DrawString(L"Filter", -1, &rowFont,
+                             Gdiplus::RectF(caretX + scaleF(5), field.Y, textBox.Width - scaleF(8), field.Height),
+                             &moduleLine, &faintBrush);
+            }
+        } else if (open && !moduleFilter_.empty()) {
+            g.DrawString(moduleFilter_.c_str(), -1, &rowFont, textBox, &moduleLine, &textBrush);
+        } else {
+            g.DrawString(fitted.c_str(), -1, &rowFont, textBox, &moduleLine, in ? &textBrush : &faintBrush);
+        }
+        loadoutHits_.push_back({field, 9, s});
+    }
+    y += moduleH + scaleF(8);
+    // Of the active modules that cut each other off, only one runs at a
+    // time - a second Stampede replaces the first, a Brandt fired after
+    // it ends it - so of those one counts here, and the card says which.
+    // Surge is the exception and counts every time (see countedModules).
+    {
         std::vector<std::pair<const MiningModule*, int>> cut;
         int copies = 0;
         for (const MiningModule* f : loadout_.modules) {
@@ -5905,16 +6231,166 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
                                 L" is counted. Surge is the exception and stacks.";
             Gdiplus::RectF room;
             g.MeasureString(line.c_str(), -1, &noteFont, Gdiplus::RectF(0, 0, wide, scaleF(200)), &room);
-            g.DrawString(line.c_str(), -1, &noteFont, Gdiplus::RectF(left, y, wide, room.Height + scaleF(2)),
-                         nullptr, &yellowBrush);
+            g.DrawString(line.c_str(), -1, &noteFont, Gdiplus::RectF(left, y, wide, room.Height + scaleF(2)), nullptr,
+                         &yellowBrush);
             y += room.Height + scaleF(4);
         }
-        y += scaleF(6);
     }
 
     // --- the gadget on the rock
     // The gadget is not fitted to the ship - it is stuck on the rock, and
     // it is picked in the rock view where the rock is. See drawRockAdvice.
+
+    // The dropped list, last, so it lies over the stats and the modules.
+    // A phone's picture leaves it out: the field above is drawn closed.
+    if (laserListOpen && !laserChoices.empty()) {
+        const float rowH = scaleF(26);
+        const float pad = scaleF(6);
+        const float listH = rowH * (float)laserChoices.size() + 2 * pad;
+        const Gdiplus::RectF list(laserField.X, laserField.GetBottom() + scaleF(4), laserField.Width, listH);
+        mainscanDropList(g, list, scaleF(1.0f), nullptr);
+        Gdiplus::StringFormat mid;
+        mid.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+        mid.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+        mid.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+        for (size_t n = 0; n < laserChoices.size(); n++) {
+            const int i = laserChoices[n];
+            const MiningLaser& l = MINING_LASERS[i];
+            const Gdiplus::RectF row(list.X + pad, list.Y + pad + rowH * (float)n, list.Width - 2 * pad, rowH);
+            const bool chosen = loadout_.laser == &l;
+            if (chosen) selectionFrame(g, row, scaleF(R_CONTROL));
+            else if (isHot(hoverMain_, row)) fillRoundRect(g, row, scaleF(R_CONTROL), COL_HOVER);
+            const std::wstring stock = laserStock(l);
+            Gdiplus::RectF stockW;
+            g.MeasureString(stock.c_str(), -1, &noteFont, Gdiplus::PointF(0, 0), &stockW);
+            const float stockX = row.GetRight() - scaleF(10) - stockW.Width;
+            g.DrawString(toW(l.name).c_str(), -1, &rowFont,
+                         Gdiplus::RectF(row.X + scaleF(10), row.Y,
+                                        (std::max)(scaleF(40), stockX - row.X - scaleF(16)), row.Height),
+                         &mid, chosen ? &accentBrush : &textBrush);
+            g.DrawString(stock.c_str(), -1, &noteFont,
+                         Gdiplus::RectF(stockX, row.Y, stockW.Width + scaleF(4), row.Height), &mid,
+                         chosen ? &dimBrush : &faintBrush);
+            loadoutHits_.push_back({row, 0, i});
+        }
+    }
+
+    // The module list, over everything the card drew, including the laser
+    // list. Six rows at most, and a bar on the right for the rest. What is
+    // typed in the field keeps the names and the figures that contain it.
+    // None is the way to empty the slot, and it stays while the filter matches it.
+    if (modulePicker_ >= 0 && modulePicker_ < 3 && modulePicker_ < slots) {
+        std::wstring needle = moduleFilter_;
+        for (wchar_t& c : needle) c = (wchar_t)::towlower(c);
+        auto matches = [&](std::wstring text) {
+            if (needle.empty()) return true;
+            for (wchar_t& c : text) c = (wchar_t)::towlower(c);
+            return text.find(needle) != std::wstring::npos;
+        };
+        std::vector<int> rows;
+        if (matches(L"None")) rows.push_back(-1);
+        for (int i : modulesByName()) {
+            if (matches(moduleSearchText(MINING_MODULES[i]))) rows.push_back(i);
+        }
+        const float rowH = scaleF(24);
+        const float pad = scaleF(6);
+        const float listY = moduleFields[modulePicker_].GetBottom() + scaleF(4);
+        const float room = (float)ch - scaleF(8) - listY;
+        int roomRows = (int)std::floor((room - 2 * pad) / rowH);
+        if (roomRows < 1) roomRows = 1;
+        if (roomRows > 6) roomRows = 6;
+        const bool noMatch = rows.empty();
+        const int total = noMatch ? 1 : (int)rows.size();
+        int visible = total < roomRows ? total : roomRows;
+        const int maxScroll = (std::max)(0, (noMatch ? 0 : (int)rows.size()) - visible);
+        const MiningModule* current =
+            modulePicker_ < (int)loadout_.modules.size() ? loadout_.modules[(size_t)modulePicker_] : nullptr;
+        // Opening a filled slot starts at the top, which hides a module past
+        // the first rows. The least scroll that puts it on screen; one
+        // already in those rows stays where the list starts.
+        if (moduleListReveal_) {
+            moduleListReveal_ = false;
+            if (current && !noMatch) {
+                for (int n = 0; n < (int)rows.size(); ++n) {
+                    if (rows[(size_t)n] < 0 || current != &MINING_MODULES[rows[(size_t)n]]) continue;
+                    if (n >= visible) moduleListScroll_ = n - visible + 1;
+                    break;
+                }
+            }
+        }
+        if (moduleListScroll_ > maxScroll) moduleListScroll_ = maxScroll;
+        if (moduleListScroll_ < 0) moduleListScroll_ = 0;
+        moduleListMax_ = maxScroll;
+        const bool scrolling = maxScroll > 0;
+        const float gutter = scrolling ? scaleF(16) : 0;
+        const Gdiplus::RectF list(left, listY, wide, rowH * (float)visible + 2 * pad);
+        mainscanDropList(g, list, scaleF(1.0f), nullptr);
+        Gdiplus::StringFormat mid;
+        mid.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+        mid.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+        mid.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+        if (noMatch) {
+            const Gdiplus::RectF hit(list.X + pad, list.Y + pad, list.Width - 2 * pad, rowH);
+            g.DrawString(L"No match", -1, &rowFont,
+                         Gdiplus::RectF(hit.X + scaleF(10), hit.Y, hit.Width - scaleF(20), hit.Height), &mid,
+                         &faintBrush);
+            moduleScrollTrack_ = {};
+            moduleScrollThumb_ = {};
+        } else {
+            for (int n = 0; n < visible; n++) {
+                const int index = rows[(size_t)moduleListScroll_ + (size_t)n];
+                const Gdiplus::RectF hit(list.X + pad, list.Y + pad + rowH * (float)n,
+                                         list.Width - 2 * pad - gutter, rowH);
+                const bool none = index < 0;
+                const MiningModule* m = none ? nullptr : &MINING_MODULES[index];
+                const bool chosen = none ? current == nullptr : current == m;
+                if (chosen) selectionFrame(g, hit, scaleF(R_CONTROL));
+                else if (isHot(hoverMain_, hit)) fillRoundRect(g, hit, scaleF(R_CONTROL), COL_HOVER);
+                const std::wstring name = none ? std::wstring(L"None") : toW(moduleShortName(*m));
+                const std::wstring effect = none ? std::wstring() : moduleEffect(*m);
+                float nameW = hit.Width - scaleF(20);
+                if (!effect.empty()) {
+                    Gdiplus::RectF effectBox;
+                    g.MeasureString(effect.c_str(), -1, &noteFont, Gdiplus::PointF(0, 0), &effectBox);
+                    nameW = (std::max)(scaleF(40), hit.Width - scaleF(24) - effectBox.Width);
+                    g.DrawString(effect.c_str(), -1, &noteFont,
+                                 Gdiplus::RectF(hit.GetRight() - scaleF(10) - effectBox.Width, hit.Y,
+                                                effectBox.Width + scaleF(4), hit.Height),
+                                 &mid, chosen ? &dimBrush : &faintBrush);
+                }
+                g.DrawString(name.c_str(), -1, &rowFont, Gdiplus::RectF(hit.X + scaleF(10), hit.Y, nameW, hit.Height),
+                             &mid, chosen ? &accentBrush : (none ? &faintBrush : &textBrush));
+                loadoutHits_.push_back({hit, 11, index});
+            }
+            if (scrolling) {
+                const float barW = scaleF(6);
+                const float trackX = list.GetRight() - pad - barW;
+                const float trackY = list.Y + pad;
+                const float trackH = rowH * (float)visible;
+                const float thumbH = (std::max)(scaleF(18), trackH * (float)visible / (float)rows.size());
+                const float travel = (std::max)(0.0f, trackH - thumbH);
+                const float at = travel * (float)moduleListScroll_ / (float)moduleListMax_;
+                moduleScrollTrack_ = Gdiplus::RectF(trackX, trackY, barW, trackH);
+                moduleScrollThumb_ = Gdiplus::RectF(trackX, trackY + at, barW, thumbH);
+                fillRoundRect(g, moduleScrollTrack_, barW / 2, tint(COL_TEXT, 28));
+                fillRoundRect(g, moduleScrollThumb_, barW / 2, tint(COL_TEXT, 140));
+                // Wider than the bar, so the thumb can be taken without
+                // hunting for six pixels. The thumb is tested before the track.
+                const float hitW = gutter;
+                const float hitX = list.GetRight() - pad - hitW;
+                loadoutHits_.push_back(
+                    {Gdiplus::RectF(hitX, moduleScrollThumb_.Y, hitW, moduleScrollThumb_.Height), 12, 0});
+                loadoutHits_.push_back({Gdiplus::RectF(hitX, trackY, hitW, trackH), 13, 0});
+            } else {
+                moduleScrollTrack_ = {};
+                moduleScrollThumb_ = {};
+            }
+        }
+    } else {
+        moduleListMax_ = 0;
+        moduleScrollTrack_ = {};
+        moduleScrollThumb_ = {};
+    }
 }
 
 // The ship list, dropped under its field. Three entries and no scrolling -
@@ -6235,22 +6711,42 @@ void MinerGUI::putHeadLaser(const MiningLaser* laser) {
     std::vector<std::pair<const MiningLaser*, float>> none;
     auto& kept = fit_ >= 0 && fit_ < (int)fits_.size() ? fits_[(size_t)fit_].crafted : none;
     putLaser(kept, loadout_, laser);
-    if ((int)loadout_.modules.size() > loadout_.laser->slots) loadout_.modules.resize(loadout_.laser->slots);
+    // A slot left empty is a hole in the vector, and it belonged to the head
+    // that was just replaced. Pack what is fitted, then drop what the new
+    // head has no room for.
+    loadout_.modules.erase(std::remove(loadout_.modules.begin(), loadout_.modules.end(), nullptr),
+                           loadout_.modules.end());
+    if (loadout_.laser && (int)loadout_.modules.size() > loadout_.laser->slots)
+        loadout_.modules.resize(loadout_.laser->slots);
+    modulePicker_ = -1;
+    moduleFilter_.clear();
 }
 
 bool MinerGUI::addHeadModule(const MiningModule* module) {
-    // One more of it, while there is a slot free. Not a toggle: the same
-    // module can go in more than once - three Rieger-C3 on a three-slot head
-    // is a real fit, because the multipliers stack. takeHeadModule takes one
-    // back off.
-    if (!module || !loadout_.laser || (int)loadout_.modules.size() >= loadout_.laser->slots) return false;
-    loadout_.modules.push_back(module);
-    return true;
+    // The first empty slot. The same module can fill every one of them -
+    // three Rieger-C3 is a real fit, because the multipliers stack.
+    if (!module || !loadout_.laser) return false;
+    // The first empty slot, a hole or the end. The same module can fill
+    // every slot: three Rieger-C3 is a real fit, because the multipliers stack.
+    for (int i = 0; i < loadout_.laser->slots && i < 3; i++) {
+        const bool empty = i >= (int)loadout_.modules.size() || loadout_.modules[(size_t)i] == nullptr;
+        if (!empty) continue;
+        setSlotModule(i, module);
+        return true;
+    }
+    return false;
 }
 
 void MinerGUI::takeHeadModule(const MiningModule* module) {
     const auto at = std::find(loadout_.modules.begin(), loadout_.modules.end(), module);
     if (at != loadout_.modules.end()) loadout_.modules.erase(at);
+}
+
+void MinerGUI::setSlotModule(int slot, const MiningModule* module) {
+    if (!loadout_.laser || slot < 0 || slot >= loadout_.laser->slots || slot >= 3) return;
+    if ((int)loadout_.modules.size() <= slot) loadout_.modules.resize((size_t)slot + 1, nullptr);
+    loadout_.modules[(size_t)slot] = module;
+    while (!loadout_.modules.empty() && loadout_.modules.back() == nullptr) loadout_.modules.pop_back();
 }
 
 void MinerGUI::pressShipPicker(float px, float py) {
