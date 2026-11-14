@@ -123,7 +123,7 @@ bool Recorder::sameRock(const Rock& rock, const RockStats& shown) {
 }
 
 void Recorder::taken(const RockStats& shown, const RockStats& look, long long observed, const std::string& ship,
-                     const std::string& place) {
+                     const std::string& place, int rows, float labelScale) {
     if (shown.ore.empty() || shown.mass <= 0 || shown.scu <= 0) return;
     release(observed);
     if (!open_ || !sameRock(rock_, shown)) {
@@ -154,6 +154,8 @@ void Recorder::taken(const RockStats& shown, const RockStats& look, long long ob
     }
     if (scan.instability < 0 && look.instability >= 0) scan.instability = (std::max)(0.0f, shown.instability);
     if (scan.rangeMetres <= 0 && shown.distance > 0) scan.rangeMetres = (int)std::lround(shown.distance);
+    if (rows > 0) scan.rows = rows;
+    if (scan.labelScale <= 0 && labelScale > 0) scan.labelScale = labelScale;
     rock_.masses[(int)std::lround(shown.mass)]++;
     rock_.shown[hundredths(shown.scu)]++;
     if (look.scu > 0 && look.mass > 0 && ofMass(rock_, look.mass)) rock_.read[hundredths(look.scu)]++;
@@ -168,6 +170,19 @@ void Recorder::listed(float mass, const std::vector<ScanPart>& parts) {
     for (auto it = waiting_.rbegin(); it != waiting_.rend(); ++it) {
         if (ofMass(*it, mass)) {
             it->scan.parts = parts;
+            return;
+        }
+    }
+}
+
+void Recorder::tried(float mass) {
+    if (open_ && ofMass(rock_, mass)) {
+        rock_.scan.listTried = true;
+        return;
+    }
+    for (auto it = waiting_.rbegin(); it != waiting_.rend(); ++it) {
+        if (ofMass(*it, mass)) {
+            it->scan.listTried = true;
             return;
         }
     }
@@ -385,6 +400,12 @@ std::string body(const std::vector<Scan>& scans, const std::string& bedrockVersi
         out << text << ",\"range\":" << s.rangeMetres;
         if (!s.ship.empty()) out << ",\"ship\":" << jsonText(s.ship);
         if (placeTaken(s.place)) out << ",\"place\":" << jsonText(s.place);
+        if (s.rows > 0 && s.rows <= 10000) {
+            std::snprintf(text, sizeof(text), ",\"rows\":%d,\"label\":%.2f,\"list\":\"%s\"", s.rows,
+                          s.labelScale > 0 && s.labelScale <= 5 ? s.labelScale : 0.0f,
+                          !s.parts.empty() ? "read" : s.listTried ? "tried" : "none");
+            out << text;
+        }
         out << ",\"parts\":[";
         for (size_t p = 0; p < s.parts.size(); p++) {
             const ScanPart& part = s.parts[p];

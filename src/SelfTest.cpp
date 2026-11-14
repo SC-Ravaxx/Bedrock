@@ -916,6 +916,41 @@ int runSelfTest() {
                                "the rocks go to the service as it takes them, and only rocks it takes - a ship ore, "
                                "figures in its ranges");
             if (!same) std::cout << "    report: " << report << std::endl;
+
+            // ...and, where the app knows it, how Bedrock saw each rock: the
+            // screen's height, the size of the label column (0 without one)
+            // and how its list went - read, tried, or never begun
+            Recorder seen;
+            SCMiner::RockStats look;
+            look.ore = "Taranite";
+            look.mass = 25005;
+            look.scu = 32.38f;
+            look.resistance = 36;
+            look.instability = 302.71f;
+            seen.taken(look, look, 1794000000, "mole", "Stanton - Yela", 1440, 0.92f);
+            seen.tried(25005);
+            SCMiner::RockStats lesser = look;
+            lesser.mass = 4391;
+            lesser.scu = 5.69f;
+            seen.taken(lesser, lesser, 1794000100, "mole", "Stanton - Yela", 1080, 0.0f);
+            SCMiner::RockStats listedRock = look;
+            listedRock.mass = 24031;
+            listedRock.scu = 31.12f;
+            seen.taken(listedRock, listedRock, 1794000200, "mole", "Stanton - Yela", 1440, 0.93f);
+            seen.tried(24031);
+            seen.listed(24031, taranite.parts);
+            seen.gone();
+            const std::vector<Scan> three = seen.done();
+            const std::string sent = three.size() == 3 ? body(three, "3.0.3", 41002, "LIVE", "0123456789abcdef") : "";
+            const bool told =
+                sent.find("\"place\":\"Stanton - Yela\",\"rows\":1440,\"label\":0.92,\"list\":\"tried\",\"parts\":[]") !=
+                    std::string::npos &&
+                sent.find("\"rows\":1080,\"label\":0.00,\"list\":\"none\",\"parts\":[]") != std::string::npos &&
+                sent.find("\"rows\":1440,\"label\":0.93,\"list\":\"read\",\"parts\":[{") != std::string::npos &&
+                report.find("\"rows\"") == std::string::npos;
+            allPassed &= check(told, "a rock tells the service how Bedrock saw it - the screen's height, the label "
+                                     "column's size, how its list went - where the app knows");
+            if (!told) std::cout << "    report: " << sent << std::endl;
         }
 
         // The gadget: what the panel prints with it on, taken back

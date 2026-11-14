@@ -1704,7 +1704,7 @@ void Application::lookForRock() {
         rockUnsettled_ = 0;
         rockToView(rock, now);
         logRockReading(panel, &shownRock_, range.metres);
-        noteRockScan(panel.stats);
+        noteRockScan(panel.stats, frame.rows, panel.labels.x >= 0 ? (float)panel.labelScale : 0.0f);
         loadoutCheckForRock(rock.mass);
         shownMass_ = rock.mass;
         shownOre_ = rock.ore;
@@ -1787,7 +1787,7 @@ void Application::lookForRock() {
         // gauge beside it, where that is read - see laserRange
         rockToView(rock, now);
         logRockReading(panel, &shownRock_, range.metres);
-        noteRockScan(panel.stats);
+        noteRockScan(panel.stats, frame.rows, panel.labels.x >= 0 ? (float)panel.labelScale : 0.0f);
         loadoutCheckForRock(rock.mass);
         shownMass_ = rock.mass;
         shownOre_ = rock.ore;
@@ -2156,14 +2156,14 @@ void Application::clearRockView() {
 
 // The rock the view took, for rock_scans.csv: where and from which ship -
 // the place as the header names it, a place set by hand as well
-void Application::noteRockScan(const RockStats& look) {
+void Application::noteRockScan(const RockStats& look, int rows, float labelScale) {
     std::string place = placeLine_;
     const std::string byHand = " (set manually)";
     if (place.size() > byHand.size() && place.compare(place.size() - byHand.size(), byHand.size(), byHand) == 0) {
         place.resize(place.size() - byHand.size());
     }
     const long long observed = (long long)std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    rockScans_.taken(shownRock_, look, observed, RockScans::shipKind(gameState_.ship()), place);
+    rockScans_.taken(shownRock_, look, observed, RockScans::shipKind(gameState_.ship()), place, rows, labelScale);
     keepRockScans();
 }
 
@@ -2402,6 +2402,7 @@ void Application::readContentsOnHud(const cv::Mat& frame, const ScanPanel& panel
     contentsTries_++;
     contentsJobMass_ = rock.mass;
     logRockList("start", rock.mass, rock.mass, nullptr, contentsTries_, shown ? "again, its list on view" : "");
+    rockScans_.tried(rock.mass);
     ScanPanel moved = panel;
     moved.labels -= part.tl();
     // ...and its kg per SCU, which names the lines Hephaestanite and Quartz

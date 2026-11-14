@@ -98,6 +98,13 @@ struct Scan {
     std::string ship;        // "prospector", "mole" or "golem"; "" for another
     std::string place;       // as the window's header names it; "" unknown
     std::vector<ScanPart> parts;   // the list in the panel's order, where the view read it whole
+    // How Bedrock saw it, for telling why some HUDs give no list: the height
+    // of the screen picture (0 not known), the size the panel's label column
+    // was found at (0: the figures were read without it), and whether a
+    // reading of its list began at all
+    int rows = 0;
+    float labelScale = 0;
+    bool listTried = false;
 };
 
 // The rocks of a session, a Scan each. A rock - its ore and its mass - comes
@@ -118,7 +125,9 @@ public:
     // showed them: whether the instability was read at all, and the SCU read
     // with the mass
     void taken(const RockStats& shown, const RockStats& look, long long observed, const std::string& ship,
-               const std::string& place);
+               const std::string& place, int rows = 0, float labelScale = 0);
+    // A reading of the list began while the view showed a rock of that mass
+    void tried(float mass);
     // The list read twice alike while the view showed a rock of that mass:
     // that rock's, on view or waiting
     void listed(float mass, const std::vector<ScanPart>& parts);

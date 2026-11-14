@@ -189,7 +189,7 @@ private:
     // RANGE gauge read on the same look, 0 for nothing.
     void logRockReading(const ScanPanel& panel, const RockStats* steady, int rangeMetres,
                         const std::string& notTaken = std::string());
-    void noteRockScan(const RockStats& look);
+    void noteRockScan(const RockStats& look, int rows, float labelScale);
     // The rocks done (Recorder::done) to rock_scans.csv and the share queue:
     // those whose wait is over, or with `all` every rock off view
     void keepRockScans(bool all = false);
