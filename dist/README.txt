@@ -482,13 +482,15 @@ Five network requests of its own, and three more only if you switch them on:
 - Rock scans (on unless you untick "Share rock scans" in Settings): Bedrock
   sends Bedrock's server (the-forsaken.org) each rock the rock view showed:
   ore, mass, SCU, resistance, instability, the composition where it was
-  read, the laser's range, the ship type, the place and the game's
-  version, with your install's number and a random number made at each
-  start that groups one session's rocks. Nothing about you goes along, and
-  as with the refinery workloads the server doesn't keep your IP address.
-  The rocks are for working out rock sizes, densities and how the game
-  sets resistance and instability. At most one report every two minutes,
-  and one when the game closes.
+  read, the laser's range, the ship type, the place, the game's version,
+  your screen's height in pixels, the size of the scan panel's labels on
+  it and whether the composition was read, with your install's number and
+  a random number made at each start that groups one session's rocks.
+  Nothing about you goes along, and as with the refinery workloads the
+  server doesn't keep your IP address. The rocks are for working out rock
+  sizes, densities and how the game sets resistance and instability, the
+  screen figures for finding out where Bedrock misses the composition. At
+  most one report every two minutes, and one when the game closes.
 - Plugins: the first time you open Plugins after a start, Bedrock downloads
   the list of plugins from the-forsaken.org, and a plugin when you click
   Install. A plugin's download carries your install's number (see below),
