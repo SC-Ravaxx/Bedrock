@@ -674,9 +674,11 @@ private:
     int snapshotKeep_ = 50;   // a tester's snapshots are the data that comes back
     int scanThreads_ = 0;           // 0 = worked out from the machine
     int effectiveIntervalMs() const;
-    // Whether Star Citizen runs (its window, or else its process): the
-    // screen is read only then
+    // Whether Star Citizen runs (its window, or else its process)...
     bool gameUp();
+    // ...and is not minimised: the screen is read only then
+    bool gameOnScreen();
+    bool gameProcessUp();   // its process, looked for every two seconds at the most
     std::chrono::steady_clock::time_point gameProcessChecked_{};
     bool gameProcess_ = false;
     int hotkeyVkCode_ = VK_F9;      // default: F9

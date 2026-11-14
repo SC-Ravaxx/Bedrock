@@ -315,6 +315,29 @@ HWND ScreenCapture::gameWindow() {
     return search.hwnd;
 }
 
+bool ScreenCapture::gameMinimised(const char* windowClass) {
+    // Minimised, a window keeps its visible style; one that is not visible
+    // at all is no window of the game's to go by
+    struct Search {
+        const char* cls;
+        bool up = false;
+        bool minimised = false;
+    } search{windowClass};
+    EnumWindows([](HWND hwnd, LPARAM param) -> BOOL {
+        Search& s = *reinterpret_cast<Search*>(param);
+        char cls[64] = {};
+        if (GetClassNameA(hwnd, cls, sizeof(cls)) == 0 || std::strcmp(cls, s.cls) != 0) return TRUE;
+        if (!IsWindowVisible(hwnd)) return TRUE;
+        if (IsIconic(hwnd)) {
+            s.minimised = true;
+            return TRUE;
+        }
+        s.up = true;
+        return FALSE;   // one up is enough
+    }, reinterpret_cast<LPARAM>(&search));
+    return search.minimised && !search.up;
+}
+
 std::optional<cv::Rect> ScreenCapture::gameViewport() {
     struct Search {
         HWND hwnd = nullptr;
@@ -448,6 +471,10 @@ cv::Mat ScreenCapture::captureRegion(const CaptureRegion& region) {
 
 HWND ScreenCapture::gameWindow() {
     return nullptr;
+}
+
+bool ScreenCapture::gameMinimised(const char*) {
+    return false;
 }
 
 std::optional<cv::Rect> ScreenCapture::gameViewport() {

@@ -56,6 +56,9 @@
 
 #include <zstd.h>
 #include <opencv2/opencv.hpp>
+#ifdef _WIN32
+#include <dwmapi.h>   // DWMWA_TRANSITIONS_FORCEDISABLED, for the minimised game's stand-in
+#endif
 
 // rpcndr.h, pulled in by <windows.h>, defines a "small" macro, and one of
 // the checks below names a rock that.
@@ -7103,6 +7106,36 @@ int runSelfTest() {
                            "a window of Bedrock's under the game's is left in the picture where the game's lies "
                            "over it, and only there");
     }
+
+#ifdef _WIN32
+    // A minimised game is none on screen, and the scan rests: a window of a
+    // class of its own stands in for the game's, minimised and brought back
+    // where no screen shows it, never taking the focus and without the
+    // animation
+    {
+        using SCMiner::ScreenCapture;
+        const wchar_t* const standClass = L"BedrockSelfTestGame";
+        WNDCLASSW wc{};
+        wc.lpfnWndProc = DefWindowProcW;
+        wc.hInstance = GetModuleHandleW(nullptr);
+        wc.lpszClassName = standClass;
+        RegisterClassW(&wc);
+        HWND stand = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, standClass, L"", WS_POPUP, -32000, -32000,
+                                     640, 480, nullptr, nullptr, wc.hInstance, nullptr);
+        BOOL still = TRUE;
+        if (stand) DwmSetWindowAttribute(stand, DWMWA_TRANSITIONS_FORCEDISABLED, &still, sizeof(still));
+        const bool hidden = !ScreenCapture::gameMinimised("BedrockSelfTestGame");
+        if (stand) ShowWindow(stand, SW_SHOWMINNOACTIVE);
+        const bool minimised = ScreenCapture::gameMinimised("BedrockSelfTestGame");
+        if (stand) ShowWindow(stand, SW_SHOWNOACTIVATE);
+        const bool shown = !ScreenCapture::gameMinimised("BedrockSelfTestGame") && stand && !IsIconic(stand);
+        if (stand) DestroyWindow(stand);
+        UnregisterClassW(standClass, wc.hInstance);
+        const bool closed = !ScreenCapture::gameMinimised("BedrockSelfTestGame");
+        allPassed &= check(stand && hidden && minimised && shown && closed,
+                           "a game minimised is a game not on screen, and one hidden, shown or closed is not minimised");
+    }
+#endif
 
     // The automatic aim box reproduces the measured setup and scales with
     // the viewport height (352x180 centred at 2560,475, the span 53 read

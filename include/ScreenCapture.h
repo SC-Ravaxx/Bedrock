@@ -75,6 +75,12 @@ public:
     // and the two callers only ask whether it has the focus and where its
     // exe is.
     static HWND gameWindow();
+    // Whether the game is there but minimised: windows of its class, every
+    // one of them minimised. Nothing of it is on the screen then. False
+    // while one is up, and where none is found at all - a patch that renames
+    // the class must not stop the scan. Another class for the self-test.
+    // False on Linux, where the picture is the game's window itself.
+    static bool gameMinimised(const char* windowClass = "CryENGINE");
 #ifdef BEDROCK_DEV_TOOLS
     // SCMINER_REPLAY=<folder>: a recording on show in place of the game
     // (Linux only for now) - the index of the frame on show, -1 when none is

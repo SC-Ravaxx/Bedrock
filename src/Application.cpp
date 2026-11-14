@@ -768,14 +768,14 @@ void Application::run() {
 
             if (elapsed >= captureIntervalMs_) {
                 lastScanTime_ = now;
-                if (gameUp()) processScanLive();
+                if (gameOnScreen()) processScanLive();
             }
         }
 
         // Manual scan if requested
         if (scanRequested_) {
             scanRequested_ = false;
-            if (gameUp()) processScan();
+            if (gameOnScreen()) processScan();
         }
 
         // Short sleep to spare the CPU
@@ -1129,16 +1129,16 @@ void Application::runWithGUI(HINSTANCE hInstance) {
             if (elapsed >= wait) {
                 g_intervalMs = (double)wait;   // logged, so it can be checked
                 lastScanTime_ = now;
-                // ...while the game runs: without it the screen is other
-                // programs', and nothing on it is Bedrock's to read
-                if (gameUp()) processScanWithGUI();
+                // ...while the game is on screen: without it the screen is
+                // other programs', and nothing on it is Bedrock's to read
+                if (gameOnScreen()) processScanWithGUI();
             }
         }
 
         // Single scan
         if (scanRequested_) {
             scanRequested_ = false;
-            if (gameUp()) processScanWithGUI();
+            if (gameOnScreen()) processScanWithGUI();
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -1149,10 +1149,23 @@ void Application::runWithGUI(HINSTANCE hInstance) {
 
 // Whether Star Citizen runs: its window on screen, or else its process - a
 // minimised game is still running, and a game whose window class changed in
-// a patch is still found by its process. Nothing reads the screen without
-// it. The process list is gone through every two seconds at the most.
+// a patch is still found by its process. The process list is gone through
+// every two seconds at the most.
 bool Application::gameUp() {
     if (ScreenCapture::gameViewport()) return true;
+    return gameProcessUp();
+}
+
+// ...and whether any of it is on the screen: nothing reads the screen
+// without it. Minimised, the game is all other programs' there. A game whose
+// window is not found at all is still read while its process runs.
+bool Application::gameOnScreen() {
+    if (ScreenCapture::gameViewport()) return true;
+    if (ScreenCapture::gameMinimised()) return false;
+    return gameProcessUp();
+}
+
+bool Application::gameProcessUp() {
     const auto now = std::chrono::steady_clock::now();
     if (now - gameProcessChecked_ >= std::chrono::seconds(2)) {
         gameProcessChecked_ = now;
@@ -6821,6 +6834,8 @@ void Application::describeSetup(std::ostream& out) const {
     if (auto viewport = ScreenCapture::gameViewport()) {
         out << "game viewport: " << viewport->width << "x" << viewport->height << " at "
             << viewport->x << "," << viewport->y << "\n";
+    } else if (ScreenCapture::gameMinimised()) {
+        out << "game viewport: none, the game is minimised\n";
     } else {
         out << "game viewport: not found (no visible CryENGINE window)\n";
     }
@@ -6961,8 +6976,9 @@ void Application::saveSnapshot() {
     }
 
     const cv::Rect picture = pictureFor(signatureRegion_);
-    // No picture without the game: the screen is then other programs'
-    const bool game = gameUp();
+    // No picture without the game on screen: the screen is then other
+    // programs'
+    const bool game = gameOnScreen();
     cv::Mat frame;
     if (game) frame = grabGamePicture();
     noteCapture(frame);   // the note describes THIS picture
@@ -6974,9 +6990,11 @@ void Application::saveSnapshot() {
     std::ofstream note(base + ".txt", std::ios::trunc);
     if (note.is_open()) {
         describeSetup(note);
-        const char* what = !game ? "none, Star Citizen is not running"
-                           : frame.empty() ? "capture FAILED"
-                                           : "the game picture";
+        const char* what = frame.empty() ? "capture FAILED" : "the game picture";
+        if (!game) {
+            what = ScreenCapture::gameMinimised() ? "none, Star Citizen is minimised"
+                                                  : "none, Star Citizen is not running";
+        }
         note << "snapshot: " << what << " at " << whole.x << "," << whole.y << "\n";
     }
     bool saved = false;
