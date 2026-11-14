@@ -153,6 +153,24 @@ for comp in comps.values():
         if not el or not el.get("density"): continue
         if "scanSignature" not in el and "groundScanSignature" not in el: continue
         ship_elements[base(el["name"])] = el["density"]
+# Densities the rocks in the game weigh by where scmdb's export says
+# otherwise: fitted to the rocks players shared with a list read whole
+# (12-14 November 2026, game 4.10.3 LIVE 13165946; 501 rocks of 1 SCU and
+# more, all ores at once, mass / (SCU x 142.857) = parts' densities by
+# share, inert 1.0). Only ores in enough rocks to tell, off by more than
+# 1.5 %; every other ore of those rocks came back within 1.1 % of the
+# export. The export said the same for 4.10.2 and 4.10.3.
+MEASURED = {
+    "Gold": 19.46,       # 21 rocks, export 21.07 (-7.7 %)
+    "Silicon": 2.34,     # 41 rocks, export 2.49 (-6.1 %)
+    "Aslarite": 2.3,     # 57 rocks, export 2.47 (-6.8 %)
+    "Quartz": 2.65,      # 6 rocks, export 2.53 (+4.9 %)
+    "Tin": 5.77,         # 8 rocks, export 5.54 (+4.1 %)
+}
+for name, density in MEASURED.items():
+    if name not in ship_elements:
+        sys.exit("MEASURED names %s, which no ship rock holds" % name)
+    ship_elements[name] = density
 lines.append("// Each ore's density as the game weighs a rock: its mass is its volume")
 lines.append("// times its parts' densities by their shares, the inert rest at 1.0. So")
 lines.append("// a rock weighs its volume in kg until the game knows what it holds -")
@@ -163,7 +181,9 @@ lines.append("    const char* ore;")
 lines.append("    double density;")
 lines.append("};")
 lines.append("")
-lines.append(f"// {len(ship_elements)} ores, game build {d['version']}")
+lines.append(f"// {len(ship_elements)} ores, game build {d['version']}; " +
+             ", ".join(sorted(MEASURED)) + " as the rocks weigh")
+lines.append("// (MEASURED in gen_locations.py: scmdb's export says otherwise)")
 lines.append("inline const OreDensity ORE_DENSITIES[] = {")
 for name in sorted(ship_elements):
     lines.append(f'    {{"{esc(name)}", {ship_elements[name]:g}}},')

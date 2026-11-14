@@ -412,17 +412,18 @@ struct OreDensity {
     double density;
 };
 
-// 26 ores, game build 4.10.2-live.12913470
+// 26 ores, game build 4.10.2-live.12913470; Aslarite, Gold, Quartz, Silicon, Tin as the rocks weigh
+// (MEASURED in gen_locations.py: scmdb's export says otherwise)
 inline const OreDensity ORE_DENSITIES[] = {
     {"Agricium", 7.14},
     {"Aluminium", 2.7},
-    {"Aslarite", 2.47},
+    {"Aslarite", 2.3},
     {"Beryl", 2.74},
     {"Bexalite", 6.97},
     {"Borase", 4.2},
     {"Copper", 9.03},
     {"Corundum", 4.03},
-    {"Gold", 21.07},
+    {"Gold", 19.46},
     {"Hephaestanite", 3.2},
     {"Ice", 1},
     {"Iron", 7.87},
@@ -430,13 +431,13 @@ inline const OreDensity ORE_DENSITIES[] = {
     {"Lindinium", 10.69},
     {"Ouratite", 1.12},
     {"Quantainium", 20.46},
-    {"Quartz", 2.53},
+    {"Quartz", 2.65},
     {"Riccite", 1.61},
     {"Savrilium", 17.59},
-    {"Silicon", 2.49},
+    {"Silicon", 2.34},
     {"Stileron", 4.75},
     {"Taranite", 10.2},
-    {"Tin", 5.54},
+    {"Tin", 5.77},
     {"Titanium", 4.48},
     {"Torite", 2.8},
     {"Tungsten", 19.35},

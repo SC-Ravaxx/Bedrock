@@ -178,7 +178,7 @@ namespace {
 // is not. Where that still leaves two ways, the rock's weight decides: its
 // kg per SCU is 142.857 times its parts' densities by their shares, the
 // inert rest at 1.0, within a few per cent for each rock read so far, and the
-// bulk named the other ore is a sixth off.
+// bulk named the other ore is an eighth off.
 bool nameByParts(const std::vector<const RockPart*>& parts, const RockContents& contents, double kgPerScu,
                  std::vector<std::string>& named) {
     const size_t lines = contents.parts.size();
@@ -222,9 +222,10 @@ bool nameByParts(const std::vector<const RockPart*>& parts, const RockContents& 
         return true;
     }
     if (ways.empty() || kgPerScu <= 0) return false;
-    // Within 4 % - Tin weighs 3 % over its table, the others under half a per
-    // cent - and every other way 8 % off at the least. A small line of 3 % is
-    // not told apart that way: it moves the weight by under 1 %.
+    // Within 4 % - each ore's rocks shared so far weigh within 1 % of their
+    // parts as a rule, Savrilium's 2 % - and every other way 8 % off at the
+    // least. A small line of 3 % is not told apart that way: it moves the
+    // weight by under 1 %.
     double best = 1e9, second = 1e9;
     size_t at = 0;
     for (size_t w = 0; w < ways.size(); w++) {

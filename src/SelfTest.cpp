@@ -1799,16 +1799,16 @@ int runSelfTest() {
                              SCMiner::contentsFitRock("Hephaestanite", heph) &&
                              partsAre(heph, {{"Silicon", 4.65f, 510}, {"Hephaestanite", 3.90f, 572},
                                              {"Hephaestanite", 51.56f, 330}, {"Quartz", 2.66f, 522}, {"", 37.20f, 0}});
-        // ...both at 330: the rock's weight says which is the bulk (344.9 kg
-        // an SCU named so, 295.2 the other way round)
+        // ...both at 330: the rock's weight says which is the bulk (344.6 kg
+        // an SCU named so, 303.7 the other way round)
         RockContents both;
         both.parts = {{"", false, 4.0f, 510}, {"", false, 4.5f, 572}, {"", false, 55.0f, 330}, {"", false, 3.0f, 330},
                       {"", true, 33.5f, 0}};
-        const bool byWeight = SCMiner::nameContentsByRock("Hephaestanite", both, 344.9) && SCMiner::contentsHold(both) &&
+        const bool byWeight = SCMiner::nameContentsByRock("Hephaestanite", both, 344.6) && SCMiner::contentsHold(both) &&
                               partsAre(both, {{"Silicon", 4.0f, 510}, {"Hephaestanite", 4.5f, 572},
                                               {"Hephaestanite", 55.0f, 330}, {"Quartz", 3.0f, 330}, {"", 33.5f, 0}});
-        // ...a piece all at 330, 3.2 to Hephaestanite's 2.53; and not where the
-        // weight cannot tell - 3 % of a piece moves it 2 % - or is not known
+        // ...a piece all at 330, Hephaestanite's 3.2 to Quartz's 2.65; and not where
+        // the weight cannot tell - 3 % of a piece moves it under 2 % - or is not known
         RockContents heavy, light, small, unweighed;
         heavy.parts = {{"", false, 100.0f, 330}};
         light.parts = heavy.parts;
@@ -1816,7 +1816,7 @@ int runSelfTest() {
         small.parts = {{"", false, 3.0f, 330}, {"", true, 97.0f, 0}};
         const bool pieceByWeight =
             SCMiner::nameContentsByRock("Hephaestanite", heavy, 457.0) && heavy.parts[0].ore == "Hephaestanite" &&
-            SCMiner::nameContentsByRock("Hephaestanite", light, 361.4) && light.parts[0].ore == "Quartz";
+            SCMiner::nameContentsByRock("Hephaestanite", light, 378.6) && light.parts[0].ore == "Quartz";
         const bool twoOres = !SCMiner::nameContentsByRock("Hephaestanite", small, 152.3) &&
                              !SCMiner::nameContentsByRock("Hephaestanite", unweighed);
         // ...and a quality no ore of the rock has names nothing
