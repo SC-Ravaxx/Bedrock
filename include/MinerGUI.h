@@ -1294,8 +1294,23 @@ private:
     bool loadoutOpen_ = false;
     std::string craftedEntry_;          // what is being typed into the % field
     bool craftedEditing_ = false;
+    bool laserPickerOpen_ = false;      // the laser field's list, over the card
+    int modulePicker_ = -1;             // which of the three module fields has its list down
+    std::wstring moduleFilter_;         // typed into that field; matched against the name and the figures
+    int moduleListScroll_ = 0;          // first of the rows drawn, when more than six match
+    int moduleListMax_ = 0;             // last legal moduleListScroll_, from the last paint
+    bool moduleListReveal_ = false;     // the next paint scrolls until the fitted module is on screen
+    bool moduleScrollDrag_ = false;     // the thumb of that list is held
+    int moduleScrollDragScroll_ = 0;    // moduleListScroll_ when the thumb was taken
+    float moduleScrollDragY_ = 0;       // where the pointer was then, so the thumb stays under it
+    Gdiplus::RectF moduleScrollTrack_{};
+    Gdiplus::RectF moduleScrollThumb_{};
     struct LoadoutHit { Gdiplus::RectF rect; int kind; int value; };
-    // kind 0 laser, 1 module slot, 2 gadget, 3 the crafted field, 4 close
+    // kind 0 a laser in the dropped list, 2 a gadget, 3 the crafted field,
+    // 4 close, 5 a head, 6 the title, 7 remove, 8 the laser field, 9 a module
+    // field (value is the slot, 0..2), 11 a row of the module list (value is
+    // the module's index, or -1 for none), 12 that list's scroll thumb,
+    // 13 its track
     std::vector<LoadoutHit> loadoutHits_;
 
     void drawRockCard(Gdiplus::Graphics& g, int clientW);
@@ -1621,6 +1636,8 @@ private:
     void putHeadLaser(const MiningLaser* laser);
     bool addHeadModule(const MiningModule* module);
     void takeHeadModule(const MiningModule* module);
+    // The module fields are three slots. `module` null empties that slot.
+    void setSlotModule(int slot, const MiningModule* module);
     // A click while the ship's list is down: a fit picked, a new one added
     // and its card opened, or the list shut - over the scan page or the Gear
     // page alike
