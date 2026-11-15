@@ -5,6 +5,7 @@
 #include "RockContents.h"
 #include "ScanPanel.h"
 #include "TextLineReader.h"
+#include "ToneMap.h"
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
@@ -55,6 +56,27 @@ cv::Mat bgrOf(const cv::Mat& frame) {
         return bgr;
     }
     return frame;
+}
+
+// ToneMap::sdrLevel of every eight-bit level, for cv::LUT
+const cv::Mat& sdrLevels() {
+    static const cv::Mat lut = [] {
+        cv::Mat m(1, 256, CV_8U);
+        for (int i = 0; i < 256; i++) m.at<uchar>(0, i) = ToneMap::sdrLevel(i);
+        return m;
+    }();
+    return lut;
+}
+
+// A part of the frame at the levels the shapes were cut at: an SDR capture's.
+// A tone mapped HDR frame (setPanelToneMapped) puts the HUD's white at 180 to
+// 190; taken back, the lettering stands at 255 over the ground as in the
+// recordings, and one set of shapes reads both.
+cv::Mat sdrPart(const cv::Mat& bgr, const cv::Rect& part) {
+    if (!panelToneMapped()) return bgr(part);
+    cv::Mat sdr;
+    cv::LUT(bgr(part), sdrLevels(), sdr);
+    return sdr;
 }
 
 // What stands brighter than the ground around it, in the brightest channel:
@@ -290,6 +312,20 @@ struct Known {
 const std::vector<Known>& knownGlyphs() {
     static const std::vector<Known> known = [] {
         std::vector<Known> out;
+        // For the bench: the glyphs from a file instead (SCMINER_FIVE_SHAPES),
+        // a line each: glyph width height and the values, row by row
+        if (const char* from = DEV_ENV("SCMINER_FIVE_SHAPES")) {
+            std::ifstream in(from);
+            std::string glyph;
+            int w = 0, h = 0;
+            while (in >> glyph >> w >> h) {
+                cv::Mat cell(h, w, CV_32F);
+                for (int k = 0; k < w * h; k++) in >> cell.at<float>(k / w, k % w);
+                if (in && h == GLYPH_H && w >= 2 && glyph.size() == 1) out.push_back({glyph[0], cell});
+            }
+            std::cerr << "[five] " << out.size() << " glyphs from " << from << std::endl;
+            return out;
+        }
         for (int i = 0; i < FIVE_SHAPE_COUNT; i++) {
             const FiveShape& s = FIVE_SHAPES[i];
             if (s.glyph == 'L' || s.height != GLYPH_H || s.width < 2) continue;
@@ -541,44 +577,48 @@ std::string truthOf(int column) {
     return it->second[(size_t)column];
 }
 
-// A word's pieces for the harvest, named by the truth: where the pieces are
-// fewer than the truth's glyphs - numerals the glow ran together - the widest
-// is cut where it is thinnest until they are as many. Each cell is GLYPH_H
-// tall and CELL_W wide, ending where its piece does.
-void harvestWords(const char* field, const Line& line, int from, int to, const std::string& truth) {
+// The bench's harvest by the truth: a figure's glyphs placed from its right
+// end one by one, each where its own shape matches best a pixel or two
+// either way. The reading is not asked, so a glyph the shapes misread is cut
+// where it stands. One line per glyph: file,field,index,glyph,score,right,
+// top, then its cell, CELL_W wide ending where the glyph ends and GLYPH_H
+// tall from where it matched.
+void harvestForced(const char* field, const Line& line, int right, const std::string& truth, int firstSlack) {
     Harvest* h = harvest();
-    if (!h || from < 0 || to < from || to >= (int)line.words.size() || truth.empty()) return;
-    std::vector<cv::Rect> glyphs;
-    for (int w = from; w <= to; w++) glyphs.insert(glyphs.end(), line.words[(size_t)w].begin(), line.words[(size_t)w].end());
-    cv::Mat on;
-    cv::threshold(line.ink, on, 0.4 * line.most, 1, cv::THRESH_BINARY);
-    while (glyphs.size() < truth.size()) {
-        size_t widest = 0;
-        for (size_t i = 1; i < glyphs.size(); i++) {
-            if (glyphs[i].width > glyphs[widest].width) widest = i;
-        }
-        const cv::Rect r = glyphs[widest];
-        if (r.width < 8) break;
-        int at = -1;
-        double least = 1e9;
-        for (int x = r.width * 3 / 10; x <= r.width * 7 / 10; x++) {
-            const double sum = cv::sum(on(cv::Rect(r.x + x, r.y, 1, r.height)))[0];
-            if (sum < least) {
-                least = sum;
-                at = x;
+    if (!h || truth.empty() || line.ink.empty() || line.top < 0) return;
+    const int baseTop = line.top - GLYPH_ABOVE;
+    std::vector<std::pair<cv::Rect, double>> placed(truth.size());
+    int x = right;
+    for (size_t i = truth.size(); i-- > 0;) {
+        const bool first = i + 1 == truth.size();
+        const int slackLeft = first ? firstSlack : 2, slackRight = first ? firstSlack : 1;
+        double best = -2;
+        cv::Rect bestBox;
+        for (const Known& k : knownGlyphs()) {
+            if (k.c != truth[i]) continue;
+            const cv::Rect window(x - k.cell.cols - slackLeft, baseTop - 1, k.cell.cols + slackLeft + slackRight,
+                                  GLYPH_H + 2);
+            if ((window & cv::Rect(0, 0, line.ink.cols, line.ink.rows)) != window) continue;
+            cv::Mat result;
+            cv::matchTemplate(line.ink(window), k.cell, result, cv::TM_CCOEFF_NORMED);
+            double score = 0;
+            cv::Point at;
+            cv::minMaxLoc(result, nullptr, &score, nullptr, &at);
+            if (score > best) {
+                best = score;
+                bestBox = cv::Rect(window.x + at.x, window.y + at.y, k.cell.cols, GLYPH_H);
             }
         }
-        if (at <= 0) break;
-        glyphs[widest] = cv::Rect(r.x, r.y, at, r.height);
-        glyphs.insert(glyphs.begin() + (long long)widest + 1, cv::Rect(r.x + at, r.y, r.width - at, r.height));
+        if (best < -1) return;   // no shape for it, or off the line
+        placed[i] = {bestBox, best};
+        x = bestBox.x;
     }
-    if (glyphs.size() != truth.size()) return;
-    for (size_t i = 0; i < glyphs.size(); i++) {
-        const int right = glyphs[i].x + glyphs[i].width;
-        const cv::Rect cell(right - CELL_W, line.top - GLYPH_ABOVE, CELL_W, GLYPH_H);
+    for (size_t i = 0; i < truth.size(); i++) {
+        const cv::Rect& b = placed[i].first;
+        const cv::Rect cell(b.x + b.width - CELL_W, b.y, CELL_W, GLYPH_H);
         if ((cell & cv::Rect(0, 0, line.ink.cols, line.ink.rows)) != cell) continue;
-        const int advance = i > 0 ? right - (glyphs[i - 1].x + glyphs[i - 1].width) : 0;
-        h->out << h->file << "," << field << "," << i << "," << truth[i] << ",?," << advance << "," << glyphs[i].width;
+        h->out << h->file << "," << field << "," << i << "," << truth[i] << "," << placed[i].second << ","
+               << b.x + b.width << "," << b.y - line.top;
         for (int k = 0; k < CELL_W * GLYPH_H; k++) h->out << "," << line.ink(cell).at<float>(k / CELL_W, k % CELL_W);
         h->out << "\n";
     }
@@ -588,23 +628,6 @@ void harvestWords(const char* field, const Line& line, int from, int to, const s
 // A figure as read, drawn: green where sure
 void drawRead(const Line& line, const Reading& read) {
     for (const cv::Rect& b : read.boxes) drawBox(line.inFrame(b), read.sure ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255));
-}
-
-// ...and for the harvest, a figure read as the truth has it: each glyph's
-// cell where the reading put it (SCMINER_FIVE_SELF: only these)
-void harvestRead(const char* field, const Line& line, const Reading& read, const std::string& truth) {
-    Harvest* h = harvest();
-    if (!h || truth.empty() || read.text != truth || read.boxes.size() != truth.size()) return;
-    for (size_t i = 0; i < read.boxes.size(); i++) {
-        const int right = read.boxes[i].x + read.boxes[i].width;
-        const cv::Rect cell(right - CELL_W, line.top - GLYPH_ABOVE, CELL_W, GLYPH_H);
-        if ((cell & cv::Rect(0, 0, line.ink.cols, line.ink.rows)) != cell) continue;
-        h->out << h->file << "," << field << "," << i << "," << truth[i] << ",=," << read.boxes[i].width << ","
-               << read.boxes[i].width;
-        for (int k = 0; k < CELL_W * GLYPH_H; k++) h->out << "," << line.ink(cell).at<float>(k / CELL_W, k % CELL_W);
-        h->out << "\n";
-    }
-    h->out << std::flush;
 }
 
 double envOr(const char* name, double fallback) {
@@ -683,7 +706,7 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
     const cv::Rect band = bandOf(frame.size());
     const cv::Mat ink = [&] {
         cv::Mat all = cv::Mat::zeros(bgr.size(), CV_32F);
-        inkOf(bgr(band), screen).copyTo(all(band));
+        inkOf(sdrPart(bgr, band), screen).copyTo(all(band));
         return all;
     }();
     std::vector<double> scales;
@@ -786,32 +809,17 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
             drawRead(volumeLine, volume.read);
         }
     }
-    // the bench's harvest: each figure's word by the truth, cut by its pieces
-    // or, with SCMINER_FIVE_SELF, as read
+    // the bench's harvest: each figure by the truth, glyph by glyph
     if (harvest()) {
-        static const bool self = DEV_ENV("SCMINER_FIVE_SELF") != nullptr;
-        auto take = [&](const char* field, const Line& line, int word, const Format& format, const std::string& truth) {
-            if (word < 0) return;
-            if (!self) {
-                harvestWords(field, line, word, word, truth);
-                return;
-            }
-            const Reading r = slide(line, line.right((size_t)word), format, 2, sureScore, sureMargin);
-            harvestRead(field, line, r, truth);
+        auto take = [&](const char* field, const Line& line, int word, const std::string& truth, int slack) {
+            if (word >= 0) harvestForced(field, line, line.right((size_t)word), truth, slack);
         };
-        take("mass", massLine, endingAt(massLine, FIGURES_END), WHOLE, truthOf(2));
-        take("res", resLine, endingAt(resLine, FIGURES_END), PERCENT, truthOf(4));
-        take("res", resLine, endingAt(resLine, DELTA_END), DELTA, truthOf(3));
-        take("inst", instLine, endingAt(instLine, FIGURES_END), TWO_PLACES, truthOf(6));
-        take("inst", instLine, endingAt(instLine, DELTA_END), DELTA, truthOf(5));
-        if (scuWord.word >= 0 && !truthOf(7).empty()) {
-            if (self) {
-                harvestRead("scu", volumeLine, volume.read, truthOf(7));
-                harvestRead("scu", volumeLine, scuWord.read, "SCU");
-            } else {
-                harvestWords("scu", volumeLine, 0, scuWord.word, truthOf(7) + "SCU");
-            }
-        }
+        take("mass", massLine, endingAt(massLine, FIGURES_END), truthOf(2), 2);
+        take("res", resLine, endingAt(resLine, FIGURES_END), truthOf(4), 2);
+        take("resdelta", resLine, endingAt(resLine, DELTA_END), truthOf(3), 2);
+        take("inst", instLine, endingAt(instLine, FIGURES_END), truthOf(6), 2);
+        take("instdelta", instLine, endingAt(instLine, DELTA_END), truthOf(5), 2);
+        if (!truthOf(7).empty()) take("scu", volumeLine, endingAt(volumeLine, FIGURES_END), truthOf(7) + "SCU", 2);
         std::vector<std::string> parts;
         {
             std::stringstream ss(truthOf(8));
@@ -821,10 +829,16 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
         for (int row = 0; row < (int)parts.size(); row++) {
             const Line line = lineOf(LIST_TOP + row * LIST_PITCH, -8, FIGURES_END + 8);
             if (line.words.size() < 2) continue;
-            const std::string& p = parts[(size_t)row];
-            const size_t a = p.find('|'), b = p.rfind('|');
-            if (std::abs(line.left(0) - line.unit(L)) <= 4) take("share", line, 0, SHARE, p.substr(0, a) + "%");
-            take("quality", line, endingAt(line, QUALITY_END), QUALITY, p.substr(b + 1));
+            // share|name|quality|colour
+            std::vector<std::string> f;
+            {
+                std::stringstream ss(parts[(size_t)row]);
+                std::string cell;
+                while (std::getline(ss, cell, '|')) f.push_back(cell);
+            }
+            if (f.size() < 3) continue;
+            if (std::abs(line.left(0) - line.unit(L)) <= 4) take("share", line, 0, f[0] + "%", 2);
+            if (!f[2].empty()) take("quality", line, endingAt(line, QUALITY_END), f[2], 2);
         }
     }
 
@@ -892,7 +906,7 @@ std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& pa
     const cv::Rect part = cv::Rect(cv::Point(X(-16), Y(LIST_TOP - 12)), cv::Point(X(FIGURES_END + 16), Y(LIST_TOP + 7.5 * LIST_PITCH))) &
                           cv::Rect(0, 0, frame.cols, frame.rows);
     if (part.width < 100 * s || part.height < 2 * LIST_PITCH * s) return out;
-    const cv::Mat ink = inkOf(bgrOf(frame)(part), s);
+    const cv::Mat ink = inkOf(sdrPart(bgrOf(frame), part), s);
     auto lineOf = [&](double top) {
         const cv::Rect r = cv::Rect(cv::Point(X(-8), Y(top - 4)), cv::Point(X(FIGURES_END + 8), Y(top + CAP + 4))) - part.tl();
         return lineAt(ink, r, s, 12.0);
