@@ -123,6 +123,42 @@ inline const std::vector<MineralSignature> MINERAL_SIGNATURES = {
     {"Ice",           4300, Rarity::Common, SYS_ALL},
 };
 
+// Ship rocks one place has of its own, with signatures of their own. Nyx I,
+// the first Genesis planet (5.0), places its own rock entities
+// (mineablerock_surface*_v5) at about half the usual signature: Quartz reads
+// 2,105 there and 4,210 everywhere else, so two rocks there read what one
+// reads anywhere else. Its container places no other ship rocks, and these
+// spawn nowhere else: at such a place they are the only ship rocks. Which
+// one spawns goes by the ground - granite: Quartz, Hephaestanite, Torite,
+// Gold, Bexalite; arid: Copper, Aluminium; semi-arid: Agricium, Laranite,
+// Titanium; balanced: Tin, Savrilium; limestone: Aslarite. The files give
+// no share per planet and no cluster sizes; the ore's rarity limit is kept
+// (not checked in game).
+// Source: 5.0.0-PTU 13189690, ObjectContainers/PU/system/nyx/nyx1.socpak
+// (nyx1.ale, resourceDistributions) and entities/mineable/*_v5.xml.
+struct PlaceSignature {
+    std::string location;   // the place's ore location, as GamePlaces names it
+    std::string mineral;    // as in MINERAL_SIGNATURES, whose rarity it has
+    int baseSignature;
+    uint8_t systems;
+};
+
+inline const std::vector<PlaceSignature> PLACE_SIGNATURES = {
+    {"Nyx I", "Savrilium",     1600, SYS_NYX},
+    {"Nyx I", "Gold",          1782, SYS_NYX},
+    {"Nyx I", "Bexalite",      1800, SYS_NYX},
+    {"Nyx I", "Laranite",      1912, SYS_NYX},
+    {"Nyx I", "Aslarite",      1920, SYS_NYX},
+    {"Nyx I", "Titanium",      1927, SYS_NYX},
+    {"Nyx I", "Agricium",      1942, SYS_NYX},
+    {"Nyx I", "Torite",        1950, SYS_NYX},
+    {"Nyx I", "Hephaestanite", 2090, SYS_NYX},
+    {"Nyx I", "Tin",           2098, SYS_NYX},
+    {"Nyx I", "Quartz",        2105, SYS_NYX},
+    {"Nyx I", "Copper",        2120, SYS_NYX},
+    {"Nyx I", "Aluminium",     2142, SYS_NYX},
+};
+
 // Special (non-ship) signature families. Ground deposits carry a SIZE-ONLY
 // signature (hand/FPS = 3000, vehicle/ROC = 4000); which mineral it is depends
 // on the location, and each deposit is 100% one mineral.

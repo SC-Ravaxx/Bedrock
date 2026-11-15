@@ -76,6 +76,9 @@ const Named NAMED[] = {
     {"Levski", "Nyx", "", 1},                   {"Delamar", "Nyx", "", 1},
     {"QV Breaker Station", "Nyx", "", 0},       {"Glaciem Ring", "Nyx", "Glaciem Ring", 0},
     {"Keeger Belt", "Nyx", "Keeger Belt", 0},
+    // Nyx I (5.0): rocks of its own, with signatures of their own
+    // (PLACE_SIGNATURES), which the ore tables do not list
+    {"Nyx I", "Nyx", "Nyx I", 1},
 };
 
 // The tables' note on a Lagrange group lists its points - "HUR-L1,
@@ -330,6 +333,9 @@ GamePlace placeByDestination(std::string_view internalName, std::string_view sys
             return placeByLogName(PLANETS[planet - 1], systemHint);
         }
     }
+    // nyx1: Nyx I, as the physics statistics name its terrain (5.0 PTU:
+    // "planet cells: 70 ... name: nyx1"); Nyx II and III have none yet
+    if (sameName(name, "nyx1")) return placeByLogName("Nyx I", systemHint);
     // OOC_Stanton2_L2: a Lagrange point itself, out by its asteroids rather
     // than at its station
     {

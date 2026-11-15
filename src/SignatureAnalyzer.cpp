@@ -14,6 +14,130 @@ namespace SCMiner {
 // holds, and four options are a choice; more is a lottery.
 constexpr size_t MAX_KNOWN_SPLITS = 4;
 
+namespace {
+
+// One value a single signature can produce, and enough about it to judge
+// whether pairing it with another one is physically sensible
+struct SingleSignature {
+    std::string label;
+    std::string name;         // the ore or family itself
+    bool isMineral = false;   // ship-minable ore, as opposed to a deposit family
+    int count = 0;            // rocks / deposits / panels
+    Rarity rarity = Rarity::None;
+    uint8_t systems = SYS_ALL;
+};
+
+}  // namespace
+
+// The signatures one scope can show. `single` keeps the first reading of a
+// value and drops the rest, which is right where a value has to be
+// explained uniquely (what the reader ACCEPTS goes through it). `every`
+// keeps them all, for the decomposition alone: 16,000 is a ROC field of 4
+// AND harvestables of 8, `single` keeps the ROC one, and the six-unit rule
+// for fields in a mix then throws it out, so 37,350 = Iron x5 + eight
+// harvestables could not be offered.
+struct SignatureAnalyzer::Table {
+    std::vector<MineralSignature> minerals;
+    std::map<int, SingleSignature> single;
+    std::map<int, std::vector<SingleSignature>> every;
+    bool fives = true;   // every value a multiple of 5 (Nyx I's: 1,782, 2,098)
+};
+
+namespace {
+
+SignatureAnalyzer::Table makeTable(std::vector<MineralSignature> minerals) {
+    SignatureAnalyzer::Table table;
+    table.minerals = std::move(minerals);
+    for (const auto& mineral : table.minerals) {
+        for (int n = 1; n <= maxClusterSize(mineral.rarity); n++) {
+            const SingleSignature one{std::to_string(n) + "x " + mineral.name, mineral.name,
+                                      true, n, mineral.rarity, mineral.systems};
+            table.single.emplace(mineral.baseSignature * n, one);
+            table.every[mineral.baseSignature * n].push_back(one);
+            if (mineral.baseSignature * n % 5 != 0) table.fives = false;
+        }
+    }
+    for (const auto& family : SPECIAL_SIGNATURES) {
+        for (int n : clusterSizesFor(family)) {
+            const SingleSignature one{std::to_string(n) + "x " + family.name, family.name,
+                                      false, n, Rarity::None, SYS_ALL};
+            table.single.emplace(family.baseSignature * n, one);
+            table.every[family.baseSignature * n].push_back(one);
+        }
+    }
+    return table;
+}
+
+// The rocks of one place of its own (PLACE_SIGNATURES), or of every such
+// place in the given systems, as minerals with the rarity of their ore
+std::vector<MineralSignature> placeRocks(const std::string& location, uint8_t systems) {
+    std::vector<MineralSignature> rocks;
+    for (const auto& rock : PLACE_SIGNATURES) {
+        if (location.empty() ? (rock.systems & systems) == 0 : rock.location != location) continue;
+        Rarity rarity = Rarity::Common;
+        for (const auto& mineral : MINERAL_SIGNATURES) {
+            if (mineral.name == rock.mineral) rarity = mineral.rarity;
+        }
+        rocks.push_back({rock.mineral, rock.baseSignature, rarity, rock.systems});
+    }
+    return rocks;
+}
+
+// Every table the analyzer can stand in, made once: "" the usual one,
+// "@<place>" a place's own rocks alone, "+<SYSTEM>" the usual one with the
+// rocks of that system's places of their own beside it
+const std::map<std::string, SignatureAnalyzer::Table>& tables() {
+    static const std::map<std::string, SignatureAnalyzer::Table> all = [] {
+        std::map<std::string, SignatureAnalyzer::Table> made;
+        made.emplace("", makeTable(MINERAL_SIGNATURES));
+        for (const auto& rock : PLACE_SIGNATURES) {
+            if (made.count("@" + rock.location) == 0) {
+                made.emplace("@" + rock.location, makeTable(placeRocks(rock.location, 0)));
+            }
+        }
+        static const std::pair<const char*, uint8_t> SYSTEMS[] = {
+            {"STANTON", SYS_STANTON}, {"PYRO", SYS_PYRO}, {"NYX", SYS_NYX}};
+        for (const auto& [system, mask] : SYSTEMS) {
+            const auto rocks = placeRocks("", mask);
+            if (rocks.empty()) continue;
+            auto minerals = MINERAL_SIGNATURES;
+            minerals.insert(minerals.end(), rocks.begin(), rocks.end());
+            made.emplace(std::string("+") + system, makeTable(std::move(minerals)));
+        }
+        return made;
+    }();
+    return all;
+}
+
+}  // namespace
+
+void SignatureAnalyzer::chooseTable() const {
+    const auto& all = tables();
+    // A place with rocks of its own reads by those alone, any other place
+    // the tables know by the usual ones
+    if (!placeName_.empty()) {
+        const auto own = all.find("@" + placeName_);
+        table_ = own != all.end() ? &own->second : &all.at("");
+        return;
+    }
+    // No place, in a system with such a place, and not in open space: the
+    // ship may be on it before the log names it (the physics statistics name
+    // the body every ten minutes), so both kinds count
+    if (ground_ != Ground::Space) {
+        const auto with = all.find("+" + systemFilter_);
+        if (with != all.end()) {
+            table_ = &with->second;
+            return;
+        }
+    }
+    table_ = &all.at("");
+}
+
+const SignatureAnalyzer::Table& SignatureAnalyzer::signatures() const {
+    if (!table_) chooseTable();
+    return *table_;
+}
+
 OCREngine::ReadingPolicy makeReadingPolicy(SignatureAnalyzer& analyzer) {
     OCREngine::ReadingPolicy policy;
     policy.canonicalize = [&analyzer](int v) { return analyzer.canonicalize(v); };
@@ -34,6 +158,7 @@ SignatureAnalyzer::SignatureAnalyzer() = default;
 
 void SignatureAnalyzer::setSystemFilter(const std::string& system) {
     systemFilter_ = system;
+    chooseTable();
 }
 
 std::string SignatureAnalyzer::getSystemFilter() const {
@@ -43,15 +168,23 @@ std::string SignatureAnalyzer::getSystemFilter() const {
 void SignatureAnalyzer::setPlaceFilter(const std::string& oreLocation) {
     placeName_.clear();
     placeMinerals_.clear();
-    if (oreLocation.empty()) return;
-    for (const auto& row : ORE_LOCATIONS) {
-        if (row.family != MiningFamily::Ship || oreLocation != row.location) continue;
-        if (std::find(placeMinerals_.begin(), placeMinerals_.end(), row.mineral) == placeMinerals_.end()) {
-            placeMinerals_.push_back(row.mineral);
+    auto add = [this](const std::string& mineral) {
+        if (std::find(placeMinerals_.begin(), placeMinerals_.end(), mineral) == placeMinerals_.end()) {
+            placeMinerals_.push_back(mineral);
+        }
+    };
+    if (!oreLocation.empty()) {
+        for (const auto& row : ORE_LOCATIONS) {
+            if (row.family == MiningFamily::Ship && oreLocation == row.location) add(row.mineral);
+        }
+        // ...and the rocks a place has of its own, which the tables lack
+        for (const auto& rock : PLACE_SIGNATURES) {
+            if (rock.location == oreLocation) add(rock.mineral);
         }
     }
     // A place the tables list no ship ore for is no filter at all
     if (!placeMinerals_.empty()) placeName_ = oreLocation;
+    chooseTable();
 }
 
 bool SignatureAnalyzer::atPlace(const std::string& mineral) const {
@@ -87,7 +220,7 @@ std::vector<AnalysisResult> SignatureAnalyzer::analyzeSignature(int scannedSigna
     const uint8_t filterMask = systemMask(systemFilter_);
 
     // Ship mining: every mineral, every cluster size its rarity allows
-    for (const auto& mineral : MINERAL_SIGNATURES) {
+    for (const auto& mineral : signatures().minerals) {
         // Only the cluster size closest to the scanned value matters
         int bestN = 1;
         double bestDiff = std::abs(scannedSignature - mineral.baseSignature);
@@ -293,7 +426,7 @@ void SignatureAnalyzer::setTolerance(int tolerance) {
 }
 
 bool SignatureAnalyzer::isExactMatch(int scannedSignature, std::string& outName, int& outClusterSize) {
-    for (const auto& mineral : MINERAL_SIGNATURES) {
+    for (const auto& mineral : signatures().minerals) {
         for (int n = 1; n <= maxClusterSize(mineral.rarity); n++) {
             if (scannedSignature == mineral.baseSignature * n) {
                 outName = mineral.name;
@@ -470,39 +603,6 @@ std::string SignatureAnalyzer::generateReport(int scannedSignature) {
 
 namespace {
 
-// One value a single signature can produce, and enough about it to judge
-// whether pairing it with another one is physically sensible
-struct SingleSignature {
-    std::string label;
-    std::string name;         // the ore or family itself
-    bool isMineral = false;   // ship-minable ore, as opposed to a deposit family
-    int count = 0;            // rocks / deposits / panels
-    Rarity rarity = Rarity::None;
-    uint8_t systems = SYS_ALL;
-};
-
-const std::map<int, SingleSignature>& singleSignatureTable() {
-    static const std::map<int, SingleSignature> table = [] {
-        std::map<int, SingleSignature> values;
-        for (const auto& mineral : MINERAL_SIGNATURES) {
-            for (int n = 1; n <= maxClusterSize(mineral.rarity); n++) {
-                values.emplace(mineral.baseSignature * n,
-                               SingleSignature{std::to_string(n) + "x " + mineral.name, mineral.name,
-                                               true, n, mineral.rarity, mineral.systems});
-            }
-        }
-        for (const auto& family : SPECIAL_SIGNATURES) {
-            for (int n : clusterSizesFor(family)) {
-                values.emplace(family.baseSignature * n,
-                               SingleSignature{std::to_string(n) + "x " + family.name, family.name,
-                                               false, n, Rarity::None, SYS_ALL});
-            }
-        }
-        return values;
-    }();
-    return table;
-}
-
 // A marker shows a sum when a rock and a deposit share the spot. Seen in
 // game: 39,350 = Iron x5 + harvestables x6, 68,080 = Iron x4 +
 // harvestables x17, 76,975 = Tin x5 + a ROC field x14 - one ore beside
@@ -524,7 +624,7 @@ bool sensiblePair(const SingleSignature& a, const SingleSignature& b) {
 
 std::vector<int> SignatureAnalyzer::knownSignatures() const {
     std::vector<int> values;
-    for (const auto& [value, entry] : singleSignatureTable()) values.push_back(value);
+    for (const auto& [value, entry] : signatures().single) values.push_back(value);
     return values;
 }
 
@@ -556,7 +656,7 @@ std::vector<SignatureAnalyzer::Combination> SignatureAnalyzer::decomposePairs(
         int scannedSignature, size_t maxResults) {
     std::vector<Combination> found;
 
-    const auto& table = singleSignatureTable();
+    const auto& table = signatures().single;
     if (table.count(scannedSignature) > 0) return found;   // explained on its own
 
     for (const auto& [value, entry] : table) {
@@ -618,46 +718,18 @@ static double termWeight(const SingleSignature& s) {
     return rarity * cluster;
 }
 
-// Every way one value can be read on its own. singleSignatureTable() keeps
-// the first reading of a value and drops the rest, which is right where a
-// value has to be explained uniquely, but loses real answers when a
-// constellation is built: 16,000 is a ROC field of 4 AND harvestables of
-// 8, the table keeps the ROC one, and the six-unit rule for fields in a
-// mix then throws it out, so 37,350 = Iron x5 + eight harvestables could
-// not be offered. This table is used by the decomposition alone; what the
-// reader ACCEPTS still goes through the single-reading table.
-const std::map<int, std::vector<SingleSignature>>& everyReadingTable() {
-    static const std::map<int, std::vector<SingleSignature>> table = [] {
-        std::map<int, std::vector<SingleSignature>> values;
-        for (const auto& mineral : MINERAL_SIGNATURES) {
-            for (int n = 1; n <= maxClusterSize(mineral.rarity); n++) {
-                values[mineral.baseSignature * n].push_back(
-                    SingleSignature{std::to_string(n) + "x " + mineral.name, mineral.name,
-                                    true, n, mineral.rarity, mineral.systems});
-            }
-        }
-        for (const auto& family : SPECIAL_SIGNATURES) {
-            for (int n : clusterSizesFor(family)) {
-                values[family.baseSignature * n].push_back(
-                    SingleSignature{std::to_string(n) + "x " + family.name, family.name,
-                                    false, n, Rarity::None, SYS_ALL});
-            }
-        }
-        return values;
-    }();
-    return table;
-}
-
 std::vector<SignatureAnalyzer::Decomposition> SignatureAnalyzer::decomposeAll(
         int scannedSignature, size_t maxResults) {
     std::vector<Decomposition> found;
-    // Plausible at all? Every signature is a multiple of 5, and nothing
-    // above MAX_VALID_SIGNATURE exists in the published data - a 130,000
-    // is not a constellation, it is a misread.
-    if (scannedSignature < 1500 || scannedSignature > MAX_VALID_SIGNATURE || scannedSignature % 5 != 0) {
+    const auto& table = signatures().every;
+    // Plausible at all? Every signature of the usual table is a multiple of
+    // 5 (Nyx I's own rocks are not), and nothing above MAX_VALID_SIGNATURE
+    // exists in the published data - a 130,000 is not a constellation, it
+    // is a misread.
+    if (scannedSignature < 1500 || scannedSignature > MAX_VALID_SIGNATURE ||
+        (signatures().fives && scannedSignature % 5 != 0)) {
         return found;
     }
-    const auto& table = everyReadingTable();
     const uint8_t mask = systemMask(systemFilter_);
 
     auto add = [&](const std::vector<const SingleSignature*>& parts) {

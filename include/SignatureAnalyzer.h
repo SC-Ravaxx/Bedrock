@@ -30,7 +30,8 @@ public:
     // player is, read off the game log. A candidate the place does not
     // have is marked out of scope exactly like one outside the system,
     // and the mixes are built without it. Empty, or a location the tables
-    // do not know, lifts it.
+    // do not know, lifts it. A place with ship rocks of its own
+    // (PLACE_SIGNATURES: Nyx I) reads by those alone.
     void setPlaceFilter(const std::string& oreLocation);
     const std::string& placeFilter() const { return placeName_; }
     // Where the ship stands, as far as the ground goes. On a planet or moon
@@ -39,7 +40,7 @@ public:
     // stays "Salvage", and there are no ROC deposits and no hand minables,
     // so those are out of scope there the way an ore of another system is.
     enum class Ground { Unknown, Space, Surface };
-    void setGround(Ground ground) { ground_ = ground; }
+    void setGround(Ground ground) { ground_ = ground; chooseTable(); }
     Ground ground() const { return ground_; }
     // What a candidate out of scope is out of: "NYX", "Pyro II (Monox)",
     // or "open space"
@@ -91,9 +92,10 @@ public:
     // three ores and nothing less - is only reachable this way.
     bool explainsExactly(int scannedSignature);
 
-    // Every value a single signature can show, for readers that need to
-    // ENUMERATE rather than test: the grid reader scores each of these
-    // against the picture and keeps the one that explains it best.
+    // Every value a single signature can show where the analyzer stands
+    // (Nyx I's own rocks read other values than all the rest), for readers
+    // that need to ENUMERATE rather than test: the grid reader scores each
+    // of these against the picture and keeps the one that explains it best.
     std::vector<int> knownSignatures() const;
 
     struct Combination {
@@ -148,6 +150,10 @@ public:
     // cannot be repaired unambiguously.
     int canonicalize(int scannedSignature);
 
+    // The signatures that can show where the analyzer stands: the usual
+    // table, a place's own rocks alone, or both (see chooseTable)
+    struct Table;
+
 private:
     std::string systemFilter_;  // empty = no filter
     std::string placeName_;     // the place filter, "" when none
@@ -155,6 +161,10 @@ private:
     bool atPlace(const std::string& mineral) const;
     Ground ground_ = Ground::Unknown;
     bool outOfPlace_ = false;
+    // Chosen by the setters; the first use chooses when none has run
+    mutable const Table* table_ = nullptr;
+    void chooseTable() const;
+    const Table& signatures() const;
     // Whether a ground family can be where the ship stands - see setGround
     bool familyPossible(const std::string& family) const {
         return !(ground_ == Ground::Space && (family == "ROC Deposit" || family == "FPS Minable"));

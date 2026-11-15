@@ -5347,6 +5347,23 @@ int runSelfTest() {
         allPassed &= check(placeByDestination("LOC_RR_S1_L2", "").oreLocation == "Lagrange F",
                            "the rest stop at HUR-L2 is Lagrange F");
         allPassed &= check(placeByDestination("levski_all-001", "").system == "Nyx", "levski_all-001 is Levski");
+        {
+            // Nyx I (5.0 PTU) by the name the physics statistics give its
+            // terrain, after a pick from Levski to a point without a name
+            const auto nyx1 = placeByDestination("nyx1", "");
+            SCMiner::GameState planet;
+            auto feedPlanet = [&](const std::string& line) {
+                SCMiner::GameState::Event event;
+                if (SCMiner::GameState::parse(line, &event)) planet.apply(event);
+            };
+            feedPlanet("<2026-11-15T10:34:00.130Z> [Notice] <RequestLocationInventory> Player[<player>] requested "
+                       "inventory for Location[Nyx_Levski] [Team_CoreGameplayFeatures][Inventory]");
+            feedPlanet("<2026-11-15T10:39:50.343Z>   planet cells:   70 [16384] meshes:   38 [ 2048] name: nyx1");
+            allPassed &= check(nyx1.name == "Nyx I" && nyx1.system == "Nyx" && nyx1.oreLocation == "Nyx I" &&
+                                   nyx1.surface == 1 && planet.place() == "Nyx I" && planet.system() == "Nyx",
+                               "nyx1 is Nyx I, a body, and the statistics' line puts the ship there (got " +
+                                   planet.place() + ")");
+        }
         // A planet's low-orbit station is no Lagrange point, and a Lagrange
         // point itself is one
         allPassed &= check(placeByDestination("rs_ext_pyro3_leo", "").name == "Orbituary" &&
@@ -7325,6 +7342,54 @@ int runSelfTest() {
         allPassed &= check(listedIn && !absentIn, "at Monox only Monox's ores stay in scope");
         narrowed.setPlaceFilter("Nowhere");
         allPassed &= check(narrowed.placeFilter().empty(), "a place the tables do not know is no filter");
+        // Nyx I (5.0) has rocks of its own at about half the usual signature:
+        // there 2,105 is one Quartz and 4,210 two, anywhere else 2,105 is
+        // nothing and 4,210 one
+        {
+            using Ground = SCMiner::SignatureAnalyzer::Ground;
+            auto shown = [](SCMiner::SignatureAnalyzer& a, int value) {
+                std::string out;
+                for (const auto& r : a.analyzeSignature(value)) {
+                    if (!out.empty()) out += ", ";
+                    out += r.name + " x" + std::to_string(r.clusterSize) + (r.inSelectedSystem ? "" : " (out)");
+                }
+                return out.empty() ? std::string("nothing") : out;
+            };
+            std::string name;
+            int count = 0;
+            SCMiner::SignatureAnalyzer nyx1;
+            nyx1.setSystemFilter("NYX");
+            nyx1.setPlaceFilter("Nyx I");
+            nyx1.setGround(Ground::Surface);
+            allPassed &= check(nyx1.placeFilter() == "Nyx I" && shown(nyx1, 2105) == "Quartz x1" &&
+                                   shown(nyx1, 4210) == "Quartz x2" && nyx1.isExactMatch(1782, name, count) &&
+                                   name == "Gold" && count == 1 && !nyx1.isExactMatch(3585, name, count),
+                               "at Nyx I 2,105 is one Quartz, 4,210 two, 1,782 a Gold, and 3,585 (a Gold anywhere "
+                               "else) nothing (got " + shown(nyx1, 2105) + " / " + shown(nyx1, 4210) + ")");
+            // its own values are no multiples of 5, nor are their sums
+            allPassed &= check(nyx1.explainsExactly(3887) && nyx1.isKnownSignature(3887),
+                               "...and 3,887 there is a Gold beside a Quartz (got " + shown(nyx1, 3887) + ")");
+            const std::vector<int> known = nyx1.knownSignatures();
+            allPassed &= check(std::find(known.begin(), known.end(), 2105) != known.end() &&
+                                   std::find(known.begin(), known.end(), 3585) == known.end(),
+                               "...and the reader's list there has Nyx I's values, not the usual ones");
+            SCMiner::SignatureAnalyzer daymar;
+            daymar.setSystemFilter("STANTON");
+            daymar.setPlaceFilter("Daymar");
+            daymar.setGround(Ground::Surface);
+            allPassed &= check(!daymar.isExactMatch(2105, name, count) && shown(daymar, 4210) == "Quartz x1",
+                               "at Daymar 2,105 is no signature and 4,210 is one Quartz (got " + shown(daymar, 4210) +
+                                   ")");
+            // Levski behind, Nyx I not yet named by the log: both kinds
+            SCMiner::SignatureAnalyzer underway;
+            underway.setSystemFilter("NYX");
+            underway.setGround(Ground::Surface);
+            const std::string before = shown(underway, 2105);
+            underway.setGround(Ground::Space);
+            allPassed &= check(before == "Quartz x1" && !underway.isExactMatch(2105, name, count),
+                               "in Nyx with no place named 2,105 is a Quartz of Nyx I, out in open space nothing "
+                               "(got " + before + ")");
+        }
         // The 2,000 family by where the ship is
         SCMiner::SignatureAnalyzer grounded;
         auto nameOf = [&](SCMiner::SignatureAnalyzer& a) {

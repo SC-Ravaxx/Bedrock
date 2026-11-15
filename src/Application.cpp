@@ -2712,7 +2712,8 @@ void Application::processScanWithGUI() {
         } pinNote{glyphReading};
         auto isSignature = [this](int v) { return analyzer_.isSingleSignature(v); };
         auto isSum = [this](int v) { return analyzer_.isKnownSignature(v); };
-        static const std::vector<int> known = analyzer_.knownSignatures();
+        // where the ship is: Nyx I's own rocks read other values
+        const std::vector<int> known = analyzer_.knownSignatures();
         if (auto glyphValue = glyphReader_.read(candidate.image, &glyphReading, isSignature, &known, isSum,
                                                 candidate.row.area() > 0 ? &candidate.row : nullptr,
                                                 secondChancesLeft-- > 0)) {
