@@ -3196,6 +3196,24 @@ int runScreenshots(const std::string& dir) {
     if (gui.grindHandle()) shoot(gui.grindHandle(), "grind_open_only.png", true);
     gui.grindOpenOnlyForShot(false);
     pump();
+    // ...FROM's outfits, none picked yet
+    gui.grindFromForShot({}, true);
+    pump();
+    if (gui.grindHandle()) shoot(gui.grindHandle(), "grind_from.png", true);
+    // ...and one picked, the chips shut: its sets alone
+    gui.grindFromForShot({"Headhunters"}, false);
+    pump();
+    if (gui.grindHandle()) shoot(gui.grindHandle(), "grind_from_picked.png", true);
+    gui.grindFromForShot({}, false);
+    pump();
+    // The R97's pool is fed by six outfits: picked by one of them, the set
+    // stays, and its rows name that outfit's missions alone
+    for (const char* outfit : {"Eckhart Security", "Vaughn", "Headhunters"}) {
+        const std::string wrong = gui.grindFromCheckForShot(outfit);
+        std::cout << (wrong.empty() ? "[PASS]" : "[FAIL]") << " FROM " << outfit
+                  << " keeps the sets it feeds, with its own missions" << (wrong.empty() ? "" : ": " + wrong)
+                  << std::endl;
+    }
     // ...a set of an outfit whose rank was set by hand
     for (int i = 0; i < SCMiner::CRAFT_SOURCE_COUNT; i++) {
         const SCMiner::CraftSource& src = SCMiner::CRAFT_SOURCES[i];

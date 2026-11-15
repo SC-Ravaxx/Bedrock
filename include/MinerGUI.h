@@ -635,6 +635,11 @@ public:
     using RankSetCallback = std::function<void(int, int, int)>;
     void setRankSetCallback(RankSetCallback callback) { rankSetCallback_ = callback; }
     void grindOpenOnlyForShot(bool on);   // --screenshot only: "Open to me" pressed
+    // ...FROM held to these outfits, their chips showing or not
+    void grindFromForShot(const std::vector<std::string>& outfits, bool open);
+    // ...and FROM held to one outfit: what is wrong with the list it leaves
+    // (a set it does not feed, a mission of another outfit), "" when nothing
+    std::string grindFromCheckForShot(const std::string& outfit);
     // The contracts of the moment, off the game's log: the ones taken and not
     // over - the player's own, or shared with them - and the ones of their
     // own finished lately. A gathering order among the running ones (Shubin's
@@ -1805,7 +1810,9 @@ private:
     POINT hoverGrind_ = {-1, -1};
     // 1 system chip, 2 a set, 3 the notice, 4 the finder, 5 a set the same
     // runs pay into, 6 a rank picked, 7 "Open to me", 8 back to the logs,
-    // 9 a pill in the rank line, (outfit << 8) | ladder
+    // 9 a pill in the rank line, (outfit << 8) | ladder, 10 FROM's "Any"
+    // (-1) or an outfit's chip (its place in grindFactionHits_), 11 FROM's
+    // second segment: the chips opened (1) or shut (0)
     struct GrindHit { Gdiplus::RectF rect; int kind; int value; };
     std::vector<GrindHit> grindHits_;
     // The ranks of one ladder, open under its pill: (outfit << 8) | ladder,
@@ -1823,6 +1830,17 @@ private:
     // "Open to me": only the sets with a mission the player is offered at
     // their rank with its outfit
     bool grindOpenOnly_ = false;
+    // FROM, as in the Blueprints window: the outfits the list is held to,
+    // any when empty, more than one at a time. A set one of them feeds
+    // stays, with their missions alone: two pools are fed by several
+    // outfits, the R97's by six. The chips under the row once asked for,
+    // the outfit with the most sets in the list first.
+    std::vector<std::string> grindFactions_;
+    std::vector<std::string> grindFactionHits_;   // what the outfit chips stand for
+    bool grindFactionPick_ = false;
+    // Whether a contract (a CRAFT_SOURCES row) counts under FROM: always
+    // with nothing picked, or with the list held to a card's set
+    bool grindFromHas(int source) const;
     // The player's standing on an outfit's ladder - what the logs say, or
     // the bottom of it with nothing behind it
     Standing standingOn(int faction, int ladder) const;
@@ -1882,8 +1900,9 @@ private:
     void drawGrindWarning(Gdiplus::Graphics& g, int cw, int ch);
 
     // `filtered` false: every set still holding something, whatever the
-    // finder says - for the count the header measures the finder against
-    std::vector<GrindSet> grindSets(bool filtered = true) const;
+    // finder says - for the count the header measures the finder against.
+    // `byOutfit` false: every filter but FROM, for the outfits it offers.
+    std::vector<GrindSet> grindSets(bool filtered = true, bool byOutfit = true) const;
     unsigned grindMask() const;
     int systemIAmIn() const;   // 1 Stanton, 2 Pyro, 3 Nyx, 0 nothing known
     bool createGrind();

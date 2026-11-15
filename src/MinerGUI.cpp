@@ -12371,6 +12371,14 @@ void MinerGUI::grindOpenOnlyForShot(bool on) {
     if (grind_) InvalidateRect(grind_, nullptr, TRUE);
 }
 
+void MinerGUI::grindFromForShot(const std::vector<std::string>& outfits, bool open) {
+    grindFactions_ = outfits;
+    grindFactionPick_ = open;
+    grindScroll_ = 0;
+    grindOpen_ = -1;
+    if (grind_) InvalidateRect(grind_, nullptr, TRUE);
+}
+
 void MinerGUI::openBlueprint(int index) {
     craftOpen_ = index;
     craftDrag_ = -1;
@@ -22132,18 +22140,39 @@ unsigned MinerGUI::grindMask() const {
     return 1 | 2 | 4;   // nothing known: everywhere, rather than nothing
 }
 
-std::vector<MinerGUI::GrindSet> MinerGUI::grindSets(bool filtered) const {
+// FROM's test for one contract. A list held to a card's set keeps all of
+// that set's missions, whatever is picked.
+bool MinerGUI::grindFromHas(int source) const {
+    if (grindFactions_.empty() || grindGroup_ >= 0) return true;
+    if (source < 0 || source >= CRAFT_SOURCE_COUNT) return false;
+    return std::find(grindFactions_.begin(), grindFactions_.end(), CRAFT_SOURCES[source].faction) !=
+           grindFactions_.end();
+}
+
+std::vector<MinerGUI::GrindSet> MinerGUI::grindSets(bool filtered, bool byOutfit) const {
     const unsigned want = grindMask();
     // What the finder holds, folded for the comparison: any part of a name
     const std::wstring needle = filtered ? foldForSearch(grindQuery_) : std::wstring();
     const int onlyGroup = filtered ? grindGroup_ : -1;
+    // FROM: a set stays when a picked outfit feeds it, and only that
+    // outfit's missions count - its ladder, where it runs, the sets they
+    // also pay into
+    const bool byFrom = filtered && byOutfit && onlyGroup < 0 && !grindFactions_.empty();
     auto has = [&](const std::wstring& text) {
         return needle.empty() || foldForSearch(text).find(needle) != std::wstring::npos;
     };
     std::vector<GrindSet> out;
+    std::vector<int> fromPicked;
     for (int gi = 0; gi < (int)poolGroups().size(); gi++) {
         if (onlyGroup >= 0 && gi != onlyGroup) continue;
-        const std::vector<int>& group = poolGroups()[gi];
+        if (byFrom) {
+            fromPicked.clear();
+            for (int i : poolGroups()[gi]) {
+                if (grindFromHas(i)) fromPicked.push_back(i);
+            }
+            if (fromPicked.empty()) continue;
+        }
+        const std::vector<int>& group = byFrom ? fromPicked : poolGroups()[gi];
         GrindSet set = {};
         set.group = gi;
         set.best = group.front();
@@ -22292,6 +22321,33 @@ std::vector<MinerGUI::GrindSet> MinerGUI::grindSets(bool filtered) const {
         return std::string(CRAFT_SOURCES[a.best].title) < CRAFT_SOURCES[b.best].title;
     });
     return out;
+}
+
+std::string MinerGUI::grindFromCheckForShot(const std::string& outfit) {
+    const std::vector<std::string> before = grindFactions_;
+    grindFactions_ = {outfit};
+    const std::vector<GrindSet> sets = grindSets();
+    // the sets it feeds, counted without FROM
+    int feeds = 0;
+    for (const auto& set : grindSets(true, false)) {
+        bool fed = false;
+        for (int i : poolGroups()[set.group]) fed = fed || outfit == CRAFT_SOURCES[i].faction;
+        feeds += fed ? 1 : 0;
+    }
+    std::string wrong;
+    if (sets.empty()) wrong = "no set left";
+    else if ((int)sets.size() != feeds) {
+        wrong = std::to_string(sets.size()) + " sets, it feeds " + std::to_string(feeds);
+    }
+    for (const auto& set : sets) {
+        for (int r : set.rungs) {
+            if (wrong.empty() && outfit != CRAFT_SOURCES[r].faction) {
+                wrong = std::string("\"") + CRAFT_SOURCES[r].title + "\" of " + CRAFT_SOURCES[r].faction;
+            }
+        }
+    }
+    grindFactions_ = before;
+    return wrong;
 }
 
 // Whether the notice has been read. Kept beside the player's things rather
@@ -22490,6 +22546,9 @@ void MinerGUI::openGrindForShot() {
 void MinerGUI::openGrindFor(const std::wstring& query) {
     grindQuery_ = query;
     grindGroup_ = -1;
+    // a question from outside: FROM would answer it for some outfits only
+    grindFactions_.clear();
+    grindFactionPick_ = false;
     grindTyping_ = false;
     grindScroll_ = 0;
     grindOpen_ = query.empty() ? -1 : 0;
@@ -22659,7 +22718,7 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
         int here = 0;
         for (const auto& set : sets) here += (set.inSystem > 0) ? 1 : 0;
         std::wstring sub = std::to_wstring(missing) + L" recipes not in library  \u00B7  ";
-        if (grindQuery_.empty() && grindGroup_ < 0) {
+        if (grindQuery_.empty() && grindGroup_ < 0 && grindFactions_.empty()) {
             if (grindOpenOnly_ && ranksKnown_) {
                 sub += std::to_wstring((int)sets.size()) + L" of " + std::to_wstring((int)grindSets(false).size()) +
                        L" reward sets have an available mission";
@@ -22670,7 +22729,7 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
                 sub += L", " + std::to_wstring(here) + L" at your location";
             }
         } else {
-            // the finder narrowed it: say so, against the whole
+            // the finder or FROM narrowed it: say so, against the whole
             const int all = (int)grindSets(false).size();
             sub += grindGroup_ >= 0 ? L"One set, from a contract card  \u00B7  "
                                     : std::to_wstring((int)sets.size()) + L" of " + std::to_wstring(all) +
@@ -22824,13 +22883,97 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
         }
     }
 
+    // ---- FROM: the outfits ----
+    // The Blueprints window's control: "Any", or the outfits picked, their
+    // chips in lines under the row while it is open, the outfit with the
+    // most sets in the list first. One picked and since gone from the list
+    // keeps its chip, or there would be no way back out of it.
+    float rankTop = 0.0f;
+    {
+        const float fy = (float)scale(90);
+        const float s = scaleF(1.0f);
+        const float ctrlH = scaleF(26), chipH = scaleF(22), pad = scaleF(8);
+        Gdiplus::Font figureFont(&numeralFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        g.DrawString(L"FROM", -1, &headFont, Gdiplus::PointF(left, fy + scaleF(7)), &faintBrush);
+        std::vector<Segment> from(2);
+        from[0].text = L"Any";
+        from[0].on = grindFactions_.empty();
+        from[1].text = L"Select faction";
+        if (!grindFactions_.empty()) from[1].text += L"  \u00B7  " + std::to_wstring((int)grindFactions_.size());
+        from[1].on = !grindFactions_.empty();
+        from[1].open = grindFactionPick_;
+        from[1].chevron = true;
+        const std::vector<Gdiplus::RectF> places =
+            drawSegmented(g, left + scaleF(54), fy, ctrlH, from, chipFont, figureFont, pad, s, hoverGrind_);
+        grindHits_.push_back({places[0], 10, -1});
+        grindHits_.push_back({places[1], 11, grindFactionPick_ ? 0 : 1});
+        float bottom = fy + ctrlH;
+        grindFactionHits_.clear();
+        if (grindFactionPick_) {
+            std::vector<std::pair<std::string, int>> outfits;   // and the sets of the list each feeds
+            for (const auto& set : grindSets(true, false)) {
+                std::vector<std::string> feeding;
+                for (int i : poolGroups()[set.group]) {
+                    const char* outfit = CRAFT_SOURCES[i].faction;
+                    if (*outfit && std::find(feeding.begin(), feeding.end(), outfit) == feeding.end()) {
+                        feeding.push_back(outfit);
+                    }
+                }
+                for (const auto& outfit : feeding) {
+                    auto at = std::find_if(outfits.begin(), outfits.end(),
+                                           [&](const std::pair<std::string, int>& o) { return o.first == outfit; });
+                    if (at == outfits.end()) outfits.push_back({outfit, 1});
+                    else at->second++;
+                }
+            }
+            std::stable_sort(outfits.begin(), outfits.end(),
+                             [](const std::pair<std::string, int>& a, const std::pair<std::string, int>& b) {
+                                 return a.second > b.second;
+                             });
+            for (const auto& picked : grindFactions_) {
+                if (std::find_if(outfits.begin(), outfits.end(), [&](const std::pair<std::string, int>& o) {
+                        return o.first == picked;
+                    }) == outfits.end()) {
+                    outfits.push_back({picked, 0});
+                }
+            }
+            Gdiplus::StringFormat oneLine;
+            oneLine.SetAlignment(Gdiplus::StringAlignmentCenter);
+            oneLine.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+            oneLine.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+            const float radius = (R_CONTROL - SEGMENT_INSET) * s;
+            float px = left, py = bottom + scaleF(8);
+            for (const auto& outfit : outfits) {
+                const bool on = std::find(grindFactions_.begin(), grindFactions_.end(), outfit.first) !=
+                                grindFactions_.end();
+                const std::wstring text = toW(outfit.first);
+                Gdiplus::RectF w;
+                g.MeasureString(text.c_str(), -1, &chipFont, Gdiplus::PointF(0, 0), &w);
+                const float pw = w.Width + 2.0f * pad;
+                if (px > left && px + pw > edge) {
+                    px = left;
+                    py += chipH + scaleF(6);
+                }
+                const Gdiplus::RectF box(px, py, pw, chipH);
+                fillRoundRect(g, box, radius, COL_CARD_HI);
+                Gdiplus::SolidBrush ink(choiceFace(g, box, radius, on, isHot(hoverGrind_, box), false));
+                g.DrawString(text.c_str(), -1, &chipFont, box, &oneLine, &ink);
+                grindHits_.push_back({box, 10, (int)grindFactionHits_.size()});
+                grindFactionHits_.push_back(outfit.first);
+                px += pw + scaleF(4);
+            }
+            if (!outfits.empty()) bottom = py + chipH;
+        }
+        rankTop = std::floor(bottom + scaleF(8) + 0.5f);
+    }
+
     // ---- the player's rank with the outfits of the list ----
     // Out of their own logs, one per outfit and ladder, in the order the
     // list names them. A click opens the ladder's ranks under the pill, to
     // set the one held (paintGrindRankMenu).
     bool rankMenuAnchored = false;
     {
-        const float ry = (float)scale(92);
+        const float ry = rankTop;
         const float pillH = scaleF(20);
         g.DrawString(L"YOUR RANK", -1, &headFont, Gdiplus::PointF(left, ry + scaleF(4)), &faintBrush);
         float rx = left + scaleF(74);
@@ -22895,7 +23038,7 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
     if (!rankMenuAnchored) grindRankMenu_ = -1;
 
     // ---- column heads ----
-    const float top = (float)scale(126);
+    const float top = rankTop + (float)scale(34);
     // The right-hand columns. WHERE is the widest of them because it holds
     // place names - "Pyro IV, Pyro V, Terminus" is one region, not three.
     const float whereW = scaleF(176);
@@ -22933,12 +23076,17 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
     const float footY = (float)ch - scaleF(46);
     float y = top + scaleF(26);
     if (sets.empty()) {
+        std::wstring outfits;
+        for (const auto& outfit : grindFactions_) outfits += (outfits.empty() ? L"" : L", ") + toW(outfit);
         const std::wstring why =
             grindGroup_ >= 0 ? L"All blueprints of this set are in your library"
             : !grindQuery_.empty()
                 ? L"No missing blueprint matches \u201C" + grindQuery_ +
                       L"\u201D - Already in library, or no mission, "
                       L"blueprint or outfit with that name"
+            : !grindFactions_.empty()
+                ? (grindOpenOnly_ && ranksKnown_ ? L"No mission from " + outfits + L" is open to you"
+                                                 : L"Nothing left to earn from " + outfits)
                 : L"Nothing left to earn - Every reward set in the game files is in your library";
         g.DrawString(why.c_str(), -1, &bodyFont,
                      Gdiplus::RectF(left, y, edge - left, scaleF(40)), nullptr, &dimBrush);
@@ -23021,7 +23169,7 @@ void MinerGUI::paintGrindList(Gdiplus::Graphics& g, int cw, int ch) {
             };
             std::vector<std::wstring> places;
             for (int m : poolGroups()[set.group]) {
-                if (!(craftSystemsOf(CRAFT_SOURCES[m]) & want)) continue;
+                if (!(craftSystemsOf(CRAFT_SOURCES[m]) & want) || !grindFromHas(m)) continue;
                 for (const std::wstring& place : placesOf(jurisdictionOf(CRAFT_SOURCES[m]))) {
                     if (std::find(places.begin(), places.end(), place) == places.end()) places.push_back(place);
                 }
@@ -23766,6 +23914,31 @@ LRESULT MinerGUI::handleGrindMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                     // a pill in the rank line: its ladder's ranks open under
                     // it, or shut again
                     grindRankMenu_ = (menuWas == hit.value) ? -1 : hit.value;
+                } else if (hit.kind == 10 || hit.kind == 11) {
+                    // FROM. Held to a card's set, it lets go of the set
+                    // first, as the finder does.
+                    bool changed = grindGroup_ >= 0;
+                    if (changed) {
+                        grindGroup_ = -1;
+                        grindQuery_.clear();
+                    }
+                    if (hit.kind == 11) {
+                        grindFactionPick_ = (hit.value == 1);
+                    } else if (hit.value < 0) {
+                        changed = changed || !grindFactions_.empty();
+                        grindFactions_.clear();     // "Any": every outfit again
+                    } else if (hit.value < (int)grindFactionHits_.size()) {
+                        // each chip its own switch: a second one widens the list
+                        const std::string outfit = grindFactionHits_[hit.value];
+                        auto at = std::find(grindFactions_.begin(), grindFactions_.end(), outfit);
+                        if (at == grindFactions_.end()) grindFactions_.push_back(outfit);
+                        else grindFactions_.erase(at);
+                        changed = true;
+                    }
+                    if (changed) {
+                        grindScroll_ = 0;
+                        grindOpen_ = -1;
+                    }
                 }
                 InvalidateRect(hwnd, nullptr, TRUE);
                 return 0;
@@ -23812,9 +23985,9 @@ LRESULT MinerGUI::handleGrindMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
             switch (wParam) {
                 case VK_ESCAPE:
                     // Esc shuts the rank list first, lets go of what the
-                    // finder holds next, then folds the open row, then
-                    // closes: a list narrowed or a row opened on purpose is
-                    // not worth losing to a stray key
+                    // finder holds next, then of FROM, then folds the open
+                    // row, then closes: a list narrowed or a row opened on
+                    // purpose is not worth losing to a stray key
                     if (!grindWarned_) return 0;      // the notice is read first
                     if (grindRankMenu_ >= 0) {
                         grindRankMenu_ = -1;
@@ -23826,6 +23999,16 @@ LRESULT MinerGUI::handleGrindMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                         grindGroup_ = -1;
                         grindScroll_ = 0;
                         grindOpen_ = -1;
+                        InvalidateRect(hwnd, nullptr, TRUE);
+                        return 0;
+                    }
+                    if (!grindFactions_.empty() || grindFactionPick_) {
+                        if (!grindFactions_.empty()) {
+                            grindScroll_ = 0;
+                            grindOpen_ = -1;
+                        }
+                        grindFactions_.clear();
+                        grindFactionPick_ = false;
                         InvalidateRect(hwnd, nullptr, TRUE);
                         return 0;
                     }
