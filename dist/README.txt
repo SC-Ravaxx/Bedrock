@@ -431,6 +431,9 @@ address) and, in the folder debug\:
                    that the newest replaces the oldest
   - region_config.txt     a copy of your settings, so that the folder debug\
                    holds everything on its own
+  - panel5_*.png/.txt     only on the PTU: the Star Citizen 5.0 rock panel as
+                   Bedrock saw it, one per rock, to make its reading better;
+                   twenty at most, after that the newest replaces the oldest
 No screen recording, no video.
 With the box in Blueprints ticked (see Your library), also game_text_LIVE.ini
 - the game's text, kept until the game's files change - and, in the game's

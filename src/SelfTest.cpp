@@ -7066,6 +7066,15 @@ int runSelfTest() {
                 allPassed &= check(named && list.parts.size() == 4 && list.parts[0].ore == "Savrilium" &&
                                        list.parts[1].ore == "Savrilium" && list.parts[2].ore == "Gold" && list.parts[3].inert,
                                    "5.0 list: Savrilium 580 and 322 stay two lines, Gold 553, the inert rest");
+                // On the PTU the app keeps its own picture of a 5.0 panel,
+                // one per rock: a mass a numeral off is the same rock misread
+                SCMiner::FivePanelKeep keep;
+                const bool first = keep.wanted("2322", 0.0), misread = keep.wanted("2382", 1.0),
+                           other = keep.wanted("1139", 2.0), unread = keep.wanted("", 3.0),
+                           unreadSoon = keep.wanted("", 30.0), unreadLater = keep.wanted("", 64.0);
+                allPassed &= check(first && !misread && other && unread && !unreadSoon && unreadLater &&
+                                       SCMiner::numeralsOff("954", "1954") == 1 && SCMiner::numeralsOff("88", "1139") == 4,
+                                   "5.0 panel pictures on the PTU: one per rock, a mass one numeral off is the same rock");
             }
 
             // What to reach for when the head on the ship will not do. The

@@ -1691,6 +1691,24 @@ void Application::lookForRock() {
     // they were not cut for - the MOLE's turret (see readPanelByLines)
     const ScanPanel panel = readScanPanel(frame, rockOcr_, &glyphReader_, &textLines_);
     if (panel.found || panel.labels.x >= 0) lastRockPanel_ = std::chrono::steady_clock::now();
+    // On the PTU, the app's own picture of a 5.0 panel, one per rock, to make
+    // the reader better with: the frame is tone mapped where the desktop is HDR
+    if (panel.labelGlyph == FIVE_PANEL && library_.channel().rfind("PTU", 0) == 0 &&
+        fiveKeep_.wanted(panel.figures[0].text,
+                         std::chrono::duration<double>(now.time_since_epoch()).count())) {
+        const cv::Rect cut = FivePanelKeep::cut(panel, frame.size());
+        if (cut.area() > 0) {
+            std::error_code ec;
+            std::filesystem::create_directories(dataPath("debug"), ec);
+            const int n = FivePanelKeep::nextNumber(dataPath("debug"));
+            const std::string name = "debug/panel5_" + std::to_string(n);
+            cv::imwrite(dataPath(name + ".png"), frame(cut));
+            std::ofstream about(dataPath(name + ".txt"), std::ios::trunc);
+            about << "frame " << frame.cols << "x" << frame.rows << "\ncut " << cut.x << "," << cut.y << " " << cut.width
+                  << "x" << cut.height << "\ntone mapped " << (toneMapped ? 1 : 0) << "\nlabels " << panel.labels.x << ","
+                  << panel.labels.y << " x" << panel.labelScale << "\nread " << panel.note << "\n";
+        }
+    }
     if (panel.found) keepPanelSpot(cv::Size(viewport->width, viewport->height));
     readLoadoutOnHud(frame, panel);
     rockLabelsOnly_ = !panel.found && panel.labels.x >= 0;

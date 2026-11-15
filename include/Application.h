@@ -10,6 +10,7 @@
 #include "OCREngine.h"
 #include "MiningAdvice.h"
 #include "ScanPanel.h"
+#include "PanelFive.h"
 #include <deque>
 #include <map>
 #include "SignatureAnalyzer.h"
@@ -233,6 +234,7 @@ private:
     // move.
     std::deque<RockStats> rockReadings_;
     int rockMissShots_ = 0;      // pictures kept of a panel the shapes missed
+    FivePanelKeep fiveKeep_;     // ...and of 5.0 panels on the PTU
     static RockStats steadyRock(const std::deque<RockStats>& readings);
     // Whether the rock is made of the 5.0 numbers (RockStats::v5)
     void rockModelFor(RockStats& rock) const;

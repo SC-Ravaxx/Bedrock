@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -874,6 +875,7 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
                   shown(inst) + " " + shown(volume);
     auto delta = [](float figure, float d) { return figure < 0 ? std::string("-") : std::to_string((int)std::lround(d)); };
     panel.note += "; delta r" + delta(r.resistance, r.resistanceDelta) + " i" + delta(r.instability, r.instabilityDelta);
+    panel.figures[0].text = mass.word >= 0 ? mass.read.text : std::string();
     panel.labels = column.labels;
     panel.labelScale = s;
     panel.labelGlyph = FIVE_PANEL;
@@ -948,6 +950,55 @@ std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& pa
     }
     for (FiveListLine& entry : out) entry.dim = entry.bright < 0.7 * brightest;
     return out;
+}
+
+int numeralsOff(const std::string& a, const std::string& b) {
+    const size_t n = (std::max)(a.size(), b.size());
+    int off = 0;
+    for (size_t i = 0; i < n; i++) {
+        const char x = i < a.size() ? a[a.size() - 1 - i] : 0;
+        const char y = i < b.size() ? b[b.size() - 1 - i] : 0;
+        if (x != y) off++;
+    }
+    return off;
+}
+
+bool FivePanelKeep::wanted(const std::string& mass, double seconds) {
+    if (mass.empty()) {
+        if (seconds - unreadAt_ < 60.0) return false;
+        unreadAt_ = seconds;
+        return true;
+    }
+    if (any_ && numeralsOff(mass, mass_) <= 1) return false;
+    any_ = true;
+    mass_ = mass;
+    return true;
+}
+
+cv::Rect FivePanelKeep::cut(const ScanPanel& panel, const cv::Size& frame) {
+    if (panel.labels.x < 0 || panel.labelScale <= 0) return cv::Rect();
+    const double s = panel.labelScale;
+    auto X = [&](double u) { return (int)std::lround(panel.labels.x + u * s); };
+    auto Y = [&](double u) { return (int)std::lround(panel.labels.y + u * s); };
+    return cv::Rect(cv::Point(X(-60), Y(-90)), cv::Point(X(FIGURES_END + 60), Y(LIST_TOP + 8 * LIST_PITCH))) &
+           cv::Rect(0, 0, frame.width, frame.height);
+}
+
+int FivePanelKeep::nextNumber(const std::string& dir) {
+    int newest = 0;
+    std::filesystem::file_time_type when{};
+    std::error_code ec;
+    for (int n = 1; n <= RING; n++) {
+        const std::filesystem::path file = std::filesystem::path(dir) / ("panel5_" + std::to_string(n) + ".png");
+        if (!std::filesystem::exists(file, ec)) continue;
+        const auto t = std::filesystem::last_write_time(file, ec);
+        if (ec) continue;
+        if (newest == 0 || t > when) {
+            newest = n;
+            when = t;
+        }
+    }
+    return newest % RING + 1;
 }
 
 }  // namespace SCMiner
