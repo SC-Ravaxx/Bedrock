@@ -6806,6 +6806,20 @@ int runSelfTest() {
                                        "the app's own look reads the rock with no Tesseract beside the exe (got " +
                                            std::to_string((int)w.mass) + " kg, " + std::to_string((int)w.resistance) +
                                            " %, " + std::to_string(w.instability) + ")");
+                    // A 5.0 game: only the 5.0 reader looks, and it takes this
+                    // 4.10 panel for none of its own; back at 4.10 it reads again
+                    SCMiner::setPanelGeneration(5);
+                    const SCMiner::ScanPanel five = SCMiner::readScanPanel(screen, never, &templates, panelLines());
+                    SCMiner::setPanelGeneration(0);
+                    SCMiner::ScanPanel again;
+                    for (int look = 0; look < 4 && !again.found; look++) {
+                        again = SCMiner::readScanPanel(screen, never, &templates, panelLines());
+                    }
+                    allPassed &= check(five.note.rfind("five:", 0) == 0 && !five.found && five.stats.mass == 0 &&
+                                           again.found && again.stats.mass == 2895.0f,
+                                       "...a 5.0 game's look leaves the 4.10 panel unread, a 4.10 game's reads it (got " +
+                                           std::to_string((int)five.stats.mass) + " kg, then " +
+                                           std::to_string((int)again.stats.mass) + " kg; " + five.note + ")");
                 }
             }
         }

@@ -2595,6 +2595,33 @@ void throttlePanelSearch(bool throttled) {
 }
 
 namespace {
+int g_panelGeneration = [] {
+    const char* set = DEV_ENV("BEDROCK_PANEL_GENERATION");
+    return set ? std::atoi(set) : 0;
+}();
+bool g_panelToneMapped = [] {
+    const char* set = DEV_ENV("BEDROCK_PANEL_HDR");
+    return set && std::atoi(set) != 0;
+}();
+}  // namespace
+
+void setPanelGeneration(int generation) {
+    g_panelGeneration = generation;
+}
+
+int panelGeneration() {
+    return g_panelGeneration;
+}
+
+void setPanelToneMapped(bool toneMapped) {
+    g_panelToneMapped = toneMapped;
+}
+
+bool panelToneMapped() {
+    return g_panelToneMapped;
+}
+
+namespace {
 bool readPanelByShapeInk(const cv::Mat& frame, const cv::Mat& bgr, int ink, ScanPanel& panel);
 }
 
@@ -4027,19 +4054,17 @@ ScanPanel readScanPanel(const cv::Mat& frame, OCREngine& ocr, GlyphReader* glyph
         if (panel.stats.ore.empty() && lines && !noLines) panel.stats.ore = oreByLine(frame, panel.oreRow, *lines);
         panel.figuresRead = 3 + (panel.stats.ore.empty() ? 0 : 1);
     };
-    // A 5.0 panel has a reader of its own; without one on screen the readers
-    // below look as they always have. SCMINER_FIVE_ONLY for the bench: the
-    // 5.0 reader's look on every frame, panel or not.
-    {
-        static const bool fiveOnly = DEV_ENV("SCMINER_FIVE_ONLY") != nullptr;
+    // A 5.0 game: its panel has a reader of its own, and only that one
+    // looks. The readers below misread 5.0's panel (1130 kg and 1 % off one
+    // that says 61 %), and the 5.0 reader is not let near a 4.10 panel.
+    if (g_panelGeneration >= 5) {
         ScanPanel five;
         if (readPanelFive(frame, five, lines)) {
             const int figures = five.figuresRead;
             if (five.found) nameTheOre(five);
             five.figuresRead = figures + (five.stats.ore.empty() ? 0 : 1);
-            return five;
         }
-        if (fiveOnly) return five;
+        return five;
     }
     // where the face reader is to look, when the shapes found the labels
     cv::Rect faceNear;
