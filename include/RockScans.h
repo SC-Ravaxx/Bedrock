@@ -9,7 +9,8 @@
 // the rock can hold, and no rock is bigger than the largest rock the game
 // spawns: mining_rock_01_breakable at full size, 8,460 m3 or 59.22 SCU
 // (game build 4.10.2; every ship rock is that model or one of three smaller
-// asteroids, scaled down).
+// asteroids, scaled down). Nyx I's rocks in 5.0 have 13.141 m3 to the SCU
+// (RockModel in MiningAdvice.h): the same rules by their own numbers.
 //
 // Of the looks Bedrock took at rock panels from 16 September to 8 November
 // 2026, 13,631 read an ore, a mass and SCU: 151 showed a rock the game had
@@ -46,6 +47,17 @@ std::string impossible(const RockStats& rock);
 // The densest ore a rock of that ore holds, by its parts (ROCK_PARTS); for
 // an ore not known, the densest of all
 double densestPart(const std::string& rockOre);
+
+// Where the place does not say which rocks are around (in Nyx, before the
+// log names the body): whether the figures fit a Nyx I rock and not the
+// usual kind - too light for the usual rule, and nothing wrong by the 5.0
+// one. A heavy Nyx I rock (Savrilium, Gold) fits both and is not told.
+bool v5Fits(const RockStats& rock);
+
+// The rock's kg per SCU as a rock of the usual numbers with the same parts
+// would weigh it, for the rules written for those (nameContentsByRock); 0
+// where the mass or the SCU was not read
+double usualKgPerScu(const RockStats& rock);
 
 // Why a look's figures are not taken for the rock on view, or "" where they
 // are: notScannedYet, or impossible. The same impossible figures on eight
@@ -97,6 +109,7 @@ struct Scan {
     int rangeMetres = 0;     // the laser's range to it; 0 not read
     std::string ship;        // "prospector", "mole" or "golem"; "" for another
     std::string place;       // as the window's header names it; "" unknown
+    bool v5 = false;         // a Nyx I rock of 5.0 (RockModel): kept, not sent
     std::vector<ScanPart> parts;   // the list in the panel's order, where the view read it whole
     // How Bedrock saw it, for telling why some HUDs give no list: the height
     // of the screen picture (0 not known), the size the panel's label column
@@ -204,8 +217,8 @@ std::string csvLine(const Scan& scan, const std::string& time);
 constexpr size_t ROCKS_PER_REPORT = 50;
 std::string newSession();
 // Whether the service takes the rock as it stands: a ship ore, its figures
-// in the ranges the service checks. A report with one it does not take is
-// turned down whole.
+// in the ranges the service checks, and the usual rocks' numbers - not a
+// Nyx I rock of 5.0. A report with one it does not take is turned down whole.
 bool sendable(const Scan& scan);
 // The report: the game's version as Game.log's header gives it, 41002 for
 // 4.10.2, 0 leaves it out; a channel the service does not know is left out,

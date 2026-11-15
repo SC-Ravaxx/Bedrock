@@ -138,6 +138,13 @@ const SignatureAnalyzer::Table& SignatureAnalyzer::signatures() const {
     return *table_;
 }
 
+SignatureAnalyzer::Rocks SignatureAnalyzer::rocksHere() const {
+    const auto& all = tables();
+    if (!placeName_.empty()) return all.count("@" + placeName_) ? Rocks::Own : Rocks::Usual;
+    if (ground_ != Ground::Space && all.count("+" + systemFilter_)) return Rocks::Either;
+    return Rocks::Usual;
+}
+
 OCREngine::ReadingPolicy makeReadingPolicy(SignatureAnalyzer& analyzer) {
     OCREngine::ReadingPolicy policy;
     policy.canonicalize = [&analyzer](int v) { return analyzer.canonicalize(v); };

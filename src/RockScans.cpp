@@ -24,7 +24,7 @@ bool notScannedYet(const RockStats& rock) {
     // both read, and both nothing
     if (rock.resistance < 0 || rock.instability < 0) return false;
     if (rock.resistance >= 0.5f || rock.instability >= 0.005f) return false;
-    const float volume = rock.scu * KG_PER_SCU_AT_DENSITY_ONE;
+    const float volume = rock.scu * modelOf(rock).kgPerScuAtDensityOne;
     return std::fabs(rock.mass - volume) <= (std::max)(1.5f, 0.006f * rock.mass);
 }
 
@@ -41,13 +41,29 @@ double densestPart(const std::string& rockOre) {
 
 std::string impossible(const RockStats& rock) {
     if (rock.mass <= 0 || rock.scu <= 0) return "";
+    // A Nyx I rock has ten times the SCU to its volume (RockModel), so the
+    // largest rock's SCU and the weights per SCU go by its model
+    const double perScu = modelOf(rock).kgPerScuAtDensityOne;
+    const double largest = LARGEST_ROCK_SCU * (KG_PER_SCU_AT_DENSITY_ONE / perScu);
     // the panel prints the SCU to a hundredth and the mass to a kilogram
-    if (rock.scu > LARGEST_ROCK_SCU + 0.08f) return "more SCU than the largest rock";
+    if (rock.scu > largest + 0.08) return "more SCU than the largest rock";
     const double lightest = (rock.mass + 1.0) / (std::max)(0.001, rock.scu - 0.01);
-    if (lightest < KG_PER_SCU_AT_DENSITY_ONE * 0.99) return "lighter than its volume";
+    if (lightest < perScu * 0.99) return "lighter than its volume";
     const double heaviest = (rock.mass - 1.0) / (rock.scu + 0.01);
-    if (heaviest > KG_PER_SCU_AT_DENSITY_ONE * densestPart(rock.ore) * 1.01) return "heavier than its densest part";
+    if (heaviest > perScu * densestPart(rock.ore) * 1.01) return "heavier than its densest part";
     return "";
+}
+
+bool v5Fits(const RockStats& rock) {
+    RockStats usual = rock, v5 = rock;
+    usual.v5 = false;
+    v5.v5 = true;
+    return impossible(usual) == "lighter than its volume" && impossible(v5).empty();
+}
+
+double usualKgPerScu(const RockStats& rock) {
+    if (rock.mass <= 0 || rock.scu <= 0) return 0.0;
+    return rock.mass / rock.scu * (KG_PER_SCU_AT_DENSITY_ONE / modelOf(rock).kgPerScuAtDensityOne);
 }
 
 std::string LookCheck::notTaken(const RockStats& rock) {
@@ -142,6 +158,7 @@ void Recorder::taken(const RockStats& shown, const RockStats& look, long long ob
             rock_.scan.scu = shown.scu;
             rock_.scan.ship = ship;
             rock_.scan.place = place;
+            rock_.scan.v5 = shown.v5;
         }
         open_ = true;
     }
@@ -342,6 +359,9 @@ std::string newSession() {
 }
 
 bool sendable(const Scan& scan) {
+    // The service weighs every rock as made of the usual numbers; a Nyx I
+    // rock would read there as a tenth of its weight
+    if (scan.v5) return false;
     if (oreDensity(scan.ore) <= 0) return false;   // a ship ore
     if (scan.mass < 1 || scan.mass > 1000000 || scan.scu < 0.01f || scan.scu > 100) return false;
     if (scan.resistance > 100 || scan.instability > 100000) return false;

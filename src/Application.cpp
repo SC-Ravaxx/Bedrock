@@ -1317,6 +1317,15 @@ RockStats Application::steadyRock(const std::deque<RockStats>& readings) {
     return out;
 }
 
+// Nyx I's rocks are made of the 5.0 numbers (RockModel in MiningAdvice.h):
+// where the place says so, or in Nyx before the log names the body, where
+// the figures fit only those
+void Application::rockModelFor(RockStats& rock) const {
+    using Rocks = SignatureAnalyzer::Rocks;
+    const Rocks here = analyzer_.rocksHere();
+    rock.v5 = here == Rocks::Own || (here == Rocks::Either && RockScans::v5Fits(rock));
+}
+
 // The rock in front of the ship, if the game is showing its figures: this
 // is what makes the window switch to the rock view.
 //
@@ -1681,6 +1690,7 @@ void Application::lookForRock() {
         rockReadings_.clear();
         RockStats rock;
         const bool settled = rockSteadier_.add(panel, rock);
+        rockModelFor(rock);
         // ...and settled figures that cannot be the rock's are waited past
         // the same way: the scan finishes, or the misread goes
         const std::string why = settled ? rockCheck_.notTaken(rock) : std::string();
@@ -1749,6 +1759,7 @@ void Application::lookForRock() {
         {
             RockStats probe = panel.stats;
             if (probe.ore.empty() && !rockReadings_.empty()) probe.ore = steadyRock(rockReadings_).ore;
+            rockModelFor(probe);
             const std::string why = rockCheck_.notTaken(probe);
             if (!why.empty()) {
                 logRockReading(panel, nullptr, range.metres, why);
@@ -1777,6 +1788,7 @@ void Application::lookForRock() {
         while (rockReadings_.size() > 5) rockReadings_.pop_front();
 
         RockStats rock = steadyRock(rockReadings_);
+        rockModelFor(rock);
         // ...but the view needs a mass to say anything at all, so it waits
         // for one rather than showing a rock with no figures on it.
         if (rock.mass <= 0) {
@@ -1868,6 +1880,7 @@ void Application::lookForRock() {
             shown.mass = shownMass_;
             shown.ore = shownOre_;
             shown.scu = shownRock_.mass == shownMass_ ? shownRock_.scu : 0.0f;
+            shown.v5 = shownRock_.v5;
             readContentsOnHud(frame, panel, shown);
         }
         return;
@@ -2404,8 +2417,8 @@ void Application::readContentsOnHud(const cv::Mat& frame, const ScanPanel& panel
     ScanPanel moved = panel;
     moved.labels -= part.tl();
     // ...and its kg per SCU, which names the lines Hephaestanite and Quartz
-    // share (nameContentsByRock)
-    const double kgPerScu = rock.scu > 0 ? rock.mass / rock.scu : 0.0;
+    // share (nameContentsByRock) - as a rock of the usual numbers would weigh
+    const double kgPerScu = RockScans::usualKgPerScu(rock);
     try {
         contentsJob_ = std::async(std::launch::async,
                                   [this, picture = frame(part).clone(), moved, ore = rock.ore, kgPerScu]() {

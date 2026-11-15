@@ -694,6 +694,83 @@ int runSelfTest() {
                                "have, wait - the same impossible figures on eight looks are taken");
         }
 
+        // Nyx I's rocks of 5.0 by their own numbers (RockModel): rocks of the
+        // Prospector with its stock Arbor MH1, 15 November 2026, and what the
+        // panel said of them
+        {
+            using namespace SCMiner;
+            using namespace SCMiner::RockScans;
+            auto rockOf = [](const char* ore, float mass, float scu, float resistance, float instability, bool v5) {
+                RockStats r;
+                r.ore = ore;
+                r.mass = mass;
+                r.scu = scu;
+                r.resistance = resistance;
+                r.instability = instability;
+                r.v5 = v5;
+                return r;
+            };
+            auto usual = [](RockStats r) {
+                r.v5 = false;
+                return r;
+            };
+            // Copper of 11:47:50, 78 kg to the SCU: lighter than any rock of
+            // the usual numbers, a Nyx I rock as it should be
+            const RockStats copper = rockOf("Copper", 929, 11.91f, 0, 4.10f, true);
+            const RockStats iron = rockOf("Iron", 13919, 18.88f, 0, 15.93f, false);   // Monox, 12 Nov
+            const bool weighed = impossible(copper).empty() &&
+                                 impossible(usual(copper)) == "lighter than its volume" && v5Fits(usual(copper)) &&
+                                 !v5Fits(iron) && std::fabs(usualKgPerScu(copper) - 848.0) < 1.0 &&
+                                 std::fabs(usualKgPerScu(iron) - 13919 / 18.88) < 0.1;
+            // ...its first picture, the volume as the mass, and SCU past the
+            // usual largest rock that its own model still holds
+            const RockStats first = rockOf("Copper", 157, 11.91f, 0, 0, true);
+            const RockStats big = rockOf("Copper", 6000, 70, 0, 4.0f, true);
+            const bool ownRules = notScannedYet(first) && !notScannedYet(usual(first)) && impossible(big).empty() &&
+                                  impossible(usual(big)) == "more SCU than the largest rock";
+            // EASY: Tin of 13:11:14, 1,255 kg at 0 %. IMPOSSIBLE: Aslarite of
+            // 13:13:35, 694 kg at 67 % with the Arbor's +25 % in it
+            const MiningLaser* arbor = nullptr;
+            for (int i = 0; i < MINING_LASER_COUNT; i++) {
+                if (std::string(MINING_LASERS[i].id) == "grin_arbor_s1") arbor = &MINING_LASERS[i];
+            }
+            const RockStats tin = rockOf("Tin", 1255, 16.20f, 0, 0.87f, true);
+            const RockStats aslarite = rockOf("Aslarite", 694, 21.05f, 67, 161.61f, true);
+            const float through = arbor ? arbor->fracture * resistanceLetsThrough(67 / 1.25f, 125) : 0;
+            const ThrottleAdvice easy =
+                throttleFor(tin.mass, arbor, arbor ? arbor->fracture : 0, modelOf(tin).decayPerMass);
+            const ThrottleAdvice hard = throttleFor(aslarite.mass, arbor, through, modelOf(aslarite).decayPerMass);
+            const ThrottleAdvice asIfUsual = throttleFor(aslarite.mass, arbor, through);
+            const bool holds = arbor && easy.possible && std::fabs(easy.toHold - 77.8f) < 0.1f && !hard.possible &&
+                               hard.toHold > 111 && hard.toHold < 113 && asIfUsual.possible;
+            // ...kept in rock_scans.csv, not sent: the service weighs by the
+            // usual numbers
+            Recorder recorder;
+            recorder.taken(copper, copper, 1794000000, "prospector", "Nyx - Nyx I");
+            recorder.gone();
+            const std::vector<Scan> kept = recorder.done();
+            Scan same = kept.empty() ? Scan() : kept[0];
+            same.v5 = false;
+            const bool notSent = kept.size() == 1 && kept[0].v5 && !sendable(kept[0]) && sendable(same);
+            // ...and which rocks are around, by the rule of the signatures
+            SignatureAnalyzer at;
+            at.setSystemFilter("NYX");
+            at.setPlaceFilter("Nyx I");
+            const bool own = at.rocksHere() == SignatureAnalyzer::Rocks::Own;
+            at.setPlaceFilter("");
+            at.setGround(SignatureAnalyzer::Ground::Unknown);
+            const bool either = at.rocksHere() == SignatureAnalyzer::Rocks::Either;
+            at.setGround(SignatureAnalyzer::Ground::Space);
+            const bool space = at.rocksHere() == SignatureAnalyzer::Rocks::Usual;
+            at.setSystemFilter("STANTON");
+            at.setGround(SignatureAnalyzer::Ground::Unknown);
+            const bool stanton = at.rocksHere() == SignatureAnalyzer::Rocks::Usual;
+            allPassed &= check(weighed && ownRules && holds && notSent && own && either && space && stanton,
+                               "Nyx I's rocks go by the 5.0 numbers - 13.141 kg to the SCU at density 1 and 1.45 "
+                               "taken back per kg: Tin 1,255 kg holds at 78 % of the Arbor MH1, the Aslarite of "
+                               "694 kg at 67 % not at all, as the panel said; kept, not sent");
+        }
+
         // The rocks of a session for rock_scans.csv, a line each
         {
             using namespace SCMiner::RockScans;

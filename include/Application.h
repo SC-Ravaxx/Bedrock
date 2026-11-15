@@ -234,6 +234,8 @@ private:
     std::deque<RockStats> rockReadings_;
     int rockMissShots_ = 0;      // pictures kept of a panel the shapes missed
     static RockStats steadyRock(const std::deque<RockStats>& readings);
+    // Whether the rock is made of the 5.0 numbers (RockStats::v5)
+    void rockModelFor(RockStats& rock) const;
     // The shape reader's looks, read as one - see PanelSteadier. The median
     // above is left for the face reader, which stands in when the shape
     // reader cannot find the panel's labels at all.

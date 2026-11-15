@@ -5112,7 +5112,7 @@ float MinerGUI::shareForHead(int head) const {
     if (!heads_[head].laser) return -1;
     const LaserOutput one = onRock(head);
     if (one.atRange <= 0) return -1;
-    return rock_.mass * BREAK_DECAY_PER_MASS / one.atRange;
+    return rock_.mass * modelOf(rock_).decayPerMass / one.atRange;
 }
 
 // The heads that can do it on their own, the safest of them first.
@@ -5151,7 +5151,7 @@ std::vector<int> MinerGUI::headsThatHoldAlone() const {
 std::vector<int> MinerGUI::fewestHeadsNeeded() const {
     std::vector<int> picked;
     if (rock_.mass <= 0) return picked;
-    const float needs = rock_.mass * BREAK_DECAY_PER_MASS;
+    const float needs = rock_.mass * modelOf(rock_).decayPerMass;
 
     // Strongest first, because the question is how FEW. Widest window first
     // answers a different one: on a MOLE with a Hofstede and two Helixes it
@@ -6937,7 +6937,7 @@ float MinerGUI::holdWithoutActives(const std::vector<const MiningLoadout*>& fits
         through += alone.atRange * resistanceLetsThrough(resistance, alone.resistance);
     }
     if (through <= 0) return -1;
-    const float share = rock_.mass * BREAK_DECAY_PER_MASS / through;
+    const float share = rock_.mass * modelOf(rock_).decayPerMass / through;
     return share <= BREAK_EDGE ? share * 100.0f : -1.0f;
 }
 
@@ -6979,7 +6979,7 @@ MinerGUI::RockVerdict MinerGUI::rockVerdict() const {
     }
 
     const LaserOutput out = firingOutput();
-    const float needs = rock_.mass * BREAK_DECAY_PER_MASS;
+    const float needs = rock_.mass * modelOf(rock_).decayPerMass;
     const int heads = firingCount();
     v.sway = rock_.instability > 1.0f ? 4.0f : 0.0f;
 
@@ -7078,7 +7078,8 @@ MinerGUI::RockVerdict MinerGUI::rockVerdict() const {
                 note += (note.empty() ? L"Also capable - " : L", ") + std::wstring(text);
             }
             if (heads > 1) {
-                const ThrottleAdvice all = throttleFor(rock_.mass, loadout_.laser, out.atRange);
+                const ThrottleAdvice all = throttleFor(rock_.mass, loadout_.laser, out.atRange,
+                                                       modelOf(rock_).decayPerMass);
                 std::swprintf(text, 256, L"All %d lasers together at approximately %s power each", heads,
                               powerWords(all.toHold, v.sway).c_str());
                 if (!note.empty()) note += L"  ·  ";
@@ -7095,7 +7096,7 @@ MinerGUI::RockVerdict MinerGUI::rockVerdict() const {
             return v;
         }
         const std::vector<int> together = fewestHeadsNeeded();
-        const ThrottleAdvice all = throttleFor(rock_.mass, loadout_.laser, out.atRange);
+        const ThrottleAdvice all = throttleFor(rock_.mass, loadout_.laser, out.atRange, modelOf(rock_).decayPerMass);
         if (!together.empty()) {
             float have = 0, floor = 0;
             std::wstring which;
@@ -7141,7 +7142,7 @@ MinerGUI::RockVerdict MinerGUI::rockVerdict() const {
             return v;
         }
     } else {
-        const ThrottleAdvice one = throttleFor(rock_.mass, loadout_.laser, out.atRange);
+        const ThrottleAdvice one = throttleFor(rock_.mass, loadout_.laser, out.atRange, modelOf(rock_).decayPerMass);
         if (one.possible && one.overpowered) {
             tooStrong(loadout_, -1, one.toHold / 100.0f);
             return v;
@@ -7582,7 +7583,8 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
             state.words = powerWords(v.hold, 0.0f);
             state.standing = v.kind == RockVerdict::Solo && v.good ? 2 : 1;
         } else if (v.kind == RockVerdict::WontHold) {
-            const ThrottleAdvice one = throttleFor(rock_.mass, loadout_.laser, firingOutput().atRange);
+            const ThrottleAdvice one = throttleFor(rock_.mass, loadout_.laser, firingOutput().atRange,
+                                                   modelOf(rock_).decayPerMass);
             wchar_t needsText[48];
             std::swprintf(needsText, 48, L"Requires %.0f %%", one.toHold);
             state.words = one.toHold > 0 ? needsText : L"—";
@@ -7669,7 +7671,7 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
     if (v.kind != RockVerdict::HeadsOff && rock_.mass > 0) {
         const int own = ownHead();
         const LaserOutput out = own >= 0 ? onRock(own) : firingOutput();
-        const float needs = rock_.mass * BREAK_DECAY_PER_MASS;
+        const float needs = rock_.mass * modelOf(rock_).decayPerMass;
         wchar_t part[192];
         std::swprintf(part, 192, L"Effective power %s  ·  Required power %s", formatNumber((int)out.atRange).c_str(),
                       formatNumber((int)needs).c_str());
@@ -7731,7 +7733,7 @@ MinerGUI::Suggestion MinerGUI::headSuggestion() const {
     // the rock as it stands, gadget and all, by its own resistance
     RockStats own = rock_;
     own.resistance = rockResistanceForBreak();
-    const float needs = own.mass * BREAK_DECAY_PER_MASS;
+    const float needs = own.mass * modelOf(own).decayPerMass;
     wchar_t text[192];
 
     const int8_t size = ship_ ? ship_->size : loadout_.laser->size;
@@ -7848,7 +7850,7 @@ MinerGUI::GadgetWords MinerGUI::gadgetWords() const {
     }
 
     BreakBalance balance;
-    balance.needs = rock_.mass * BREAK_DECAY_PER_MASS;
+    balance.needs = rock_.mass * modelOf(rock_).decayPerMass;
     balance.ownResistance = rockOwnResistanceBare();
     balance.powerThrough = [this](float own) { return powerThroughSolo(own); };
     // the range is the head's the rock view speaks to, not the card's

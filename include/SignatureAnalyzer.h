@@ -52,6 +52,12 @@ public:
     // handed back what it had anyway - see the note in analyzeSignature
     bool outOfPlace() const { return outOfPlace_; }
 
+    // Which ship rocks are around, by the rule the table follows
+    // (chooseTable): a place's own alone (Nyx I's, made of the 5.0 numbers -
+    // RockModel in MiningAdvice.h), the usual ones, or either of the two
+    enum class Rocks { Usual, Own, Either };
+    Rocks rocksHere() const;
+
     // Analyzes a scanned signature and returns matching candidates,
     // sorted by: available-in-system first, then probability (highest first).
     std::vector<AnalysisResult> analyzeSignature(int scannedSignature);

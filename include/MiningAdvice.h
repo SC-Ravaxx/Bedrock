@@ -282,6 +282,29 @@ struct ThrottleAdvice {
 // THROUGH the rock, not what leaves the head.
 inline constexpr float BREAK_DECAY_PER_MASS = 0.2f;
 
+// Nyx I's rocks in 5.0 are made of other numbers. The 13 ship rocks there
+// (entities/mineable/mineablerock_surface*_v5.xml, PTU build 13189690) take
+// their global parameters from miningglobalparamsship_v5.xml; their make-up
+// is the old rocks' own (the same composition records).
+//
+//                   decayPerMass   cSCUPerVolume   kg per SCU at density 1
+//   every rock          0.2            0.7          100 / 0.7  = 142.857
+//   Nyx I, 5.0          1.45           7.61         100 / 7.61 =  13.141
+//
+// So a Nyx I rock weighs a tenth per SCU and takes back 7.25 times as much
+// per kg. Checked on 25 Prospector rocks of 15 November 2026: kg per SCU is
+// 13.141 times the parts' densities within 2 % (Savrilium 2.3 % over), and
+// the panel's own EASY / IMPOSSIBLE for the stock Arbor MH1 (2,340 W) sorts
+// by mass x 1.45 through the resistance - every EASY rock needs 1,820 W or
+// less, every IMPOSSIBLE one 2,055 W or more. At 0.2 all but the Savrilium
+// would need under a third of the head.
+struct RockModel {
+    float decayPerMass;
+    float kgPerScuAtDensityOne;
+};
+inline constexpr RockModel ROCKS_USUAL = {BREAK_DECAY_PER_MASS, 142.857f};
+inline constexpr RockModel ROCKS_V5 = {1.45f, 13.141f};
+
 // Where "enough power" stops being a yes or a no. Comfortable is enough left
 // over to drive the bar up rather than only to hold it; past the edge is
 // short. The edge is just past 1 because the decay itself is measured rather
@@ -290,11 +313,11 @@ inline constexpr float BREAK_EDGE = 1.05f;
 inline constexpr float BREAK_COMFORTABLE = 0.90f;
 
 inline ThrottleAdvice throttleFor(float mass, const MiningLaser* laser,
-                                  float powerAtRange) {
+                                  float powerAtRange, float decayPerMass = BREAK_DECAY_PER_MASS) {
     ThrottleAdvice out;
     if (!laser || mass <= 0 || powerAtRange <= 0) return out;
 
-    const float givesBack = mass * BREAK_DECAY_PER_MASS;
+    const float givesBack = mass * decayPerMass;
     const float share = givesBack / powerAtRange;          // 1.0 = full throttle
 
     out.toHold = share * 100.0f;
@@ -317,7 +340,13 @@ struct RockStats {
     // where it put some on. Either way the laser has already had its say.
     // See rockOwnResistance.
     bool resistanceAdjusted = false;
+    // Made of the 5.0 numbers: a Nyx I rock (RockModel)
+    bool v5 = false;
 };
+
+inline const RockModel& modelOf(const RockStats& rock) {
+    return rock.v5 ? ROCKS_V5 : ROCKS_USUAL;
+}
 
 // The rock as it is once a gadget is stuck on it. A gadget attaches to the
 // ROCK, not to the ship, so what it changes are the rock's own figures.
@@ -839,7 +868,7 @@ inline std::vector<LaserSuggestion> suggestLasers(const RockStats& rock,
                                                   float craftedPower = 0.0f,
                                                   const MiningShip* ship = nullptr) {
     std::vector<LaserSuggestion> out;
-    const float givesBack = rock.mass * BREAK_DECAY_PER_MASS;
+    const float givesBack = rock.mass * modelOf(rock).decayPerMass;
     const auto through = [&](const LaserOutput& o) {
         return o.atRange * resistanceLetsThrough(rock.resistance, o.resistance);
     };
