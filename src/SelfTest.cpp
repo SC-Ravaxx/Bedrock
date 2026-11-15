@@ -7077,8 +7077,18 @@ int runSelfTest() {
                 // counters dark, the zero's slash fills one of them; a glyph
                 // halfway between the two is neither
                 {
-                    const cv::Mat zero(16, 9, CV_32F, const_cast<float*>(SCMiner::FIVE_0));
-                    const cv::Mat eight(16, 9, CV_32F, const_cast<float*>(SCMiner::FIVE_8));
+                    // the built-in shapes, a numeral's advance (9) from their right edge
+                    auto shapeOf = [](char glyph) {
+                        for (int i = 0; i < SCMiner::FIVE_SHAPE_COUNT; i++) {
+                            const SCMiner::FiveShape& s = SCMiner::FIVE_SHAPES[i];
+                            if (s.glyph == glyph && s.height == 16 && s.width >= 9) {
+                                const cv::Mat all(s.height, s.width, CV_32F, const_cast<float*>(s.grey));
+                                return cv::Mat(all(cv::Rect(s.width - 9, 0, 9, 16)).clone());
+                            }
+                        }
+                        return cv::Mat(16, 9, CV_32F, cv::Scalar(0));
+                    };
+                    const cv::Mat zero = shapeOf('0'), eight = shapeOf('8');
                     const cv::Mat between = (zero + eight) / 2;
                     allPassed &= check(SCMiner::zeroOrEight(zero) == '0' && SCMiner::zeroOrEight(eight) == '8' &&
                                            SCMiner::zeroOrEight(between) == 0,
