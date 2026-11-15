@@ -731,8 +731,12 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
         }
     }
 
+    // A glyph is taken where it matches at 0.80 or better and stands 0.3 of
+    // the way from halfway to the likeliest other glyph: at 0.2 a slashed
+    // zero passed for an 8 twice on the recording of 15 November 2026
+    // (0.82 read 0.02, 20.38 read 28.38), at 0.3 nothing checked by eye did.
     static const double sureScore = envOr("SCMINER_FIVE_SCORE", 0.80);
-    static const double sureMargin = envOr("SCMINER_FIVE_MARGIN", 0.2);
+    static const double sureMargin = envOr("SCMINER_FIVE_MARGIN", 0.3);
     struct Figure {
         Reading read;
         int word = -1;
@@ -894,7 +898,7 @@ std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& pa
         return lineAt(ink, r, s, 12.0);
     };
     static const double sureScore = envOr("SCMINER_FIVE_SCORE", 0.80);
-    static const double sureMargin = envOr("SCMINER_FIVE_MARGIN", 0.2);
+    static const double sureMargin = envOr("SCMINER_FIVE_MARGIN", 0.3);
     double brightest = 0;
     for (int row = 0; row < 7; row++) {
         const Line line = lineOf(LIST_TOP + row * LIST_PITCH);
