@@ -67,6 +67,11 @@ cv::Rect fiveContentsRegion(const ScanPanel& panel, const cv::Size& frame);
 std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& panel);
 bool fiveShare(const std::string& text, float& value);   // "15.30%"
 
+// The slashed zero against the eight by their counters: '0', '8', or 0 for
+// neither clearly. `cell` is CV_32F, 16 high (2 over the figures' top) and a
+// numeral's advance wide, the glyph against its right edge.
+char zeroOrEight(const cv::Mat& cell);
+
 // How many numerals two figures differ in, set right-aligned: "2322" and
 // "2382" one, "954" and "1954" one, "88" and "1139" four
 int numeralsOff(const std::string& a, const std::string& b);

@@ -5,7 +5,6 @@
 #include "RockContents.h"
 #include "ScanPanel.h"
 #include "TextLineReader.h"
-#include "ToneMap.h"
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
@@ -57,27 +56,6 @@ cv::Mat bgrOf(const cv::Mat& frame) {
         return bgr;
     }
     return frame;
-}
-
-// ToneMap::sdrLevel of every eight-bit level, for cv::LUT
-const cv::Mat& sdrLevels() {
-    static const cv::Mat lut = [] {
-        cv::Mat m(1, 256, CV_8U);
-        for (int i = 0; i < 256; i++) m.at<uchar>(0, i) = ToneMap::sdrLevel(i);
-        return m;
-    }();
-    return lut;
-}
-
-// A part of the frame at the levels the shapes were cut at: an SDR capture's.
-// A tone mapped HDR frame (setPanelToneMapped) puts the HUD's white at 180 to
-// 190; taken back, the lettering stands at 255 over the ground as in the
-// recordings, and one set of shapes reads both.
-cv::Mat sdrPart(const cv::Mat& bgr, const cv::Rect& part) {
-    if (!panelToneMapped()) return bgr(part);
-    cv::Mat sdr;
-    cv::LUT(bgr(part), sdrLevels(), sdr);
-    return sdr;
 }
 
 // What stands brighter than the ground around it, in the brightest channel:
@@ -383,9 +361,35 @@ struct Reading {
     bool sure = false;
     double least = 1;        // the worst glyph's match
     double margin = 0.5;     // ...and how far the least sure glyph stands from halfway to another
+    double zeroEight = 9;    // ...and how far the zero/eight test held at its closest (countersOf), 9 for none
     int left = 0;            // where the figure begins, in the line
     std::vector<cv::Rect> boxes;   // each glyph's cell, in the line
 };
+
+// The slashed zero against the eight, where the glyph was found: how dark the
+// lighter of its two counters is, against the glyph's own range. An eight
+// shows both counters dark, one over its waist and one under it; the zero's
+// slash cuts its counter in two, and at this size the glow fills at least one
+// half. Its waist does not tell them apart: the outer columns at mid-height
+// hold 1.00 of their ink above and below in eights and 1.01 in zeros. On the
+// recording of 15 November 2026: eights 0.53 in the median and nine in ten
+// under 0.65, zeros 0.83 and three in four over 0.72, and the five eights
+// misread as zeros that were checked by eye 0.58 to 0.72.
+double countersOf(const cv::Mat& ink, const cv::Rect& box) {
+    const int w = 9;   // a numeral's advance
+    const cv::Rect r(box.x + box.width - w, box.y, w, GLYPH_H);
+    if (box.width < w || (r & cv::Rect(0, 0, ink.cols, ink.rows)) != r) return 0.7;
+    const cv::Mat cell = ink(r);
+    double lo = 0, hi = 0;
+    cv::minMaxLoc(cell, &lo, &hi);
+    if (hi - lo < 1e-6) return 0.7;
+    double upper = 0, lower = 0;
+    cv::minMaxLoc(cell(cv::Rect(2, 4, 4, 3)), &upper);
+    cv::minMaxLoc(cell(cv::Rect(2, 8, 5, 4)), &lower);
+    return ((std::max)(upper, lower) - lo) / (hi - lo);
+}
+constexpr double ZERO_COUNTERS = 0.80;    // a zero from here up
+constexpr double EIGHT_COUNTERS = 0.65;   // an eight to here
 
 // Whether a text read backwards fills its format: every slot at least as
 // often as it must be, none more often than it may
@@ -480,6 +484,12 @@ Reading slide(const Line& line, int right, const Format& format, int firstSlack,
             const double apart = 2.0 * (1.0 - likeness(*mine, *other));
             if (apart > 1e-6) out.margin = (std::min)(out.margin, (best - score) / apart);
         }
+        // a zero or an eight where either may stand: their counters say which
+        if ((bestC == '0' || bestC == '8') && allowed.find('0') != std::string::npos &&
+            allowed.find('8') != std::string::npos) {
+            const double c = countersOf(line.ink, bestBox);
+            out.zeroEight = (std::min)(out.zeroEight, bestC == '0' ? c - ZERO_COUNTERS : EIGHT_COUNTERS - c);
+        }
         backwards += bestC;
         out.boxes.push_back(bestBox);
         out.least = (std::min)(out.least, best);
@@ -497,7 +507,8 @@ Reading slide(const Line& line, int right, const Format& format, int firstSlack,
     out.text.assign(backwards.rbegin(), backwards.rend());
     std::reverse(out.boxes.begin(), out.boxes.end());
     out.left = x;
-    out.sure = fills(backwards, format) && out.least >= sureScore && out.margin >= sureMargin;
+    out.sure = fills(backwards, format) && out.least >= sureScore && out.margin >= sureMargin &&
+               out.zeroEight >= 0;
     return out;
 }
 
@@ -707,7 +718,7 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
     const cv::Rect band = bandOf(frame.size());
     const cv::Mat ink = [&] {
         cv::Mat all = cv::Mat::zeros(bgr.size(), CV_32F);
-        inkOf(sdrPart(bgr, band), screen).copyTo(all(band));
+        inkOf(bgr(band), screen).copyTo(all(band));
         return all;
     }();
     std::vector<double> scales;
@@ -867,8 +878,8 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
     auto shown = [](const Figure& f) {
         if (f.word < 0) return std::string("-");
         char text[64];
-        std::snprintf(text, sizeof(text), "%s%s(%.2f/%.2f)", f.read.text.c_str(), f.read.sure ? "" : "?", f.read.least,
-                      f.read.margin);
+        std::snprintf(text, sizeof(text), "%s%s(%.2f/%.2f/%.2f)", f.read.text.c_str(), f.read.sure ? "" : "?",
+                      f.read.least, f.read.margin, f.read.zeroEight);
         return std::string(text);
     };
     panel.note += "; read " + shown(mass) + " " + shown(resDelta) + "/" + shown(res) + " " + shown(instDelta) + "/" +
@@ -908,7 +919,7 @@ std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& pa
     const cv::Rect part = cv::Rect(cv::Point(X(-16), Y(LIST_TOP - 12)), cv::Point(X(FIGURES_END + 16), Y(LIST_TOP + 7.5 * LIST_PITCH))) &
                           cv::Rect(0, 0, frame.cols, frame.rows);
     if (part.width < 100 * s || part.height < 2 * LIST_PITCH * s) return out;
-    const cv::Mat ink = inkOf(sdrPart(bgrOf(frame), part), s);
+    const cv::Mat ink = inkOf(bgrOf(frame)(part), s);
     auto lineOf = [&](double top) {
         const cv::Rect r = cv::Rect(cv::Point(X(-8), Y(top - 4)), cv::Point(X(FIGURES_END + 8), Y(top + CAP + 4))) - part.tl();
         return lineAt(ink, r, s, 12.0);
@@ -950,6 +961,11 @@ std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& pa
     }
     for (FiveListLine& entry : out) entry.dim = entry.bright < 0.7 * brightest;
     return out;
+}
+
+char zeroOrEight(const cv::Mat& cell) {
+    const double c = countersOf(cell, cv::Rect(0, 0, cell.cols, cell.rows));
+    return c >= ZERO_COUNTERS ? '0' : c <= EIGHT_COUNTERS ? '8' : 0;
 }
 
 int numeralsOff(const std::string& a, const std::string& b) {

@@ -10,7 +10,6 @@
 
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -2600,11 +2599,6 @@ int g_panelGeneration = [] {
     const char* set = DEV_ENV("BEDROCK_PANEL_GENERATION");
     return set ? std::atoi(set) : 0;
 }();
-// read by the list's reading too, which runs on a thread of its own
-std::atomic<bool> g_panelToneMapped = [] {
-    const char* set = DEV_ENV("BEDROCK_PANEL_HDR");
-    return set && std::atoi(set) != 0;
-}();
 }  // namespace
 
 void setPanelGeneration(int generation) {
@@ -2613,14 +2607,6 @@ void setPanelGeneration(int generation) {
 
 int panelGeneration() {
     return g_panelGeneration;
-}
-
-void setPanelToneMapped(bool toneMapped) {
-    g_panelToneMapped = toneMapped;
-}
-
-bool panelToneMapped() {
-    return g_panelToneMapped;
 }
 
 namespace {

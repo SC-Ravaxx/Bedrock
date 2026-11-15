@@ -1660,7 +1660,6 @@ void Application::lookForRock() {
     if (frame.empty()) return;
     // an HDR desktop comes tone mapped - see readLaserRange
     const bool toneMapped = screenCapture_.lastSource() == ScreenCapture::Source::DxgiHdr;
-    setPanelToneMapped(toneMapped);
     // Which game draws the panel, by the live log's header (41002 is 4.10.2,
     // 50000 5.0.0, 0 not read yet: the 4.10 readers)
     {

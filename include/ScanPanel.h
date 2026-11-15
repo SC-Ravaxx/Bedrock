@@ -401,12 +401,6 @@ void throttlePanelSearch(bool throttled);
 void setPanelGeneration(int generation);
 int panelGeneration();
 
-// The frames come from an HDR desktop, tone mapped in the app (DxgiCapture):
-// the 5.0 reader takes its window back to SDR levels (ToneMap::sdrLevel)
-// first, as readLaserRange does. For the bench: BEDROCK_PANEL_HDR=1.
-void setPanelToneMapped(bool toneMapped);
-bool panelToneMapped();
-
 // For the tools: where the label column is - the labels' left edge and the
 // MASS label's top - at what size, and how well it matched.
 bool findPanelLabels(const cv::Mat& frame, cv::Point& labels, double& scale, double& score);

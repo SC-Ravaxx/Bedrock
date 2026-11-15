@@ -30,6 +30,7 @@
 #include "NoteBook.h"
 #include "OCREngine.h"
 #include "PanelFive.h"
+#include "PanelFiveShapes.h"
 #include "PanelShapes.h"
 #include "PhoneServer.h"
 #include "Plugins.h"
@@ -7072,6 +7073,18 @@ int runSelfTest() {
                 const bool first = keep.wanted("2322", 0.0), misread = keep.wanted("2382", 1.0),
                            other = keep.wanted("1139", 2.0), unread = keep.wanted("", 3.0),
                            unreadSoon = keep.wanted("", 30.0), unreadLater = keep.wanted("", 64.0);
+                // The slashed zero against the eight: an eight shows both its
+                // counters dark, the zero's slash fills one of them; a glyph
+                // halfway between the two is neither
+                {
+                    const cv::Mat zero(16, 9, CV_32F, const_cast<float*>(SCMiner::FIVE_0));
+                    const cv::Mat eight(16, 9, CV_32F, const_cast<float*>(SCMiner::FIVE_8));
+                    const cv::Mat between = (zero + eight) / 2;
+                    allPassed &= check(SCMiner::zeroOrEight(zero) == '0' && SCMiner::zeroOrEight(eight) == '8' &&
+                                           SCMiner::zeroOrEight(between) == 0,
+                                       "5.0 panel: the slashed zero and the eight told apart by their counters, "
+                                       "a glyph between them left unread");
+                }
                 allPassed &= check(first && !misread && other && unread && !unreadSoon && unreadLater &&
                                        SCMiner::numeralsOff("954", "1954") == 1 && SCMiner::numeralsOff("88", "1139") == 4,
                                    "5.0 panel pictures on the PTU: one per rock, a mass one numeral off is the same rock");
