@@ -1303,6 +1303,22 @@ RockStats Application::steadyRock(const std::deque<RockStats>& readings) {
         std::sort(seen.begin(), seen.end());
         out.resistance = seen.empty() ? -1.0f : seen[seen.size() / 2];
         out.resistanceAdjusted = useLowered && !seen.empty();
+        // 5.0 prints the laser's modifiers beside the figures: the newest
+        // reading of the kind taken carries them on
+        for (auto it = readings.rbegin(); it != readings.rend(); ++it) {
+            if (!it->deltasRead) continue;
+            out.deltasRead = true;
+            if (it->resistance >= 0 && it->resistanceAdjusted == useLowered) {
+                out.resistanceDelta = it->resistanceDelta;
+                break;
+            }
+        }
+        for (auto it = readings.rbegin(); it != readings.rend(); ++it) {
+            if (it->deltasRead && it->instability >= 0) {
+                out.instabilityDelta = it->instabilityDelta;
+                break;
+            }
+        }
     }
     {
         std::map<std::string, int> votes;

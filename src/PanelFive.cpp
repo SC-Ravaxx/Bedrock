@@ -33,7 +33,6 @@ constexpr double ORE_TOP = -27.0;            // the ore's name
 constexpr double CAP = 12.0;                 // a label's and a figure's height
 constexpr double FIGURES_END = 233.5;        // the figures end here, right-aligned
 constexpr double DELTA_END = 173.5;          // ...and the laser's modifiers here
-constexpr double GAP_END = 160.0;            // no mass is long enough to reach left of this
 constexpr double VOLUME_TOP = 123.0;         // COMPOSITION's line: the volume and SCU
 constexpr double LIST_TOP = 205.0;           // the list's first line
 constexpr double LIST_PITCH = 21.3;
@@ -300,28 +299,29 @@ const std::vector<Known>& knownGlyphs() {
     }();
     return known;
 }
-const Known* knownOf(char c) {
-    for (const Known& k : knownGlyphs()) {
-        if (k.c == c) return &k;
-    }
-    return nullptr;
-}
 
 // How alike two glyphs' shapes are: their correlation over the part both
-// cover, from their right edges
+// cover, from their right edges; worked out once for every pair
 double likeness(const Known& a, const Known& b) {
-    static std::map<std::pair<char, char>, double> known;
-    const auto key = std::make_pair((std::min)(a.c, b.c), (std::max)(a.c, b.c));
-    const auto it = known.find(key);
-    if (it != known.end()) return it->second;
-    const int w = (std::min)(a.cell.cols, b.cell.cols);
-    cv::Mat x = a.cell(cv::Rect(a.cell.cols - w, 0, w, GLYPH_H)).clone(), y = b.cell(cv::Rect(b.cell.cols - w, 0, w, GLYPH_H)).clone();
-    x -= cv::mean(x)[0];
-    y -= cv::mean(y)[0];
-    const double n = cv::norm(x) * cv::norm(y);
-    const double r = n > 1e-9 ? x.dot(y) / n : 0;
-    known[key] = r;
-    return r;
+    static const std::vector<std::vector<double>> table = [] {
+        const std::vector<Known>& known = knownGlyphs();
+        std::vector<std::vector<double>> t(known.size(), std::vector<double>(known.size(), 1.0));
+        for (size_t i = 0; i < known.size(); i++) {
+            for (size_t j = 0; j < known.size(); j++) {
+                const int w = (std::min)(known[i].cell.cols, known[j].cell.cols);
+                cv::Mat x = known[i].cell(cv::Rect(known[i].cell.cols - w, 0, w, GLYPH_H)).clone();
+                cv::Mat y = known[j].cell(cv::Rect(known[j].cell.cols - w, 0, w, GLYPH_H)).clone();
+                x -= cv::mean(x)[0];
+                y -= cv::mean(y)[0];
+                const double n = cv::norm(x) * cv::norm(y);
+                t[i][j] = n > 1e-9 ? x.dot(y) / n : 0;
+            }
+        }
+        return t;
+    }();
+    const std::vector<Known>& known = knownGlyphs();
+    const size_t i = (size_t)(&a - known.data()), j = (size_t)(&b - known.data());
+    return i < table.size() && j < table.size() ? table[i][j] : 1.0;
 }
 
 // A figure's format from its right end: slots of the glyphs allowed there,
@@ -413,31 +413,33 @@ Reading slide(const Line& line, int right, const Format& format, int firstSlack,
         cv::Rect bestBox;
         std::vector<std::pair<const Known*, double>> tried;
         const int slackLeft = first ? firstSlack : 2, slackRight = first ? firstSlack : 1;
-        for (char c : allowed) {
-            const Known* k = knownOf(c);
-            if (!k) continue;
-            const cv::Rect window(x - k->cell.cols - slackLeft, baseTop - 1, k->cell.cols + slackLeft + slackRight,
+        // every shape of every glyph allowed here - a glyph can have several,
+        // as the recording and the app's own picture draw it
+        const Known* mine = nullptr;
+        for (const Known& k : knownGlyphs()) {
+            if (allowed.find(k.c) == std::string::npos) continue;
+            const cv::Rect window(x - k.cell.cols - slackLeft, baseTop - 1, k.cell.cols + slackLeft + slackRight,
                                   GLYPH_H + 2);
             if ((window & cv::Rect(0, 0, line.ink.cols, line.ink.rows)) != window) continue;
             cv::Mat result;
-            cv::matchTemplate(line.ink(window), k->cell, result, cv::TM_CCOEFF_NORMED);
+            cv::matchTemplate(line.ink(window), k.cell, result, cv::TM_CCOEFF_NORMED);
             double score = 0;
             cv::Point at;
             cv::minMaxLoc(result, nullptr, &score, nullptr, &at);
-            tried.push_back({k, score});
+            tried.push_back({&k, score});
             if (score > best) {
                 best = score;
-                bestC = c;
-                bestBox = cv::Rect(window.x + at.x, window.y + at.y, k->cell.cols, GLYPH_H);
+                bestC = k.c;
+                mine = &k;
+                bestBox = cv::Rect(window.x + at.x, window.y + at.y, k.cell.cols, GLYPH_H);
             }
         }
         if (!bestC) break;
         // nothing like a glyph where the format could end: the figure ends
         if (mayEnd && best < 0.5) break;
-        // how much nearer its own shape the glyph is than each other's
-        const Known* mine = knownOf(bestC);
+        // how much nearer its own shape the glyph is than each other glyph's
         for (const auto& [other, score] : tried) {
-            if (other == mine) continue;
+            if (other->c == bestC) continue;
             const double apart = 2.0 * (1.0 - likeness(*mine, *other));
             if (apart > 1e-6) out.margin = (std::min)(out.margin, (best - score) / apart);
         }
@@ -703,19 +705,16 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
     };
     // the word of a line that ends at `end` right of the labels; -1 for none
     auto endingAt = [&](const Line& line, double end) { return wordEndingAt(line, line.unit(X(end))); };
-    // A 5.0 panel, not 4.10's with the same labels: on the MASS line nothing
-    // but the figure at the right edge. 4.10 writes its figures after the
-    // labels.
+    // A 5.0 panel, not 4.10's with the same labels: 4.10 writes its figures
+    // after the labels, 5.0 at the panel's right edge, and there a word ends
+    // on the MASS line
+    // on the MASS line - or the column is 5.0's beyond doubt, and the
+    // panel is one whose mass is lost to the ground behind it
+    static const double sureColumn = envOr("SCMINER_FIVE_SURE_COLUMN", 0.85);
     const Line massLine = lineOf(0, 60, FIGURES_END + 8);
-    for (size_t w = 0; w < massLine.words.size(); w++) {
-        if (massLine.left(w) < massLine.unit(X(GAP_END))) {
-            int tall = 0;
-            for (const cv::Rect& piece : massLine.words[w]) tall += piece.height >= 8;
-            std::snprintf(note, sizeof(note), "; lettering after MASS: at %d, %d pieces, %d tall", massLine.left(w),
-                          (int)massLine.words[w].size(), tall);
-            panel.note += note;
-            return false;
-        }
+    if (endingAt(massLine, FIGURES_END) < 0 && column.score < sureColumn) {
+        panel.note += "; nothing at the right edge";
+        return false;
     }
     startDrawing(bgr, cv::Rect(cv::Point(X(-10), Y(-55)), cv::Point(X(FIGURES_END + 15), Y(LIST_TOP + 6 * LIST_PITCH))));
     drawBox(cv::Rect(L, T, (int)std::lround(95 * s), (int)std::lround((2 * ROW_PITCH + CAP) * s)), cv::Scalar(255, 255, 0));

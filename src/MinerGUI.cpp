@@ -4952,6 +4952,11 @@ LaserOutput MinerGUI::firingOutput() const {
 // through the head that coloured it (see rockOwnResistance).
 float MinerGUI::rockOwnResistanceBare() const {
     if (rock_.resistance <= 0) return 0.0f;     // none, or not read
+    // 5.0 prints the laser's modifier beside the figure, and the figure
+    // already carries it: the rock's own is the figure taken back through it
+    if (rock_.deltasRead) {
+        return rockOwnResistance(rock_.resistance, rock_.resistanceDelta != 0, 1.0f + rock_.resistanceDelta / 100.0f);
+    }
     // In a turret the panel is coloured by that turret's head alone
     const int own = ownHead();
     if (own >= 0) {

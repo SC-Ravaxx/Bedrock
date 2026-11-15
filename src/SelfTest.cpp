@@ -29,6 +29,7 @@
 #include "MiningLocations.h"
 #include "NoteBook.h"
 #include "OCREngine.h"
+#include "PanelFive.h"
 #include "PanelShapes.h"
 #include "PhoneServer.h"
 #include "Plugins.h"
@@ -7017,6 +7018,40 @@ int runSelfTest() {
                                    std::string(rock.what) + " fell at " + std::to_string((int)std::lround(rock.falls)) +
                                        " % and climbed at " + std::to_string((int)std::lround(rock.climbs)) +
                                        " % (model says " + std::to_string((int)std::lround(held.toHold)) + " %)");
+            }
+
+            // 5.0 prints the laser's modifier in front of the figure, and the
+            // figure already carries it: 88 % at +25 % is a rock of 70.4 %
+            // (Nyx I, 13:19:46 on 15 November 2026). The panel's own writing
+            // is taken as it stands, the volume with its SI prefix included,
+            // and nothing else.
+            {
+                float res = 0, delta = 0, inst = 0, scu = 0, little = 0, minus = 0, junk = 0;
+                const bool parsed = SCMiner::fivePercent("88%", res) && SCMiner::fiveDelta("+25%", delta) &&
+                                    SCMiner::fiveTwoPlaces("107.82", inst) && SCMiner::fiveVolume("15.46", scu) &&
+                                    std::abs(inst - 107.82f) < 1e-4f && std::abs(scu - 15.46f) < 1e-4f;
+                const bool milli = SCMiner::fiveVolume("754.38m", little) && std::abs(little - 0.75438f) < 1e-6f;
+                const bool negative = SCMiner::fiveDelta("-35%", minus) && minus == -35.0f;
+                const bool refused = !SCMiner::fiveVolume("754.3m", junk) && !SCMiner::fiveDelta("25%", junk) &&
+                                     !SCMiner::fivePercent("101%", junk) && !SCMiner::fiveWhole("0232", junk) &&
+                                     !SCMiner::fiveShare("15.3%", junk);
+                const float own = SCMiner::rockOwnResistance(res, delta != 0, 1.0f + delta / 100.0f);
+                allPassed &= check(parsed && milli && negative && refused && std::abs(own - 70.4f) < 0.01f,
+                                   "5.0 panel: 88 % at +25 % is a rock of 70.4 %, 754.38m SCU is 0.75438 SCU");
+                // ...and its list goes into 4.10's lines: Savrilium twice, each
+                // with its own quality, Gold, and the inert rest at 0
+                SCMiner::RockContents list;
+                for (const auto& [share, quality] : {std::pair<float, int>{15.30f, 580}, {38.80f, 322}, {6.54f, 553}, {39.34f, 0}}) {
+                    SCMiner::RockPartRead part;
+                    part.percent = share;
+                    part.quality = quality;
+                    part.inert = quality == 0;
+                    list.parts.push_back(part);
+                }
+                const bool named = SCMiner::nameContentsByRock("Savrilium", list) && SCMiner::contentsHold(list);
+                allPassed &= check(named && list.parts.size() == 4 && list.parts[0].ore == "Savrilium" &&
+                                       list.parts[1].ore == "Savrilium" && list.parts[2].ore == "Gold" && list.parts[3].inert,
+                                   "5.0 list: Savrilium 580 and 322 stay two lines, Gold 553, the inert rest");
             }
 
             // What to reach for when the head on the ship will not do. The
