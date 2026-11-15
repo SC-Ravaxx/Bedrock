@@ -7,6 +7,7 @@
 #include "LaserRange.h"
 #include "GlyphReader.h"
 #include "OCREngine.h"
+#include "PanelFive.h"
 #include "ScanPanel.h"
 #include "ScreenCapture.h"
 #include "SignatureAnalyzer.h"
@@ -128,6 +129,7 @@ int runPanelBench(const std::string& dir, const std::string& outCsv, int shard, 
         if (shards > 1 && (int)(i % (size_t)shards) != shard) continue;
         const cv::Mat frame = cv::imread(files[i], cv::IMREAD_COLOR);
         if (frame.empty()) continue;
+        SCMiner::fiveHarvestFile(std::filesystem::path(files[i]).filename().string());
         const auto started = std::chrono::steady_clock::now();
         const SCMiner::ScanPanel p = SCMiner::readScanPanel(frame, ocr, &glyphs, panelLines());
         const double ms = std::chrono::duration<double, std::milli>(

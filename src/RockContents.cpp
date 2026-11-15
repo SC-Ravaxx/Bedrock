@@ -4,6 +4,7 @@
 #include "LoadoutReader.h"
 #include "MiningHardware.h"
 #include "MiningLocations.h"
+#include "PanelFive.h"
 #include "RockScans.h"
 #include "ScanPanel.h"
 #include "TextLineReader.h"
@@ -338,6 +339,7 @@ bool contentsHold(RockContents& contents) {
 }
 
 cv::Rect rockContentsRegion(const ScanPanel& panel, const cv::Size& frame) {
+    if (panel.labelGlyph == FIVE_PANEL) return fiveContentsRegion(panel, frame);
     if (panel.labels.x < 0 || panel.labelScale <= 0) return cv::Rect();
     const double u = panel.labelScale;
     const cv::Rect wanted(cv::Point((int)std::lround(panel.labels.x + REGION_LEFT * u), (int)std::lround(panel.labels.y + REGION_TOP * u)),
@@ -783,6 +785,86 @@ bool readList(const cv::Mat& frame, const cv::Rect& region, const cv::Mat& ink, 
 
 }  // namespace
 
+namespace {
+
+// A 5.0 panel's list (readFiveList), into the same lines as 4.10's: a line
+// is read where its share and its quality are - or, where the quality is not
+// one of an ore's, where its name says it is the inert rest - and the list
+// ends where the shares add up to the rock. The lines are then named as
+// 4.10's are, by the rock's kind or else by their names; an ore that stands
+// twice stays two lines.
+bool readFiveContents(const cv::Mat& frame, const ScanPanel& panel, const std::string& rockOre,
+                      TextLineReader& lines, RockContents& out, double kgPerScu) {
+    const std::vector<FiveListLine> rows = readFiveList(frame, panel);
+    if (rows.empty()) {
+        out.note = "5.0: no lines under the bar";
+        return false;
+    }
+    bool read = true;
+    double sum = 0;
+    std::vector<size_t> taken;
+    for (size_t i = 0; i < rows.size(); i++) {
+        const FiveListLine& row = rows[i];
+        RockPartRead part;
+        part.shareText = row.shareText;
+        part.qualityText = row.qualityText;
+        if (!row.shareSure) {
+            read = false;
+            break;
+        }
+        part.percent = row.share;
+        if (row.qualitySure && row.quality >= 100) {
+            part.quality = row.quality;
+        } else {
+            // the inert rest's 0 is drawn faint and often lost: its name says it
+            if (row.name.area() > 0 && lines.ready()) part.nameText = lines.read(frame(row.name)).text;
+            if (saysInert(part.nameText) || (row.qualitySure && row.quality == 0 && row.dim)) {
+                part.quality = 0;
+                part.inert = true;
+            } else {
+                part.quality = -1;
+                read = false;
+            }
+        }
+        out.parts.push_back(part);
+        taken.push_back(i);
+        sum += part.percent;
+        if (sumIsTheRock(sum, out.parts.size()) || sum > 100.006) break;
+    }
+    if (out.parts.empty()) {
+        out.note = "5.0: no share read";
+        return false;
+    }
+    if (!read) {
+        contentsHold(out);
+        out.whole = false;
+        out.note = "5.0: a line did not read";
+        return false;
+    }
+    auto holds = [&]() {
+        if (!contentsHold(out)) return false;
+        if (rockOre.empty() || contentsFitRock(rockOre, out)) return true;
+        out.whole = false;
+        return false;
+    };
+    if (!rockOre.empty() && nameContentsByRock(rockOre, out, kgPerScu)) {
+        out.note = "5.0: named by the rock's kind";
+        return holds();
+    }
+    for (size_t i = 0; i < out.parts.size(); i++) {
+        RockPartRead& part = out.parts[i];
+        if (part.inert) continue;
+        const cv::Rect name = rows[taken[i]].name;
+        if (name.area() <= 0 || !lines.ready()) continue;
+        part.nameText = lines.read(frame(name)).text;
+        if (!saysInert(part.nameText)) part.ore = snapOreName(part.nameText);
+    }
+    out.note = "5.0: names read";
+    return holds();
+}
+
+}  // namespace
+
 bool readRockContents(const cv::Mat& frame, const ScanPanel& panel, const std::string& rockOre,
                       TextLineReader& lines, RockContents& out, double kgPerScu) {
     out = RockContents();
@@ -795,6 +877,7 @@ bool readRockContents(const cv::Mat& frame, const ScanPanel& panel, const std::s
         out.note = "no label column";
         return done(false);
     }
+    if (panel.labelGlyph == FIVE_PANEL) return done(readFiveContents(frame, panel, rockOre, lines, out, kgPerScu));
     const double u = panel.labelScale;
     const cv::Rect region = rockContentsRegion(panel, frame.size());
     if (region.width < 215 * u || region.height < 40 * u) {

@@ -1,5 +1,6 @@
 #include "ScanPanel.h"
 #include "DevSwitch.h"
+#include "PanelFive.h"
 #include "PanelGlyphs.h"
 #include "PanelFace.h"
 #include "PanelShapes.h"
@@ -4026,6 +4027,20 @@ ScanPanel readScanPanel(const cv::Mat& frame, OCREngine& ocr, GlyphReader* glyph
         if (panel.stats.ore.empty() && lines && !noLines) panel.stats.ore = oreByLine(frame, panel.oreRow, *lines);
         panel.figuresRead = 3 + (panel.stats.ore.empty() ? 0 : 1);
     };
+    // A 5.0 panel has a reader of its own; without one on screen the readers
+    // below look as they always have. SCMINER_FIVE_ONLY for the bench: the
+    // 5.0 reader's look on every frame, panel or not.
+    {
+        static const bool fiveOnly = DEV_ENV("SCMINER_FIVE_ONLY") != nullptr;
+        ScanPanel five;
+        if (readPanelFive(frame, five, lines)) {
+            const int figures = five.figuresRead;
+            if (five.found) nameTheOre(five);
+            five.figuresRead = figures + (five.stats.ore.empty() ? 0 : 1);
+            return five;
+        }
+        if (fiveOnly) return five;
+    }
     // where the face reader is to look, when the shapes found the labels
     cv::Rect faceNear;
     // ...and the shapes' own look, for when the face reader finds nothing

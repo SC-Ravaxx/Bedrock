@@ -230,6 +230,7 @@ set(CORE_SOURCES
     src/GameState.cpp
     src/GamePlaces.cpp
     src/ScanPanel.cpp
+    src/PanelFive.cpp
     src/LoadoutReader.cpp
     src/LaserRange.cpp
     src/RockContents.cpp
@@ -303,6 +304,8 @@ set(HEADERS
     include/LaserRange.h
     include/GaugeDigits.h
     include/RockContents.h
+    include/PanelFive.h
+    include/PanelFiveShapes.h
     include/RockScans.h
     include/RefineryTerminal.h
     include/RefineryOrders.h
