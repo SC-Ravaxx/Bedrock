@@ -1,6 +1,7 @@
 #include "PanelFive.h"
 
 #include "DevSwitch.h"
+#include "MiningHardware.h"
 #include "PanelFiveShapes.h"
 #include "RockContents.h"
 #include "ScanPanel.h"
@@ -642,6 +643,64 @@ void drawRead(const Line& line, const Reading& read) {
     for (const cv::Rect& b : read.boxes) drawBox(line.inFrame(b), read.sure ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255));
 }
 
+// How well a text fits a figure's glyphs, placed from its right end one by
+// one as the harvest places them: the worst glyph's match, -1 where a glyph
+// has no shape or falls off the line
+double fitOf(const Line& line, int right, const std::string& text) {
+    if (line.ink.empty() || line.top < 0 || text.empty()) return -1;
+    const int baseTop = line.top - GLYPH_ABOVE;
+    int x = right;
+    double worst = 1;
+    for (size_t i = text.size(); i-- > 0;) {
+        const bool first = i + 1 == text.size();
+        const int slackLeft = 2, slackRight = first ? 2 : 1;
+        double best = -2;
+        int at = x;
+        for (const Known& k : knownGlyphs()) {
+            if (k.c != text[i]) continue;
+            const cv::Rect window(x - k.cell.cols - slackLeft, baseTop - 1, k.cell.cols + slackLeft + slackRight,
+                                  GLYPH_H + 2);
+            if ((window & cv::Rect(0, 0, line.ink.cols, line.ink.rows)) != window) continue;
+            cv::Mat result;
+            cv::matchTemplate(line.ink(window), k.cell, result, cv::TM_CCOEFF_NORMED);
+            double score = 0;
+            cv::Point p;
+            cv::minMaxLoc(result, nullptr, &score, nullptr, &p);
+            if (score > best) {
+                best = score;
+                at = window.x + p.x;
+            }
+        }
+        if (best < -1) return -1;
+        worst = (std::min)(worst, best);
+        x = at;
+    }
+    return worst;
+}
+
+// Whether a figure is written in green (Positive, 64,224,49; about
+// 207,254,117 in the recordings): its brightest pixels well greener than red
+// and blue. White writing has the three alike.
+bool greenOf(const cv::Mat& bgr, const cv::Rect& word) {
+    const cv::Rect r = word & cv::Rect(0, 0, bgr.cols, bgr.rows);
+    if (r.area() <= 0) return false;
+    std::vector<cv::Vec3b> px;
+    for (int y = r.y; y < r.y + r.height; y++) {
+        for (int x = r.x; x < r.x + r.width; x++) px.push_back(bgr.at<cv::Vec3b>(y, x));
+    }
+    std::sort(px.begin(), px.end(), [](const cv::Vec3b& a, const cv::Vec3b& b) {
+        return (std::max)({a[0], a[1], a[2]}) > (std::max)({b[0], b[1], b[2]});
+    });
+    const size_t n = (std::max)((size_t)1, px.size() * 3 / 10);
+    double b = 0, g = 0, red = 0;
+    for (size_t i = 0; i < n; i++) {
+        b += px[i][0];
+        g += px[i][1];
+        red += px[i][2];
+    }
+    return (g - (std::max)(red, b)) / (double)n > 25.0;
+}
+
 double envOr(const char* name, double fallback) {
     const char* set = DEV_ENV(name);
     return set ? std::atof(set) : fallback;
@@ -711,7 +770,6 @@ void fiveHarvestFile(const std::string& file) {
 }
 
 bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines) {
-    (void)lines;
     if (frame.empty() || columnShape().empty()) return false;
     const cv::Mat bgr = bgrOf(frame);
     const double screen = frame.rows / 1440.0;
@@ -886,6 +944,24 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
                   shown(inst) + " " + shown(volume);
     auto delta = [](float figure, float d) { return figure < 0 ? std::string("-") : std::to_string((int)std::lround(d)); };
     panel.note += "; delta r" + delta(r.resistance, r.resistanceDelta) + " i" + delta(r.instability, r.instabilityDelta);
+    // For the bench: the list too, its qualities narrowed by the ore the
+    // second reader names (SCMINER_FIVE_LIST)
+    if (DEV_ENV("SCMINER_FIVE_LIST") && lines && lines->ready()) {
+        ScanPanel placed = panel;
+        placed.labels = column.labels;
+        placed.labelScale = s;
+        const std::string ore = oreByLine(frame, panel.oreRow.area() > 0 ? panel.oreRow
+                                                   : cv::Rect(cv::Point(X(-4), Y(ORE_TOP - 3)),
+                                                              cv::Point(X(FIGURES_END + 4), Y(ORE_TOP + CAP + 3))) &
+                                                         cv::Rect(0, 0, frame.cols, frame.rows), *lines);
+        const std::vector<int> values = fiveQualities(ore);
+        panel.note += "; ore '" + ore + "' list";
+        for (const FiveListLine& row : readFiveList(frame, placed, &values)) {
+            panel.note += " " + row.shareText + (row.shareSure ? "" : "?") + "|" +
+                          (row.byValues ? std::to_string(row.quality) + "v" : row.qualityText + (row.qualitySure ? "" : "?")) +
+                          (row.dim ? "d" : "");
+        }
+    }
     panel.figures[0].text = mass.word >= 0 ? mass.read.text : std::string();
     panel.labels = column.labels;
     panel.labelScale = s;
@@ -908,7 +984,7 @@ cv::Rect fiveContentsRegion(const ScanPanel& panel, const cv::Size& frame) {
     return wanted & cv::Rect(0, 0, frame.width, frame.height);
 }
 
-std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& panel) {
+std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& panel, const std::vector<int>* qualities) {
     std::vector<FiveListLine> out;
     if (frame.empty() || panel.labels.x < 0 || panel.labelScale <= 0 || knownGlyphs().empty()) return out;
     const double s = panel.labelScale;
@@ -946,6 +1022,29 @@ std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& pa
             if (entry.qualitySure && fiveWhole(quality.text, v)) entry.quality = (int)v;
             else if (entry.qualitySure && quality.text == "0") entry.quality = 0;
             else entry.qualitySure = false;
+            // Not sure numeral by numeral: a quality is one of the values the
+            // rock's ores come in, and its colour narrows them - green from
+            // 700, white from 300 to 699. Taken where exactly one of those
+            // fits every glyph at 0.80 or better.
+            if (!entry.qualitySure && qualities && !qualities->empty() && quality.boxes.size() >= 3) {
+                const cv::Rect word = line.inFrame(cv::Rect(cv::Point(quality.left, line.top),
+                                                            cv::Point(line.right((size_t)q), line.bottom))) +
+                                      part.tl();
+                const bool green = greenOf(bgrOf(frame), word);
+                int fits = 0, chosen = -1;
+                for (int value : *qualities) {
+                    if (green ? value < 700 : (value < 300 || value >= 700)) continue;
+                    if (fitOf(line, line.right((size_t)q), std::to_string(value)) >= sureScore) {
+                        fits++;
+                        chosen = value;
+                    }
+                }
+                if (fits == 1) {
+                    entry.quality = chosen;
+                    entry.qualitySure = true;
+                    entry.byValues = true;
+                }
+            }
         }
         // how bright the share is: the inert rest's line is drawn faint
         double most = 0;
@@ -960,6 +1059,30 @@ std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& pa
         out.push_back(entry);
     }
     for (FiveListLine& entry : out) entry.dim = entry.bright < 0.7 * brightest;
+    return out;
+}
+
+std::vector<int> fiveQualities(const std::string& rockOre) {
+    auto same = [](const char* a, const std::string& b) {
+        if (std::strlen(a) != b.size()) return false;
+        for (size_t i = 0; i < b.size(); i++) {
+            if (std::tolower((unsigned char)a[i]) != std::tolower((unsigned char)b[i])) return false;
+        }
+        return true;
+    };
+    std::vector<int> out;
+    for (int i = 0; i < ROCK_PART_COUNT; i++) {
+        const RockPart& part = ROCK_PARTS[i];
+        if (!same(part.rock, rockOre)) continue;
+        for (int b = 0; b < ORE_BANDS_COUNT; b++) {
+            if (!same(ORE_BANDS[b].ore, part.ore)) continue;
+            for (int band = lowestQualityBand(part); band <= topQualityBand(part.qualityScale); band++) {
+                out.push_back(ORE_BANDS[b].bands[band]);
+            }
+        }
+    }
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
     return out;
 }
 

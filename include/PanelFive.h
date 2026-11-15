@@ -61,10 +61,17 @@ struct FiveListLine {
     bool shareSure = false, qualitySure = false;
     double bright = 0;        // the share's ink
     bool dim = false;         // drawn faint, as the inert rest's line is
+    bool byValues = false;    // the quality taken as the one value of the rock's ores that fits
     cv::Rect name;            // where its name stands
 };
 cv::Rect fiveContentsRegion(const ScanPanel& panel, const cv::Size& frame);
-std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& panel);
+// `qualities`: the values the rock's ores come in (fiveQualities), for the
+// qualities not sure numeral by numeral
+std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& panel,
+                                       const std::vector<int>* qualities = nullptr);
+// Every quality a rock of that kind can show: its ores' ORE_BANDS values up
+// to the band each part reaches. Empty for a kind without parts.
+std::vector<int> fiveQualities(const std::string& rockOre);
 bool fiveShare(const std::string& text, float& value);   // "15.30%"
 
 // The slashed zero against the eight by their counters: '0', '8', or 0 for

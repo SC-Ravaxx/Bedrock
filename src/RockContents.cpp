@@ -795,7 +795,9 @@ namespace {
 // twice stays two lines.
 bool readFiveContents(const cv::Mat& frame, const ScanPanel& panel, const std::string& rockOre,
                       TextLineReader& lines, RockContents& out, double kgPerScu) {
-    const std::vector<FiveListLine> rows = readFiveList(frame, panel);
+    // the rock's kind narrows each quality to the values its ores come in
+    const std::vector<int> values = rockOre.empty() ? std::vector<int>() : fiveQualities(rockOre);
+    const std::vector<FiveListLine> rows = readFiveList(frame, panel, values.empty() ? nullptr : &values);
     if (rows.empty()) {
         out.note = "5.0: no lines under the bar";
         return false;
