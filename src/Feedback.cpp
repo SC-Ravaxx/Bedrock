@@ -31,6 +31,57 @@ std::string quoted(const std::string& text) {
     return out;
 }
 
+bool space(char c) {
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+}
+
+// Where the JSON string that begins at `at` (its opening quote) ends, past
+// its escapes: the index after its closing quote; npos where it does not end
+size_t stringEnd(const std::string& json, size_t at) {
+    size_t i = at + 1;
+    while (i < json.size() && json[i] != '"') i += json[i] == '\\' ? 2 : 1;
+    return i < json.size() ? i + 1 : std::string::npos;
+}
+
+// The value of `key` among the members of the answer's outermost object, as
+// it stands in the text - "17", "\"refused\"" -; "" where it has no such
+// member. Members of inner objects and words inside strings do not count.
+std::string member(const std::string& json, const std::string& key) {
+    size_t i = 0;
+    while (i < json.size() && space(json[i])) i++;
+    if (i >= json.size() || json[i] != '{') return "";
+    int depth = 0;
+    while (i < json.size()) {
+        const char c = json[i];
+        if (c == '{' || c == '[') {
+            depth++;
+        } else if (c == '}' || c == ']') {
+            if (--depth <= 0) return "";
+        } else if (c == '"') {
+            const size_t end = stringEnd(json, i);
+            if (end == std::string::npos) return "";
+            const bool named = depth == 1 && end - i - 2 == key.size() && json.compare(i + 1, key.size(), key) == 0;
+            i = end;
+            if (!named) continue;
+            size_t at = i;
+            while (at < json.size() && space(json[at])) at++;
+            if (at >= json.size() || json[at] != ':') continue;   // a value, not a name
+            at++;
+            while (at < json.size() && space(json[at])) at++;
+            size_t stop = at;
+            if (stop < json.size() && json[stop] == '"') {
+                stop = stringEnd(json, stop);
+                if (stop == std::string::npos) return "";
+            } else {
+                while (stop < json.size() && json[stop] != ',' && json[stop] != '}' && !space(json[stop])) stop++;
+            }
+            return json.substr(at, stop - at);
+        }
+        i++;
+    }
+    return "";
+}
+
 }  // namespace
 
 std::string message(const std::string& typed) {
@@ -62,7 +113,7 @@ const char* platform() {
 }
 
 std::string body(const std::string& typedText, const std::string& typedName, const std::string& bedrockVersion,
-                 int gameVersion, const std::string& channel, const std::string& os) {
+                 int gameVersion, const std::string& channel, const std::string& os, std::int64_t debugBytes) {
     if (fault(typedText, typedName) != Fault::None) return "";
     std::string out = "{\"text\":" + quoted(message(typedText));
     const std::string from = name(typedName);
@@ -71,7 +122,9 @@ std::string body(const std::string& typedText, const std::string& typedName, con
     out += ",\"game\":" + std::to_string(gameVersion > 0 && gameVersion <= 999999 ? gameVersion : 0);
     const std::string kind = RockScans::channelKind(channel);
     if (!kind.empty()) out += ",\"channel\":" + quoted(kind);
-    out += ",\"os\":" + quoted(os) + "}";
+    out += ",\"os\":" + quoted(os);
+    if (debugBytes > 0) out += ",\"debug\":" + std::to_string(debugBytes);
+    out += "}";
     return out.size() <= BODY_MOST ? out : std::string();
 }
 
@@ -80,6 +133,39 @@ Outcome outcome(int status) {
     if (status == 429) return Outcome::Limited;
     if (status <= 0 || status >= 500) return Outcome::NoConnection;
     return Outcome::Refused;
+}
+
+Answer answer(const std::string& json) {
+    Answer out;
+    const std::string id = member(json, "id");
+    // figures only - no sign, point or exponent -, no leading zero, and few
+    // enough for a long long
+    if (!id.empty() && id.size() <= 18 && id[0] != '0' && id.find_first_not_of("0123456789") == std::string::npos) {
+        for (char c : id) out.id = out.id * 10 + (c - '0');
+    }
+    const std::string upload = member(json, "upload");
+    if (upload.size() == 34 && upload.front() == '"' && upload.back() == '"' &&
+        upload.find_first_not_of("0123456789abcdef", 1) == 33) {
+        out.upload = upload.substr(1, 32);
+    }
+    out.debugRefused = member(json, "debug") == "\"refused\"";
+    return out;
+}
+
+std::string debugPath(long long id) {
+    return "/v1/feedback/" + std::to_string(id) + "/debug";
+}
+
+std::vector<std::string> debugHeaders(const std::string& upload) {
+    return {"X-Bedrock-Upload: " + upload, "Content-Type: application/zip"};
+}
+
+DebugOutcome debugOutcome(int status) {
+    if (status == 201) return DebugOutcome::Sent;
+    if (status == 413) return DebugOutcome::TooLarge;
+    if (status == 507) return DebugOutcome::Full;
+    if (status <= 0 || (status >= 500 && status < 600)) return DebugOutcome::NoConnection;
+    return DebugOutcome::Refused;
 }
 
 std::string gameName(int gameVersion) {

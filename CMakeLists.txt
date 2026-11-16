@@ -236,6 +236,7 @@ set(CORE_SOURCES
     src/RockContents.cpp
     src/RockScans.cpp
     src/Feedback.cpp
+    src/DebugZip.cpp
     src/TextField.cpp
     src/RefineryTerminal.cpp
     src/RefineryOrders.cpp
@@ -312,6 +313,7 @@ set(HEADERS
     include/PanelFiveShapes.h
     include/RockScans.h
     include/Feedback.h
+    include/DebugZip.h
     include/TextField.h
     include/RefineryTerminal.h
     include/RefineryOrders.h

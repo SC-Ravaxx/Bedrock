@@ -33,6 +33,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -56,10 +57,13 @@ struct HttpAnswer {
     std::string why;     // what went wrong on the way, where something did
 };
 // One POST over https, by the same rules as httpsGet; `payload` goes as it
-// stands (headers say what it is). True when an answer came, whatever its
-// status. It waits for the answer: never on the UI thread.
+// stands (headers say what it is), in pieces of 256 KiB, and `progress`,
+// where given, is told after each piece how much of it is out. True when an
+// answer came, whatever its status. It waits for the answer: never on the
+// UI thread.
 bool httpsPost(const std::string& url, const std::vector<std::string>& headers, const std::string& payload,
-               HttpAnswer& answer, std::int64_t cap = 1024 * 1024);
+               HttpAnswer& answer, std::int64_t cap = 1024 * 1024,
+               std::function<void(std::int64_t sent, std::int64_t total)> progress = nullptr);
 
 class Updater {
 public:

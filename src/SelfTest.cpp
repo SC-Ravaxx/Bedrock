@@ -43,6 +43,7 @@
 #include "RockContents.h"
 #include "RockScans.h"
 #include "Feedback.h"
+#include "DebugZip.h"
 #include "TextField.h"
 #include "RefineryTerminal.h"
 #include "RefineryOrders.h"
@@ -1149,6 +1150,258 @@ int runSelfTest() {
                 F::sentWith("3.0.4", 0, false) == "Sent with it: Bedrock 3.0.4";
             allPassed &= check(along, "the Feedback page names what goes with a message: Bedrock's version, the game's where "
                                       "the log gave it, the installation number where one is sent");
+
+            // ...a bug report's: the size of its zip in the body, what the
+            // service answers to it, and the zip's own way (DebugZip.h)
+            const std::string withZip = F::body("a", "", "3.0.4", 41003, "LIVE", "windows", 1234567);
+            const std::string withoutZip =
+                "{\"text\":\"a\",\"version\":\"3.0.4\",\"game\":41003,\"channel\":\"LIVE\",\"os\":\"windows\"}";
+            const bool debugKey =
+                withZip == "{\"text\":\"a\",\"version\":\"3.0.4\",\"game\":41003,\"channel\":\"LIVE\",\"os\":\"windows\","
+                           "\"debug\":1234567}" &&
+                F::body("a", "", "3.0.4", 41003, "LIVE", "windows", 0) == withoutZip &&
+                F::body("a", "", "3.0.4", 41003, "LIVE", "windows") == withoutZip;
+            const std::string widestZip = F::body(faces, name40, "3.0.4", 41003, "TECH-PREVIEW", "windows",
+                                                  (std::int64_t)F::DEBUG_MOST);
+            allPassed &= check(debugKey && !widestZip.empty() && widestZip.size() <= F::BODY_MOST,
+                               "a message with a debug folder says the size of its zip as \"debug\", one without says "
+                               "nothing of it");
+            if (!debugKey) std::cout << "    message: " << withZip << std::endl;
+
+            const std::string token = "0123456789abcdef0123456789abcdef";
+            const F::Answer granted = F::answer("{\"ok\": true, \"stored\": true, \"id\": 42, \"upload\": \"" + token + "\"}");
+            const F::Answer refused = F::answer("{\"ok\": true, \"stored\": false,\n \"debug\" : \"refused\"}");
+            const F::Answer plain = F::answer("{\"ok\": true, \"stored\": true}");
+            const F::Answer shortToken = F::answer("{\"id\": 42, \"upload\": \"" + token.substr(1) + "\"}");
+            const F::Answer capitals = F::answer("{\"id\": 42, \"upload\": \"0123456789ABCDEF0123456789ABCDEF\"}");
+            bool junk = shortToken.id == 42 && shortToken.upload.empty() && capitals.upload.empty();
+            // an id that is no whole number above 0, members of an inner
+            // object or inside a string, no object at all
+            for (const std::string& text :
+                 {std::string("{\"id\": \"42\"}"), std::string("{\"id\": 4.2}"), std::string("{\"id\": -42}"),
+                  std::string("{\"id\": 042}"), std::string("{\"id\": 1e3}"), std::string("{\"id\": 42x}"),
+                  std::string("{\"id\": 0}"), std::string("{\"id\": 1234567890123456789012}"),
+                  "{\"error\": {\"id\": 42, \"upload\": \"" + token + "\", \"debug\": \"refused\"}}",
+                  std::string("{\"note\": \"\\\"id\\\": 42, \\\"debug\\\": \\\"refused\\\"\"}"),
+                  std::string("[{\"id\": 42}]"), std::string("id: 42"), std::string("{\"debug\": \"Refused\"}"),
+                  std::string()}) {
+                const F::Answer junkAnswer = F::answer(text);
+                junk = junk && junkAnswer.id == 0 && junkAnswer.upload.empty() && !junkAnswer.debugRefused;
+            }
+            const bool answers = granted.id == 42 && granted.upload == token && !granted.debugRefused &&
+                                 refused.debugRefused && refused.id == 0 && refused.upload.empty() && plain.id == 0 &&
+                                 plain.upload.empty() && !plain.debugRefused && junk;
+            allPassed &= check(answers, "the service's answer to a message gives its number and a token of 32 lowercase hex "
+                                        "for the zip, or refuses the zip; a token of 31, an id that is no number, a member "
+                                        "of an inner object give nothing");
+
+            const std::vector<std::string> uploadHeaders = F::debugHeaders(token);
+            const bool upload =
+                F::debugPath(42) == "/v1/feedback/42/debug" && uploadHeaders.size() == 2 &&
+                uploadHeaders[0] == "X-Bedrock-Upload: " + token && uploadHeaders[1] == "Content-Type: application/zip" &&
+                F::debugOutcome(201) == F::DebugOutcome::Sent && F::debugOutcome(0) == F::DebugOutcome::NoConnection &&
+                F::debugOutcome(413) == F::DebugOutcome::TooLarge &&
+                F::debugOutcome(500) == F::DebugOutcome::NoConnection &&
+                F::debugOutcome(503) == F::DebugOutcome::NoConnection && F::debugOutcome(507) == F::DebugOutcome::Full &&
+                F::debugOutcome(403) == F::DebugOutcome::Refused && F::debugOutcome(409) == F::DebugOutcome::Refused;
+            allPassed &= check(upload, "the zip goes to /v1/feedback/<id>/debug with its token; stored at 201, no connection "
+                                       "without an answer or at 5xx, too large at 413, the service full at 507, turned "
+                                       "down at 403 and 409");
+        }
+
+        // ...and the debug folder that goes with a bug report, as a zip
+        // (DebugZip.h): a made-up folder of a made-up user, "Mining"
+        {
+            namespace D = SCMiner::DebugZip;
+            namespace fs = std::filesystem;
+            std::error_code ec;
+            const fs::path folder = fs::temp_directory_path(ec) / "bedrock-debugzip-selftest";
+            fs::remove_all(folder, ec);
+            fs::create_directories(folder / "uex_sent", ec);
+            fs::create_directories(folder / "recording", ec);
+            auto put = [&](const std::string& name, const std::string& bytes) {
+                std::ofstream(folder / name, std::ios::binary | std::ios::trunc) << bytes;
+            };
+            const D::Masks masks{"C:\\Users\\Mining", "Mining"};
+            const std::string session = "Bedrock 3.0.4  2026-11-16 20:15:00\n"
+                                        "program: C:\\Bedrock\n"
+                                        "data:    C:\\Users\\Mining\\AppData\\Local\\Bedrock\n"
+                                        "laser: Mining laser\n";
+            put("session.txt", session);
+            put("region_config.txt", "x=1650\ngamelog=C:/Users/Mining/Games/StarCitizen/LIVE/Game.log\n");
+            put("rock_scans.csv", "observed,ore,mass\n1794000000,Taranite,25005\n");
+            put("rock_readings.csv", "time,ore,mass\n20:15:00.120,Taranite,25005\n");
+            // a scan log of 3 MiB, its lines of different lengths
+            const std::string logHeader = "time,slot,result,value,confidence\n";
+            std::string scanLog = logHeader;
+            for (int i = 0; scanLog.size() < 3 * 1024 * 1024; i++) {
+                scanLog += "20:15:" + std::to_string(10 + i % 50) + ",1,ok," + std::to_string(i) + "," +
+                           std::string((size_t)(i % 41), '9') + "\n";
+            }
+            put("scan_log.csv", scanLog);
+            // what stays out
+            put("scan_log.old.csv", logHeader + "20:14:59,1,ok,1,99\n");
+            put("rock_readings.old.csv", "time,ore,mass\n");
+            put("panel5_1.png", "\x89PNG panel");
+            put("region_3.png", "\x89PNG region");
+            put("uex_sent/a.jpg", "jpg");
+            put("recording/x.mp4", "mp4");
+            // five snapshots: four by the time in their names - written in
+            // another order, their files' times the other way round - and
+            // one named otherwise, by its file's time: now, the newest. The
+            // second newest without its .txt.
+            const std::string note = "data:    C:\\Users\\Mining\\AppData\\Local\\Bedrock\n"
+                                     "snapshot: the game picture at 0,0\n";
+            for (const char* base : {"snapshot_20200103_100000", "snapshot_20200101_100000", "snapshot_20200104_100000",
+                                     "snapshot_20200102_100000"}) {
+                put(std::string(base) + ".png", "\x89PNG " + std::string(20000, base[16]));
+                if (std::string(base) != "snapshot_20200104_100000") put(std::string(base) + ".txt", note);
+            }
+            const auto now = fs::file_time_type::clock::now();
+            for (int day = 1; day <= 4; day++) {
+                fs::last_write_time(folder / ("snapshot_2020010" + std::to_string(day) + "_100000.png"),
+                                    now - std::chrono::hours(day), ec);
+            }
+            put("snapshot_manual.png", "\x89PNG " + std::string(30000, 'm'));
+            put("snapshot_manual.txt", note);
+
+            const std::vector<std::string> expected = {
+                "session.txt",         "region_config.txt",   "rock_scans.csv",
+                "rock_readings.csv",   "scan_log.csv",        "snapshot_manual.png",
+                "snapshot_manual.txt", "snapshot_20200104_100000.png", "snapshot_20200103_100000.png",
+                "snapshot_20200103_100000.txt"};
+            auto namesOf = [](const std::vector<D::Entry>& entries) {
+                std::vector<std::string> names;
+                for (const D::Entry& entry : entries) names.push_back(entry.name);
+                return names;
+            };
+            const std::vector<D::Entry> picked = D::pick(folder, masks, SCMiner::Feedback::DEBUG_MOST);
+            const bool order = namesOf(picked) == expected;
+            allPassed &= check(order, "a debug folder's zip takes its texts and the three newest snapshots - by the time in "
+                                      "the name, else the file's - each with its .txt where there is one, and nothing else");
+            if (!order) {
+                std::cout << "    picked:";
+                for (const std::string& name : namesOf(picked)) std::cout << " " << name;
+                std::cout << std::endl;
+            }
+            auto pickedText = [&](const std::string& name) {
+                for (const D::Entry& entry : picked) {
+                    if (entry.name == name) return entry.data;
+                }
+                return std::string();
+            };
+
+            const std::string logTail = pickedText("scan_log.csv");
+            bool tail = false;
+            if (logTail.size() > logHeader.size() && logTail.compare(0, logHeader.size(), logHeader) == 0) {
+                const std::string rest = logTail.substr(logHeader.size());
+                const size_t at = scanLog.size() - rest.size();
+                tail = rest.size() <= D::LOG_TAIL && rest.size() > D::LOG_TAIL - 100 && rest.size() < scanLog.size() &&
+                       scanLog.compare(at, rest.size(), rest) == 0 && scanLog[at - 1] == '\n';
+            }
+            allPassed &= check(tail, "the scan log goes as its header and whole lines of its end, 2 MiB at most beside the "
+                                     "header");
+
+            // the user hidden: by Windows' rules and by Linux', whichever
+            // system this is
+            const std::string paths = "data:    C:\\Users\\Mining\\AppData\\Local\\Bedrock\n"
+                                      "gamelog=C:/Users/Mining/Games/StarCitizen/LIVE/Game.log\n"
+                                      "{\"path\": \"C:\\\\Users\\\\Mining\\\\AppData\\\\Local\"}\n"
+                                      "exe: c:\\users\\MINING\\Downloads\\Bedrock\\Bedrock.exe\n"
+                                      "shortcut: C:\\Users\\Mining\\OneDrive\\Desktop\\Bedrock.lnk\n"
+                                      "game: D:\\Games\\mining\\StarCitizen | D:\\Mining2\\x | D:\\Mining.old\n"
+                                      "Mining laser: Mining, the ship's Mining\n";
+            const std::string pathsHidden = "data:    %USERPROFILE%\\AppData\\Local\\Bedrock\n"
+                                            "gamelog=%USERPROFILE%/Games/StarCitizen/LIVE/Game.log\n"
+                                            "{\"path\": \"%USERPROFILE%\\\\AppData\\\\Local\"}\n"
+                                            "exe: %USERPROFILE%\\Downloads\\Bedrock\\Bedrock.exe\n"
+                                            "shortcut: %USERPROFILE%\\OneDrive\\Desktop\\Bedrock.lnk\n"
+                                            "game: D:\\Games\\<user>\\StarCitizen | D:\\Mining2\\x | D:\\Mining.old\n"
+                                            "Mining laser: Mining, the ship's Mining\n";
+            const std::string onWindows = D::masked(paths, masks, D::Rules::Windows);
+            const std::string onLinux =
+                D::masked("/home/mining/.local/share/bedrock | /home/MINING/x | /data/home/mining/y | /mnt/games/mining | "
+                          "mining laser | /home/mining2/z",
+                          D::Masks{"/home/mining", "mining"}, D::Rules::Linux);
+            bool hidden = onWindows == pathsHidden &&
+                          onLinux == "~/.local/share/bedrock | /home/MINING/x | /data/home/<user>/y | /mnt/games/<user> | "
+                                     "mining laser | /home/mining2/z";
+            // ...and in what pick() takes, every text masked by this system's rules
+            for (const D::Entry& entry : picked) {
+                if (entry.name.size() > 4 && entry.name.compare(entry.name.size() - 4, 4, ".png") == 0) continue;
+                hidden = hidden && entry.data.find("\\Mining\\") == std::string::npos &&
+                         entry.data.find("/Mining/") == std::string::npos;
+            }
+            hidden = hidden && pickedText("session.txt") == D::masked(session, masks) &&
+                     pickedText("session.txt").find("laser: Mining laser") != std::string::npos &&
+                     pickedText("snapshot_manual.txt") == D::masked(note, masks);
+            allPassed &= check(hidden, "the user is hidden in the texts: the home folder written with \\, / or \\\\, in "
+                                       "another case, with OneDrive in it, becomes %USERPROFILE% (~ on Linux), the name as "
+                                       "a part of a path <user>; the same word outside a path stays");
+            if (onWindows != pathsHidden) std::cout << "    masked: " << onWindows << std::endl;
+            if (!onLinux.empty() && onLinux[0] != '~') std::cout << "    masked: " << onLinux << std::endl;
+
+            // a limit too small for three snapshots: the oldest of them is
+            // left out and no older one tried instead; the texts go whatever
+            // the limit
+            const size_t whole = D::zipSize(picked);
+            const std::vector<D::Entry> fewer = D::pick(folder, masks, whole - 1);
+            const bool limited =
+                namesOf(fewer) == std::vector<std::string>(expected.begin(), expected.end() - 2) &&
+                D::zipSize(fewer) <= whole - 1 &&
+                namesOf(D::pick(folder, masks, 0)) == std::vector<std::string>(expected.begin(), expected.begin() + 5);
+            allPassed &= check(limited, "a zip too small for three snapshots leaves the oldest of them out, and no older one "
+                                        "in its place; the texts go whatever the limit");
+
+            // the zip, read back
+            const std::string packed = D::zip(picked);
+            std::vector<D::Entry> back;
+            std::string why;
+            bool same = D::unzip(packed, back, why) && back.size() == picked.size() && packed.size() == whole &&
+                        D::zip(picked) == packed;
+            for (size_t i = 0; same && i < back.size(); i++) {
+                same = back[i].name == "debug/" + picked[i].name && back[i].data == picked[i].data;
+            }
+            // the UTF-8 flag (bit 11) in the first local header and the first central one
+            auto byteAt = [&](size_t at) { return at < packed.size() ? (size_t)(unsigned char)packed[at] : (size_t)0; };
+            const size_t central = packed.size() < 22 ? 0
+                                                      : byteAt(packed.size() - 6) | byteAt(packed.size() - 5) << 8 |
+                                                            byteAt(packed.size() - 4) << 16 | byteAt(packed.size() - 3) << 24;
+            const bool flagged = packed.compare(0, 4, "PK\x03\x04") == 0 && (byteAt(7) & 0x08) != 0 &&
+                                 byteAt(central) == 'P' && byteAt(central + 2) == 1 && (byteAt(central + 9) & 0x08) != 0;
+            // no entries: the end record alone; names beyond ASCII and every
+            // byte value; the time to two seconds
+            std::vector<D::Entry> none{D::Entry{}};
+            const std::string empty = D::zip({});
+            const bool emptyZip = empty.size() == 22 && empty.compare(0, 4, "PK\x05\x06") == 0 && D::zipSize({}) == 22 &&
+                                  D::unzip(empty, none, why) && none.empty();
+            std::string bytes;
+            for (int i = 0; i < 256; i++) bytes += (char)i;
+            const std::vector<D::Entry> own = {{"a.txt", "abc", 1794000000}, {"b \xC3\xA4.png", bytes, 1794000002}};
+            const std::string ownZip = D::zip(own);
+            std::vector<D::Entry> ownBack;
+            const bool ownSame = D::unzip(ownZip, ownBack, why) && ownBack.size() == 2 && ownBack[0].name == "debug/a.txt" &&
+                                 ownBack[0].data == "abc" && ownBack[0].written == 1794000000 &&
+                                 ownBack[1].name == "debug/b \xC3\xA4.png" && ownBack[1].data == bytes &&
+                                 ownBack[1].written == 1794000002 && D::zipSize(own) == ownZip.size();
+            // a changed byte fails its CRC; zip's own CRC-32 against the
+            // known one; ZIP64's count refused
+            std::string broken = ownZip;
+            broken[30 + 11] ^= 0x20;   // "abc" after the 30 bytes of its header and its name, debug/a.txt
+            std::vector<D::Entry> brokenBack;
+            std::string brokenWhy;
+            const bool caught = !D::unzip(broken, brokenBack, brokenWhy) && brokenBack.empty() &&
+                                brokenWhy.find("CRC") != std::string::npos;
+            const bool crc = D::crc32("123456789") == 0xCBF43926u && D::crc32("") == 0;
+            const bool counted = D::zipSize(std::vector<D::Entry>(65534, D::Entry{"x", "", 0})) == 65534u * (30 + 7 + 46 + 7) + 22 &&
+                                 D::zip(std::vector<D::Entry>(65535, D::Entry{"x", "", 0})).empty() &&
+                                 D::zipSize(std::vector<D::Entry>(65535, D::Entry{"x", "", 0})) == 0;
+            allPassed &= check(same && flagged && emptyZip && ownSame && caught && crc && counted,
+                               "the zip reads back entry by entry, byte for byte, under debug/ with the UTF-8 flag, the same "
+                               "bytes for the same files; no entries make an empty zip of 22 bytes; a changed byte fails its "
+                               "CRC; 65,535 entries are refused");
+            if (!same || !ownSame) std::cout << "    unzip: " << why << std::endl;
+            fs::remove_all(folder, ec);
         }
 
         // ...typed into fields the window paints itself (TextField.h)

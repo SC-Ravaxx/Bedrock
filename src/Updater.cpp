@@ -163,12 +163,24 @@ bool fetch(const std::string& url, std::string& body, std::string& why,
     return ok;
 }
 
+// The payload goes out in pieces of this size, each in a WinHttpWriteData of
+// its own: WinHTTP's send timeout holds for one send, and the whole payload
+// handed to WinHttpSendRequest would have to be out within it - a 32 MB debug
+// zip in 30 s takes 8.9 Mbit/s, more than many a player's upload. A piece in
+// 30 s takes 70 kbit/s; a slow line only takes longer.
+constexpr DWORD POST_PIECE = 256 * 1024;
+
 // One POST, and its answer whatever its status. https only, as above.
 bool exchange(const std::string& url, const std::vector<std::string>& headers, const std::string& payload,
-              HttpAnswer& answer, std::int64_t cap) {
+              HttpAnswer& answer, std::int64_t cap,
+              const std::function<void(std::int64_t, std::int64_t)>& progress) {
     answer = HttpAnswer{};
     if (url.rfind("https://", 0) != 0) {
         answer.why = "Only https is accepted: " + url;
+        return false;
+    }
+    if (payload.size() >= 0xFFFFFFFFull) {   // WinHTTP counts a request's length in 32 bits
+        answer.why = "Request too large";
         return false;
     }
     const std::wstring wurl = wide(url);
@@ -189,7 +201,7 @@ bool exchange(const std::string& url, const std::vector<std::string>& headers, c
         answer.why = "No network session";
         return false;
     }
-    // a screenshot goes along with some: half a minute to send
+    // half a minute for each piece of the payload, and for the answer
     WinHttpSetTimeouts(session, 8000, 8000, 30000, 30000);
     HINTERNET connect = WinHttpConnect(session, host, parts.nPort, 0);
     HINTERNET request = connect ? WinHttpOpenRequest(connect, L"POST", path, nullptr, WINHTTP_NO_REFERER,
@@ -201,12 +213,19 @@ bool exchange(const std::string& url, const std::vector<std::string>& headers, c
         DWORD decompression = WINHTTP_DECOMPRESSION_FLAG_ALL;
         WinHttpSetOption(request, WINHTTP_OPTION_DECOMPRESSION, &decompression, sizeof(decompression));
     }
+    // the headers with the payload's whole length, then the payload itself
+    bool out = request &&
+               WinHttpSendRequest(request, extra.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : extra.c_str(),
+                                  extra.empty() ? 0 : (DWORD)-1L, WINHTTP_NO_REQUEST_DATA, 0, (DWORD)payload.size(), 0);
+    for (size_t sent = 0; out && sent < payload.size();) {
+        const DWORD piece = (DWORD)(std::min)(payload.size() - sent, (size_t)POST_PIECE);
+        DWORD written = 0;
+        out = WinHttpWriteData(request, payload.data() + sent, piece, &written) && written > 0;
+        sent += written;
+        if (out && progress) progress((std::int64_t)sent, (std::int64_t)payload.size());
+    }
     bool answered = false;
-    if (request &&
-        WinHttpSendRequest(request, extra.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : extra.c_str(),
-                           extra.empty() ? 0 : (DWORD)-1L, (LPVOID)payload.data(), (DWORD)payload.size(),
-                           (DWORD)payload.size(), 0) &&
-        WinHttpReceiveResponse(request, nullptr)) {
+    if (out && WinHttpReceiveResponse(request, nullptr)) {
         DWORD status = 0, size = sizeof(status);
         WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX,
                             &status, &size, WINHTTP_NO_HEADER_INDEX);
@@ -307,9 +326,13 @@ bool fetch(const std::string& url, std::string& body, std::string& why,
     return ok;
 }
 
-// One POST, and its answer whatever its status - the same rules as above
+// One POST, and its answer whatever its status - the same rules as above.
+// Qt sends the payload in pieces of its own and tells of each through
+// uploadProgress; its transfer timeout counts from the last of them, so a
+// slow line only takes longer.
 bool exchange(const std::string& url, const std::vector<std::string>& headers, const std::string& payload,
-              HttpAnswer& answer, std::int64_t cap) {
+              HttpAnswer& answer, std::int64_t cap,
+              const std::function<void(std::int64_t, std::int64_t)>& progress) {
     answer = HttpAnswer{};
     if (url.rfind("https://", 0) != 0) {
         answer.why = "Only https is accepted: " + url;
@@ -329,6 +352,11 @@ bool exchange(const std::string& url, const std::vector<std::string>& headers, c
     QEventLoop loop;
     QNetworkReply* reply = manager.post(request, QByteArray(payload.data(), (qsizetype)payload.size()));
     bool answered = false;
+    if (progress) {
+        QObject::connect(reply, &QNetworkReply::uploadProgress, [&](qint64 sent, qint64 total) {
+            if (total > 0) progress((std::int64_t)sent, (std::int64_t)total);
+        });
+    }
     QObject::connect(reply, &QNetworkReply::finished, [&] {
         const QVariant status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute);
         if (status.isValid()) {
@@ -378,8 +406,8 @@ bool httpsGet(const std::string& url, const std::vector<std::string>& headers, s
 }
 
 bool httpsPost(const std::string& url, const std::vector<std::string>& headers, const std::string& payload,
-               HttpAnswer& answer, std::int64_t cap) {
-    return exchange(url, headers, payload, answer, cap);
+               HttpAnswer& answer, std::int64_t cap, std::function<void(std::int64_t sent, std::int64_t total)> progress) {
+    return exchange(url, headers, payload, answer, cap, progress);
 }
 
 bool Updater::isNewer(const std::string& candidate, const std::string& current) {
