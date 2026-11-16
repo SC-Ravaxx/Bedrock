@@ -31,6 +31,8 @@
 #include "NoteBook.h"
 #include "Plugins.h"
 #include "Reputation.h"
+#include "Feedback.h"
+#include "TextField.h"
 
 #pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "dwmapi.lib")
@@ -288,12 +290,34 @@ public:
     void showPluginPage(const std::string& id);
 
     // ---- the rail: the full window's pages and tools, down its left ----
-    // Scan, Gear, Datarunner, Plugins and each plugin are pages of the main
-    // window; the others open their windows. Not in the overlay, nor in a
-    // phone's picture of the window.
-    enum class RailItem { Scan, Datarunner, Refinery, Finder, Blueprints, Notes, Plugin, Plugins, Settings, Gear };
+    // Scan, Gear, Datarunner, Feedback, Plugins and each plugin are pages of
+    // the main window; the others open their windows. Not in the overlay,
+    // nor in a phone's picture of the window.
+    enum class RailItem {
+        Scan, Datarunner, Refinery, Finder, Blueprints, Notes, Plugin, Plugins, Settings, Gear, Feedback
+    };
     // ...a click on one, for a picture (`id`: the plugin's)
     void railPickForShot(RailItem item, const std::string& id = "") { railPick(item, id); }
+
+    // ---- the Feedback page: a message for the developer (Feedback.h) ----
+    // Whether the build carries the service's address - the rail has the
+    // page's entry only then -, the game's version as a message carries it
+    // (41003; 0 not known) and whether the installation number goes along
+    void setFeedback(bool available, int gameVersion, bool installSent);
+    // Send clicked: the message and the name as typed, UTF-8. What came of
+    // it comes back through feedbackAnswered.
+    using FeedbackCallback = std::function<void(const std::string& text, const std::string& name)>;
+    void setFeedbackCallback(FeedbackCallback callback) { onFeedback_ = std::move(callback); }
+    // The status the service answered with; 0 where no answer came
+    void feedbackAnswered(int status);
+    // --screenshot only: the page's fields and state for a picture, nothing
+    // sent - what is typed, which field has the caret (0 none, 1 the
+    // message, 2 the name), and the state: 0 nothing sent, 1 sending, 2
+    // answered with `status`
+    void feedbackForShot(const std::wstring& text, const std::wstring& name, int typing, int state, int status);
+    // ...and what the fields hold, where the caret stands and what is
+    // marked, as one line of text
+    std::string feedbackStateForShot() const;
     void paintPluginsTo(HDC hdc);
     // ...a plugin's window for a picture: cards open, a tab and chip
     // picked, a search typed - nothing saved
@@ -1239,6 +1263,7 @@ private:
     std::vector<RailHit> railHits_;
     bool pluginPage_ = false;      // the plugins' page, or one plugin's, is up (pluginShown_)
     bool gearPage_ = false;        // the Gear page is up (showGearPage)
+    bool feedbackPage_ = false;    // the Feedback page is up (showFeedbackPage)
     bool phonePainting_ = false;   // the window drawn for a phone: as it was, without the rail
     // The window on screen, not the overlay nor a phone's picture: the rail
     // is up with Bedrock's mark at its head, the header holds the page's
@@ -1253,9 +1278,11 @@ private:
     // ...and the Gear page: beside the rail only - a phone's picture is the
     // scan page's
     bool gearPageUp() const { return gearPage_ && railShown(); }
+    // ...and the Feedback page
+    bool feedbackPageUp() const { return feedbackPage_ && railShown(); }
     void drawRail(Gdiplus::Graphics& g, int rw, int ch);
     void railPick(RailItem item, const std::string& id);
-    void toScanPage();   // a plugin's page or the Gear page left for the scan, typing let go
+    void toScanPage();   // a plugin's page, the Gear page or the Feedback page left for the scan, typing let go
     void railRepaint();  // a tool's window opened or shut: the rail shows it
     // A card drawn by the parent cannot cover a child window: the buttons
     // go under it (`on`) and come back as layoutControls has them
@@ -1646,6 +1673,64 @@ private:
     void showGearPage();
     void drawGearPage(Gdiplus::Graphics& g, int cw, int ch);
     void pressGear(HWND hwnd, float px, float py);
+
+    // The Feedback page (feedbackPage_): a message and a name typed into two
+    // fields the window paints itself (TextField.h), Send, and what came of
+    // it. What is typed stays for the session, in memory only.
+    bool fbAvailable_ = false;     // the build carries the service's address: the rail has the entry
+    int fbGame_ = 0;               // the game's version as a message carries it; 0 not known
+    bool fbInstallSent_ = false;   // the installation number goes along
+    FeedbackCallback onFeedback_;
+    TextField fbText_{true, Feedback::TEXT_MOST};
+    TextField fbName_{false, Feedback::NAME_MOST};
+    int fbTyping_ = 0;             // the field with the caret: 1 the message, 2 the name; 0 neither
+    enum class FeedbackState { Idle, Sending, Answered };
+    FeedbackState fbState_ = FeedbackState::Idle;
+    int fbStatus_ = 0;             // Answered: the status the service answered with
+    bool fbCaretOn_ = true;        // the caret's blink
+    bool fbCaretAtEnd_ = false;    // the caret at the end of a line broken inside a word, not at the next one's start
+    float fbGoalX_ = -1.0f;        // the arrows up and down keep to this place across lines
+    float fbScroll_ = 0.0f;        // how far down the message is scrolled
+    float fbNameScroll_ = 0.0f;    // ...and the name to the right
+    bool fbToCaret_ = false;       // the next painting brings the caret into view
+    bool fbDragging_ = false;      // the button held down in a field: the pointer marks
+    DWORD fbClickAt_ = 0;          // the last click in a field: when, where and the how-manieth in a row
+    POINT fbClickPlace_ = {0, 0};
+    int fbClicks_ = 0;
+    char32_t fbHalf_ = 0;          // the first half of a character Windows sends in two
+    // Where the page's pieces were drawn, in the page's pixels
+    Gdiplus::RectF fbTextRect_, fbNameRect_, fbSendRect_;
+    // The message's lines as last laid out, and what they were laid out for
+    std::vector<TextLine> fbLines_;
+    unsigned long long fbLinesOf_ = ~0ull;
+    float fbLinesRoom_ = -1.0f, fbLinesSize_ = -1.0f;
+    // A field has the caret and nothing lies over the page: every key is its own
+    bool feedbackTyping() const {
+        return feedbackPageUp() && fbTyping_ != 0 &&
+               !(keysOpen_ || aboutOpen_ || backupOpen_ || whatsNewOpen_ || uexWelcome_.step);
+    }
+    void showFeedbackPage();
+    void leaveFeedbackPage();
+    void drawFeedbackPage(Gdiplus::Graphics& g, int cw, int ch);
+    // A click, the pointer dragged with the button down, the wheel
+    void pressFeedback(HWND hwnd, float px, float py, bool shift);
+    void dragFeedback(HWND hwnd, float px, float py);
+    void wheelFeedback(HWND hwnd, int notches);
+    // A key and a character for the field with the caret; true where the
+    // field took it
+    bool feedbackKey(HWND hwnd, WPARAM key);
+    void feedbackChar(HWND hwnd, WPARAM c);
+    void sendFeedback();
+    // The field with the caret, the message's lines and where a field's text
+    // stands (1 the message, 2 the name)
+    TextField& feedbackField() { return fbTyping_ == 2 ? fbName_ : fbText_; }
+    const std::vector<TextLine>& feedbackLines(Gdiplus::Graphics& g, const Gdiplus::Font& font, float room);
+    Gdiplus::RectF feedbackInside(int field) const;
+    float feedbackPitch() const;
+    // The place in the message, or in the name, nearest to a point of the page
+    size_t feedbackPlaceAt(Gdiplus::Graphics& g, int field, float px, float py, bool& atEnd);
+    // The caret moved or the text changed: shown, and brought into view
+    void feedbackTouched(HWND hwnd, bool edited);
     // What a click on a row of Edit ship does to the head shown, for the
     // Gear page to do the same: a laser put on it (the crafted figure goes
     // aside with the one that leaves, the modules are trimmed to the new

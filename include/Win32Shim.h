@@ -995,6 +995,7 @@ SHORT GetKeyState(int vk);
 SHORT GetAsyncKeyState(int vk);
 UINT MapVirtualKeyW(UINT code, UINT type);
 UINT GetCaretBlinkTime();
+UINT GetDoubleClickTime();
 UINT_PTR SetTimer(HWND hwnd, UINT_PTR id, UINT ms, void* proc);
 BOOL KillTimer(HWND hwnd, UINT_PTR id);
 BOOL RegisterHotKey(HWND hwnd, int id, UINT modifiers, UINT vk);

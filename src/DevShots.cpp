@@ -779,6 +779,9 @@ int runScreenshots(const std::string& dir) {
     if (const char* u = DEV_ENV("BEDROCK_SHOT_UPDATE")) {
         if (*u) gui.setUpdateStatus(std::atoi(u), "4.9.2", "something worth having", 42);
     }
+    // The rail's Feedback entry, which only a build with the service's address
+    // has: here as there, with a game version read and an installation number
+    gui.setFeedback(true, 41003, true);
 
     // Where the pictures are taken: on Monox in Pyro, in a MOLE.
     SCMiner::SignatureAnalyzer analyzer;
@@ -2461,6 +2464,30 @@ int runScreenshots(const std::string& dir) {
         shoot(gui.windowHandle(), "main_page_datarunner_empty.png");
         gui.railPickForShot(SCMiner::MinerGUI::RailItem::Scan);
         pump();
+        // The Feedback page, as the rail opens it: empty; a message of three
+        // lines and a name typed; sent, the name still there; and one the
+        // service could not be reached for. The page's state is set and
+        // nothing is sent: the run gives the window no way to send.
+        {
+            const std::wstring message = L"The rock panel reads nothing from the MOLE's pilot seat.\n"
+                                         L"Since 4.10.3, the turrets are fine.\nSnapshot taken with Ctrl+Alt+S.";
+            gui.railPickForShot(SCMiner::MinerGUI::RailItem::Feedback);
+            gui.feedbackForShot(L"", L"", 1, 0, 0);
+            pump();
+            shoot(gui.windowHandle(), "main_page_feedback.png");
+            gui.feedbackForShot(message, L"Stonecutter", 2, 0, 0);
+            pump();
+            shoot(gui.windowHandle(), "main_page_feedback_typed.png");
+            gui.feedbackForShot(L"", L"Stonecutter", 1, 2, 201);
+            pump();
+            shoot(gui.windowHandle(), "main_page_feedback_sent.png");
+            gui.feedbackForShot(message, L"Stonecutter", 1, 2, 0);
+            pump();
+            shoot(gui.windowHandle(), "main_page_feedback_failed.png");
+            gui.feedbackForShot(L"", L"", 1, 0, 0);
+            gui.railPickForShot(SCMiner::MinerGUI::RailItem::Scan);
+            pump();
+        }
         // The foot while Bedrock reads a terminal by itself, as at Levski's
         // cargo office on 29 October 2026: no row held still yet; 4 of the
         // 14 wares the log listed for its BUY list; 24 rows of LOCAL MARKET

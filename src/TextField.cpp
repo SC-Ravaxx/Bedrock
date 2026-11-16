@@ -353,6 +353,33 @@ bool TextField::redo() {
     return true;
 }
 
+namespace {
+
+// How many places of text [from, limit) take no more than `room`: found in
+// steps that double and then halve, so that nothing much longer than what
+// fits is ever measured - a word of four thousand letters is measured a
+// line at a time
+size_t fitting(size_t from, size_t limit, float room, const TextWidth& width) {
+    size_t fits = from, over = limit + 1;   // (limit + 1: nothing found too wide yet)
+    for (size_t step = 8; fits < limit; step *= 2) {
+        const size_t probe = limit - fits < step ? limit : fits + step;
+        if (width(from, probe) <= room) {
+            fits = probe;
+        } else {
+            over = probe;
+            break;
+        }
+    }
+    while (over <= limit && fits + 1 < over) {
+        const size_t middle = fits + (over - fits) / 2;
+        if (width(from, middle) <= room) fits = middle;
+        else over = middle;
+    }
+    return fits;
+}
+
+}  // namespace
+
 std::vector<TextLine> wrapLines(const std::u32string& text, float room, const TextWidth& width) {
     std::vector<TextLine> lines;
     const size_t n = text.size();
@@ -362,36 +389,23 @@ std::vector<TextLine> wrapLines(const std::u32string& text, float room, const Te
         // the lines of one paragraph, [start, stop)
         size_t from = start;
         while (from < stop) {
-            size_t fits = from;   // the line can end here: behind a word and its spaces
-            bool broken = false;
-            for (size_t at = from; at < stop;) {
-                size_t wordEnd = at;
-                while (wordEnd < stop && text[wordEnd] != U' ') wordEnd++;
-                if (wordEnd > from && width(from, wordEnd) > room) {
-                    size_t to = fits;
-                    if (to == from) {
-                        // one word wider than the field: as many of its
-                        // letters as fit, one at least
-                        size_t most = wordEnd;
-                        to = from + 1;
-                        while (to < most) {
-                            const size_t middle = (to + most + 1) / 2;
-                            if (width(from, middle) <= room) to = middle;
-                            else most = middle - 1;
-                        }
-                    }
-                    lines.push_back({from, to, false});
-                    from = to;
-                    broken = true;
-                    break;
-                }
-                // the word fits: the spaces behind it stay on its line
-                size_t after = wordEnd;
-                while (after < stop && text[after] == U' ') after++;
-                fits = after;
-                at = after;
+            const size_t most = fitting(from, stop, room, width);
+            if (most >= stop) break;   // the rest fits
+            size_t to = most;
+            if (text[most] == U' ') {
+                // it ends behind a word: the spaces after it stay on its
+                // line, however many
+                while (to < stop && text[to] == U' ') to++;
+                if (to == stop) break;
+            } else {
+                // it ends inside a word: back to the word's start - or, where
+                // the word alone is wider than the field, as many of its
+                // letters as fit, one at least
+                while (to > from && text[to - 1] != U' ') to--;
+                if (to == from) to = most > from ? most : from + 1;
             }
-            if (!broken) break;
+            lines.push_back({from, to, false});
+            from = to;
         }
         lines.push_back({from, stop, true});
         if (stop == n) break;
@@ -412,12 +426,7 @@ size_t lineOfCaret(const std::vector<TextLine>& lines, size_t caret, bool atEnd)
 size_t placeAt(const TextLine& line, float x, const TextWidth& width) {
     if (x <= 0 || line.to <= line.from) return line.from;
     // the last place not right of x, then the nearer of it and the next
-    size_t at = line.from, most = line.to;
-    while (at < most) {
-        const size_t middle = (at + most + 1) / 2;
-        if (width(line.from, middle) <= x) at = middle;
-        else most = middle - 1;
-    }
+    size_t at = fitting(line.from, line.to, x, width);
     if (at < line.to && x - width(line.from, at) > width(line.from, at + 1) - x) at++;
     return at;
 }

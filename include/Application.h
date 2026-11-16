@@ -25,6 +25,7 @@
 #include "LoadoutReader.h"
 #include "RockContents.h"
 #include "RockScans.h"
+#include "Feedback.h"
 #include "RefineryOrders.h"
 #include "FrameRecorder.h"
 #include "UexPrices.h"
@@ -202,6 +203,18 @@ private:
     bool rockGameUp_ = false;   // the game's window seen since the game last closed (tendRockScans)
     void setRockShare(bool on);
     void serviceRockShare();
+    // A message from the Feedback page (Feedback.h): one POST to the service
+    // when Send is clicked, off the UI thread, and the status it was
+    // answered with back to the page - no second try, nothing kept. The page
+    // is told what goes along with a message whenever that changes: the
+    // game's version as the rock scans send it, and whether the
+    // installation number.
+    void sendFeedback(const std::string& text, const std::string& name);
+    void serviceFeedback();
+    int feedbackGame();
+    std::future<int> feedbackJob_;      // one going: the status it was answered with
+    int feedbackGameTold_ = -1;         // what the page was last told
+    bool feedbackInstallTold_ = false;
     // The laser's range to the rock: the middle of the gauge's last five
     // readings, none older than RANGE_KEPT; 0 when there is none, which the
     // rock view reads as full power. A look that reads no gauge leaves the

@@ -849,6 +849,10 @@ void Application::runWithGUI(HINSTANCE hInstance) {
     // ...and the Settings window's box that shares rock scans
     gui_->setRockShare(rockShare_, !refineryServiceUrl().empty());
     gui_->setRockShareCallback([this](bool on) { setRockShare(on); });
+    // ...and the Feedback page, in the rail under the same condition: what
+    // Send does, and what the page says goes along
+    gui_->setFeedbackCallback([this](const std::string& text, const std::string& name) { sendFeedback(text, name); });
+    serviceFeedback();
     loadPlaceOverride();
     gui_->setLiveModeCallback([this](bool active) { applyLiveMode(active); });
     // The update strip: one click fetches, the next installs. Nothing
@@ -1119,6 +1123,7 @@ void Application::runWithGUI(HINSTANCE hInstance) {
         serviceRefineryShare();
         tendRockScans();
         serviceRockShare();
+        serviceFeedback();
 
         // Live mode
         if (liveModeActive_) {
@@ -2336,6 +2341,62 @@ void Application::serviceRockShare() {
         // no thread to be had: they go on the next round
         rockShareQueue_.insert(rockShareQueue_.begin(), rockShareSending_.begin(), rockShareSending_.end());
         rockShareSending_.clear();
+    }
+}
+
+// ---- a message from the Feedback page (Feedback.h) -----------------------
+
+// The game's version as a message carries it, and as the rock scans send
+// theirs: LIVE's, where the log is LIVE's; 0 otherwise
+int Application::feedbackGame() {
+    return library_.channel().rfind("LIVE", 0) == 0 ? library_.liveGameVersion() : 0;
+}
+
+// Send clicked: the message to the service, off the UI thread. One attempt;
+// the page gets the status it was answered with (serviceFeedback), and
+// keeps the message where it did not go.
+void Application::sendFeedback(const std::string& text, const std::string& name) {
+    if (!gui_) return;
+    if (feedbackJob_.valid()) return;   // (one at a time: the page sends none while one is on its way)
+    const std::string base = refineryServiceUrl();
+    if (base.empty()) {
+        gui_->feedbackAnswered(0);   // (no entry in the rail without the address)
+        return;
+    }
+    const std::string body =
+        Feedback::body(text, name, BEDROCK_VERSION, feedbackGame(), library_.channel(), Feedback::platform());
+    if (body.empty()) {
+        // (the page sends nothing that does not fit; were it to, this is
+        // what the service would say)
+        gui_->feedbackAnswered(413);
+        return;
+    }
+    std::vector<std::string> headers = installHeader();
+    headers.push_back("Content-Type: application/json");
+    try {
+        feedbackJob_ = std::async(std::launch::async, [url = base + "/v1/feedback", headers, body]() {
+            HttpAnswer answer;
+            httpsPost(url, headers, body, answer, 64 * 1024);
+            return answer.status;
+        });
+    } catch (const std::system_error&) {
+        gui_->feedbackAnswered(0);   // no thread to be had: it did not go
+    }
+}
+
+void Application::serviceFeedback() {
+    if (!gui_) return;
+    // what the page says goes along with a message, told when it changes:
+    // the log names the game's version some time after the start
+    const int game = feedbackGame();
+    const bool install = !installId_.empty();
+    if (game != feedbackGameTold_ || install != feedbackInstallTold_) {
+        feedbackGameTold_ = game;
+        feedbackInstallTold_ = install;
+        gui_->setFeedback(!refineryServiceUrl().empty(), game, install);
+    }
+    if (feedbackJob_.valid() && feedbackJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        gui_->feedbackAnswered(feedbackJob_.get());
     }
 }
 

@@ -1575,6 +1575,7 @@ SHORT GetKeyState(int vk) {
 SHORT GetAsyncKeyState(int vk) { return GetKeyState(vk); }
 UINT MapVirtualKeyW(UINT code, UINT) { return code; }
 UINT GetCaretBlinkTime() { return (UINT)std::max(1, QApplication::cursorFlashTime() / 2); }
+UINT GetDoubleClickTime() { return (UINT)std::max(1, QApplication::doubleClickInterval()); }
 
 UINT_PTR SetTimer(HWND hwnd, UINT_PTR id, UINT ms, void*) {
     if (!hwnd || !hwnd->alive()) return 0;
