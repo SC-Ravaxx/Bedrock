@@ -57,10 +57,11 @@ struct HttpAnswer {
     std::string why;     // what went wrong on the way, where something did
 };
 // One POST over https, by the same rules as httpsGet; `payload` goes as it
-// stands (headers say what it is), in pieces of 256 KiB, and `progress`,
-// where given, is told after each piece how much of it is out. True when an
-// answer came, whatever its status. It waits for the answer: never on the
-// UI thread.
+// stands (headers say what it is) - on Windows in pieces of 256 KiB, each
+// with a send timeout of its own - and `progress`, where given, is told on
+// the calling thread how much of it is out: after each piece, on Linux as
+// often as Qt reports. True when an answer came, whatever its status. It
+// waits for the answer: never on the UI thread.
 bool httpsPost(const std::string& url, const std::vector<std::string>& headers, const std::string& payload,
                HttpAnswer& answer, std::int64_t cap = 1024 * 1024,
                std::function<void(std::int64_t sent, std::int64_t total)> progress = nullptr);

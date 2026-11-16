@@ -1401,6 +1401,27 @@ int runSelfTest() {
                                "bytes for the same files; no entries make an empty zip of 22 bytes; a changed byte fails its "
                                "CRC; 65,535 entries are refused");
             if (!same || !ownSame) std::cout << "    unzip: " << why << std::endl;
+
+            // a text over its limit: whole lines of its end, within the limit
+            // also where the mask is longer than the name it hides
+            std::string longText;
+            for (int i = 0; longText.size() < D::WHOLE_MOST + D::WHOLE_MOST / 2; i++) {
+                longText += "line " + std::to_string(i) + ": D:\\Al\\Games\\" + std::string((size_t)(i % 29), 'x') + "\n";
+            }
+            put("session.txt", longText);
+            const D::Masks al{"C:\\Users\\Al", "Al"};
+            const std::vector<D::Entry> texts = D::pick(folder, al, 0);
+            bool cutWhole = !texts.empty() && texts[0].name == "session.txt";
+            if (cutWhole) {
+                const std::string& cut = texts[0].data;
+                const std::string all = D::masked(longText, al);
+                cutWhole = cut.size() <= D::WHOLE_MOST && cut.size() > D::WHOLE_MOST - 100 && all.size() > cut.size() &&
+                           all.compare(all.size() - cut.size(), cut.size(), cut) == 0 &&
+                           all[all.size() - cut.size() - 1] == '\n' && cut.find("\\Al\\") == std::string::npos &&
+                           cut.find("\\<user>\\") != std::string::npos;
+            }
+            allPassed &= check(cutWhole, "a text over its limit goes as whole lines of its end, within the limit also where "
+                                         "<user> is longer than the name it hides");
             fs::remove_all(folder, ec);
         }
 
