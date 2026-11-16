@@ -2620,6 +2620,21 @@ int panelGeneration() {
 }
 
 namespace {
+bool g_panelToneMapped = [] {
+    const char* set = DEV_ENV("BEDROCK_PANEL_HDR");
+    return set && std::atoi(set) != 0;
+}();
+}  // namespace
+
+void setPanelToneMapped(bool toneMapped) {
+    g_panelToneMapped = toneMapped;
+}
+
+bool panelToneMapped() {
+    return g_panelToneMapped;
+}
+
+namespace {
 bool readPanelByShapeInk(const cv::Mat& frame, const cv::Mat& bgr, int ink, ScanPanel& panel);
 }
 
@@ -2778,6 +2793,19 @@ double orangeBar(char glyph) {
 // for in its place: the long labels match it at 0.65 and better
 constexpr double GOLEM_LONG_NEAR = 0.55;
 
+// The ink the Golem's lettering is looked for in. An SDR capture has it
+// amber (6, see channelGrey). An HDR desktop's picture, tone mapped in the
+// app (ToneMap.h), has it orange - 172/108/49 over dark ground, snapshots of
+// 16 November 2026 - which amber sees at 13 of 255 and red over blue at 123:
+// there the column is looked for in red over blue (4), the orange pass's own
+// ink. In amber the column was found in none of those five snapshots. Not
+// seen yet off an HDR desktop: the lettering over red rock or in the
+// amber-lit cockpit, where red over blue serves an SDR capture badly (129
+// against 91, see channelGrey).
+int golemInk() {
+    return g_panelToneMapped ? 4 : 6;
+}
+
 LabelColumn findOrangeColumn(const cv::Mat& ink, const cv::Mat& bgr, int rows, bool everywhere) {
     LabelColumn& last = g_orangeLast;
     static int looksSinceWide = 1000;
@@ -2796,9 +2824,10 @@ LabelColumn findOrangeColumn(const cv::Mat& ink, const cv::Mat& bgr, int rows, b
         const cv::Rect near = cv::Rect(last.labels.x - (int)std::lround(160 * s), last.labels.y - (int)std::lround(110 * s),
                                        (int)std::lround(380 * s), (int)std::lround(300 * s)) & frame;
         if (near.width > 60 && near.height > 80) {
-            // the Golem's column in its own ink, amber
-            const bool golem = last.glyph == 'G' || last.glyph == 'H';
-            const cv::Mat nearInk = golem ? channelGrey(bgr(near), 6) : ink(near);
+            // the Golem's column in its own ink: amber, or on an HDR desktop
+            // the orange pass's
+            const bool amber = (last.glyph == 'G' || last.glyph == 'H') && golemInk() == 6;
+            const cv::Mat nearInk = amber ? channelGrey(bgr(near), 6) : ink(near);
             column = findLabelColumn(nearInk, {s}, nullptr, std::string(1, last.glyph));
             column.labels += near.tl();
             column.tracked = column.score >= TRACKED_MIN;
@@ -2846,7 +2875,7 @@ LabelColumn findOrangeColumn(const cv::Mat& ink, const cv::Mat& bgr, int rows, b
         cockpit.labels += where.tl();
         if (turret.score > column.score) column = turret;
         if (cockpit.score > column.score) column = cockpit;
-        // ...and the Golem's, in amber, at the sizes its HUD comes in
+        // ...and the Golem's, in its own ink, at the sizes its HUD comes in
         // ...six per cent apart, as the fine search reaches three either way:
         // at 1.5 and 1.7 a column at 1.63 falls between them
         // - for the picture's height as it is now: sizes made once would stay at
@@ -2854,11 +2883,13 @@ LabelColumn findOrangeColumn(const cv::Mat& ink, const cv::Mat& bgr, int rows, b
         // screen
         const std::vector<double> golemSizes{1.15 * r, 1.22 * r, 1.29 * r, 1.37 * r, 1.45 * r,
                                              1.54 * r, 1.63 * r, 1.73 * r, 1.83 * r};
-        StageClock* amberClock = new StageClock("  orange: amber image");
-        const cv::Mat amber = channelGrey(bgr(where), 6);
-        delete amberClock;
+        cv::Mat lettering = ink(where);
+        if (golemInk() == 6) {
+            StageClock amberClock("  orange: amber image");
+            lettering = channelGrey(bgr(where), 6);
+        }
         StageClock* gClock = new StageClock("  orange: G");
-        LabelColumn golem = findLabelColumn(amber, golemSizes, nullptr, "G");
+        LabelColumn golem = findLabelColumn(lettering, golemSizes, nullptr, "G");
         delete gClock;
         // ...and with the game's own labels written out, where the short
         // column was found: MASS: and the first letters of the other two are
@@ -2868,7 +2899,7 @@ LabelColumn findOrangeColumn(const cv::Mat& ink, const cv::Mat& bgr, int rows, b
         // on the screen.
         if (golem.score >= GOLEM_LONG_NEAR) {
             StageClock hClock("  orange: H near G");
-            LabelColumn longer = labelColumnNear(amber, golem, 'H');
+            LabelColumn longer = labelColumnNear(lettering, golem, 'H');
             longer.glyph = 'H';
             if (longer.score > golem.score) golem = longer;
         }
@@ -3202,8 +3233,8 @@ bool readPanelByShapeInk(const cv::Mat& frame, const cv::Mat& bgr, int ink, Scan
     g_panelSpot.labels = column.labels;
     g_panelSpot.scale = column.scale;
     g_panelSpot.glyph = column.glyph;
-    // the Golem's columns are found in amber
-    g_panelSpot.ink = column.glyph == 'G' || column.glyph == 'H' ? 6 : ink;
+    // the Golem's columns are found in an ink of their own (golemInk)
+    g_panelSpot.ink = column.glyph == 'G' || column.glyph == 'H' ? golemInk() : ink;
     // a column read under its bar is followed from here like one found over it
     if (ink == 4 && trial) g_orangeLast = column;
     panel.stats.mass = faceWhole(mass.text);
@@ -3366,7 +3397,10 @@ double glanceBar(const PanelSpot& spot) {
 
 double glanceAtPanelSpot(const PanelSpot& spot, const cv::Mat& window) {
     if (!spot.known || window.empty()) return -1;
-    const cv::Mat ink = channelGrey(asBgr(window), spot.ink);
+    // (the Golem's column in the ink it has in this picture, whichever the
+    // spot was kept with: a desktop can have changed between SDR and HDR)
+    const int in = spot.glyph == 'G' || spot.glyph == 'H' ? golemInk() : spot.ink;
+    const cv::Mat ink = channelGrey(asBgr(window), in);
     // one size, and the fine search's six per cent either way about it
     const LabelColumn column = findLabelColumnOf(ink, {spot.scale}, spot.glyph, nullptr);
     return column.score;

@@ -401,6 +401,13 @@ void throttlePanelSearch(bool throttled);
 void setPanelGeneration(int generation);
 int panelGeneration();
 
+// Whether the pictures come off an HDR desktop, tone mapped in the app
+// (ToneMap.h): the Golem's lettering has another colour there than in an SDR
+// capture, and is looked for in another ink. For the bench and the tools,
+// which are given such a picture as a file: BEDROCK_PANEL_HDR=1.
+void setPanelToneMapped(bool toneMapped);
+bool panelToneMapped();
+
 // For the tools: where the label column is - the labels' left edge and the
 // MASS label's top - at what size, and how well it matched.
 bool findPanelLabels(const cv::Mat& frame, cv::Point& labels, double& scale, double& score);

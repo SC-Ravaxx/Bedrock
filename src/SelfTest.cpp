@@ -6886,6 +6886,43 @@ int runSelfTest() {
                                                " %, " + std::to_string(c.instability) + ", " + std::to_string(c.scu) +
                                                ")");
                     }
+                    // The Golem on an HDR desktop: the picture comes tone
+                    // mapped, its lettering orange where an SDR capture has it
+                    // amber, and in amber the column is not found at all
+                    // (the app's own snapshot, 16 November 2026)
+                    const cv::Mat golemHdr = testPicture("scanpanel/panel_golem_hdr.png", L"SELFTEST_GOLEM_HDR");
+                    allPassed &= check(!golemHdr.empty(),
+                                       "the Golem's panel off an HDR desktop is beside the build or inside the exe");
+                    if (!golemHdr.empty()) {
+                        cv::Mat golemScreen(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+                        golemHdr.copyTo(golemScreen(cv::Rect(3160, 520, golemHdr.cols, golemHdr.rows)));
+                        const auto look = [&](bool toneMapped) {
+                            SCMiner::setPanelToneMapped(toneMapped);
+                            SCMiner::ScanPanel golem;
+                            for (int n = 0; n < 4 && !golem.found; n++) {
+                                golem = SCMiner::ScanPanel();
+                                SCMiner::readPanelByShape(golemScreen, golem);
+                            }
+                            SCMiner::setPanelToneMapped(false);
+                            return golem;
+                        };
+                        // (as an SDR picture first: once the column is known,
+                        // the little that amber sees of it is tried at its spot)
+                        const SCMiner::ScanPanel asSdr = look(false);
+                        allPassed &= check(!asSdr.found,
+                                           "...the Golem's off an HDR desktop, its lettering orange: nothing taken "
+                                           "for an SDR picture, where it is amber (got " +
+                                               std::to_string((int)asSdr.stats.mass) + ")");
+                        const SCMiner::ScanPanel golem = look(true);
+                        const SCMiner::RockStats& g = golem.stats;
+                        allPassed &= check(golem.found && (golem.labelGlyph == 'G' || golem.labelGlyph == 'H') &&
+                                               g.mass == 4097.0f && golem.figures[1].placed && g.resistance == 0.0f &&
+                                               golem.figures[2].placed && g.instability == 0.0f,
+                                           "...and told the picture is tone mapped: 4097, 0 % and 0.00 (got " +
+                                               std::string(1, golem.labelGlyph ? golem.labelGlyph : '-') + ", " +
+                                               std::to_string((int)g.mass) + ", '" + golem.figures[1].text + "', '" +
+                                               golem.figures[2].text + "')");
+                    }
                     // The MOLE's TURRET, over a sunlit red rock: its figures
                     // are the largest on the screen and no shapes are cut for
                     // that face, so nothing reads them glyph by glyph. The

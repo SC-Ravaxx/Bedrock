@@ -1633,7 +1633,9 @@ void Application::lookForRock() {
                     part.width = window.width;
                     part.height = window.height;
                     part.autoDetect = false;
-                    glance = glanceAtPanelSpot(spot, screenCapture_.captureRegion(part));
+                    const cv::Mat piece = screenCapture_.captureRegion(part);
+                    setPanelToneMapped(screenCapture_.lastSource() == ScreenCapture::Source::DxgiHdr);
+                    glance = glanceAtPanelSpot(spot, piece);
                     if (glance >= glanceBar(spot)) {
                         waitMs = 0;
                         glanceQuiet_ = 3;
@@ -1658,8 +1660,10 @@ void Application::lookForRock() {
     whole.autoDetect = false;
     const cv::Mat frame = screenCapture_.captureRegion(whole);
     if (frame.empty()) return;
-    // an HDR desktop comes tone mapped - see readLaserRange
+    // an HDR desktop comes tone mapped - see readLaserRange, and the Golem's
+    // lettering (setPanelToneMapped)
     const bool toneMapped = screenCapture_.lastSource() == ScreenCapture::Source::DxgiHdr;
+    setPanelToneMapped(toneMapped);
     // Which game draws the panel, by the live log's header (41002 is 4.10.2,
     // 50000 5.0.0, 0 not read yet: the 4.10 readers)
     {
