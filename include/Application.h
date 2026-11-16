@@ -492,21 +492,26 @@ private:
     static constexpr int UEX_RETRY_MINUTES = 10;
     // The shops that sell the mining gear (WhereToBuy.h): UEX's items_prices
     // of category 28 (gadgets), 29 (laser heads) and 30 (modules), kept in
-    // uex\ and fetched again once half a day old - asked for only while the
-    // GUI wants them (gearListsWanted). One that cannot be fetched leaves
-    // the one kept in place, however old.
+    // uex\ and fetched again once half a day old. Asked for from the start,
+    // so the Gear page has them when it opens: first the lists kept from
+    // before, however old, without asking UEX - then whichever of them is
+    // half a day old is fetched. One that cannot be fetched leaves the one
+    // kept in place, however old.
 public:
     struct UexShopsOutcome {
         std::shared_ptr<const UexShops> shops;   // null where there is nothing to show
         std::string note;                        // why not, or why not fresh; "" when all went well
+        bool keptOnly = false;                   // only the lists kept, without asking UEX
     };
-    // (static, and of the folder given: the self-test reads one it has kept)
-    static UexShopsOutcome loadUexShops(const std::filesystem::path& folder);
+    // (static, and of the folder given: the self-test reads one it has kept).
+    // keptOnly: the lists kept, whatever their age, and nothing asked of UEX
+    static UexShopsOutcome loadUexShops(const std::filesystem::path& folder, bool keptOnly = false);
 private:
     void serviceUexShops();
     std::future<UexShopsOutcome> uexShopsJob_;
     std::shared_ptr<const UexShops> uexShops_;
     std::string uexShopsNote_;
+    bool uexShopsKeptRead_ = false;   // the lists kept from before have been read in
     bool uexShopsTried_ = false;
     std::chrono::steady_clock::time_point uexShopsTriedAt_{};
     static constexpr int UEX_SHOPS_HOURS = 12;

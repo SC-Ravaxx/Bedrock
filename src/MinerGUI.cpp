@@ -4218,10 +4218,9 @@ void MinerGUI::railPick(RailItem item, const std::string& id) {
 }
 
 void MinerGUI::toScanPage() {
-    // the Gear page goes, and its lists are no longer asked for
+    // the Gear page goes
     if (gearPage_) {
         gearPage_ = false;
-        gearListsWanted_ = false;
         if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
     }
     if (!pluginPage_) return;
@@ -6231,7 +6230,6 @@ void MinerGUI::showGearPage() {
         gearOpen_.clear();
     }
     gearPage_ = true;
-    gearListsWanted_ = true;   // UEX is asked for the lists while the page is up
     if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
@@ -28449,7 +28447,6 @@ void MinerGUI::showPluginPage(const std::string& id) {
     if (!(pluginPage_ && pluginShown_ == id)) pluginScroll_ = 0;
     pluginPage_ = true;
     gearPage_ = false;   // (one page at a time)
-    gearListsWanted_ = false;
     pluginShown_ = id;
     // the server's list, once per start, as the window of their own has it
     if (!pluginsAsked_ && pluginAction_) {

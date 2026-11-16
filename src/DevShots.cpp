@@ -1945,10 +1945,9 @@ int runScreenshots(const std::string& dir) {
             const SCMiner::MiningModule* focusThree = SCMiner::moduleById("passive_focus_mk3");
             const int fltrXl = (int)(SCMiner::moduleById("passive_fltr_mk3") - SCMiner::MINING_MODULES);
             const int boreMax = (int)(SCMiner::gadgetById("thcn_boremax") - SCMiner::MINING_GADGETS);
-            // the lists not there yet - and UEX asked for them, the page being up
+            // the lists not there yet
             gui.railPickForShot(Rail::Gear);
             pump();
-            std::cout << "  the Gear page wants UEX's lists: " << (gui.gearListsWanted() ? "yes" : "NO") << std::endl;
             shoot(gui.windowHandle(), "gear_loading.png");
             // ...not to be had, and none kept
             gui.setGearShops(nullptr, "Server responded 503");

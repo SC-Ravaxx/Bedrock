@@ -130,12 +130,10 @@ public:
     // The ore the Ore Finder's UEX tab shows the marketplace for; "" while it shows none
     std::string uexMarketWanted() const;
     // The shops that sell the mining gear - laser heads, modules, gadgets -
-    // as UEX lists them (WhereToBuy.h). Whether the lists are wanted: UEX is
-    // only asked for them while the Gear page is up.
-    bool gearListsWanted() const { return gearListsWanted_; }
-    // ...the lists that came - null while none has - and what went wrong the
-    // last time they were asked for ("" when nothing did); the Gear page
-    // drawn anew with them
+    // as UEX lists them (WhereToBuy.h), asked for from the start: the lists
+    // that came - null while none has - and what went wrong the last time
+    // they were asked for ("" when nothing did); the Gear page drawn anew
+    // with them
     void setGearShops(std::shared_ptr<const UexShops> shops, const std::string& note) {
         gearShops_ = std::move(shops);
         gearShopsNote_ = note;
@@ -419,10 +417,8 @@ public:
     std::wstring nameEntryForShot() const { return nameEntry_; }
     void stopRenameForShot() { endNameEditing(false); }   // ...and let go, the name as it was
     void showLoadoutForShot(bool open) { showLoadout(open); }
-    // The gear's shop lists wanted, as a page showing them wants them
-    // (gearListsWanted) - and what the GUI holds of them and of the player's
-    // place, as such a page would read it
-    void wantGearListsForShot(bool wanted) { gearListsWanted_ = wanted; }
+    // What the GUI holds of the gear's shop lists and of the player's place,
+    // as the Gear page would read it
     std::shared_ptr<const UexShops> gearShopsForShot() const { return gearShops_; }
     std::string whereAtForShot() const { return whereSystem_ + " - " + wherePlace_; }
     // The Gear page for a picture: its list (0 laser heads, 1 modules, 2
@@ -1591,9 +1587,8 @@ private:
     };
     std::map<std::string, MarketEntry> uexMarket_;   // by ore
     std::shared_ptr<const UexThreads> uexThreads_;
-    // The gear's shops (gearListsWanted, setGearShops) and where the player
-    // is, to list them nearest first (setWhereAt)
-    bool gearListsWanted_ = false;
+    // The gear's shops (setGearShops) and where the player is, to list them
+    // nearest first (setWhereAt)
     std::shared_ptr<const UexShops> gearShops_;
     std::string gearShopsNote_;
     std::string wherePlace_, whereSystem_;

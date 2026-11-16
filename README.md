@@ -78,8 +78,8 @@ process or inject anything. The `[BP]` option and the component names write a
 language file into the game folder, the way language packs do.
 
 Network: an update check, the plugin list and the plugins you install
-(official builds only), UEX's public price lists while the Ore Finder or the
-Gear page is open,
+(official builds only), UEX's public price lists (ore prices while the Ore
+Finder is open, gear prices from the start, at most every 12 hours),
 refinery workloads to and from Bedrock's server and the rocks you scan to it
 (official builds only; untick "Share refinery workloads" in the Refinery
 window or "Share rock scans" in Settings to stop sending - what is sent is

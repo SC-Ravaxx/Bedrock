@@ -2478,12 +2478,36 @@ int runSelfTest() {
                 keep(30, answer({{"Rieger-C3 Module", 57000, "Refinery Shop - Levski", "Nyx", nullptr, "Delamar",
                                   nullptr, "Levski", nullptr, 1}}));
             // (only once all three are there: a list missing would be asked for)
-            SCMiner::Application::UexShopsOutcome fromKept, refusedOne;
+            SCMiner::Application::UexShopsOutcome fromKept, refusedOne, oldKept, noneKept;
             if (kept) fromKept = SCMiner::Application::loadUexShops(folder);
+            // ...the same three a day old: read as they are at the start,
+            // without asking UEX - and one of them gone, nothing
+            if (kept) {
+                const auto dayOld = fs::file_time_type::clock::now() - std::chrono::hours(25);
+                for (const int category : {28, 29, 30}) {
+                    fs::last_write_time(folder / ("items_prices_" + std::to_string(category) + ".json"), dayOld, ec);
+                }
+                oldKept = SCMiner::Application::loadUexShops(folder, true);
+                const fs::path heads = folder / "items_prices_29.json";
+                fs::rename(heads, folder / "away.json", ec);
+                noneKept = SCMiner::Application::loadUexShops(folder, true);
+                fs::rename(folder / "away.json", heads, ec);
+                // (young again: the refusal below must not send for the others)
+                for (const int category : {28, 29, 30}) {
+                    fs::last_write_time(folder / ("items_prices_" + std::to_string(category) + ".json"),
+                                        fs::file_time_type::clock::now(), ec);
+                }
+            }
             if (kept && keep(29, "{\"status\":\"error\",\"message\":\"x\"}")) {
                 refusedOne = SCMiner::Application::loadUexShops(folder);
             }
             fs::remove_all(folder, ec);
+            allPassed &= check(oldKept.keptOnly && oldKept.shops && oldKept.shops->itemCount() == 3 &&
+                                   oldKept.note.empty() && noneKept.keptOnly && !noneKept.shops,
+                               "at the start the shop lists kept from before are read whatever their age, without "
+                               "asking UEX, and one of them missing leaves none (" +
+                                   (oldKept.shops ? std::to_string(oldKept.shops->itemCount()) + " items" : "none: " + oldKept.note) +
+                                   ")");
             const auto gadget = fromKept.shops ? SCMiner::nearestFirst(fromKept.shops->offersFor("OptiMax"), "Stanton", "HUR-L1")
                                            : std::vector<ShopInOrder>();
             allPassed &= check(kept && fromKept.shops && fromKept.note.empty() && fromKept.shops->itemCount() == 3 &&

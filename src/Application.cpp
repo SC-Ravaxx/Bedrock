@@ -5678,20 +5678,23 @@ void Application::serviceUexMarket() {
 // megabyte), each the one kept in uex\ while it is younger than half a day.
 // A list that cannot be fetched is the one kept, however old; with one of
 // them neither, nothing and why - a shop list short of a category would
-// say its items are sold nowhere.
-Application::UexShopsOutcome Application::loadUexShops(const std::filesystem::path& folder) {
+// say its items are sold nowhere. keptOnly: the three kept, whatever their
+// age, and UEX not asked - nothing where one of them is missing.
+Application::UexShopsOutcome Application::loadUexShops(const std::filesystem::path& folder, bool keptOnly) {
     UexShopsOutcome out;
+    out.keptOnly = keptOnly;
     std::error_code ec;
     std::filesystem::create_directories(folder, ec);
     auto shops = std::make_shared<UexShops>();
     for (const int category : {28, 29, 30}) {
         const std::string number = std::to_string(category);
         const std::string endpoint = "items_prices?id_category=" + number;
+        const std::filesystem::path file = folder / ("items_prices_" + number + ".json");
         std::string why;
-        const std::string list = uexListCached(folder / ("items_prices_" + number + ".json"), endpoint.c_str(),
-                                               UEX_SHOPS_HOURS * 3600ll, why);
+        const std::string list =
+            keptOnly ? wholeFile(file) : uexListCached(file, endpoint.c_str(), UEX_SHOPS_HOURS * 3600ll, why);
         if (list.empty()) {
-            out.note = why.empty() ? "UEX sent nothing" : why;
+            out.note = keptOnly ? "none kept" : why.empty() ? "UEX sent nothing" : why;
             return out;
         }
         if (!shops->read(list, why)) {
@@ -5704,21 +5707,40 @@ Application::UexShopsOutcome Application::loadUexShops(const std::filesystem::pa
     return out;
 }
 
-// Collects the shops that have come, and asks while the GUI wants them
-// (gearListsWanted): at once the first time, again once what came is half
-// a day old - and after a failure every UEX_RETRY_MINUTES
+// Collects the shops that have come, and asks for them from the start - not
+// first when the Gear page opens, which then waited on UEX. First the
+// lists kept from before, whatever their age and without asking UEX, so
+// the page has them at once; then each list as uexListCached has it,
+// fetched where it is half a day old; again once what came is half a day
+// old - and after a failure every UEX_RETRY_MINUTES
 void Application::serviceUexShops() {
     if (!gui_) return;
     if (uexShopsJob_.valid() && uexShopsJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
         UexShopsOutcome done = uexShopsJob_.get();
-        if (done.shops) uexShops_ = done.shops;
-        uexShopsNote_ = done.note;
-        std::cout << "\nUEX shops: "
-                  << (uexShops_ ? std::to_string(uexShops_->itemCount()) + " items" : std::string("none"))
-                  << (uexShopsNote_.empty() ? "" : " - " + uexShopsNote_) << std::endl;
-        gui_->setGearShops(uexShops_, uexShopsNote_);
+        if (done.keptOnly) {
+            // what there was before: shown while the fresh ones are fetched,
+            // and nothing said where none was kept
+            uexShopsKeptRead_ = true;
+            if (done.shops) {
+                uexShops_ = done.shops;
+                std::cout << "\nUEX shops: " << uexShops_->itemCount() << " items kept from before" << std::endl;
+                gui_->setGearShops(uexShops_, "");
+            }
+        } else {
+            if (done.shops) uexShops_ = done.shops;
+            uexShopsNote_ = done.note;
+            std::cout << "\nUEX shops: "
+                      << (uexShops_ ? std::to_string(uexShops_->itemCount()) + " items" : std::string("none"))
+                      << (uexShopsNote_.empty() ? "" : " - " + uexShopsNote_) << std::endl;
+            gui_->setGearShops(uexShops_, uexShopsNote_);
+        }
     }
-    if (!uexWanted_ || uexShopsJob_.valid() || !gui_->gearListsWanted()) return;
+    if (!uexWanted_ || uexShopsJob_.valid()) return;
+    const std::filesystem::path folder = AppPaths::data() / "uex";
+    if (!uexShopsKeptRead_) {
+        uexShopsJob_ = std::async(std::launch::async, [folder]() { return loadUexShops(folder, true); });
+        return;
+    }
     const auto now = std::chrono::steady_clock::now();
     if (uexShopsTried_) {
         const bool fresh = uexShops_ && uexShopsNote_.empty();
@@ -5729,7 +5751,6 @@ void Application::serviceUexShops() {
     }
     uexShopsTried_ = true;
     uexShopsTriedAt_ = now;
-    const std::filesystem::path folder = AppPaths::data() / "uex";
     uexShopsJob_ = std::async(std::launch::async, [folder]() { return loadUexShops(folder); });
 }
 

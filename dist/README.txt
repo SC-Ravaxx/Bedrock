@@ -462,9 +462,9 @@ Five network requests of its own, and three more only if you switch them on:
   an update itself is only downloaded when you click it.
 - Prices from UEX: while the Ore Finder is open, Bedrock downloads the ore
   price list from uexcorp.space (at most every 30 minutes) and UEX's list of
-  terminals (once a week). While the Gear page is open, it downloads UEX's
-  prices of the laser heads, modules and gadgets (at most every 12 hours).
-  The UEX market tab loads the player listings for
+  terminals (once a week). For the Gear page, from the start, it downloads
+  UEX's prices of the laser heads, modules and gadgets (at most every 12
+  hours). The UEX market tab loads the player listings for
   the selected ore, and the rock view checks them when a rock contains ore of
   quality 900 or higher (each ore at most every 10 minutes). These requests
   include Bedrock's version, the platform and Bedrock's UEX app token, which
