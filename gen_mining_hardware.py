@@ -26,6 +26,8 @@ tables do. Five places carry it:
         ...and in the block for fireActionIndex 1, the drawing-in beam:
         what the HUD calls Extraction Rate
       ItemMiningModifierParams/MiningLaserModifier              the rest
+      EntityComponentAttachableModifierParams @charges, @lifetime
+        an active one's uses and how long each runs
 
   entities/scitem/weapons/devices/mining_gadget_*.xml         the gadgets
       ItemMineableRockModifierParams/MiningLaserModifier
@@ -115,6 +117,22 @@ def blurb(description):
     if not prose:
         return ""
     return " ".join(re.split(r"Manufacturer Warning", prose[0])[0].split())
+
+
+def described(text):
+    """A laser's or a module's description, for its blurb: the one its
+    Description key names - or, where that key is the item's name again
+    (Clearcut, Deluge, Overrun), the one behind its ShortName key."""
+    for m in re.finditer(r"<Localization\b([^>]*)>", text):
+        block = m.group(1)
+        name = localised(attr(block, "Name"))
+        if name and not name.startswith("@"):
+            for key in ("Description", "ShortName"):
+                desc = localised(attr(block, key))
+                if not desc.startswith("@") and blurb(desc):
+                    return desc
+            return ""
+    return ""
 
 
 def modifiers(text, start_tag, wanted):
@@ -326,6 +344,7 @@ def lasers():
             "filter": mods["filter"],
             "slots": slots,
             "throttleMin": float(attr(s, "throttleMinimum", "0")),
+            "blurb": blurb(described(s)),
         })
     return found
 
@@ -381,10 +400,19 @@ def modules():
         firing = fire.group(1) if fire else ""
         name, _ = localisation(s)
         short = stem.replace("mining_modules_", "")
+        active = stem.startswith("mining_modules_active")
+        # An active one's uses and how long each runs: the charges on the
+        # component that fires it, the lifetime on its modifiers - Surge 7
+        # and 15 s, as its description says. A passive one carries a single
+        # charge and no lifetime; both stay 0 for it.
+        lifetime = re.search(r'\blifetime="([\d.]+)"', s)
         found.append({
             "id": short,
             "name": name or presentable(short),
-            "active": stem.startswith("mining_modules_active"),
+            "active": active,
+            "uses": int(attr(firing, "charges", "0")) if active else 0,
+            "seconds": int(round(float(lifetime.group(1)))) if active and lifetime else 0,
+            "blurb": blurb(described(s)),
             "interrupts": attr(firing, "canInterrupt", "0") == "1",
             "interruptible": attr(firing, "isInterruptible", "0") == "1",
             "power": power,
@@ -519,6 +547,7 @@ with io.open(out_path, "w", encoding="utf-8", newline="\n") as f:
     w("    float filter;        // per cent less inert material drawn in\n")
     w("    int8_t slots;        // module slots it takes\n")
     w("    float throttleMin;\n")
+    w("    const char* blurb;   // what the game says it is for\n")
     w("};\n\n")
 
     w("struct MiningModule {\n")
@@ -541,6 +570,9 @@ with io.open(out_path, "w", encoding="utf-8", newline="\n") as f:
     w("    float shatter;       // per cent on shatter damage\n")
     w("    float danger;        // per cent on how fast the danger band fills\n")
     w("    float extraction;    // per cent on the drawing-in beam's power - the HUD's Extraction Rate\n")
+    w("    int8_t uses;         // an active one's uses; 0 for the passive ones\n")
+    w("    int16_t seconds;     // ...and how long each runs\n")
+    w("    const char* blurb;   // what the game says it is for\n")
     w("};\n\n")
 
     w("struct MiningGadget {\n")
@@ -588,10 +620,10 @@ with io.open(out_path, "w", encoding="utf-8", newline="\n") as f:
     w("inline const MiningLaser MINING_LASERS[] = {\n")
     for l in sorted(LASERS, key=lambda x: (x["size"], -x["fracture"])):
         w('    {"%s", "%s", %d, %.1ff, %.1ff, %.1ff, %.1ff, %.1ff, %.1ff, %.1ff, '
-          '%.1ff, %.1ff, %d, %.3ff},\n'
+          '%.1ff, %.1ff, %d, %.3ff,\n     "%s"},\n'
           % (l["id"], quoted(l["name"]), l["size"], l["fracture"], l["extraction"],
              l["full"], l["zero"], l["window"], l["rate"], l["resistance"],
-             l["instability"], l["filter"], l["slots"], l["throttleMin"]))
+             l["instability"], l["filter"], l["slots"], l["throttleMin"], quoted(l["blurb"])))
     w("};\n\n")
 
     w("// On the ship: these change the laser.\n")
@@ -602,11 +634,13 @@ with io.open(out_path, "w", encoding="utf-8", newline="\n") as f:
     w("// modules a ship can fit.\n")
     w("inline const MiningModule MINING_MODULES[] = {\n")
     for m in sorted(MODULES, key=lambda x: (x["active"], -x["power"])):
-        w('    {"%s", "%s", %s, %s, %s, %.3ff, %.1ff, %.1ff, %.1ff, %.1ff, %.1ff, %.1ff, %.1ff, %.1ff},\n'
+        w('    {"%s", "%s", %s, %s, %s, %.3ff, %.1ff, %.1ff, %.1ff, %.1ff, %.1ff, %.1ff, %.1ff, %.1ff, %d, %d,\n'
+          '     "%s"},\n'
           % (m["id"], quoted(m["name"]), "true" if m["active"] else "false",
              "true" if m["interrupts"] else "false", "true" if m["interruptible"] else "false",
              m["power"], m["window"], m["rate"], m["resistance"],
-             m["instability"], m["filter"], m["shatter"], m["danger"], m["extraction"]))
+             m["instability"], m["filter"], m["shatter"], m["danger"], m["extraction"],
+             m["uses"], m["seconds"], quoted(m["blurb"])))
     w("};\n\n")
 
     w("// On the rock: these change what is in front of you\n")

@@ -37,6 +37,7 @@ struct MiningLaser {
     float filter;        // per cent less inert material drawn in
     int8_t slots;        // module slots it takes
     float throttleMin;
+    const char* blurb;   // what the game says it is for
 };
 
 struct MiningModule {
@@ -59,6 +60,9 @@ struct MiningModule {
     float shatter;       // per cent on shatter damage
     float danger;        // per cent on how fast the danger band fills
     float extraction;    // per cent on the drawing-in beam's power - the HUD's Extraction Rate
+    int8_t uses;         // an active one's uses; 0 for the passive ones
+    int16_t seconds;     // ...and how long each runs
+    const char* blurb;   // what the game says it is for
 };
 
 struct MiningGadget {
@@ -105,19 +109,32 @@ struct OreBands {
 };
 
 inline const MiningLaser MINING_LASERS[] = {
-    {"drak_golem_s1", "Pitman Mining Laser", 1, 3900.0f, 1295.0f, 40.0f, 45.0f, 40.0f, -40.0f, 25.0f, 35.0f, 40.0f, 2, 0.200f},
-    {"thcn_helix_s1", "Helix I Mining Laser", 1, 3900.0f, 1850.0f, 15.0f, 45.0f, -40.0f, 0.0f, -30.0f, 0.0f, 30.0f, 2, 0.200f},
-    {"grin_lancet_s1", "Lancet MH1 Mining Laser", 1, 3120.0f, 1850.0f, 30.0f, 90.0f, -60.0f, 40.0f, 0.0f, -10.0f, 30.0f, 1, 0.200f},
-    {"shin_klein_s1", "Klein-S1 Mining Laser", 1, 3120.0f, 2220.0f, 45.0f, 135.0f, 20.0f, 0.0f, -45.0f, 35.0f, 30.0f, 0, 0.150f},
-    {"shin_hofstede_s1", "Hofstede-S1 Mining Laser", 1, 2600.0f, 1295.0f, 45.0f, 135.0f, 60.0f, 20.0f, -30.0f, 10.0f, 30.0f, 1, 0.050f},
-    {"thcn_impact_s1", "Impact I Mining Laser", 1, 2600.0f, 2775.0f, 45.0f, 135.0f, 20.0f, -40.0f, 10.0f, -10.0f, 30.0f, 2, 0.200f},
-    {"grin_arbor_s1", "Arbor MH1 Mining Laser", 1, 2340.0f, 1850.0f, 60.0f, 180.0f, 40.0f, 0.0f, 25.0f, -35.0f, 30.0f, 1, 0.050f},
-    {"thcn_helix_s2", "Helix II Mining Laser", 2, 4930.0f, 2590.0f, 30.0f, 90.0f, -40.0f, 0.0f, -30.0f, 0.0f, 40.0f, 3, 0.300f},
-    {"grin_lancet_s2", "Lancet MH2 Mining Laser", 2, 4350.0f, 2590.0f, 45.0f, 135.0f, -60.0f, 40.0f, 0.0f, -10.0f, 40.0f, 2, 0.300f},
-    {"shin_klein_s2", "Klein-S2 Mining Laser", 2, 4350.0f, 2775.0f, 60.0f, 180.0f, 20.0f, 0.0f, -45.0f, 35.0f, 40.0f, 1, 0.200f},
-    {"shin_hofstede_s2", "Hofstede-S2 Mining Laser", 2, 4060.0f, 1295.0f, 60.0f, 180.0f, 60.0f, 20.0f, -30.0f, 10.0f, 40.0f, 2, 0.100f},
-    {"thcn_impact_s2", "Impact II Mining Laser", 2, 4060.0f, 3145.0f, 60.0f, 180.0f, 20.0f, -40.0f, 10.0f, -10.0f, 40.0f, 3, 0.300f},
-    {"grin_arbor_s2", "Arbor MH2 Mining Laser", 2, 2900.0f, 2590.0f, 90.0f, 270.0f, 40.0f, 0.0f, 25.0f, -35.0f, 40.0f, 2, 0.050f},
+    {"drak_golem_s1", "Pitman Mining Laser", 1, 3900.0f, 1295.0f, 40.0f, 45.0f, 40.0f, -40.0f, 25.0f, 35.0f, 40.0f, 2, 0.200f,
+     "Bespoke to the Drake Golem, this mining laser was designed for those beginning a career in mining. It's been carefully calibrated to ensure an easy operator experience and reduce the likelihood of catastrophic accidents."},
+    {"thcn_helix_s1", "Helix I Mining Laser", 1, 3900.0f, 1850.0f, 15.0f, 45.0f, -40.0f, 0.0f, -30.0f, 0.0f, 30.0f, 2, 0.200f,
+     "To some, the effective use of the Helix I has become a sign of a true mining professional. Thermyte Concern gave the laser impressive power that can bypass a deposit's resistance but also requires precision handling to hit the optimal charge window. Best deployed at close range, Helix I features two module slots so miners can tailor the laser to their liking."},
+    {"grin_lancet_s1", "Lancet MH1 Mining Laser", 1, 3120.0f, 1850.0f, 30.0f, 90.0f, -60.0f, 40.0f, 0.0f, -10.0f, 30.0f, 1, 0.200f,
+     "Greycat classifies the Lancet MH1 as a support laser best utilized when mining with others. While the mining laser's small optimal charge window size means precision is key, the Lancet MH1 excels at reducing the amount of inert materials collected by the extraction laser. For mining crews, it's an ideal support laser to use alongside other lasers."},
+    {"shin_klein_s1", "Klein-S1 Mining Laser", 1, 3120.0f, 2220.0f, 45.0f, 135.0f, 20.0f, 0.0f, -45.0f, 35.0f, 30.0f, 0, 0.150f,
+     "Shubin designed the Klein-S1 to generate a powerful laser that makes mining faster. This power incurs additional risk by boosting a laser's instability, but if used correctly, the Klein-S1 can quickly reap rewards for the careful miner."},
+    {"shin_hofstede_s1", "Hofstede-S1 Mining Laser", 1, 2600.0f, 1295.0f, 45.0f, 135.0f, 60.0f, 20.0f, -30.0f, 10.0f, 30.0f, 1, 0.050f,
+     "The Hofstede-S1 was designed with a patented crystal lattice structure that dampens a deposit's natural resistance while mining and gathers less inert materials when extracting. Most effective at short and medium range, an accompanying increase in instability means the laser should be managed carefully."},
+    {"thcn_impact_s1", "Impact I Mining Laser", 1, 2600.0f, 2775.0f, 45.0f, 135.0f, 20.0f, -40.0f, 10.0f, -10.0f, 30.0f, 2, 0.200f,
+     "The Impact I excels in a variety of mining situations. Special focus lenses make it easier to work a deposit by stabilizing the laser and increasing the optimal charge window. There are drawbacks, including increased deposit resistance and a slower filling optimal charge window, but Thermyte Concern also provided two module slots to allow miners to better customize the laser to the task at hand."},
+    {"grin_arbor_s1", "Arbor MH1 Mining Laser", 1, 2340.0f, 1850.0f, 60.0f, 180.0f, 40.0f, 0.0f, 25.0f, -35.0f, 30.0f, 1, 0.050f,
+     "The Arbor MH1 became the universe's most heralded mining laser thanks to Greycat Industrial's exacting standards and business prowess. The laser found favor among industrial and solo operations for balancing speed and safety while also featuring a special filtration system that reduces the amount of inert material collected. Greycat capitalized on this reputation by securing exclusive contracts that made the Arbor MH1 the standard laser head on most mining ships."},
+    {"thcn_helix_s2", "Helix II Mining Laser", 2, 4930.0f, 2590.0f, 30.0f, 90.0f, -40.0f, 0.0f, -30.0f, 0.0f, 40.0f, 3, 0.300f,
+     "To some, the effective use of the Helix II has become a sign of a true mining professional. Thermyte Concern gave the laser impressive power that can bypass a deposit's resistance but also requires precision handling to hit the optimal charge window. Best deployed at close range, Helix II features three module slots so miners can tailor the laser to their liking."},
+    {"grin_lancet_s2", "Lancet MH2 Mining Laser", 2, 4350.0f, 2590.0f, 45.0f, 135.0f, -60.0f, 40.0f, 0.0f, -10.0f, 40.0f, 2, 0.300f,
+     "Greycat classifies the Lancet MH2 as a support laser best utilized when mining with others. While the mining laser's small optimal charge window size means precision is key, the Lancet MH2 excels at filling it once found and reducing the amount of inert materials collected by the extraction laser. For mining crews, it's an ideal support laser to use alongside other lasers."},
+    {"shin_klein_s2", "Klein-S2 Mining Laser", 2, 4350.0f, 2775.0f, 60.0f, 180.0f, 20.0f, 0.0f, -45.0f, 35.0f, 40.0f, 1, 0.200f,
+     "Shubin designed the Klein-S2 to generate a powerful laser that makes mining faster. This power incurs additional risk by boosting a laser's instability, but if used correctly, the Klein-S2 can quickly reap rewards for the careful miner."},
+    {"shin_hofstede_s2", "Hofstede-S2 Mining Laser", 2, 4060.0f, 1295.0f, 60.0f, 180.0f, 60.0f, 20.0f, -30.0f, 10.0f, 40.0f, 2, 0.100f,
+     "The Hofstede-S2 was designed with a patented crystal lattice structure that dampens a deposit's natural resistance while mining and gathers less inert materials when extracting. Most effective at short and medium range, an accompanying increase in instability means the laser should be managed carefully."},
+    {"thcn_impact_s2", "Impact II Mining Laser", 2, 4060.0f, 3145.0f, 60.0f, 180.0f, 20.0f, -40.0f, 10.0f, -10.0f, 40.0f, 3, 0.300f,
+     "The Impact II excels in a variety of mining situations. Special focus lenses make it easier to work a deposit by stabilizing the laser and increasing the optimal charge window. There are drawbacks, including increased deposit resistance and a slower filling optimal charge window, but Thermyte Concern also provided three module slots to allow miners to better customize the laser to the task at hand."},
+    {"grin_arbor_s2", "Arbor MH2 Mining Laser", 2, 2900.0f, 2590.0f, 90.0f, 270.0f, 40.0f, 0.0f, 25.0f, -35.0f, 40.0f, 2, 0.050f,
+     "The Arbor MH2 is the size two version of Greycat's heralded Arbor mining laser series. Like the smaller variant, the Arbor MH2's solid, reliable design found favor among industrial and solo operations for balancing speed and safety while also featuring a special filtration system that reduces the amount of inert material collected."},
 };
 
 // On the ship: these change the laser.
@@ -127,35 +144,64 @@ inline const MiningLaser MINING_LASERS[] = {
 // are what a ROC and an ATLS GEO have built into their own arm, not
 // modules a ship can fit.
 inline const MiningModule MINING_MODULES[] = {
-    {"passive_rieger_mk3", "Rieger-C3 Module", false, false, false, 1.250f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-    {"passive_rieger_mk2", "Rieger-C2 Module", false, false, false, 1.200f, -3.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-    {"passive_deluge", "Deluge Module", false, false, false, 1.150f, 0.0f, 0.0f, -15.5f, 0.0f, 0.0f, 0.0f, 0.0f, -15.0f},
-    {"passive_rieger_mk1", "Rieger Module", false, false, false, 1.150f, -10.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-    {"passive_overrun", "Overrun Module", false, false, false, 1.020f, 0.0f, 0.0f, -24.8f, 0.0f, 0.0f, 0.0f, 0.0f, -15.0f},
-    {"passive_fltr_mk1", "FLTR Module", false, false, false, 1.000f, 0.0f, 0.0f, 0.0f, 0.0f, 20.0f, 0.0f, 0.0f, -15.0f},
-    {"passive_fltr_mk2", "FLTR-L Module", false, false, false, 1.000f, 0.0f, 0.0f, 0.0f, 0.0f, 23.0f, 0.0f, 0.0f, -10.0f},
-    {"passive_fltr_mk3", "FLTR-XL Module", false, false, false, 1.000f, 0.0f, 0.0f, 0.0f, 0.0f, 24.0f, 0.0f, 0.0f, -5.0f},
-    {"passive_torrent_mk1", "Torrent Module", false, false, false, 1.000f, -10.0f, 30.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-    {"passive_torrent_mk2", "Torrent II Module", false, false, false, 1.000f, -3.0f, 35.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-    {"passive_torrent_mk3", "Torrent III Module", false, false, false, 1.000f, -1.0f, 45.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-    {"passive_vaux_mk1", "Vaux Module", false, false, false, 1.000f, 0.0f, -20.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 15.0f},
-    {"passive_vaux_mk2", "Vaux-C2 Module", false, false, false, 1.000f, 0.0f, -15.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 20.0f},
-    {"passive_vaux_mk3", "Vaux-C3 Module", false, false, false, 1.000f, 0.0f, -5.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 25.0f},
-    {"passive_xtr_mk1", "XTR Module", false, false, false, 1.000f, 15.0f, 0.0f, 0.0f, 0.0f, 5.0f, 0.0f, 0.0f, -15.0f},
-    {"passive_xtr_mk2", "XTR-L Module", false, false, false, 1.000f, 22.0f, 0.0f, 0.0f, 0.0f, 5.8f, 0.0f, 0.0f, -10.0f},
-    {"passive_xtr_mk3", "XTR-XL Module", false, false, false, 1.000f, 25.0f, 0.0f, 0.0f, 0.0f, 6.0f, 0.0f, 0.0f, -5.0f},
-    {"passive_focus_mk3", "Focus III Module", false, false, false, 0.950f, 40.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-    {"passive_focus_mk2", "Focus II Module", false, false, false, 0.900f, 37.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-    {"passive_focus_mk1", "Focus Module", false, false, false, 0.850f, 30.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-    {"active_surge", "Surge Module", true, false, false, 1.500f, 0.0f, 0.0f, -15.5f, 10.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-    {"active_brandt", "Brandt Module", true, true, true, 1.350f, 0.0f, 0.0f, 15.5f, 0.0f, 0.0f, -30.0f, 0.0f, 0.0f},
-    {"active_stampede", "Stampede Module", true, true, true, 1.350f, 0.0f, 0.0f, 0.0f, -10.0f, 0.0f, -10.0f, 0.0f, -15.0f},
-    {"active_clearcut", "Clearcut Module", true, true, true, 1.150f, 30.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-    {"active_forel", "Forel Module", true, true, true, 1.000f, 0.0f, 0.0f, 15.5f, 0.0f, 0.0f, 0.0f, -60.0f, 50.0f},
-    {"active_lifeline", "Lifeline Module", true, true, true, 1.000f, 0.0f, 0.0f, -15.5f, -20.0f, 0.0f, 0.0f, 60.0f, 0.0f},
-    {"active_torpid", "Torpid Module", true, true, true, 1.000f, 0.0f, 60.0f, 0.0f, 0.0f, 0.0f, 40.0f, -60.0f, 0.0f},
-    {"active_optimum", "Optimum Module", true, true, true, 0.850f, 0.0f, 0.0f, 0.0f, -10.0f, 0.0f, 0.0f, -80.0f, 0.0f},
-    {"active_rime", "Rime Module", true, true, true, 0.850f, 0.0f, 0.0f, -24.8f, 0.0f, 0.0f, -10.0f, 0.0f, 0.0f},
+    {"passive_rieger_mk3", "Rieger-C3 Module", false, false, false, 1.250f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0, 0,
+     "The Rieger-C3 Module boosts laser power but requires more precision to find an effective mining area."},
+    {"passive_rieger_mk2", "Rieger-C2 Module", false, false, false, 1.200f, -3.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0, 0,
+     "The Rieger-C2 Module boosts laser power but requires more precision to find an effective mining area."},
+    {"passive_deluge", "Deluge Module", false, false, false, 1.150f, 0.0f, 0.0f, -15.5f, 0.0f, 0.0f, 0.0f, 0.0f, -15.0f, 0, 0,
+     "Reducing inefficiencies in the throughput of the mining laser, the Deluge Module provide an increase in beam proficiency while in use."},
+    {"passive_rieger_mk1", "Rieger Module", false, false, false, 1.150f, -10.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0, 0,
+     "The Rieger Module boosts laser power but requires more precision to find an effective mining area."},
+    {"passive_overrun", "Overrun Module", false, false, false, 1.020f, 0.0f, 0.0f, -24.8f, 0.0f, 0.0f, 0.0f, 0.0f, -15.0f, 0, 0,
+     "The Overrun Module uses a modified matrix variator to allow lasers to penetrate past the natural resistance of rocks while mining."},
+    {"passive_fltr_mk1", "FLTR Module", false, false, false, 1.000f, 0.0f, 0.0f, 0.0f, 0.0f, 20.0f, 0.0f, 0.0f, -15.0f, 0, 0,
+     "Reduce the amount of inert material collected from deposits with the FLTR Module. Though it reduces the laser's extraction power, the FLTR's patented filtration system screens out inert material to leave more storage space for valuable ore."},
+    {"passive_fltr_mk2", "FLTR-L Module", false, false, false, 1.000f, 0.0f, 0.0f, 0.0f, 0.0f, 23.0f, 0.0f, 0.0f, -10.0f, 0, 0,
+     "Reduce the amount of inert material collected from deposits with the FLTR-L Module. Though it reduces the laser's extraction power, the FLTR-L's patented filtration system screens out inert material to leave more storage space for valuable ore."},
+    {"passive_fltr_mk3", "FLTR-XL Module", false, false, false, 1.000f, 0.0f, 0.0f, 0.0f, 0.0f, 24.0f, 0.0f, 0.0f, -5.0f, 0, 0,
+     "Reduce the amount of inert material collected from deposits with the FLTR-XL Module. Though it reduces the laser's extraction power, the FLTR-XL's patented filtration system screens out inert material to leave more storage space for valuable ore."},
+    {"passive_torrent_mk1", "Torrent Module", false, false, false, 1.000f, -10.0f, 30.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0, 0,
+     "Save time while mining with the Torrent Module. It requires steady hands to hit the sweet spot but accelerates the charge rate once there."},
+    {"passive_torrent_mk2", "Torrent II Module", false, false, false, 1.000f, -3.0f, 35.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0, 0,
+     "Save time while mining with the Torrent II Module. It requires steady hands to hit the sweet spot but accelerates the charge rate once there."},
+    {"passive_torrent_mk3", "Torrent III Module", false, false, false, 1.000f, -1.0f, 45.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0, 0,
+     "Save time while mining with the Torrent III Module. It requires steady hands to hit the sweet spot but accelerates the charge rate once there."},
+    {"passive_vaux_mk1", "Vaux Module", false, false, false, 1.000f, 0.0f, -20.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 15.0f, 0, 0,
+     "The Vaux Module from Shubin Interstellar reduces the charge rate when mining but makes extracting valuable ore faster."},
+    {"passive_vaux_mk2", "Vaux-C2 Module", false, false, false, 1.000f, 0.0f, -15.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 20.0f, 0, 0,
+     "The Vaux-C2 Module from Shubin Interstellar reduces the charge rate when mining but makes extracting valuable ore faster."},
+    {"passive_vaux_mk3", "Vaux-C3 Module", false, false, false, 1.000f, 0.0f, -5.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 25.0f, 0, 0,
+     "The Vaux-C3 Module from Shubin Interstellar reduces the charge rate when mining but makes extracting valuable ore faster."},
+    {"passive_xtr_mk1", "XTR Module", false, false, false, 1.000f, 15.0f, 0.0f, 0.0f, 0.0f, 5.0f, 0.0f, 0.0f, -15.0f, 0, 0,
+     "The XTR Module creates a wider mining window for deposits. It also makes the extraction laser less powerful so it can filter out more inert materials."},
+    {"passive_xtr_mk2", "XTR-L Module", false, false, false, 1.000f, 22.0f, 0.0f, 0.0f, 0.0f, 5.8f, 0.0f, 0.0f, -10.0f, 0, 0,
+     "The XTR-L Module creates a wider mining window for deposits. It also makes the extraction laser less powerful so it can filter out more inert materials."},
+    {"passive_xtr_mk3", "XTR-XL Module", false, false, false, 1.000f, 25.0f, 0.0f, 0.0f, 0.0f, 6.0f, 0.0f, 0.0f, -5.0f, 0, 0,
+     "The XTR-XL Module creates a wider mining window for deposits. It also makes the extraction laser less powerful so it can filter out more inert materials."},
+    {"passive_focus_mk3", "Focus III Module", false, false, false, 0.950f, 40.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0, 0,
+     "The Focus III Module uses a modified mining laser crystal to create a larger optimal charge window at the expense of laser power."},
+    {"passive_focus_mk2", "Focus II Module", false, false, false, 0.900f, 37.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0, 0,
+     "The Focus II Module uses a modified mining laser crystal to create a larger optimal charge window at the expense of laser power."},
+    {"passive_focus_mk1", "Focus Module", false, false, false, 0.850f, 30.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0, 0,
+     "The Focus Module uses a modified mining laser crystal to create a larger optimal charge window at the expense of laser power."},
+    {"active_surge", "Surge Module", true, false, false, 1.500f, 0.0f, 0.0f, -15.5f, 10.0f, 0.0f, 0.0f, 0.0f, 0.0f, 7, 15,
+     "Instantly inject energy into a deposit with the Surge. It uses a special configuration of lenses to increase mining laser power and bypass a deposit's resistance. It does require careful management as the module also increases laser instability."},
+    {"active_brandt", "Brandt Module", true, true, true, 1.350f, 0.0f, 0.0f, 15.5f, 0.0f, 0.0f, -30.0f, 0.0f, 0.0f, 5, 60,
+     "Strategically use the Brandt to boost a mining laser's power for sixty seconds. The modulated beam also has the benefit of helping make rocks that shatter less hazardous, though the deposit will be more resistant to the laser's affect overall."},
+    {"active_stampede", "Stampede Module", true, true, true, 1.350f, 0.0f, 0.0f, 0.0f, -10.0f, 0.0f, -10.0f, 0.0f, -15.0f, 6, 30,
+     "The Stampede uses a state of the art lens to increase mining laser power and reduce potential hazard associated with the deposit shattering. These improvements do come at the expense of a less powerful extraction laser."},
+    {"active_clearcut", "Clearcut Module", true, true, true, 1.150f, 30.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 6, 30,
+     "The Clearcut greatly improves mining results by altering the charge rate and making extracting valuable ore faster."},
+    {"active_forel", "Forel Module", true, true, true, 1.000f, 0.0f, 0.0f, 15.5f, 0.0f, 0.0f, 0.0f, -60.0f, 50.0f, 6, 60,
+     "Shubin developed the Forel Module to provide a safer mining experience by significantly lowering the rate at which the catastrophic charge window fills. Though deposits will be more resistant, the module provides more power to the extraction laser to help it collect ore faster."},
+    {"active_lifeline", "Lifeline Module", true, true, true, 1.000f, 0.0f, 0.0f, -15.5f, -20.0f, 0.0f, 0.0f, 60.0f, 0.0f, 3, 15,
+     "The Lifeline makes a miner's work easier by reducing laser instability and lessening resistance within a deposit. Yet, a higher catastrophic charge rate means the process must be carefully managed to avoid an accident."},
+    {"active_torpid", "Torpid Module", true, true, true, 1.000f, 0.0f, 60.0f, 0.0f, 0.0f, 0.0f, 40.0f, -60.0f, 0.0f, 5, 60,
+     "The Torpid Module is a must for any ambitious miner. It makes mining more efficient by dramatically increasing the optimal charge rate while also reducing the catastrophic charge rate. The module does have a downside as a shattering deposit may prove more hazardous."},
+    {"active_optimum", "Optimum Module", true, true, true, 0.850f, 0.0f, 0.0f, 0.0f, -10.0f, 0.0f, 0.0f, -80.0f, 0.0f, 5, 60,
+     "The Optimum makes mining safer by improving laser stability and dramatically decreasing the catastrophic charge rate. To achieve this increased safety, the module reduces the overall power of the mining laser."},
+    {"active_rime", "Rime Module", true, true, true, 0.850f, 0.0f, 0.0f, -24.8f, 0.0f, 0.0f, -10.0f, 0.0f, 0.0f, 10, 20,
+     "The Rime delivers a safer mining experience by sacrificing laser power to reduce a deposit's resistance and the dangers associated with shattering."},
 };
 
 // On the rock: these change what is in front of you
