@@ -41,6 +41,13 @@ together is kept but marked (judge_rock), and each says which of its
 sender's rocks of the day it was, so that no one sender outweighs the rest;
 only the operator gets them out.
 
+Bedrock's Feedback page sends what a player wrote there for the developer:
+the message, a name where the player gave one, and with them the install's
+number, the versions of Bedrock and the game, and the platform. That is kept
+- the one place a name or an install's number is stored, never the address -
+and it is no reading: what does not fit the format holds nobody back. A few
+an hour from one address, and only the operator gets them out.
+
 Standard library only, SQLite beside it. See README.md.
 """
 
@@ -78,8 +85,15 @@ ROCK_POSTS_PER_HOUR_ALL = int(os.environ.get("BEDROCK_API_ROCK_POSTS_PER_HOUR_AL
 # address, and holds one sender to what a few players send.
 ROCKS_PER_HOUR = int(os.environ.get("BEDROCK_API_ROCKS_PER_HOUR", "300"))
 ROCKS_PER_HOUR_ALL = int(os.environ.get("BEDROCK_API_ROCKS_PER_HOUR_ALL", "100000"))
+# Feedback is typed by hand and read by one person: no player writes more
+# than a few messages an hour, and what everyone together may send in a day
+# is what a flood can leave to be read - 500 messages of 16 KB at most, 8 MB.
+FEEDBACK_PER_HOUR = int(os.environ.get("BEDROCK_API_FEEDBACK_PER_HOUR", "5"))          # messages, from one address
+FEEDBACK_PER_DAY = int(os.environ.get("BEDROCK_API_FEEDBACK_PER_DAY", "20"))
+FEEDBACK_PER_DAY_ALL = int(os.environ.get("BEDROCK_API_FEEDBACK_PER_DAY_ALL", "500"))  # ...from everyone
 MAX_BODY = 16 * 1024
 MAX_ROCK_BODY = 64 * 1024     # a batch of rocks: up to 50, each with its composition
+MAX_FEEDBACK_BODY = 16 * 1024  # a message: 4000 characters of up to four bytes each
 STATION_DAYS = 7              # /stations: how old a station's last reading may be
 QUOTE_DAYS_MAX = 60           # /quotes: the most days asked for at once
 QUOTES_MAX = 5000
@@ -114,6 +128,8 @@ ROUTE_NAMES = {
     ("POST", "/v1/refinery/observations"): "observations",
     ("POST", "/v1/rocks/observations"): "rocks",
     ("GET", "/v1/rocks/export.csv"): "rocks-export",
+    ("POST", "/v1/feedback"): "feedback",
+    ("GET", "/v1/feedback/export.csv"): "feedback-export",
 }
 # Bedrock's own User-Agent: "Bedrock/2.6.6 (Windows)", "(Linux)" - the
 # version and the platform, which is all it says
@@ -197,6 +213,23 @@ ROCK_PRINTED = ("white", "colour")
 # and the pieces it broke into - go together, and no install or player is
 # told apart by it
 SESSION = re.compile(r"^[0-9a-f]{16}\Z")
+
+# What a player wrote on Bedrock's Feedback page (POST /v1/feedback)
+FEEDBACK_TEXT_MAX = 4000      # characters of a message, trimmed
+FEEDBACK_NAME_MAX = 40        # ...of the name given with it
+FEEDBACK_CHANNEL_MAX = 20
+FEEDBACK_OS = ("windows", "linux")
+FEEDBACK_SAME_HOURS = 24      # the same text from the same sender within this long is kept once
+FEEDBACK_STATS_NEWEST = 100   # the admin view's messages: the newest
+# A line break in a message is kept as LF however it was written: a Windows
+# edit field hands back CR LF, a rich edit CR and, for Shift+Enter, VT; FF,
+# NEL and Unicode's line and paragraph separators are the rest there are
+LINE_BREAK = re.compile(r"\r\n?|[\x0b\x0c\x85\u2028\u2029]")
+# ...and what a message may not hold: any other control character, or half a
+# surrogate pair, which is no character and cannot be stored
+CONTROL = re.compile(r"[\x00-\x09\x0b-\x1f\x7f-\x9f\ud800-\udfff]")
+# ...a name or a channel, each on one line, no line break either
+CONTROL_OR_BREAK = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029\ud800-\udfff]")
 
 
 def load_stations(path):
@@ -416,6 +449,55 @@ def consensus(readings):
             "sources": len(readings), "confirmed": backing >= 1}
 
 
+# ---------------------------------------------------------------- a message
+
+def _line(value, most, what):
+    """A short text on one line, trimmed, of `most` characters at most, a tab
+    in it as a space; None where it is left out or empty"""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise Invalid(what, what + " is not a text")
+    value = value.strip().replace("\t", " ")
+    if len(value) > most or CONTROL_OR_BREAK.search(value):
+        raise Invalid(what, "%s is up to %d characters on one line" % (what, most))
+    return value or None
+
+
+def validate_feedback(body):
+    """A message as Bedrock's Feedback page sends it (README.md), checked and
+    trimmed; Invalid where it does not fit the format. Its line breaks are
+    kept (LINE_BREAK), a tab becomes a space. Keys it does not have a use for
+    are left aside: a newer Bedrock may send more."""
+    if not isinstance(body, dict):
+        raise Invalid("message", "the message is not a JSON object")
+    text = body.get("text")
+    if not isinstance(text, str):
+        raise Invalid("text", "the message has no text")
+    text = LINE_BREAK.sub("\n", text.strip()).replace("\t", " ")
+    if not 1 <= len(text) <= FEEDBACK_TEXT_MAX:
+        raise Invalid("text", "a message has 1 to %d characters" % FEEDBACK_TEXT_MAX)
+    if CONTROL.search(text):
+        raise Invalid("text", "text has a control character")
+    # Bedrock's version as the other routes take it; fullmatch, as "$" alone
+    # lets a line break at the end through
+    version = body.get("version")
+    if not isinstance(version, str) or not VERSION.fullmatch(version):
+        raise Invalid("version", "version is not in the expected form")
+    # the game's version as a whole number, 41003 for 4.10.3; 0 where not known
+    game = _number(body.get("game"), 0, 999999, "game", optional=True)
+    if game is not None and game != body["game"]:
+        raise Invalid("game", "game is not a whole number")
+    return {
+        "text": text,
+        "name": _line(body.get("name"), FEEDBACK_NAME_MAX, "name"),
+        "version": version,
+        "game": game or None,
+        "channel": _line(body.get("channel"), FEEDBACK_CHANNEL_MAX, "channel"),
+        "os": _choice(body.get("os"), FEEDBACK_OS, "os"),
+    }
+
+
 # ---------------------------------------------------------------- a batch of rocks
 
 def _real(value, low, high, what):
@@ -593,7 +675,9 @@ CREATE TABLE IF NOT EXISTS counters (
     name TEXT NOT NULL,               -- accepted, duplicate, implausible, limited, held, rejected, rejected:<field>;
                                       -- req:<route>, agent:<version>, platform:<os>, clients, senders;
                                       -- rocks:accepted, rocks:duplicate, rocks:implausible (each rock), rocks:limited,
-                                      -- rocks:held, rocks:rejected, rocks:rejected:<field> (each batch), rock-senders
+                                      -- rocks:held, rocks:rejected, rocks:rejected:<field> (each batch), rock-senders;
+                                      -- feedback:accepted, feedback:duplicate, feedback:limited, feedback:rejected,
+                                      -- feedback:rejected:<field>, feedback-senders
     count INTEGER NOT NULL,
     PRIMARY KEY (day, name)
 );
@@ -603,6 +687,22 @@ CREATE TABLE IF NOT EXISTS hourly (
     count INTEGER NOT NULL,
     PRIMARY KEY (hour, name)
 );
+CREATE TABLE IF NOT EXISTS feedback (
+    id INTEGER PRIMARY KEY,
+    received INTEGER NOT NULL,        -- server time, UTC seconds
+    source TEXT,                      -- tells senders apart; NULL after SOURCE_HOURS
+    install TEXT,                     -- the install's number as Bedrock sent it; NULL where it sent none
+    name TEXT,                        -- as the player gave it; NULL where none
+    text TEXT NOT NULL,               -- the message, its line breaks as LF
+    version TEXT NOT NULL,            -- Bedrock's
+    game INTEGER,                     -- the game's, 41003 for 4.10.3; NULL where not known
+    channel TEXT,
+    os TEXT                           -- windows or linux
+);
+-- the prune's: only the messages of the last two days still have a token
+CREATE INDEX IF NOT EXISTS feedback_token ON feedback (received) WHERE source IS NOT NULL;
+-- ...and add_feedback's and the admin view's, by when they came in
+CREATE INDEX IF NOT EXISTS feedback_received ON feedback (received);
 CREATE TABLE IF NOT EXISTS rocks (
     id INTEGER PRIMARY KEY,
     received INTEGER NOT NULL,        -- server time, UTC seconds
@@ -665,6 +765,16 @@ class Store:
             if salt is None:
                 salt = self.salts[day] = secrets.token_bytes(32)
         return hmac.new(salt, address.encode("utf-8", "replace"), hashlib.sha256).hexdigest()[:16]
+
+    def tokens(self, address, now):
+        """The tokens an address had over the last day: today's first and,
+        while its salt is kept, yesterday's"""
+        tokens = [self.source(address, now)]
+        with self.salt_lock:
+            before = utc_day(now - 86400) in self.salts
+        if before:
+            tokens.append(self.source(address, now - 86400))
+        return tokens
 
     def readings_by(self, source, station, now):
         db = self._db()
@@ -768,6 +878,38 @@ class Store:
             finally:
                 db.close()
 
+    def add_feedback(self, message, now, tokens, install, allow):
+        """Keeps a checked message. False where its sender - the install by
+        its number, else the address by its tokens (Store.tokens) - sent the
+        same text within FEEDBACK_SAME_HOURS: it is kept once. None where it
+        is new and `allow` has no room for it: only a message that would be
+        kept counts against the limits."""
+        since = now - FEEDBACK_SAME_HOURS * 3600
+        with self.lock:
+            db = self._db()
+            try:
+                with db:
+                    if install:
+                        same = db.execute("SELECT 1 FROM feedback WHERE install = ? AND text = ? AND received > ?",
+                                          (install, message["text"], since))
+                    else:
+                        # (the tokens outlast the day the text is held against, SOURCE_HOURS - but
+                        # not a restart of the service: the salts die with it)
+                        same = db.execute("SELECT 1 FROM feedback WHERE install IS NULL AND source IN (%s)"
+                                          " AND text = ? AND received > ?" % ",".join("?" * len(tokens)),
+                                          list(tokens) + [message["text"], since])
+                    if same.fetchone():
+                        return False
+                    if not allow():
+                        return None
+                    db.execute("INSERT INTO feedback (received, source, install, name, text, version, game, channel,"
+                               " os) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                               (now, tokens[0], install, message["name"], message["text"], message["version"],
+                                message["game"], message["channel"], message["os"]))
+                return True
+            finally:
+                db.close()
+
     def tally(self, now, *names):
         """One more of each, today - and this hour, for the requests (req:)"""
         self.tally_many(now, [(name, 1) for name in names])
@@ -827,6 +969,13 @@ class Store:
         finally:
             db.close()
 
+    def feedback_count(self):
+        db = self._db()
+        try:
+            return db.execute("SELECT COUNT(*) FROM feedback").fetchone()[0]
+        finally:
+            db.close()
+
     def stats(self, now, days):
         """What the admin view draws (GET /v1/stats): the counters by day and
         the requests by hour, the readings and quotes that came in by day, and
@@ -862,9 +1011,10 @@ class Store:
                 "totals": {"observations": total[0], "quotes": total[1], "stations": total[2]}}
 
     def prune(self, now):
-        """Readings and rocks lose their sender's token after SOURCE_HOURS,
-        counters go after COUNTER_DAYS and the hourly ones after HOURLY_DAYS,
-        only today's and yesterday's salt stay, and only today's tokens seen"""
+        """Readings, rocks and messages lose their sender's token after
+        SOURCE_HOURS, counters go after COUNTER_DAYS and the hourly ones after
+        HOURLY_DAYS, only today's and yesterday's salt stay, and only today's
+        tokens seen"""
         with self.lock:
             db = self._db()
             try:
@@ -872,6 +1022,8 @@ class Store:
                     db.execute("UPDATE observations SET source = NULL WHERE source IS NOT NULL AND received < ?",
                                (now - SOURCE_HOURS * 3600,))
                     db.execute("UPDATE rocks SET source = NULL WHERE source IS NOT NULL AND received < ?",
+                               (now - SOURCE_HOURS * 3600,))
+                    db.execute("UPDATE feedback SET source = NULL WHERE source IS NOT NULL AND received < ?",
                                (now - SOURCE_HOURS * 3600,))
                     db.execute("DELETE FROM counters WHERE day < ?", (utc_day(now - COUNTER_DAYS * 86400),))
                     db.execute("DELETE FROM hourly WHERE hour < ?", (utc_hour(now - HOURLY_DAYS * 86400),))
@@ -1011,6 +1163,42 @@ class Store:
         finally:
             db.close()
 
+    def feedback_csv(self, out):
+        """Every message kept, the newest first, as CSV into `out`, for
+        whoever runs the service - with the install's number and the name
+        where it has them, never the token; how many messages"""
+        db = self._db()
+        try:
+            w = csv.writer(out, lineterminator="\n")
+            w.writerow(["id", "received", "install", "name", "text", "version", "game", "channel", "os"])
+            n = 0
+            for row in db.execute("SELECT * FROM feedback ORDER BY id DESC"):
+                w.writerow([row["id"], utc_iso(row["received"]), row["install"], row["name"], row["text"],
+                            row["version"], row["game"], row["channel"], row["os"]])
+                n += 1
+            return n
+        finally:
+            db.close()
+
+    def feedback_stats(self, now, days):
+        """The feedback for the admin view, which goes out with the stats
+        (GET /v1/stats): the newest FEEDBACK_STATS_NEWEST messages, the newest
+        first - with the install's number and the name where the player gave
+        one, never the token - how many came in each of the last `days` days,
+        and how many are kept"""
+        db = self._db()
+        try:
+            messages = [dict(row) for row in db.execute(
+                "SELECT received, install, name, text, version, game, channel, os FROM feedback"
+                " ORDER BY id DESC LIMIT ?", (FEEDBACK_STATS_NEWEST,))]
+            came_in = {row["day"]: {"messages": row["messages"]} for row in db.execute(
+                "SELECT strftime('%Y-%m-%d', received, 'unixepoch') AS day, COUNT(*) AS messages FROM feedback"
+                " WHERE received >= ? GROUP BY day", (now - days * 86400,))}
+            kept = db.execute("SELECT COUNT(*) FROM feedback").fetchone()[0]
+        finally:
+            db.close()
+        return {"messages": messages, "came_in": came_in, "totals": {"messages": kept}}
+
     def purge(self, since, until, station=None, implausible_only=False, really=False):
         """The readings observed from `since` to `until` (UTC seconds), of one
         station or all, all of them or the implausible ones: how many, and
@@ -1118,6 +1306,43 @@ class Limiter:
             return True
 
 
+class FeedbackLimiter:
+    """Messages per address over the last hour and the last day, and from
+    everyone over the last day - in memory, the address salted and hashed as
+    Limiter's. A message is counted where all three have room for it, or not
+    at all."""
+
+    def __init__(self, per_hour, per_day, overall):
+        self.per_hour = per_hour
+        self.per_day = per_day
+        self.overall = overall
+        self.salt = secrets.token_bytes(16)
+        self.lock = threading.Lock()
+        self.seen = {}
+        self.everyone = collections.deque()
+
+    def allow(self, address, now):
+        """Whether one more fits, and if so, it is counted"""
+        key = hashlib.sha256(self.salt + address.encode("utf-8", "replace")).digest()
+        hour, day = now - 3600, now - 86400
+        with self.lock:
+            while self.everyone and self.everyone[0] <= day:
+                self.everyone.popleft()
+            times = self.seen.get(key, collections.deque())
+            while times and times[0] <= day:
+                times.popleft()
+            if (sum(1 for t in times if t > hour) >= self.per_hour or len(times) >= self.per_day
+                    or len(self.everyone) >= self.overall):
+                return False
+            times.append(now)
+            self.everyone.append(now)
+            self.seen[key] = times
+            if len(self.seen) > 10000:
+                for k in [k for k, v in self.seen.items() if not v or v[-1] <= day]:
+                    del self.seen[k]
+            return True
+
+
 class Misfits:
     """The readings that did not fit over the last hour, per install and per
     address - in memory, salted and hashed with a salt that dies with the
@@ -1166,6 +1391,7 @@ class Handler(BaseHTTPRequestHandler):
     limiter = None
     rock_limiter = None
     rock_count_limiter = None
+    feedback_limiter = None
     misfits = None
 
     def log_message(self, fmt, *args):
@@ -1239,12 +1465,15 @@ class Handler(BaseHTTPRequestHandler):
                 days = int(query.get("days", ["90"])[0])
             except ValueError:
                 return self._fail(400, "days is not a number")
-            return self._send(200, self.store.stats(now, max(1, min(COUNTER_DAYS, days))))
+            days = max(1, min(COUNTER_DAYS, days))
+            # ...and the feedback goes out with them
+            return self._send(200, dict(self.store.stats(now, days), feedback=self.store.feedback_stats(now, days)))
         self._count(now, route)
         if route == "/v1/health":
             today = self.store.counters(utc_day(now)).get(utc_day(now), {})
             return self._send(200, {"ok": True, "version": API_VERSION, "observations": self.store.count(),
                                     "rocks": self.store.rock_count(),
+                                    "feedback": self.store.feedback_count(),
                                     "today": {name: today.get(name, 0) for name in
                                               ("accepted", "duplicate", "implausible", "limited", "held",
                                                "rejected")}})
@@ -1271,6 +1500,13 @@ class Handler(BaseHTTPRequestHandler):
             out = io.StringIO()
             self.store.rocks_csv(out)
             return self._send(200, out.getvalue().encode("utf-8"), "text/csv; charset=utf-8")
+        if route == "/v1/feedback/export.csv":
+            # the operator's as well
+            if self.headers.get("X-Real-IP"):
+                return self._fail(404, "not found")
+            out = io.StringIO()
+            self.store.feedback_csv(out)
+            return self._send(200, out.getvalue().encode("utf-8"), "text/csv; charset=utf-8")
         return self._fail(404, "not found")
 
     do_HEAD = do_GET
@@ -1279,8 +1515,9 @@ class Handler(BaseHTTPRequestHandler):
         now = int(time.time())
         route = self._route()
         self._count(now, route)
-        # a refinery reading comes alone, the rocks in batches
-        largest = {"/v1/refinery/observations": MAX_BODY, "/v1/rocks/observations": MAX_ROCK_BODY}.get(route)
+        # a refinery reading comes alone, the rocks in batches, a message with its 4000 characters
+        largest = {"/v1/refinery/observations": MAX_BODY, "/v1/rocks/observations": MAX_ROCK_BODY,
+                   "/v1/feedback": MAX_FEEDBACK_BODY}.get(route)
         if largest is None:
             return self._fail(404, "not found")
         try:
@@ -1298,6 +1535,8 @@ class Handler(BaseHTTPRequestHandler):
         # easily made up
         install = self._install()
         misfit = [address] + (["install:" + install] if install else [])
+        if route == "/v1/feedback":
+            return self._feedback(now, address, install, length)
         if route == "/v1/rocks/observations":
             return self._rocks(now, address, misfit, length)
         if self.misfits.held(misfit, now):
@@ -1369,15 +1608,47 @@ class Handler(BaseHTTPRequestHandler):
         self.store.tally_many(now, counts)
         return self._send(201 if stored else 200, {"ok": True, "stored": stored, "duplicates": len(new) - stored})
 
+    def _feedback(self, now, address, install, length):
+        """A message from Bedrock's Feedback page (POST /v1/feedback). It is
+        typed by a person and no reading: one that does not fit the format is
+        turned down and counts against nobody (misfits), and an install held
+        back for its readings can still write. Only a message that is kept
+        counts against the limits - not one turned down, nor one kept
+        already."""
+        raw = self.rfile.read(length)
+        try:
+            message = validate_feedback(json.loads(raw.decode("utf-8")))
+        except Invalid as e:
+            self.store.tally(now, "feedback:rejected", "feedback:rejected:" + e.code)
+            return self._fail(400, str(e))
+        except (ValueError, RecursionError):   # not UTF-8, not JSON, nested too deep, a number too long to read
+            self.store.tally(now, "feedback:rejected", "feedback:rejected:json")
+            return self._fail(400, "not JSON")
+        stored = self.store.add_feedback(message, now, self.store.tokens(address, now), install,
+                                         lambda: self.feedback_limiter.allow(address, now))
+        if stored is None:
+            self.store.tally(now, "feedback:limited")
+            return self._fail(429, "too many messages, try again later")
+        names = ["feedback:accepted" if stored else "feedback:duplicate"]
+        if self.store.first_today("feedback-senders", self.store.source(self._who(address), now), now):
+            names.append("feedback-senders")
+        self.store.tally(now, *names)
+        return self._send(201 if stored else 200, {"ok": True, "stored": stored})
 
-def serve(store, limiter, host="0.0.0.0", port=PORT, misfits=None, rock_limiter=None, rock_count_limiter=None):
+
+def serve(store, limiter, host="0.0.0.0", port=PORT, misfits=None, rock_limiter=None, rock_count_limiter=None,
+          feedback_limiter=None):
     """The service, not started yet: serve_forever() on the result. A thread
     beside it prunes every ten minutes (Store.prune). The rocks have limits
-    of their own: batches (ROCK_POSTS_PER_HOUR) and rocks (ROCKS_PER_HOUR)."""
+    of their own: batches (ROCK_POSTS_PER_HOUR) and rocks (ROCKS_PER_HOUR).
+    So has the feedback: messages an hour and a day (FEEDBACK_PER_HOUR,
+    FEEDBACK_PER_DAY)."""
     handler = type("BoundHandler", (Handler,), {
         "store": store, "limiter": limiter, "misfits": misfits or Misfits(),
         "rock_limiter": rock_limiter or Limiter(ROCK_POSTS_PER_HOUR, ROCK_POSTS_PER_HOUR_ALL),
-        "rock_count_limiter": rock_count_limiter or Limiter(ROCKS_PER_HOUR, ROCKS_PER_HOUR_ALL)})
+        "rock_count_limiter": rock_count_limiter or Limiter(ROCKS_PER_HOUR, ROCKS_PER_HOUR_ALL),
+        "feedback_limiter": feedback_limiter or FeedbackLimiter(FEEDBACK_PER_HOUR, FEEDBACK_PER_DAY,
+                                                                FEEDBACK_PER_DAY_ALL)})
     server = ThreadingHTTPServer((host, port), handler)
     server.daemon_threads = True
 
@@ -1407,6 +1678,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Bedrock's refinery observations")
     parser.add_argument("--backup", metavar="FILE", help="write a consistent copy of the database to FILE and exit")
     parser.add_argument("--rocks-export", metavar="FILE", help="write the rocks kept to FILE as CSV and exit")
+    parser.add_argument("--feedback-export", metavar="FILE",
+                        help="write the feedback kept to FILE as CSV, the newest first, and exit")
     parser.add_argument("--stats", action="store_true", help="what came in over the last 14 days, and exit")
     parser.add_argument("--purge", action="store_true",
                         help="take readings out: those observed from --since to --until (UTC), of --station or "
@@ -1430,6 +1703,11 @@ def main(argv=None):
             n = store.rocks_csv(f)
         print("%d rock%s written to %s" % (n, "" if n == 1 else "s", args.rocks_export))
         return 0
+    if args.feedback_export:
+        with open(args.feedback_export, "w", encoding="utf-8", newline="") as f:
+            n = store.feedback_csv(f)
+        print("%d message%s written to %s" % (n, "" if n == 1 else "s", args.feedback_export))
+        return 0
     if args.stats:
         for day, names in sorted(store.counters(utc_day(time.time() - 13 * 86400)).items()):
             print(day, "  ".join("%s %d" % (name, n) for name, n in sorted(names.items())))
@@ -1449,7 +1727,8 @@ def main(argv=None):
         return 0
     server = serve(store, Limiter(POSTS_PER_HOUR, POSTS_PER_HOUR_ALL),
                    rock_limiter=Limiter(ROCK_POSTS_PER_HOUR, ROCK_POSTS_PER_HOUR_ALL),
-                   rock_count_limiter=Limiter(ROCKS_PER_HOUR, ROCKS_PER_HOUR_ALL))
+                   rock_count_limiter=Limiter(ROCKS_PER_HOUR, ROCKS_PER_HOUR_ALL),
+                   feedback_limiter=FeedbackLimiter(FEEDBACK_PER_HOUR, FEEDBACK_PER_DAY, FEEDBACK_PER_DAY_ALL))
     print("bedrock-api: %s on port %d, %d stations known, %s" % (
         DB_PATH, PORT, len(STATIONS), "refining model loaded" if TABLES else "no refining model"), flush=True)
     try:

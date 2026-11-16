@@ -2,6 +2,8 @@
 folder: python -m unittest test_app (from this folder)"""
 
 import contextlib
+import csv
+import http.client
 import io
 import json
 import os
@@ -25,8 +27,9 @@ class ServiceTest(unittest.TestCase):
         self.limiter = app.Limiter(per_address=1000, overall=100000)
         self.rock_limiter = app.Limiter(per_address=1000, overall=100000)
         self.rock_count_limiter = app.Limiter(per_address=100000, overall=1000000)
+        self.feedback_limiter = app.FeedbackLimiter(per_hour=1000, per_day=100000, overall=1000000)
         self.server = app.serve(self.store, self.limiter, host="127.0.0.1", port=0, rock_limiter=self.rock_limiter,
-                                rock_count_limiter=self.rock_count_limiter)
+                                rock_count_limiter=self.rock_count_limiter, feedback_limiter=self.feedback_limiter)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base = "http://127.0.0.1:%d%s" % (self.server.server_address[1], app.PREFIX)
@@ -798,6 +801,366 @@ class ServiceTest(unittest.TestCase):
         app.Store(self.store.path)
         self.assertEqual(self.send_rocks([self.rock()])[0], 201)
         self.assertEqual((self.store.count(), self.store.rock_count()), (1, 1))
+
+    # ---------------------------------------------------------------- feedback
+
+    def message(self, **changes):
+        # each with a text of its own, so no two are the same message
+        self.tick += 1
+        m = {"text": "The rock panel shows no list.\nMOLE, pilot seat (%d)." % self.tick, "name": "Rockhound",
+             "version": "3.0.4", "game": 41003, "channel": "LIVE", "os": "windows"}
+        m.update(changes)
+        return m
+
+    def send_feedback(self, address="203.0.113.1", install=None, **changes):
+        return self.call("/v1/feedback", self.message(**changes), address=address, install=install)
+
+    def feedback_rows(self):
+        db = sqlite3.connect(self.store.path)
+        db.row_factory = sqlite3.Row
+        try:
+            return db.execute("SELECT * FROM feedback ORDER BY id").fetchall()
+        finally:
+            db.close()
+
+    def test_a_message_is_kept_as_it_was_written(self):
+        # line breaks, an empty line, an umlaut and an emoji - as UTF-8, the way Bedrock sends it
+        text = "Since 4.10.3 the list stays empty.\n\nL\u00e4uft nicht \U0001f44d\n  MOLE, pilot seat"
+        body = self.message(text=text, name="J\u00e4ger \U0001f680")
+        raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        self.assertIn("L\u00e4uft nicht \U0001f44d".encode("utf-8"), raw)
+        self.assertEqual(self.call("/v1/feedback", raw=raw, install=self.ONE), (201, {"ok": True, "stored": True}))
+        # ...and escaped, as json.dumps has it
+        self.assertEqual(self.send_feedback(text=text + "!", install=self.ONE), (201, {"ok": True, "stored": True}))
+        first, second = self.feedback_rows()
+        self.assertEqual((first["install"], first["name"], first["text"], first["version"], first["game"],
+                          first["channel"], first["os"]),
+                         (self.ONE, "J\u00e4ger \U0001f680", text, "3.0.4", 41003, "LIVE", "windows"))
+        self.assertEqual(second["text"], text + "!")
+        self.assertTrue(self.now <= first["received"] <= time.time() + 1)
+        self.assertEqual(len(first["source"]), 16)
+        today = self.today()
+        self.assertEqual((today["req:feedback"], today["feedback:accepted"], today["feedback-senders"]), (2, 2, 1))
+        self.assertNotIn("accepted", today)     # the readings' own counts stay apart
+
+    def test_a_message_needs_its_text_and_bedrocks_version_only(self):
+        self.assertEqual(self.call("/v1/feedback", {"text": "  No list on the MOLE. \n", "version": "3.0.4"})[0], 201)
+        # nothing given, in the ways there are to say so - and what a newer Bedrock may add is left aside
+        self.assertEqual(self.send_feedback(name="  ", game=0, channel="", os="", shots=[1, 2], v=2)[0], 201)
+        self.assertEqual(self.send_feedback(name=None, game=None, channel=None, os=None)[0], 201)
+        for row in self.feedback_rows():
+            self.assertEqual((row["install"], row["name"], row["game"], row["channel"], row["os"]),
+                             (None, None, None, None, None))
+        self.assertEqual(self.feedback_rows()[0]["text"], "No list on the MOLE.")
+        # trimmed, the text and the name; what is inside stays, a tab as a space
+        self.assertEqual(self.send_feedback(text="\n  Two lines \n here.  \n\n", name="  Rock\thound ", channel=" PTU ",
+                                            os="linux", game=41003.0)[0], 201)
+        row = self.feedback_rows()[-1]
+        self.assertEqual((row["text"], row["name"], row["channel"], row["os"], row["game"]),
+                         ("Two lines \n here.", "Rock hound", "PTU", "linux", 41003))
+
+    def test_a_line_break_is_kept_however_it_was_written(self):
+        # a Windows edit field's CR LF, a rich edit's CR and its Shift+Enter (VT), and the rest; a tab is a space
+        self.assertEqual(self.send_feedback(text="a\r\nb\rc\x0bd\x0ce\x85f\u2028g\u2029h\n\ni\tj")[0], 201)
+        self.assertEqual(self.feedback_rows()[0]["text"], "a\nb\nc\nd\ne\nf\ng\nh\n\ni j")
+
+    def test_the_same_message_from_the_same_sender_is_kept_once(self):
+        body = self.message()
+
+        def post(address="203.0.113.1", install=None, **changes):
+            return self.call("/v1/feedback", dict(body, **changes), address=address, install=install)
+        self.assertEqual(post(install=self.ONE), (201, {"ok": True, "stored": True}))
+        self.assertEqual(post(install=self.ONE), (200, {"ok": True, "stored": False}))
+        # the install is the sender, wherever it writes from and whatever else it says
+        self.assertEqual(post("198.51.100.9", self.ONE, name="Someone else", os="linux")[0], 200)
+        # ...and written another way it is the same text
+        self.assertEqual(post(install=self.ONE, text="  " + body["text"].replace("\n", "\r\n") + "\n")[0], 200)
+        self.assertEqual(post(install=self.OTHER)[0], 201)
+        # without a number the address is
+        self.assertEqual(post("198.51.100.7")[0], 201)
+        self.assertEqual(post("198.51.100.7")[0], 200)
+        self.assertEqual(post("198.51.100.8")[0], 201)
+        self.assertEqual(post(install=self.ONE, text=body["text"] + " Again.")[0], 201)
+        self.assertEqual(self.store.feedback_count(), 5)
+        today = self.today()
+        self.assertEqual((today["feedback:accepted"], today["feedback:duplicate"], today["feedback-senders"]),
+                         (5, 4, 4))
+        # a day on it is a new message
+        db = sqlite3.connect(self.store.path)
+        try:
+            with db:
+                db.execute("UPDATE feedback SET received = received - ?", (app.FEEDBACK_SAME_HOURS * 3600 + 5,))
+        finally:
+            db.close()
+        self.assertEqual(post(install=self.ONE)[0], 201)
+        self.assertEqual(post("198.51.100.7")[0], 201)
+
+    def test_the_same_message_is_known_across_midnight_by_yesterdays_token(self):
+        # an address has another token each UTC day: a quarter of an hour before midnight, and one after
+        late = (self.now // 86400) * 86400 - 900
+        message = app.validate_feedback(self.message())
+        self.assertIs(self.store.add_feedback(message, late, self.store.tokens("198.51.100.7", late), None,
+                                              lambda: True), True)
+        after = self.store.tokens("198.51.100.7", late + 1800)
+        self.assertEqual(len(set(after)), 2)
+        self.assertIs(self.store.add_feedback(message, late + 1800, after, None, lambda: True), False)
+        self.assertIs(self.store.add_feedback(message, late + 1800, self.store.tokens("198.51.100.8", late + 1800),
+                                              None, lambda: True), True)
+        # ...and where there is no room, a new message is not kept
+        self.assertIsNone(self.store.add_feedback(app.validate_feedback(self.message()), late + 1800, after, None,
+                                                  lambda: False))
+        self.assertEqual(self.store.feedback_count(), 2)
+
+    def test_a_message_that_does_not_fit_the_format_is_turned_down(self):
+        self.feedback_limiter.per_hour = 1
+        bad = [
+            self.message(text=""),
+            self.message(text="   "),                                  # only spaces
+            self.message(text=" \n\t \r\n"),
+            self.message(text="x" * (app.FEEDBACK_TEXT_MAX + 1)),
+            self.message(text="The bell \x07 rings"),                  # a control character
+            self.message(text="nothing\x00after"),
+            self.message(text="\x1b[2Jgone"),
+            self.message(text="a\x7fb"),
+            self.message(text=None),
+            self.message(text=["No list."]),
+            self.message(name="x" * (app.FEEDBACK_NAME_MAX + 1)),
+            self.message(name="Rock\nhound"),                          # a name is one line
+            self.message(name="Rock\x07hound"),
+            self.message(name=7),
+            self.message(version=None),
+            self.message(version="latest"),
+            self.message(version="3.0.4\n"),
+            self.message(version="3.0.4.1.2"),
+            self.message(game=-1),
+            self.message(game=1000000),
+            self.message(game=41003.5),
+            self.message(game="41003"),
+            self.message(game=True),
+            self.message(channel="x" * (app.FEEDBACK_CHANNEL_MAX + 1)),
+            self.message(channel="LIVE\nPTU"),
+            self.message(os="macos"),
+            self.message(os="Windows"),
+            ["No list."],
+            "No list.",
+        ]
+        for body in bad:
+            code, answer = self.call("/v1/feedback", body, install=self.ONE)
+            self.assertEqual(code, 400, json.dumps(body)[:200])
+            self.assertFalse(answer["ok"])
+        raw = [b"{not json", b"", b"[" * 16000,
+               b'{"text": "No list.", "version": "3.0.4", "game": ' + b"1" * 5000 + b"}",    # too long to read
+               b'{"text": "No list. \xff", "version": "3.0.4"}',                            # not UTF-8
+               b'{"text": "No list. \\ud83d", "version": "3.0.4"}']                         # half an emoji
+        for body in raw:
+            self.assertEqual(self.call("/v1/feedback", raw=body, install=self.ONE)[0], 400, body[:60])
+        self.assertEqual(self.store.feedback_count(), 0)
+        today = self.today()
+        self.assertEqual(today["feedback:rejected"], len(bad) + len(raw))
+        self.assertEqual([today["feedback:rejected:" + field] for field in
+                          ("text", "name", "version", "game", "channel", "os", "message", "json")],
+                         [11, 4, 4, 5, 2, 2, 2, 5])
+        self.assertNotIn("rejected", today)
+        # the edges fit: 4000 characters, a name of 40
+        self.assertEqual(self.send_feedback(text="x" * app.FEEDBACK_TEXT_MAX, name="y" * app.FEEDBACK_NAME_MAX,
+                                            channel="z" * app.FEEDBACK_CHANNEL_MAX, game=999999,
+                                            install=self.ONE)[0], 201)
+        # ...as the first this hour: what was turned down did not count against the limit
+        self.assertEqual(self.send_feedback(install=self.ONE)[0], 429)
+
+    def test_feedback_of_the_wrong_kind_too_large_or_without_a_length(self):
+        self.assertEqual(self.call("/v1/feedback", self.message(), kind="text/plain")[0], 415)
+        self.assertEqual(self.call("/v1/feedback", raw=b"x" * (app.MAX_FEEDBACK_BODY + 1))[0], 413)
+        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_address[1], timeout=10)
+        try:
+            connection.putrequest("POST", app.PREFIX + "/v1/feedback")
+            connection.putheader("Content-Type", "application/json")
+            connection.endheaders()
+            self.assertEqual(connection.getresponse().status, 411)
+        finally:
+            connection.close()
+        self.assertEqual(self.store.feedback_count(), 0)
+        # the largest message there is fits: 4000 characters of four bytes each, the name's 40 and the channel's 20
+        body = self.message(text="\U0001f44d" * app.FEEDBACK_TEXT_MAX, name="\U0001f680" * app.FEEDBACK_NAME_MAX,
+                            channel="\U0001f680" * app.FEEDBACK_CHANNEL_MAX, game=999999)
+        raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        self.assertTrue(16000 < len(raw) <= app.MAX_FEEDBACK_BODY, len(raw))
+        self.assertEqual(self.call("/v1/feedback", raw=raw)[0], 201)
+        self.assertEqual(self.feedback_rows()[0]["text"], body["text"])
+
+    def test_feedback_has_limits_of_its_own(self):
+        self.assertEqual((app.FEEDBACK_PER_HOUR, app.FEEDBACK_PER_DAY, app.FEEDBACK_PER_DAY_ALL), (5, 20, 500))
+        self.feedback_limiter.per_hour = app.FEEDBACK_PER_HOUR
+        kept = self.message()
+        self.assertEqual(self.call("/v1/feedback", kept, address="192.0.2.1")[0], 201)
+        for _ in range(app.FEEDBACK_PER_HOUR - 1):
+            self.assertEqual(self.send_feedback(address="192.0.2.1")[0], 201)
+        self.assertEqual(self.send_feedback(address="192.0.2.1"),
+                         (429, {"ok": False, "error": "too many messages, try again later"}))
+        self.assertEqual(self.store.feedback_count(), app.FEEDBACK_PER_HOUR)       # nothing of it kept
+        self.assertEqual(self.send_feedback(address="192.0.2.2")[0], 201)
+        # one kept already, or one that does not fit the format, is answered as ever
+        self.assertEqual(self.call("/v1/feedback", kept, address="192.0.2.1")[0], 200)
+        self.assertEqual(self.send_feedback(address="192.0.2.1", text="")[0], 400)
+        # the readings' and the rocks' limits are others
+        self.assertEqual(self.send(address="192.0.2.1")[0], 201)
+        self.assertEqual(self.send_rocks([self.rock()], address="192.0.2.1")[0], 201)
+        today = self.today()
+        self.assertEqual(today["feedback:limited"], 1)
+        self.assertNotIn("limited", today)
+        self.assertNotIn("rocks:limited", today)
+        self.assertTrue(all(len(k) == 32 for k in self.feedback_limiter.seen))
+
+    def test_feedback_is_limited_by_the_day_and_for_everyone_together(self):
+        self.feedback_limiter.per_day = 3
+        for _ in range(3):
+            self.assertEqual(self.send_feedback(address="192.0.2.1")[0], 201)
+        self.assertEqual(self.send_feedback(address="192.0.2.1")[0], 429)
+        self.feedback_limiter.overall = 5
+        self.assertEqual(self.send_feedback(address="192.0.2.2")[0], 201)
+        self.assertEqual(self.send_feedback(address="192.0.2.3")[0], 201)
+        self.assertEqual(self.send_feedback(address="192.0.2.4")[0], 429)       # five from everyone
+        self.assertEqual(self.store.feedback_count(), 5)
+        self.assertEqual(self.today()["feedback:limited"], 2)
+        # ...and as time goes: two an hour, three a day, four from everyone
+        limiter = app.FeedbackLimiter(per_hour=2, per_day=3, overall=4)
+        self.assertTrue(limiter.allow("192.0.2.1", 1000))
+        self.assertTrue(limiter.allow("192.0.2.1", 1001))
+        self.assertFalse(limiter.allow("192.0.2.1", 1002))
+        self.assertTrue(limiter.allow("192.0.2.1", 4601))        # an hour on, the hour's two are let go
+        self.assertFalse(limiter.allow("192.0.2.1", 8300))       # ...the day's three not yet
+        self.assertTrue(limiter.allow("192.0.2.2", 8300))
+        self.assertFalse(limiter.allow("192.0.2.3", 8301))       # everyone's four
+        self.assertEqual(len(limiter.seen), 2)                   # one turned away leaves nothing behind
+        self.assertTrue(limiter.allow("192.0.2.1", 87401))       # a day after its first two
+        self.assertTrue(limiter.allow("192.0.2.3", 87402))
+
+    def test_health_counts_the_feedback(self):
+        self.send_feedback()
+        self.send_feedback(address="198.51.100.9")
+        self.send_feedback(text="")
+        code, answer = self.call("/v1/health")
+        self.assertEqual((code, answer["observations"], answer["rocks"], answer["feedback"]), (200, 0, 0, 2))
+
+    def test_the_feedback_is_for_the_operator_alone(self):
+        first = self.message(text="No list on the MOLE.\n\"Pilot seat\", 4.10.3; l\u00e4uft nicht \U0001f44d",
+                             name="Rockhound, Jr.")
+        second = {"text": "=1+1", "version": "3.0.3"}
+        self.assertEqual(self.call("/v1/feedback", first, install=self.ONE)[0], 201)
+        self.assertEqual(self.call("/v1/feedback", second, address="198.51.100.7")[0], 201)
+        self.assertEqual(self.get("/v1/feedback/export.csv", "198.51.100.7"),
+                         (404, {"ok": False, "error": "not found"}))
+        self.assertEqual(self.call("/v1/feedback")[0], 404)       # sent, not asked for
+        code, text = self.call("/v1/feedback/export.csv")
+        self.assertEqual(code, 200)
+        kept = self.feedback_rows()
+        # the newest first, each as it was sent
+        self.assertEqual(list(csv.reader(io.StringIO(text))), [
+            ["id", "received", "install", "name", "text", "version", "game", "channel", "os"],
+            ["2", app.utc_iso(kept[1]["received"]), "", "", "=1+1", "3.0.3", "", "", ""],
+            ["1", app.utc_iso(kept[0]["received"]), self.ONE, "Rockhound, Jr.", first["text"], "3.0.4", "41003",
+             "LIVE", "windows"]])
+        self.assertNotIn(kept[0]["source"], text)                   # never the token
+        self.assertEqual(self.today()["req:feedback-export"], 1)    # the one through nginx
+        # ...and the same from the command line
+        target = os.path.join(self.folder.name, "feedback.csv")
+        out = io.StringIO()
+        app.DB_PATH, was = self.store.path, app.DB_PATH
+        try:
+            with contextlib.redirect_stdout(out):
+                app.main(["--feedback-export", target])
+        finally:
+            app.DB_PATH = was
+        self.assertIn("2 messages written to", out.getvalue())
+        with open(target, encoding="utf-8", newline="") as f:
+            self.assertEqual(f.read(), text)
+
+    def test_the_admin_view_gets_the_newest_messages_and_how_many_came_in_by_day(self):
+        self.assertEqual(self.get("/v1/stats")[1]["feedback"],
+                         {"messages": [], "came_in": {}, "totals": {"messages": 0}})
+        first = self.message(text="No list on the MOLE.\nL\u00e4uft nicht \U0001f44d")
+        self.assertEqual(self.call("/v1/feedback", first, install=self.ONE)[0], 201)
+        self.assertEqual(self.call("/v1/feedback", {"text": "Thanks.", "version": "3.0.3"}, address="198.51.100.7")[0],
+                         201)
+        self.assertEqual(self.get("/v1/stats", "198.51.100.7")[0], 404)     # through nginx it is not there
+        code, stats = self.get("/v1/stats?days=7")
+        kept = self.feedback_rows()
+        day = app.utc_day(time.time())
+        self.assertEqual((code, stats["feedback"]), (200, {
+            "messages": [
+                {"received": kept[1]["received"], "install": None, "name": None, "text": "Thanks.",
+                 "version": "3.0.3", "game": None, "channel": None, "os": None},
+                {"received": kept[0]["received"], "install": self.ONE, "name": "Rockhound", "text": first["text"],
+                 "version": "3.0.4", "game": 41003, "channel": "LIVE", "os": "windows"}],
+            "came_in": {day: {"messages": 2}}, "totals": {"messages": 2}}))
+        self.assertNotIn(kept[0]["source"], json.dumps(stats))      # never the token
+        self.assertEqual(stats["counters"][day]["feedback:accepted"], 2)
+        # a message from before the days asked for is listed, and counted with all of them only
+        db = sqlite3.connect(self.store.path)
+        try:
+            with db:
+                db.execute("UPDATE feedback SET received = received - 8 * 86400 WHERE id = 1")
+        finally:
+            db.close()
+        feedback = self.get("/v1/stats?days=7")[1]["feedback"]
+        self.assertEqual((len(feedback["messages"]), feedback["came_in"], feedback["totals"]),
+                         (2, {day: {"messages": 1}}, {"messages": 2}))
+        # ...and no more than the newest so many are listed
+        was = app.FEEDBACK_STATS_NEWEST
+        app.FEEDBACK_STATS_NEWEST = 1
+        try:
+            feedback = self.get("/v1/stats")[1]["feedback"]
+        finally:
+            app.FEEDBACK_STATS_NEWEST = was
+        self.assertEqual(([m["text"] for m in feedback["messages"]], feedback["totals"]),
+                         (["Thanks."], {"messages": 2}))
+
+    def test_a_message_keeps_no_address_and_loses_the_senders_token_after_two_days(self):
+        self.send_feedback(address="198.51.100.7", install=self.ONE)
+        self.send(address="198.51.100.7")
+        self.assertEqual(self.feedback_rows()[0]["source"], self.rows()[0]["source"])    # a reading's token
+        self.store.prune(self.now + 3600)
+        self.assertIsNotNone(self.feedback_rows()[0]["source"])
+        self.store.prune(self.now + 49 * 3600)
+        row = self.feedback_rows()[0]
+        self.assertIsNone(row["source"])
+        # the message stays, with the number and the name it came with
+        self.assertEqual((self.store.feedback_count(), row["install"], row["name"]), (1, self.ONE, "Rockhound"))
+        kept = b""
+        for path in (self.store.path, self.store.path + "-wal"):
+            if os.path.exists(path):
+                with open(path, "rb") as f:
+                    kept += f.read()
+        self.assertNotIn(b"198.51.100", kept)
+
+    def test_feedback_and_readings_do_not_hold_each_other_back(self):
+        # an install held back for what it sent as rocks can still write
+        for _ in range(app.MISFITS_PER_HOUR):
+            self.assertEqual(self.send_rocks([self.rock()], install=self.ONE, v=2)[0], 400)
+        self.assertEqual(self.send_rocks([self.rock()], install=self.ONE)[0], 429)
+        self.assertEqual(self.send_feedback(install=self.ONE)[0], 201)
+        # ...and messages turned down hold back neither its rocks nor its readings
+        for _ in range(app.MISFITS_PER_HOUR + 1):
+            self.assertEqual(self.send_feedback(address="198.51.100.9", install=self.OTHER, text="")[0], 400)
+        self.assertEqual(self.send_rocks([self.rock()], address="198.51.100.9", install=self.OTHER)[0], 201)
+        self.assertEqual(self.send(address="198.51.100.9", install=self.OTHER)[0], 201)
+        today = self.today()
+        self.assertEqual((today["rocks:held"], today["feedback:rejected"], today["feedback:accepted"]),
+                         (1, app.MISFITS_PER_HOUR + 1, 1))
+        self.assertNotIn("held", today)
+
+    def test_a_database_from_before_the_feedback_gets_its_table(self):
+        self.send()
+        self.send_rocks([self.rock()])
+        db = sqlite3.connect(self.store.path)
+        try:
+            with db:
+                db.execute("DROP TABLE feedback")
+        finally:
+            db.close()
+        app.Store(self.store.path)
+        self.assertEqual(self.send_feedback()[0], 201)
+        self.assertEqual((self.store.count(), self.store.rock_count(), self.store.feedback_count()), (1, 1, 1))
 
 
 if __name__ == "__main__":

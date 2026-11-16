@@ -28,10 +28,11 @@ request line and the status code only.
 Since 2.6.7, Bedrock also sends a random number it made for its install the
 first time (`X-Bedrock-Install`; `stats=0` in its config leaves it out). The
 service counts installs by it and holds back an install that sends too many
-readings that do not fit (see Limits below). The number is not stored
-either: it is held in memory, salted and hashed like the addresses.
-Readings are still told apart by the address, since a number is easily
-made up.
+readings that do not fit (see Limits below). The number is not stored with
+a reading or a rock either: it is held in memory, salted and hashed like
+the addresses. Readings are still told apart by the address, since a number
+is easily made up. Only a feedback message keeps the number (see Feedback
+below).
 
 Requests that come through nginx are counted, by the hour (two weeks) and
 by the day (180 days): what was asked for, the Bedrock version and platform
@@ -131,6 +132,35 @@ mining hard scans about 100 rocks an hour.
 The rocks are not handed out: only the operator can download them, from
 inside the containers' network (`/v1/rocks/export.csv`) or with
 `python app.py --rocks-export FILE`.
+
+## Feedback
+
+Bedrock's Feedback page lets a player write to the developer. A message is
+sent when the player clicks Send.
+
+For each message: when it came in, the text, the name if the player gave
+one, the install number if Bedrock sent one (`X-Bedrock-Install`), the
+Bedrock version, the game's version and channel, and Windows or Linux. This
+is the only place where a name or the install number is stored.
+
+No account and no IP address is kept. Like a refinery reading, each message
+gets a token to tell senders apart and loses it after 48 hours.
+
+A message that does not fit the format is turned down with `400`. It is
+typed by a person and is no reading: it does not count towards holding an
+install back, and an install that is held back for its readings can still
+send a message. The same text from the same sender within 24 hours is kept
+once; the sender is the install by its number, or the address where
+Bedrock sent none.
+
+An address can send 5 messages an hour and 20 a day, and everyone together
+500 a day; more is turned down with `429` and not kept. Only a message that
+is kept counts: not one that was turned down, and not one that was kept
+already.
+
+The messages are not handed out: only the operator can read them, from
+inside the containers' network (`/v1/feedback/export.csv`, and the newest
+100 in `/v1/stats`) or with `python app.py --feedback-export FILE`.
 
 ## API
 
@@ -257,22 +287,73 @@ For the operator, from inside the containers' network only, like
 (`sender_nth`), but never the token. The same as
 `python app.py --rocks-export FILE`.
 
+### `POST /v1/feedback`
+
+A message from Bedrock's Feedback page, `Content-Type: application/json`, at
+most 16 KB. The install number comes in the `X-Bedrock-Install` header,
+where Bedrock sends one:
+
+```json
+{
+  "text": "The rock panel shows no list since 4.10.3.\nMOLE, pilot seat.",
+  "name": "Rockhound",
+  "version": "3.0.4",
+  "game": 41003,
+  "channel": "LIVE",
+  "os": "windows"
+}
+```
+
+- `text` is 1 to 4000 characters after trimming. Line breaks are kept, as
+  `\n` however they were written (a Windows text field writes `\r\n`), and
+  a tab becomes a space. Any other control character is a format error.
+- `name` is up to 40 characters on one line after trimming. It is left out
+  or empty when the player gave none.
+- `version` is Bedrock's version, `game` the game's as a whole number
+  (`41003` for 4.10.3, `0` when not known), `channel` up to 20 characters on
+  one line, and `os` is `windows` or `linux`.
+- `name`, `game`, `channel` and `os` are optional. Keys the service does not
+  know are ignored.
+
+The answer is `201 {"ok": true, "stored": true}`, or `200` with
+`"stored": false` when the same sender sent the same text in the last 24
+hours. Errors: `400` for a message that does not fit the format, `413` when
+it is too large, `415` when the content type is not JSON, and `429` when a
+limit is reached.
+
+### `GET /v1/feedback/export.csv`
+
+For the operator, from inside the containers' network only, like
+`/v1/stats`. Every message stored, newest first, as CSV: `id`, `received`,
+`install`, `name`, `text`, `version`, `game`, `channel` and `os`, but never
+the token. The same as `python app.py --feedback-export FILE`. The file is
+UTF-8, and `name` and `text` are whatever was typed: a spreadsheet takes a
+cell that begins with `=`, `+`, `-` or `@` as a formula, so import them as
+text.
+
 ### `GET /v1/health`
 
-The number of readings and of rocks stored, and today's counts for the
-readings: `{"ok": true, "version": 1, "observations": N, "rocks": N,
-"today": {"accepted": …, "duplicate": …, "implausible": …, "limited": …,
-"held": …, "rejected": …}}`
+The number of readings, of rocks and of feedback messages stored, and
+today's counts for the readings: `{"ok": true, "version": 1,
+"observations": N, "rocks": N, "feedback": N, "today": {"accepted": …,
+"duplicate": …, "implausible": …, "limited": …, "held": …, "rejected": …}}`
 
 ### `GET /v1/stats?days=90`
 
 For the operator's admin page, from inside the containers' network only: a
 request through nginx (it carries `X-Real-IP`) gets a 404. The counters by
 day (`req:<route>`, `agent:<version>`, `platform:<os>`, `clients`,
-`senders` and the outcomes above, and for rocks `rock-senders` and the
-same outcomes as `rocks:accepted` and so on), the requests by hour, the
+`senders` and the outcomes above, for rocks `rock-senders` and the
+same outcomes as `rocks:accepted` and so on, and for feedback
+`feedback-senders`, `feedback:accepted`, `feedback:duplicate`,
+`feedback:limited` and `feedback:rejected`), the requests by hour, the
 readings and quotes received by day, each station's state and how often it
 was read.
+
+And the feedback (`feedback`): the newest 100 messages, newest first
+(`messages`, each with `received`, `install`, `name`, `text`, `version`,
+`game`, `channel` and `os`), how many came in by day (`came_in`), and how
+many are stored (`totals`).
 
 ## Running it
 
@@ -284,6 +365,7 @@ Python 3.12 or newer, nothing else:
     python app.py --purge --since 2026-10-11T08:00 --until 2026-10-11T09:00 --station Checkmate
     python app.py --purge --since 2026-10-11T08:00 --implausible --yes
     python app.py --backup FILE        # a consistent copy while the service runs
+    python app.py --feedback-export FILE  # the feedback as CSV, newest first
     python app.py --rocks-export FILE  # the rock scans as CSV
     python make_tables.py              # tables.json again, after the refining headers change
 
@@ -291,8 +373,9 @@ The environment variables `BEDROCK_API_DB`, `BEDROCK_API_PORT`,
 `BEDROCK_API_PREFIX`, `BEDROCK_API_STATIONS`, `BEDROCK_API_TABLES`,
 `BEDROCK_API_POSTS_PER_HOUR`, `BEDROCK_API_POSTS_PER_HOUR_ALL`,
 `BEDROCK_API_ROCK_POSTS_PER_HOUR`, `BEDROCK_API_ROCK_POSTS_PER_HOUR_ALL`,
-`BEDROCK_API_ROCKS_PER_HOUR` and `BEDROCK_API_ROCKS_PER_HOUR_ALL` change the
-defaults.
+`BEDROCK_API_ROCKS_PER_HOUR`, `BEDROCK_API_ROCKS_PER_HOUR_ALL`,
+`BEDROCK_API_FEEDBACK_PER_HOUR`, `BEDROCK_API_FEEDBACK_PER_DAY` and
+`BEDROCK_API_FEEDBACK_PER_DAY_ALL` change the defaults.
 
 ## Deploying it behind nginx with Docker Compose
 
@@ -310,3 +393,7 @@ The container runs as a user without privileges, with a read-only file
 system apart from its data volume, and is reached only through nginx on the
 stack's network. To look at the data or clean it up on the server, use
 `docker exec bedrock-api python app.py --stats` or the same with `--purge`.
+To read the feedback, write it into the data volume with
+`docker exec bedrock-api python app.py --feedback-export /data/feedback.csv`,
+copy it out with `docker cp bedrock-api:/data/feedback.csv .` and delete it
+there.
