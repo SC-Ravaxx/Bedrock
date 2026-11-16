@@ -101,4 +101,34 @@ bool headColumnAgrees(const MiningLaser& laser, const std::vector<const MiningMo
 // mining mode is on, before any rock is scanned.
 const char* hudShipOf(char glyph, const std::string& logShip, bool inSeat);
 
+// The ship a scan panel's label column belongs to: the Prospector's (L, M),
+// the MOLE's pilot seat (K, P, Q) and turrets (T, W), the Golem's (G, H).
+// Null for any other column and for none.
+const char* panelShipOf(char glyph);
+
+// Whether to look for a scan panel at all: not while the log has the player
+// in the seat of a ship that cannot mine. Out of the seat the player may
+// have boarded a mining ship the log did not name (PanelShipWitness).
+bool panelsWanted(const std::string& logShip, bool inSeat);
+
+// The ship the scan panels show the player in, where the log has no seat
+// to say it. The log names a ship boarded only by its crew channel ("You
+// have joined channel"), and on 16 November 2026 the game stopped writing
+// that line three hours into a session: a MOLE and a Golem were boarded
+// without it, and Bedrock kept the Prospector's fit. Two sure panels of one
+// ship in a row name it, once: a fit picked by hand afterwards stays. A
+// seat the log names starts it over.
+class PanelShipWitness {
+public:
+    // One look: the label column of a panel read for sure, 0 for none, and
+    // whether the log has the player in a seat. The ship to switch the fit
+    // to, by id, or null.
+    const char* look(char glyph, bool logSeat);
+
+private:
+    const char* seen_ = nullptr;   // the ship the last sure panel named
+    int running_ = 0;              // ...and sure panels in a row that named it
+    const char* said_ = nullptr;   // the ship last switched to
+};
+
 }  // namespace SCMiner

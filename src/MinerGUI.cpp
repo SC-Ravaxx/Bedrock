@@ -25803,6 +25803,12 @@ void MinerGUI::setShip(const std::string& label, bool inSeat, const std::string&
     InvalidateRect(hwnd_, nullptr, TRUE);
 }
 
+void MinerGUI::shipSeenOnHud(const MiningShip& kind) {
+    if (fit_ >= 0 && fit_ < (int)fits_.size() && fits_[(size_t)fit_].ship == &kind) return;
+    pickShipKind(kind, false);
+    InvalidateRect(hwnd_, nullptr, TRUE);
+}
+
 // Whether a fit of `kind` has this laser and these modules, in any order,
 // on its first head
 static bool fitHasSeen(const MinerGUI::ShipFit& f, const MiningShip* kind, const MiningLaser* laser,

@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstring>
 #include <iostream>
 
 namespace SCMiner {
@@ -932,6 +933,55 @@ const char* hudShipOf(char glyph, const std::string& logShip, bool inSeat) {
     if (ship.find("prospector") != std::string::npos) return "prospector";
     if (ship.find("golem") != std::string::npos) return "golem";
     return nullptr;
+}
+
+const char* panelShipOf(char glyph) {
+    switch (glyph) {
+    case 'L':
+    case 'M':
+        return "prospector";
+    case 'K':
+    case 'P':
+    case 'Q':
+    case 'T':
+    case 'W':
+        return "mole";
+    case 'G':
+    case 'H':
+        return "golem";
+    default:
+        return nullptr;
+    }
+}
+
+bool panelsWanted(const std::string& logShip, bool inSeat) {
+    if (logShip.empty() || !inSeat) return true;
+    std::string ship = logShip;
+    for (char& ch : ship) ch = (char)std::tolower((unsigned char)ch);
+    for (const char* miner : {"prospector", "mole", "golem", "roc", "arrastra", "orion"}) {
+        if (ship.find(miner) != std::string::npos) return true;
+    }
+    return false;
+}
+
+const char* PanelShipWitness::look(char glyph, bool logSeat) {
+    const auto same = [](const char* a, const char* b) { return a && b && std::strcmp(a, b) == 0; };
+    if (logSeat) {
+        seen_ = nullptr;
+        said_ = nullptr;
+        running_ = 0;
+        return nullptr;
+    }
+    // no panel, or one of no ship known: the count stands
+    const char* ship = panelShipOf(glyph);
+    if (!ship) return nullptr;
+    if (!same(ship, seen_)) {
+        seen_ = ship;
+        running_ = 0;
+    }
+    if (++running_ < 2 || same(ship, said_)) return nullptr;
+    said_ = ship;
+    return ship;
 }
 
 }  // namespace SCMiner

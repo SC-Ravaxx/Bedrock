@@ -505,6 +505,10 @@ public:
     // The ship Game.log names, shown in the header; "" clears it. hull: which
     // one of its kind, when the log has said (GameState::hull), "" when not
     void setShip(const std::string& label, bool inSeat, const std::string& hull = "");
+    // The ship the scan panels show the player in, where the log has no seat
+    // to say it (PanelShipWitness): that ship's fit, as it was left - unless
+    // the chosen fit is of that kind already
+    void shipSeenOnHud(const MiningShip& kind);
     // A hull the log says was destroyed with the player in it (GameState::lostHulls)
     void shipLost(const std::string& hull);
     // What the mining HUD of a one-seat ship shows fitted (LoadoutReader):

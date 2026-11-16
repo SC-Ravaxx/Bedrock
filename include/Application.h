@@ -184,7 +184,7 @@ private:
     // signature reader watches - and that is dear enough at 5120x1440 to be
     // on a clock of its own rather than on every scan.
     void lookForRock();
-    bool shipCanMine() const;   // the ship the log names can mine, or none is named yet
+    bool shipCanMine() const;   // panelsWanted: anywhere but in the seat of a ship that cannot mine
     // One line per look at a scan panel into debug\rock_readings.csv - what
     // was read, and what the median made of it. steady is null for a look that
     // did not name enough figures to count. rangeMetres is what the LASER
@@ -302,6 +302,10 @@ private:
     // with no turret's HUD in view, take it back.
     void readTurretOnHud(const cv::Mat& frame);
     void takeTurretLaser(const MiningLaser* laser);
+    // The ship the scan panels show, where the log has the player in no
+    // seat: its fit is chosen (PanelShipWitness). A MOLE's turret laser is
+    // only read with a MOLE's fit chosen.
+    PanelShipWitness panelShip_;
     std::future<const MiningLaser*> turretJob_;
     std::chrono::steady_clock::time_point lastTurretRead_{};
     std::string turretSeen_;            // the last reading's laser, by id

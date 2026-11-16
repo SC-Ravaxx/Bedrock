@@ -6025,6 +6025,50 @@ int runSelfTest() {
                            is(hudShipOf(0, "Argo MOLE", true), nullptr) && is(hudShipOf(0, "", true), nullptr);
         allPassed &= check(whose, "the HUD is the Prospector's or the Golem's by the panel's labels, and with no panel "
                                   "up by the ship the log has the player sitting in - never a MOLE's");
+
+        // ...and the ship a panel shows the player in, where the game's log
+        // has no seat to say it (16 November 2026: no crew channel line for
+        // three hours, a MOLE and a Golem boarded without one)
+        using SCMiner::panelShipOf;
+        const bool panelShips = is(panelShipOf('L'), "prospector") && is(panelShipOf('M'), "prospector") &&
+                                is(panelShipOf('K'), "mole") && is(panelShipOf('P'), "mole") &&
+                                is(panelShipOf('Q'), "mole") && is(panelShipOf('T'), "mole") &&
+                                is(panelShipOf('W'), "mole") && is(panelShipOf('G'), "golem") &&
+                                is(panelShipOf('H'), "golem") && is(panelShipOf(0), nullptr) &&
+                                is(panelShipOf('F'), nullptr) && is(panelShipOf('5'), nullptr);
+        allPassed &= check(panelShips, "a panel's label column names its ship: L and M the Prospector, K, P, Q, T "
+                                       "and W the MOLE, G and H the Golem, and nothing else one");
+        using SCMiner::panelsWanted;
+        const bool wanted = panelsWanted("", false) && panelsWanted("", true) &&
+                            !panelsWanted("Anvil Asgard", true) && panelsWanted("Anvil Asgard", false) &&
+                            panelsWanted("Argo MOLE", true) && panelsWanted("Drake Golem", true) &&
+                            panelsWanted("Greycat ROC", true);
+        allPassed &= check(wanted, "a panel is looked for everywhere but in the seat of a ship that cannot mine - "
+                                   "also once out of that seat, where the log may not name the next ship");
+        {
+            SCMiner::PanelShipWitness w;
+            // two sure MOLE panels: its fit, once
+            const bool firstOnly = is(w.look('Q', false), nullptr) && is(w.look('Q', false), "mole") &&
+                                   is(w.look('T', false), nullptr) && is(w.look('Q', false), nullptr);
+            // looks without a panel leave the count; a Golem panel starts it
+            // over, and two of them name the Golem
+            const bool gaps = is(w.look('G', false), nullptr) && is(w.look(0, false), nullptr) &&
+                              is(w.look('H', false), "golem");
+            // a single panel of another ship between two is not two in a row
+            const bool row = is(w.look('Q', false), nullptr) && is(w.look('G', false), nullptr) &&
+                             is(w.look('Q', false), nullptr) && is(w.look('Q', false), "mole");
+            // a seat the log names: nothing, and the next stretch out of
+            // the seat names its ship afresh
+            const bool seat = is(w.look('Q', true), nullptr) && is(w.look('Q', true), nullptr) &&
+                              is(w.look('Q', false), nullptr) && is(w.look('Q', false), "mole");
+            // a panel no ship is known by leaves the count
+            SCMiner::PanelShipWitness v;
+            const bool unknown = is(v.look('L', false), nullptr) && is(v.look('5', false), nullptr) &&
+                                 is(v.look('M', false), "prospector");
+            allPassed &= check(firstOnly && gaps && row && seat && unknown,
+                               "with no seat in the log, two sure panels of one ship in a row switch to its fit, "
+                               "once - a fit picked by hand afterwards stays - and a seat the log names starts over");
+        }
     }
 
     // Where exactly: the names the log uses, the tables' places behind

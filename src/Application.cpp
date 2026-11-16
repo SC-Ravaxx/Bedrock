@@ -1575,15 +1575,11 @@ static void logRockList(const char* event, float jobMass, float rockMass, const 
 // either way. The three Bedrock reads, and whatever else carries a mining
 // head: its scan panel comes up there too, even where the view cannot read
 // its HUD yet. Standing beside the ship, or in one of a MOLE's turrets, the
-// ship is still the one last boarded.
+// ship is still the one last boarded. Out of a ship's seat the panel is
+// looked for whatever ship that was (panelsWanted): the next one may be
+// boarded without the log saying so.
 bool Application::shipCanMine() const {
-    std::string ship = gameState_.ship();
-    if (ship.empty()) return true;
-    for (auto& c : ship) c = (char)std::tolower((unsigned char)c);
-    for (const char* miner : {"prospector", "mole", "golem", "roc", "arrastra", "orion"}) {
-        if (ship.find(miner) != std::string::npos) return true;
-    }
-    return false;
+    return panelsWanted(gameState_.ship(), gameState_.inSeat());
 }
 
 void Application::lookForRock() {
@@ -1721,6 +1717,14 @@ void Application::lookForRock() {
         }
     }
     if (panel.found) keepPanelSpot(cv::Size(viewport->width, viewport->height));
+    // The panel's own ship, where the log has the player in no seat
+    if (const char* id = panelShip_.look(panel.found && panel.labels.x >= 0 ? panel.labelGlyph : 0,
+                                         gameState_.inSeat())) {
+        for (int i = 0; i < MINING_SHIP_COUNT; i++) {
+            if (std::strcmp(MINING_SHIPS[i].id, id) == 0) gui_->shipSeenOnHud(MINING_SHIPS[i]);
+        }
+        std::cout << "\n[rock] the panels are a " << id << "'s and the log has no seat: that fit" << std::endl;
+    }
     readLoadoutOnHud(frame, panel);
     rockLabelsOnly_ = !panel.found && panel.labels.x >= 0;
     rockQuickLooks_ = quick ? rockQuickLooks_ + 1 : 0;
