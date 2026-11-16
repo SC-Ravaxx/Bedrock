@@ -1960,6 +1960,19 @@ int runScreenshots(const std::string& dir) {
             gui.gearStateForShot(0, "");
             pump();
             shoot(gui.windowHandle(), "gear_heads.png");
+            // ...the pointer on the Helix II's i: its figures, what it helps
+            // with and what it costs, the game's words - then on the last
+            // head's, the card above it
+            const int arborTwo = (int)(SCMiner::laserById("grin_arbor_s2") - SCMiner::MINING_LASERS);
+            const bool helixInfo = gui.pointGearForShot(10, helixTwo);
+            pump();
+            shoot(gui.windowHandle(), "gear_heads_info.png");
+            const bool arborInfo = gui.pointGearForShot(10, arborTwo);
+            pump();
+            shoot(gui.windowHandle(), "gear_heads_info_last.png");
+            gui.pointGearForShot(-1, 0);
+            pump();
+            std::cout << "  a head's i under the pointer: " << (helixInfo && arborInfo ? "yes" : "NO I") << std::endl;
             int fitPieces = 0;
             for (int kind : {1, 2, 3, 4, 8}) {
                 for (int value = 0; value < 64; value++) {
@@ -1997,6 +2010,26 @@ int runScreenshots(const std::string& dir) {
             pump();
             std::cout << "  the modules: " << gui.gearHeadForShot() << std::endl;
             shoot(gui.windowHandle(), "gear_modules.png");
+            // ...the pointer on an active module's i (Brandt: its uses and
+            // how long each runs over its effects), a passive one's (Deluge,
+            // made, not bought) and one far down the list (Overrun: the card
+            // above it)
+            const auto moduleAt = [](const char* id) {
+                return (int)(SCMiner::moduleById(id) - SCMiner::MINING_MODULES);
+            };
+            const bool brandtInfo = gui.pointGearForShot(10, moduleAt("active_brandt"));
+            pump();
+            shoot(gui.windowHandle(), "gear_modules_info.png");
+            const bool delugeInfo = gui.pointGearForShot(10, moduleAt("passive_deluge"));
+            pump();
+            shoot(gui.windowHandle(), "gear_modules_info_passive.png");
+            const bool overrunInfo = gui.pointGearForShot(10, moduleAt("passive_overrun"));
+            pump();
+            shoot(gui.windowHandle(), "gear_modules_info_last.png");
+            gui.pointGearForShot(-1, 0);
+            pump();
+            std::cout << "  a module's i under the pointer: "
+                      << (brandtInfo && delugeInfo && overrunInfo ? "yes" : "NO I") << std::endl;
             // ...three notches of the wheel further down
             SendMessageW(gui.windowHandle(), WM_MOUSEWHEEL, MAKEWPARAM(0, (WORD)(short)(-3 * WHEEL_DELTA)), 0);
             pump();

@@ -27,6 +27,7 @@
 #include <cmath>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace SCMiner {
@@ -957,13 +958,13 @@ inline const MiningGadget* gadgetById(const char* id) {
 // then what it costs - the order of the game's own description - each the
 // strongest first. Between two as strong, the one it is the best of the six
 // at goes first: Sabir's resistance before its window.
-struct GadgetEffect {
+struct GearEffect {
     const char* what;   // in the rock view's words
     float by;           // per cent
     bool helps;
 };
 
-inline std::vector<GadgetEffect> gadgetEffects(const MiningGadget& g) {
+inline std::vector<GearEffect> gadgetEffects(const MiningGadget& g) {
     struct Axis {
         const char* what;
         float MiningGadget::* field;
@@ -977,7 +978,7 @@ inline std::vector<GadgetEffect> gadgetEffects(const MiningGadget& g) {
         {"Useful ore clustering", &MiningGadget::cluster, false},
     };
     struct Ranked {
-        GadgetEffect effect;
+        GearEffect effect;
         bool best;
         int axis;
     };
@@ -999,9 +1000,66 @@ inline std::vector<GadgetEffect> gadgetEffects(const MiningGadget& g) {
         if (x.best != y.best) return x.best;
         return x.axis < y.axis;
     });
-    std::vector<GadgetEffect> out;
+    std::vector<GearEffect> out;
     for (const Ranked& r : ranked) out.push_back(r.effect);
     return out;
+}
+
+// The same for a laser head or a module, for the i on their lists: what it
+// helps with, then what it costs, each the strongest first, two as strong
+// in the order given. The figures are the item file's, worded and signed as
+// the game's descriptions print them: a filter, the per cent less inert
+// material drawn in, is the Inert Material Level the game prints negative
+// (Helix II's 40: -40 %), and a module's power, a factor, counts as a per
+// cent on the laser's (Rieger-C3's 1.25: +25 %).
+struct GearAxis {
+    const char* what;
+    float by;
+    bool lessHelps;   // resistance, instability, inert material and the hazards help by going down
+};
+
+inline std::vector<GearEffect> rankedGearEffects(const GearAxis* axes, size_t count) {
+    std::vector<std::pair<GearEffect, size_t>> ranked;
+    for (size_t a = 0; a < count; a++) {
+        // (a power factor's float leaves a crumb: 1.02 is +2.0000005)
+        const float by = std::round(axes[a].by * 100.0f) / 100.0f;
+        if (by == 0) continue;
+        ranked.push_back({{axes[a].what, by, axes[a].lessHelps ? by < 0 : by > 0}, a});
+    }
+    std::stable_sort(ranked.begin(), ranked.end(), [](const auto& x, const auto& y) {
+        if (x.first.helps != y.first.helps) return x.first.helps;
+        if (std::fabs(x.first.by) != std::fabs(y.first.by)) return std::fabs(x.first.by) > std::fabs(y.first.by);
+        return x.second < y.second;
+    });
+    std::vector<GearEffect> out;
+    for (const auto& r : ranked) out.push_back(r.first);
+    return out;
+}
+
+inline std::vector<GearEffect> laserEffects(const MiningLaser& l) {
+    const GearAxis axes[] = {
+        {"Resistance", l.resistance, true},
+        {"Instability", l.instability, true},
+        {"Optimal charge window", l.window, false},
+        {"Optimal charge rate", l.rate, false},
+        {"Inert material", -l.filter, true},
+    };
+    return rankedGearEffects(axes, sizeof(axes) / sizeof(axes[0]));
+}
+
+inline std::vector<GearEffect> moduleEffects(const MiningModule& m) {
+    const GearAxis axes[] = {
+        {"Laser power", (m.power - 1.0f) * 100.0f, false},
+        {"Extraction power", m.extraction, false},
+        {"Resistance", m.resistance, true},
+        {"Instability", m.instability, true},
+        {"Optimal charge window", m.window, false},
+        {"Optimal charge rate", m.rate, false},
+        {"Inert material", -m.filter, true},
+        {"Shatter damage", m.shatter, true},
+        {"Catastrophic charge rate", m.danger, true},
+    };
+    return rankedGearEffects(axes, sizeof(axes) / sizeof(axes[0]));
 }
 
 }  // namespace SCMiner

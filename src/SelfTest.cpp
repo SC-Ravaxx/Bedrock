@@ -13,6 +13,7 @@
 #include "ColourScheme.h"
 #include "CraftingData.h"
 #include "CraftQuality.h"
+#include "CraftedOnly.h"
 #include "DataBackup.h"
 #include "DevTools.h"
 #include "EmbeddedData.h"
@@ -622,7 +623,7 @@ int runSelfTest() {
             const auto listed = [](const char* id) {
                 std::string out;
                 bool costs = false;
-                for (const SCMiner::GadgetEffect& e : SCMiner::gadgetEffects(*SCMiner::gadgetById(id))) {
+                for (const SCMiner::GearEffect& e : SCMiner::gadgetEffects(*SCMiner::gadgetById(id))) {
                     if (!e.helps && !costs) {
                         out += " |";
                         costs = true;
@@ -635,7 +636,7 @@ int runSelfTest() {
             };
             bool eachBoth = true;
             for (int i = 0; i < SCMiner::MINING_GADGET_COUNT; i++) {
-                const std::vector<SCMiner::GadgetEffect> effects = SCMiner::gadgetEffects(SCMiner::MINING_GADGETS[i]);
+                const std::vector<SCMiner::GearEffect> effects = SCMiner::gadgetEffects(SCMiner::MINING_GADGETS[i]);
                 eachBoth &= !effects.empty() && effects.front().helps && !effects.back().helps;
             }
             allPassed &= check(listed("thcn_boremax") == " Instability -70 Useful ore clustering +30 | Resistance +10" &&
@@ -644,6 +645,54 @@ int runSelfTest() {
                                        " Useful ore clustering +60 Resistance -25 | Optimal charge window -30" &&
                                    eachBoth,
                                "a gadget's i lists what it helps with, the strongest first, then what it costs");
+        }
+
+        // ...and for a laser head and a module, signed as the game's own
+        // descriptions print them (Helix II: Resistance -30 %, Inert Material
+        // Level -40 %, Optimal Charge Window Size -40 %; Brandt: Mining Laser
+        // Power 135 %, Shatter Damage -30 %, Resistance +15 %, 60 seconds, 5
+        // uses). Every head and module says what it is for in the game's
+        // words, and an active module how often and how long it runs
+        {
+            const auto listed = [](const std::vector<SCMiner::GearEffect>& effects) {
+                std::string out;
+                bool costs = false;
+                for (const SCMiner::GearEffect& e : effects) {
+                    if (!e.helps && !costs) {
+                        out += " |";
+                        costs = true;
+                    }
+                    char one[64];
+                    std::snprintf(one, sizeof one, " %s %+g", e.what, e.by);
+                    out += one;
+                }
+                return out;
+            };
+            const SCMiner::MiningModule& brandt = *SCMiner::moduleById("active_brandt");
+            const SCMiner::MiningModule& surge = *SCMiner::moduleById("active_surge");
+            const std::string helix = listed(SCMiner::laserEffects(*SCMiner::laserById("thcn_helix_s2")));
+            const std::string brandtSays = listed(SCMiner::moduleEffects(brandt));
+            const std::string fltr = listed(SCMiner::moduleEffects(*SCMiner::moduleById("passive_fltr_mk1")));
+            const std::string overrun = listed(SCMiner::moduleEffects(*SCMiner::moduleById("passive_overrun")));
+            int said = 0, timed = 0, moving = 0;
+            for (const SCMiner::MiningLaser& l : SCMiner::MINING_LASERS) said += std::strlen(l.blurb) > 40 ? 1 : 0;
+            for (const SCMiner::MiningModule& m : SCMiner::MINING_MODULES) {
+                said += std::strlen(m.blurb) > 40 ? 1 : 0;
+                timed += (m.active ? m.uses > 0 && m.seconds > 0 : m.uses == 0 && m.seconds == 0) ? 1 : 0;
+                moving += SCMiner::moduleEffects(m).empty() ? 0 : 1;
+            }
+            const int all = SCMiner::MINING_LASER_COUNT + SCMiner::MINING_MODULE_COUNT;
+            allPassed &= check(helix == " Inert material -40 Resistance -30 | Optimal charge window -40" &&
+                                   brandtSays == " Laser power +35 Shatter damage -30 | Resistance +15.5" &&
+                                   fltr == " Inert material -20 | Extraction power -15" &&
+                                   overrun == " Resistance -24.8 Laser power +2 | Extraction power -15" &&
+                                   brandt.uses == 5 && brandt.seconds == 60 && surge.uses == 7 && surge.seconds == 15 &&
+                                   said == all && timed == SCMiner::MINING_MODULE_COUNT &&
+                                   moving == SCMiner::MINING_MODULE_COUNT,
+                               "a head's and a module's i list what they help with, then what they cost, as the "
+                               "game signs it; each says what it is for, an active module its uses and seconds (" +
+                                   std::to_string(said) + " of " + std::to_string(all) + " with words, Helix II" + helix +
+                                   ", Brandt" + brandtSays + ")");
         }
 
         // Figures no rock can have, and the panel's first picture of a rock
@@ -2391,6 +2440,21 @@ int runSelfTest() {
                                notSoldText == "Clearcut Module, Deluge Module, Overrun Module, Pitman Mining Laser",
                            "Bedrock names its 48 heads, modules and gadgets as UEX does - all but the four UEX "
                            "lists no shop for (" + std::to_string(named) + " named; not UEX's: " + notSoldText + ")");
+        // ...and all four have a blueprint: made, not bought - their line
+        // says so (the Golem's Pitman as well, 4.10.3). An item with neither
+        // a shop nor a blueprint still says that no shop is known
+        {
+            std::string craftable;
+            for (const std::string& name : notSold) {
+                if (std::wstring(SCMiner::noShopWords(name)) == L"Craftable only") {
+                    craftable += (craftable.empty() ? "" : ", ") + name;
+                }
+            }
+            allPassed &= check(craftable == "Clearcut Module, Deluge Module, Overrun Module, Pitman Mining Laser" &&
+                                   std::wstring(SCMiner::noShopWords("BoreMax")) == L"No shop known to UEX",
+                               "the Gear page says the four items no shop sells are craftable only (" + craftable +
+                                   "), and of one without a blueprint that no shop is known");
+        }
 
         // The three lists as the app keeps them in uex\, read again while
         // young without asking UEX: a gadget's, a head's, a module's - and

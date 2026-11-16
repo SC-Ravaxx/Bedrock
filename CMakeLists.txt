@@ -291,6 +291,7 @@ set(HEADERS
     include/MinerGUI.h
     include/BlueprintLibrary.h
     include/CraftQuality.h
+    include/CraftedOnly.h
     include/Reputation.h
     include/GameState.h
     include/GamePlaces.h

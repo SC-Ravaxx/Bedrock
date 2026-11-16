@@ -11,6 +11,7 @@
 #include "GamePlaces.h"
 #include "CraftingData.h"
 #include "CraftQuality.h"
+#include "CraftedOnly.h"
 #include "RefineryData.h"
 #include "RefiningData.h"
 #include "RefineryShare.h"
@@ -5496,7 +5497,9 @@ static std::string moduleShortName(const MiningModule& m) {
 }
 
 // The one figure a module is worth fitting for: the biggest thing it moves,
-// with the word for what that is. Power is a factor, the rest are per cent.
+// with the word for what that is. Power is a factor, the rest are per cent;
+// inert material goes down by what the filter takes out, and is signed so,
+// as the game prints it (FLTR: -20% inert).
 // Power alone says nothing about a Focus III (0.95 power, +40 window), nor
 // about the eleven modules that leave power where it is. Empty means it
 // moves nothing, and then it is not a module worth a row.
@@ -5506,7 +5509,7 @@ static std::wstring moduleEffect(const MiningModule& m) {
         {(m.power - 1.0f) * 100.0f, L"pwr"},
         {m.window, L"win"},
         {m.rate, L"rate"},
-        {m.filter, L"inert"},
+        {-m.filter, L"inert"},
         {m.resistance, L"res"},
         {m.instability, L"inst"},
         {m.shatter, L"shat"},
@@ -6524,13 +6527,33 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
                          &dimBrush);
             nameEnd = priceX;
         }
-        // the name, a module's effect right behind it, a head's figures
-        // under it as Edit ship prints them
+        // the name, a module's effect behind it, a head's figures under it as
+        // Edit ship prints them
         const float nameRoom = (std::max)(scaleF(40), nameEnd - scaleF(10) - left);
         g.DrawString(r.name.c_str(), -1, &nameFont, Gdiplus::RectF(left, rowY, nameRoom, scaleF(20)), &oneLine,
                      r.fitted ? &greenBrush : &textBrush);
+        // the i, right behind the name, on its capitals' middle: under the
+        // pointer it lights, and what the item is and does comes up over
+        // the list (drawn last, below)
+        const float nameW = lineWidth(g, r.name, nameFont);
+        float effectX = left + nameW + scaleF(3);
+        if (r.index >= 0) {
+            const float d = scaleF(12);
+            const float iconX = std::round(left + nameW + scaleF(2));
+            if (iconX + d < left + nameRoom) {
+                const Gdiplus::RectF icon(iconX, std::round(rowY + capMiddle - d / 2), d, d);
+                const Gdiplus::RectF iconHit(icon.X - scaleF(4), icon.Y - scaleF(4), d + scaleF(8), d + scaleF(8));
+                const bool asked = seen(iconHit);
+                drawInfoMark(g, icon, asked ? COL_ACCENT : COL_TEXT_FAINT);
+                if (asked) {
+                    infoFor = r.index;
+                    infoIcon = icon;
+                }
+                hit(iconHit, 10, r.index, r.item);
+                effectX = icon.GetRight() + scaleF(5);
+            }
+        }
         if (!r.effect.empty()) {
-            const float effectX = left + lineWidth(g, r.name, nameFont) + scaleF(3);
             if (effectX < left + nameRoom - scaleF(24)) {
                 Gdiplus::SolidBrush effectBrush(r.fitted ? tint(COL_GREEN, 190) : COL_TEXT_DIM);
                 g.DrawString(r.effect.c_str(), -1, &smallFont,
@@ -6542,31 +6565,15 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
         if (!r.stats.empty()) {
             g.DrawString(r.stats.c_str(), -1, &smallFont, Gdiplus::PointF(left, rowY + scaleF(19)), &dimBrush);
         }
-        // a gadget's i, right behind its name, on its capitals' middle:
-        // under the pointer it lights, and what the gadget does comes up
-        // over the list (drawn last, below)
-        if (tab == 2 && r.index >= 0) {
-            const float d = scaleF(12);
-            const float iconX = std::round(left + lineWidth(g, r.name, nameFont) + scaleF(2));
-            if (iconX + d < left + nameRoom) {
-                const Gdiplus::RectF icon(iconX, std::round(rowY + capMiddle - d / 2), d, d);
-                const Gdiplus::RectF iconHit(icon.X - scaleF(4), icon.Y - scaleF(4), d + scaleF(8), d + scaleF(8));
-                const bool asked = seen(iconHit);
-                drawInfoMark(g, icon, asked ? COL_ACCENT : COL_TEXT_FAINT);
-                if (asked) {
-                    infoFor = r.index;
-                    infoIcon = icon;
-                }
-                hit(iconHit, 10, r.index, r.item);
-            }
-        }
         // where it is sold: the nearest places, as many as the line holds -
         // a click unfolds every shop under it
         const float lineY = rowY + scaleF(headsList ? 34.0f : 19.0f);
         const float lineRoom = right - left;
         if (gearShops_ && r.shops.empty()) {
-            g.DrawString(L"No shop known to UEX", -1, &smallFont, Gdiplus::RectF(left, lineY, lineRoom, scaleF(16)),
-                         &oneLine, &faintBrush);
+            // none known: made, not bought, where the game has a blueprint
+            // of it (Clearcut, Deluge, Overrun, the Golem's Pitman)
+            g.DrawString(noShopWords(r.item), -1, &smallFont, Gdiplus::RectF(left, lineY, lineRoom, scaleF(16)), &oneLine,
+                         &faintBrush);
         } else if (r.open) {
             // Unfolded: the shops in a panel of their own under the row, a
             // tone under the card - a line a shop, nearest first: the place,
@@ -6654,64 +6661,109 @@ void MinerGUI::drawGearPage(Gdiplus::Graphics& g, int cw, int ch) {
         addRoundRect(shape, fade, scaleF(R_CARD));
         g.FillPath(&shade, &shape);
     }
-    // What the gadget under the pointer does, over the list, hanging from
-    // its i - or above it where the window ends first: what it helps with
-    // in green and what it costs in red, as much as its item file gives
-    // (OptiMax's resistance -25 %, where the game's text says -30), then
-    // the game's own words about it
+    // What the item under the pointer is and does, over the list, hanging
+    // from its i - or above it where the window ends first: a head's own
+    // figures and an active module's uses and how long each runs, in the
+    // plain ink; what it helps with in green and what it costs in red, as
+    // much as its item file gives (OptiMax's resistance -25 %, where the
+    // game's text says -30); then the game's own words about it
     if (infoFor >= 0) {
-        const MiningGadget& gd = MINING_GADGETS[infoFor];
         Gdiplus::Font effectFont(&numeralFamily(), scaleF(Type::BODY), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-        const std::vector<GadgetEffect> effects = gadgetEffects(gd);
+        struct InfoLine {
+            std::wstring label, value;
+            int ink = 0;   // 0 a figure, 1 helps, 2 costs
+        };
+        std::vector<InfoLine> figures, effects;
+        std::vector<GearEffect> listed;
+        const char* blurb = "";
+        if (tab == 0) {
+            const MiningLaser& l = MINING_LASERS[infoFor];
+            // its power from the least the throttle lets down to, to the
+            // most - a range, as the game's own description gives it
+            figures.push_back({L"Laser power", formatNumber((int)std::lround(l.fracture * l.throttleMin)) + L"\u2013" +
+                                                   formatNumber((int)std::lround(l.fracture))});
+            figures.push_back({L"Extraction power", formatNumber((int)std::lround(l.extraction))});
+            wchar_t metres[32];
+            std::swprintf(metres, 32, L"%.0f m", l.fullRange);
+            figures.push_back({L"Optimal range", metres});
+            std::swprintf(metres, 32, L"%.0f m", l.zeroRange);
+            figures.push_back({L"Maximum range", metres});
+            figures.push_back({L"Module slots", std::to_wstring((int)l.slots)});
+            listed = laserEffects(l);
+            blurb = l.blurb;
+        } else if (tab == 1) {
+            const MiningModule& m = MINING_MODULES[infoFor];
+            if (m.active) {
+                figures.push_back({L"Uses", std::to_wstring((int)m.uses)});
+                figures.push_back({L"Duration", std::to_wstring((int)m.seconds) + L" s"});
+            }
+            listed = moduleEffects(m);
+            blurb = m.blurb;
+        } else {
+            const MiningGadget& gd = MINING_GADGETS[infoFor];
+            listed = gadgetEffects(gd);
+            blurb = gd.blurb;
+        }
+        for (const GearEffect& e : listed) {
+            // a whole figure as such, a part where the file has one (Overrun's resistance -24.8)
+            wchar_t v[32];
+            std::swprintf(v, 32, e.by == std::round(e.by) ? L"%+.0f %%" : L"%+.1f %%", e.by);
+            effects.push_back({toW(e.what), v, e.helps ? 1 : 2});
+        }
         const float pad = scaleF(12);
         const float popW = (std::min)(scaleF(340), cardW - scaleF(8));
         const float popX = std::round((std::max)(cardX + scaleF(4), (std::min)(left - scaleF(8), cardX + cardW - scaleF(4) - popW)));
         const float textX = popX + pad, textW = popW - 2 * pad;
-        std::vector<std::wstring> labels, values;
         float labelW = 0, valueW = 0;
-        for (const GadgetEffect& e : effects) {
-            wchar_t v[32];
-            std::swprintf(v, 32, L"%+.0f %%", e.by);
-            labels.push_back(toW(e.what));
-            values.push_back(v);
-            labelW = (std::max)(labelW, lineWidth(g, labels.back(), smallFont));
-            valueW = (std::max)(valueW, lineWidth(g, values.back(), effectFont));
+        for (const std::vector<InfoLine>* group : {&figures, &effects}) {
+            for (const InfoLine& line : *group) {
+                labelW = (std::max)(labelW, lineWidth(g, line.label, smallFont));
+                valueW = (std::max)(valueW, lineWidth(g, line.value, effectFont));
+            }
         }
-        const float effectStep = scaleF(17), wordsGap = scaleF(7);
+        const float effectStep = scaleF(17);
+        const float groupGap = figures.empty() || effects.empty() ? 0.0f : scaleF(6);
+        const float linesH = effectStep * (float)(figures.size() + effects.size()) + groupGap;
         // (broken a little short of the box: the Linux build sets 12.1 px
         // at 12, and a line broken at its width would wrap once more in
         // Windows' wider letters)
-        const Fitted words = fitLines(g, toW(gd.blurb), smallFont, textW - scaleF(4));
+        const Fitted words = fitLines(g, toW(blurb), smallFont, textW - scaleF(4));
         Gdiplus::RectF lineBox;
         g.MeasureString(L"Ag", -1, &smallFont, Gdiplus::PointF(0, 0), &lineBox);
-        const float wordsH = lineBox.Height + words.more;
-        const float popH = std::round(scaleF(9) + effectStep * (float)effects.size() + wordsGap + wordsH + scaleF(8));
+        const float wordsGap = words.text.empty() ? 0.0f : scaleF(7);
+        const float wordsH = words.text.empty() ? 0.0f : lineBox.Height + words.more;
+        const float popH = std::round(scaleF(9) + linesH + wordsGap + wordsH + scaleF(8));
         float popY = infoIcon.GetBottom() + scaleF(6);
         if (popY + popH > (float)ch - scaleF(8)) popY = (std::max)(scaleF(8), infoIcon.Y - scaleF(6) - popH);
         const Gdiplus::RectF pop(popX, std::round(popY), popW, popH);
         dropShadow(g, pop, radius, scaleF(8));
         fillRoundRect(g, pop, radius, COL_CARD_HI);
-        // each effect on one baseline: its words, its figure at the right
-        // of a column of its own
+        // each line on one baseline: its words, its figure at the right of a
+        // column of its own
         Gdiplus::StringFormat rightTop;
         rightTop.SetAlignment(Gdiplus::StringAlignmentFar);
         rightTop.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
         Gdiplus::SolidBrush redBrush(COL_RED);
         const float valueX = textX + labelW + scaleF(16);
         float baseline = pop.Y + scaleF(9) + scaleF(13);
-        for (size_t k = 0; k < effects.size(); k++) {
-            g.DrawString(labels[k].c_str(), -1, &smallFont,
+        const auto drawLine = [&](const InfoLine& line) {
+            g.DrawString(line.label.c_str(), -1, &smallFont,
                          Gdiplus::PointF(textX, std::round(baseline - fontAscent(smallFont))), &dimBrush);
             const float valueTop = std::round(baseline - fontAscent(effectFont));
-            g.DrawString(values[k].c_str(), -1, &effectFont, Gdiplus::RectF(valueX, valueTop, valueW, scaleF(18)),
-                         &rightTop, effects[k].helps ? &greenBrush : &redBrush);
+            g.DrawString(line.value.c_str(), -1, &effectFont, Gdiplus::RectF(valueX, valueTop, valueW, scaleF(18)),
+                         &rightTop, line.ink == 1 ? &greenBrush : line.ink == 2 ? &redBrush : &textBrush);
             baseline += effectStep;
+        };
+        for (const InfoLine& line : figures) drawLine(line);
+        baseline += groupGap;
+        for (const InfoLine& line : effects) drawLine(line);
+        if (!words.text.empty()) {
+            Gdiplus::StringFormat lines;   // broken by fitLines: in a box as wide as it was broken for
+            lines.SetTrimming(Gdiplus::StringTrimmingNone);
+            const float wordsY = pop.Y + scaleF(9) + linesH + wordsGap;
+            g.DrawString(words.text.c_str(), -1, &smallFont, Gdiplus::RectF(textX, wordsY, textW, wordsH + scaleF(2)),
+                         &lines, &faintBrush);
         }
-        Gdiplus::StringFormat lines;   // broken by fitLines: in a box as wide as it was broken for
-        lines.SetTrimming(Gdiplus::StringTrimmingNone);
-        const float wordsY = pop.Y + scaleF(9) + effectStep * (float)effects.size() + wordsGap;
-        g.DrawString(words.text.c_str(), -1, &smallFont, Gdiplus::RectF(textX, wordsY, textW, wordsH + scaleF(2)),
-                     &lines, &faintBrush);
     }
 }
 
