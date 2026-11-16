@@ -674,12 +674,16 @@ namespace {
 // Where a turret's laser line can stand: low and left of the middle, like
 // the one-seat ships' table, and swaying with the view. At 1440 lines it
 // stood at 1136 to 1185 down, its first letter at 1360 to 1470 (5120 wide,
-// the middle at 2560). Sized by the screen's height, as the HUD is.
-cv::Rect turretBand(const cv::Size& frame) {
+// the middle at 2560). Sized by the screen's height, as the HUD is. Since
+// 4.10.3 the turret's HUD is drawn smaller, and on a 16:9 screen the line
+// stands above that band - 885 to 898 down at 2560 x 1440, its first letter
+// at 446 - so a second band above it is looked through after the first.
+cv::Rect turretBand(const cv::Size& frame, bool upper) {
     const double h = frame.height;
     const double cx = frame.width / 2.0, cy = frame.height / 2.0;
-    const cv::Rect band((int)std::lround(cx - 0.95 * h), (int)std::lround(cy + 0.15 * h),
-                        (int)std::lround(0.65 * h), (int)std::lround(0.35 * h));
+    const double top = upper ? 0.05 : 0.15, height = upper ? 0.15 : 0.35;
+    const cv::Rect band((int)std::lround(cx - 0.95 * h), (int)std::lround(cy + top * h),
+                        (int)std::lround(0.65 * h), (int)std::lround(height * h));
     return band & cv::Rect(0, 0, frame.width, frame.height);
 }
 
@@ -691,24 +695,27 @@ const MiningLaser* readTurretLaser(const cv::Mat& frame, TextLineReader& lines, 
     if (frame.channels() == 4) cv::cvtColor(frame, bgr, cv::COLOR_BGRA2BGR);
     else if (frame.channels() == 1) cv::cvtColor(frame, bgr, cv::COLOR_GRAY2BGR);
     else bgr = frame;
-    const cv::Rect band = turretBand(bgr.size());
-    if (band.width < 50 || band.height < 50) return nullptr;
-    const cv::Mat part = bgr(band);
     const double s = bgr.rows / 1440.0;
     // A laser's line is some twenty letters long - IMPACT II MINING LASER,
     // KLEIN-S2 MINING LASER - and some 200 wide at size 1: shorter rows are
     // the table's and the modules' effects, which are not read. Ten rows at
     // most, at 50 ms a line - and where none of them was the laser's, the
-    // light lettering's rows alone, ten more (lightRows).
-    for (int pass = 0; pass < 2; pass++) {
-        int tried = 0;
-        for (const cv::Rect& row : pass == 0 ? textRows(part, s) : lightRows(part, s)) {
-            if (row.width < 150 * s) continue;
-            if (++tried > 10) break;
-            const std::string text = readRow(part, row, s, lines);
-            if (const MiningLaser* laser = turretLaserByHudLine(text)) {
-                if (read) *read = text;
-                return laser;
+    // light lettering's rows alone, ten more (lightRows). Then the same in
+    // the band above (see turretBand).
+    for (int upper = 0; upper < 2; upper++) {
+        const cv::Rect band = turretBand(bgr.size(), upper == 1);
+        if (band.width < 50 || band.height < 50) continue;
+        const cv::Mat part = bgr(band);
+        for (int pass = 0; pass < 2; pass++) {
+            int tried = 0;
+            for (const cv::Rect& row : pass == 0 ? textRows(part, s) : lightRows(part, s)) {
+                if (row.width < 150 * s) continue;
+                if (++tried > 10) break;
+                const std::string text = readRow(part, row, s, lines);
+                if (const MiningLaser* laser = turretLaserByHudLine(text)) {
+                    if (read) *read = text;
+                    return laser;
+                }
             }
         }
     }

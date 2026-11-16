@@ -2799,7 +2799,10 @@ LabelColumn findOrangeColumn(const cv::Mat& ink, const cv::Mat& bgr, int rows, b
     // on the bench. Each column is almost always at about one size - 1.53 to
     // 1.57 in the turrets, 0.92 to 0.95 in the pilot seat - which the fine
     // search about the best place widens by six per cent; the Golem's HUD is
-    // drawn in the world and comes in anywhere from 1.15 to 1.8. The searches
+    // drawn in the world and comes in anywhere from 1.15 to 1.8. Since 4.10.3
+    // the turret's panel is drawn smaller, and how much smaller goes with the
+    // screen's shape: 1.30 to 1.35 at 5,120 x 1,440 (1.53 to 1.59 before),
+    // 1.08 at 2,560 x 1,440 (1.35 before). The searches
     // run on the band brought down to where a column is twenty pixels wide,
     // so all of them together cost a look without a panel a few milliseconds.
     static int wideTries = 0;
@@ -2813,8 +2816,10 @@ LabelColumn findOrangeColumn(const cv::Mat& ink, const cv::Mat& bgr, int rows, b
         // sits at 0.93 one look and 0.95 the next as the rock drifts, and
         // the one-size pass at 0.93 misses the other one.
         const bool allSizes = true;
+        // (twelve per cent apart, as the fine search reaches six either way)
         const std::vector<double> turretSizes =
-            allSizes ? std::vector<double>{1.44 * r, 1.54 * r, 1.64 * r} : std::vector<double>{1.54 * r};
+            allSizes ? std::vector<double>{1.02 * r, 1.14 * r, 1.27 * r, 1.44 * r, 1.54 * r, 1.64 * r}
+                     : std::vector<double>{1.54 * r};
         const std::vector<double> cockpitSizes =
             allSizes ? std::vector<double>{0.86 * r, 0.92 * r, 0.98 * r, 1.05 * r} : std::vector<double>{0.93 * r};
         // the turret's labels short (a language pack's) or written out (the game's own)
@@ -2873,10 +2878,22 @@ bool readPanelByShapeInk(const cv::Mat& frame, const cv::Mat& bgr, int ink, Scan
     // costs a third of a second on a 5120 x 1440 frame, and the app, which
     // looks every second and a half with nothing on screen most of the time,
     // tries that only every fourth look - every fortieth once it has read one.
-    static double knownScale = 0;
-    static double sureScale = 0;
-    static cv::Point lastLabels(-1, -1);
-    static int looksSinceWide = 1000;
+    // Kept apart for the white panels and the orange ones: a MOLE turret's
+    // panel read at 1.30 taught the white search that size, and the
+    // Prospector's white panel at 1.0 after it was looked for at 1.30 alone,
+    // and at the other sizes only every fortieth look.
+    struct SizeMemory {
+        double known = 0, sure = 0;
+        cv::Point last{-1, -1};
+        int looksSinceWide = 1000;
+        int unplaced = 0;
+    };
+    static SizeMemory memory[2];
+    SizeMemory& mine = memory[ink == 4 ? 1 : 0];
+    double& knownScale = mine.known;
+    double& sureScale = mine.sure;
+    cv::Point& lastLabels = mine.last;
+    int& looksSinceWide = mine.looksSinceWide;
     const bool everywhere = takeEverywhereTurn();
     const cv::Rect screen(0, 0, bgr.cols, bgr.rows);
     cv::Rect inkRegion = everywhere ? screen : hudBand(bgr.size());
@@ -3146,7 +3163,7 @@ bool readPanelByShapeInk(const cv::Mat& frame, const cv::Mat& bgr, int ink, Scan
     // The size is learned from a look that was sure of its figures, or from
     // any placed look while none is known; labels found at a size where the
     // figures will not place three looks running mean the size is wrong.
-    static int unplaced = 0;
+    int& unplaced = mine.unplaced;
     panel.labels = column.labels;
     panel.labelScale = column.scale;
     panel.labelGlyph = column.glyph;
@@ -3274,6 +3291,27 @@ bool readPanelByShapeInk(const cv::Mat& frame, const cv::Mat& bgr, int ink, Scan
     if (small > 0) {
         panel.stats.scu = small;
         panel.note += " s m [" + milli.trace + "]";
+        return sure;
+    }
+    // Since 4.10.3 the Prospector's volume stood 2 to 5.5 further left than
+    // this on a 5,120 x 1,440 screen (54.65 SCU, 16 November 2026). A little
+    // further left is tried - never right, where a numeral too few reads as a
+    // volume all the same (21.30 as 1.30).
+    for (const double shift : {2.5, 5.0}) {
+        ShapeRow moved;
+        float v = volumeOfMass(volumeEndingAt(layout->scuLastCentre - shift, moved), panel.stats.mass, false, false);
+        const bool inThousandths = v <= 0;
+        if (inThousandths) {
+            v = volumeOfMass(volumeEndingAt(layout->scuLastCentre - SHAPE_M_SHIFT - shift, moved), panel.stats.mass,
+                             true, false);
+        }
+        if (v > 0) {
+            panel.stats.scu = v;
+            char at[24];
+            std::snprintf(at, sizeof(at), " s%s -%.1f [", inThousandths ? " m" : "", shift);
+            panel.note += at + moved.trace + "]";
+            break;
+        }
     }
     return sure;
 }

@@ -6459,6 +6459,20 @@ int runSelfTest() {
                     allPassed &= check(laser && std::string(laser->name) == t.laser,
                                        std::string("...and a turret's HUD reads as ") + t.laser + " (got '" + line + "')");
                 }
+                // ...and the Hofstede's line where a 16:9 screen has it since
+                // 4.10.3, above the band it was looked for in: 885 to 898 down
+                // at 2560 x 1440 (andydsm, 16 November 2026)
+                {
+                    const cv::Mat cut = testPicture("scanpanel/turret_laser_hofstede.png", L"SELFTEST_TURRET_HOFSTEDE");
+                    if (!cut.empty() && reader) {
+                        cv::Mat screen(1440, 2560, CV_8UC3, cv::Scalar(0, 0, 0));
+                        cut.copyTo(screen(cv::Rect(387, 849, cut.cols, cut.rows)));
+                        std::string line;
+                        const SCMiner::MiningLaser* laser = SCMiner::readTurretLaser(screen, *reader, &line);
+                        allPassed &= check(laser && std::string(laser->name) == "Hofstede-S2 Mining Laser",
+                                           "...and on a 16:9 screen since 4.10.3, the line higher up (got '" + line + "')");
+                    }
+                }
                 if (reader) {
                     const cv::Mat blank(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
                     allPassed &= check(SCMiner::readTurretLaser(blank, *reader) == nullptr,
@@ -6777,6 +6791,73 @@ int runSelfTest() {
                         allPassed &= check(tower.found && c.mass == 745.0f && std::abs(c.scu - 0.58228f) < 0.000005f,
                                            "...and a volume in thousandths: 745 kg and 582.28m SCU, 0.58228 SCU (got " +
                                                std::to_string((int)c.mass) + " kg, " + std::to_string(c.scu) + ")");
+                    }
+                    // ...and since 4.10.3, drawn smaller: at 5120 x 1440 the
+                    // labels stand at 1.27 where they stood at 1.53 to 1.59, at
+                    // 2560 x 1440 at 1.08 where they stood at 1.35. Looked for
+                    // from 1.35 up, the panel went unread, its volume and list
+                    // with it (andydsm, 16 November 2026).
+                    const cv::Mat turret4103 = testPicture("scanpanel/panel_turret_4103.png", L"SELFTEST_TURRET_4103");
+                    allPassed &= check(!turret4103.empty(),
+                                       "the MOLE turret's panel of 4.10.3 is beside the build or inside the exe");
+                    if (!turret4103.empty()) {
+                        cv::Mat towerScreen(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+                        turret4103.copyTo(towerScreen(cv::Rect(3240, 500, turret4103.cols, turret4103.rows)));
+                        SCMiner::ScanPanel tower;
+                        for (int look = 0; look < 4 && !tower.found; look++) {
+                            tower = SCMiner::ScanPanel();
+                            SCMiner::readPanelByShape(towerScreen, tower);
+                        }
+                        const SCMiner::RockStats& c = tower.stats;
+                        allPassed &= check(tower.found && c.mass == 13923.0f && c.resistance == 15.0f &&
+                                               std::abs(c.instability - 491.9f) < 0.005f &&
+                                               std::abs(c.scu - 44.98f) < 0.005f,
+                                           "...and at its 4.10.3 size: 13923, 15 %, 491.90 and 44.98 SCU (got " +
+                                               std::to_string((int)c.mass) + ", " + std::to_string((int)c.resistance) +
+                                               " %, " + std::to_string(c.instability) + ", " + std::to_string(c.scu) + ")");
+                    }
+                    // The Prospector's white panel after a turret's orange one,
+                    // the search held back as the app holds it: the size the
+                    // turret's panel was read at is not the white panel's.
+                    // Before, the white panel was then looked for at the
+                    // turret's size alone and at the others every fortieth look,
+                    // and a Prospector's rocks after a MOLE went unread (16
+                    // November 2026). Its volume stands a little further left
+                    // since 4.10.3 at 5120 x 1440: 54.65 SCU.
+                    const cv::Mat prospector4103 =
+                        testPicture("scanpanel/panel_prospector_4103.png", L"SELFTEST_PROSPECTOR_4103");
+                    allPassed &= check(!prospector4103.empty(),
+                                       "the Prospector's panel of 4.10.3 is beside the build or inside the exe");
+                    if (!prospector4103.empty() && !copper.empty()) {
+                        cv::Mat prospectorScreen(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+                        prospector4103.copyTo(
+                            prospectorScreen(cv::Rect(3060, 600, prospector4103.cols, prospector4103.rows)));
+                        cv::Mat towerScreen(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+                        copper.copyTo(towerScreen(cv::Rect(3395, 515, copper.cols, copper.rows)));
+                        auto lookAt = [](const cv::Mat& screen, int looks) {
+                            SCMiner::ScanPanel panel;
+                            for (int look = 0; look < looks && !panel.found; look++) {
+                                panel = SCMiner::ScanPanel();
+                                SCMiner::readPanelByShape(screen, panel);
+                            }
+                            return panel;
+                        };
+                        const SCMiner::ScanPanel first = lookAt(prospectorScreen, 4);
+                        const SCMiner::ScanPanel second = lookAt(prospectorScreen, 4);
+                        SCMiner::throttlePanelSearch(true);
+                        int towerLooks = 0;
+                        for (int i = 0; i < 3; i++) towerLooks += lookAt(towerScreen, 4).found ? 1 : 0;
+                        const SCMiner::ScanPanel after = lookAt(prospectorScreen, 2);
+                        SCMiner::throttlePanelSearch(false);
+                        allPassed &= check(first.found && second.found && towerLooks == 3 && after.found &&
+                                               after.stats.mass == 74277.0f,
+                                           "...and found again at once after a MOLE turret's panel, the search held "
+                                           "back as in the app (got " +
+                                               std::to_string(towerLooks) + " turret looks, then " +
+                                               std::to_string((int)after.stats.mass) + " kg)");
+                        allPassed &= check(first.found && std::abs(first.stats.scu - 54.65f) < 0.005f,
+                                           "...and its volume a little further left since 4.10.3: 54.65 SCU (got " +
+                                               std::to_string(first.stats.scu) + ")");
                     }
                     // The MOLE's TURRET, over a sunlit red rock: its figures
                     // are the largest on the screen and no shapes are cut for
