@@ -1608,6 +1608,15 @@ const PanelLayout COCKPIT_PANEL{'K', "cockpit", SHAPE_VALUE_DX, SHAPE_ROW_PITCH,
 // for it.
 const PanelLayout COCKPIT_LONG_PANEL{'P', "cockpit long", 115.05, 24.73, 9.68, 38.0, 35.0,
                                      false, 0.0, 0.0, 0.0, 0.0, SHAPE_SCU_LAST_CENTRE, SHAPE_SCU_BOTTOM};
+// ...and that seat since 4.10.3, its labels written larger (see
+// SHAPE_COCKPIT_LABELS_4103, 78 wide). Its places measured against that
+// column on three screenshots at 2,560 x 1,440: the figures 114.8 right of the
+// labels' edge, the rows 25 apart, the mass's bottom 8.6 below the MASS
+// label's top - from 7.3 to 9.6 as the canopy the HUD is drawn on tilts it.
+// Its volume's last numeral stands 179.4 right of the labels' edge and 125.5
+// below, four units left of the Prospector's. Not pinned, as above.
+const PanelLayout COCKPIT_4103_PANEL{'Q', "cockpit 4.10.3", 114.8, 25.0, 8.6, 39.0, 35.0,
+                                     false, 0.0, 0.0, 0.0, 0.0, 179.4, 125.5};
 
 // ...and which of them a label column's shape stands for.
 const PanelLayout& layoutOf(char glyph) {
@@ -1615,6 +1624,7 @@ const PanelLayout& layoutOf(char glyph) {
            : glyph == 'W' ? TURRET_LONG_PANEL
            : glyph == 'K' ? COCKPIT_PANEL
            : glyph == 'P' ? COCKPIT_LONG_PANEL
+           : glyph == 'Q' ? COCKPIT_4103_PANEL
            : glyph == 'G' ? GOLEM_PANEL
            : glyph == 'H' ? GOLEM_LONG_PANEL
            : glyph == 'M' ? LONG_PANEL
@@ -2758,8 +2768,9 @@ double orangeBar(char glyph) {
     // looked for at (four pilot-seat snapshots and the turret, Golem and
     // Prospector benches). A bar between the two rather than on top of the
     // good readings; and a column alone still reads nothing - the figures
-    // have to be found where it says they are.
-    if (glyph == 'P') return 0.72;
+    // have to be found where it says they are. The same for its larger
+    // letters since 4.10.3.
+    if (glyph == 'P' || glyph == 'Q') return 0.72;
     return glyph == 'K' ? 0.80 : 0.85;
 }
 
@@ -2826,9 +2837,10 @@ LabelColumn findOrangeColumn(const cv::Mat& ink, const cv::Mat& bgr, int rows, b
         StageClock* tw = new StageClock(where.width == frame.width ? "  orange: T W (everywhere)" : "  orange: T W");
         LabelColumn turret = findLabelColumn(ink(where), turretSizes, nullptr, "TW");
         delete tw;
-        // the pilot seat's labels short (a language pack's) or written out
-        StageClock* kc = new StageClock("  orange: K P");
-        LabelColumn cockpit = findLabelColumn(ink(where), cockpitSizes, nullptr, "KP");
+        // the pilot seat's labels short (a language pack's) or written out -
+        // before 4.10.3 or since, when they are written larger
+        StageClock* kc = new StageClock("  orange: K P Q");
+        LabelColumn cockpit = findLabelColumn(ink(where), cockpitSizes, nullptr, "KPQ");
         delete kc;
         turret.labels += where.tl();
         cockpit.labels += where.tl();
@@ -3014,6 +3026,7 @@ bool readPanelByShapeInk(const cv::Mat& frame, const cv::Mat& bgr, int ink, Scan
                                 : column.glyph == 'W' ? &TURRET_LONG_PANEL
                                 : column.glyph == 'K' ? &COCKPIT_PANEL
                                 : column.glyph == 'P' ? &COCKPIT_LONG_PANEL
+                                : column.glyph == 'Q' ? &COCKPIT_4103_PANEL
                                 : column.glyph == 'G' ? &GOLEM_PANEL
                                 : column.glyph == 'H' ? &GOLEM_LONG_PANEL
                                                       : &SHORT_PANEL;
@@ -3400,13 +3413,14 @@ bool PanelSteadier::add(const ScanPanel& look, RockStats& rock) {
     // all pinned and the growing panel's are not: believing every size
     // outright shows 7140 for nine frames at 1080 lines.
     if (!look.found) return false;
-    // What counts as the same size. The pilot seat's written-out labels give
+    // What counts as the same size. The pilot seat's written-out labels, the
+    // ones before 4.10.3 and the larger ones since, give
     // their size to four per cent either way from one look to the next -
     // 0.92 to 1.00 over a rock that did not move - and nothing pins it: no
     // SCU place is known for them. At four per cent, the rock after one that
     // settled at 0.998 waited five looks at 0.94 - seven seconds. For them
     // eight per cent is the same size; for every other column, four.
-    const double same = look.labelGlyph == 'P' ? 0.08 : 0.04;
+    const double same = look.labelGlyph == 'P' || look.labelGlyph == 'Q' ? 0.08 : 0.04;
     // ...and a size a quarter or more away is another HUD altogether - the
     // MOLE's turret's panel at 1.54 after its pilot seat's at 0.93 - not the
     // panel growing in or the HUD swaying: five looks there would keep the

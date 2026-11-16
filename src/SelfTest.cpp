@@ -6859,6 +6859,33 @@ int runSelfTest() {
                                            "...and its volume a little further left since 4.10.3: 54.65 SCU (got " +
                                                std::to_string(first.stats.scu) + ")");
                     }
+                    // The MOLE's pilot seat since 4.10.3: its labels written
+                    // larger, the figures where they were. Found by the column
+                    // before, every figure lost its first numeral - 199 kg,
+                    // 1 %, 79.69 - and the volume went unread (andydsm, 16
+                    // November 2026).
+                    const cv::Mat pilot4103 = testPicture("scanpanel/panel_pilot_4103.png", L"SELFTEST_PILOT_4103");
+                    allPassed &= check(!pilot4103.empty(),
+                                       "the MOLE pilot seat's panel of 4.10.3 is beside the build or inside the exe");
+                    if (!pilot4103.empty()) {
+                        cv::Mat seatScreen(1440, 2560, CV_8UC3, cv::Scalar(0, 0, 0));
+                        pilot4103.copyTo(seatScreen(cv::Rect(1740, 640, pilot4103.cols, pilot4103.rows)));
+                        SCMiner::ScanPanel seat;
+                        for (int look = 0; look < 4 && !seat.found; look++) {
+                            seat = SCMiner::ScanPanel();
+                            SCMiner::readPanelByShape(seatScreen, seat);
+                        }
+                        const SCMiner::RockStats& c = seat.stats;
+                        allPassed &= check(seat.found && seat.labelGlyph == 'Q' && c.mass == 20199.0f &&
+                                               c.resistance == 51.0f && std::abs(c.instability - 279.69f) < 0.005f &&
+                                               std::abs(c.scu - 28.99f) < 0.005f,
+                                           "...and the pilot seat's of 4.10.3, its labels larger: 20199, 51 %, 279.69 "
+                                           "and 28.99 SCU (got " +
+                                               std::string(1, seat.labelGlyph ? seat.labelGlyph : '-') + ", " +
+                                               std::to_string((int)c.mass) + ", " + std::to_string((int)c.resistance) +
+                                               " %, " + std::to_string(c.instability) + ", " + std::to_string(c.scu) +
+                                               ")");
+                    }
                     // The MOLE's TURRET, over a sunlit red rock: its figures
                     // are the largest on the screen and no shapes are cut for
                     // that face, so nothing reads them glyph by glyph. The
