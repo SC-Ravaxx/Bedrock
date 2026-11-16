@@ -28,6 +28,7 @@
 #include "P4kReader.h"
 #include "GameState.h"
 #include "MiningLocations.h"
+#include "OrePlaces.h"
 #include "NoteBook.h"
 #include "OCREngine.h"
 #include "PanelFive.h"
@@ -8227,6 +8228,61 @@ int runSelfTest() {
         allPassed &= check(suited == std::vector<std::string>{"Aberdeen", "Arial", "Pyro I", "Pyro VI (Terminus)"},
                            "Of the places the tables list, those four alone name a suit (" +
                                std::to_string(suited.size()) + ")");
+        // The Ore Finder's list of places (By place): one system's places
+        // by kind under their headings, each place once, A to Z within a
+        // kind; over all systems every place there is, each system's kinds
+        // in turn and the system in their headings
+        auto flat = [](const std::vector<SCMiner::PlaceGroup>& groups) {
+            std::vector<std::string> out;
+            for (const auto& group : groups) out.insert(out.end(), group.places.begin(), group.places.end());
+            return out;
+        };
+        auto headings = [](const std::vector<SCMiner::PlaceGroup>& groups) {
+            std::string out;
+            for (const auto& group : groups) {
+                out += (out.empty() ? "" : " / ") + (group.system.empty() ? "" : group.system + " ") + group.kind;
+            }
+            return out;
+        };
+        const auto stantonPlaces = SCMiner::placeGroups("STANTON");
+        const auto stantonFlat = flat(stantonPlaces);
+        allPassed &= check(headings(stantonPlaces) == "PLANETS / MOONS / ASTEROID FIELDS / CAVES" &&
+                               stantonFlat.size() == 23 && stantonPlaces[0].places == std::vector<std::string>{
+                                                                                    "Hurston", "microTech"} &&
+                               stantonPlaces[2].places.front() == "Aaron Halo" &&
+                               stantonPlaces[2].places.back() == "Yela Asteroid Belt" &&
+                               stantonPlaces[3].places == std::vector<std::string>{"Hathor Caves"},
+                           "Stanton's places: planets, moons, asteroid fields, caves, 23 in all (" +
+                               headings(stantonPlaces) + ", " + std::to_string(stantonFlat.size()) + ")");
+        const auto nyxPlaces = SCMiner::placeGroups("nyx");
+        allPassed &= check(headings(nyxPlaces) == "ASTEROID FIELDS / EVENTS" && flat(nyxPlaces).size() == 4,
+                           "Nyx's places, the system in any case: two fields and the Breaker Stations (" +
+                               headings(nyxPlaces) + ")");
+        const auto allPlaces = SCMiner::placeGroups("ALL");
+        std::vector<std::string> everyPlace;
+        for (const auto& row : SCMiner::ORE_LOCATIONS) {
+            if (std::find(everyPlace.begin(), everyPlace.end(), row.location) == everyPlace.end()) {
+                everyPlace.push_back(row.location);
+            }
+        }
+        auto allFlat = flat(allPlaces);
+        const std::string allHeads = headings(allPlaces);
+        std::sort(allFlat.begin(), allFlat.end());
+        std::sort(everyPlace.begin(), everyPlace.end());
+        allPassed &= check(allFlat == everyPlace &&
+                               allHeads == "Stanton PLANETS / Stanton MOONS / Stanton ASTEROID FIELDS / Stanton CAVES / "
+                                           "Pyro PLANETS / Pyro MOONS / Pyro ASTEROID FIELDS / "
+                                           "Nyx ASTEROID FIELDS / Nyx EVENTS",
+                           "All systems: every place once (" + std::to_string(allFlat.size()) + " of " +
+                               std::to_string(everyPlace.size()) + "), Stanton's kinds, Pyro's, Nyx's (" + allHeads +
+                               ")");
+        allPassed &= check(SCMiner::placeSystem("daymar") == "Stanton" && SCMiner::placeSystem("Keeger Belt") == "Nyx" &&
+                               SCMiner::placeSystem("Levski").empty() &&
+                               SCMiner::oresAtCount("Daymar") == (int)SCMiner::MinerGUI::minedAt("Daymar").size() &&
+                               SCMiner::oresAtCount("Pyro VI (Terminus)") == 11 && SCMiner::oresAtCount("Levski") == 0,
+                           "A place's system and how many ores its card lists (Daymar " +
+                               std::to_string(SCMiner::oresAtCount("Daymar")) + ", Terminus " +
+                               std::to_string(SCMiner::oresAtCount("Pyro VI (Terminus)")) + ")");
     }
 
     // --- refinery table ---

@@ -849,6 +849,12 @@ public:
     // planHits_), or that hit clicked, where the window paints it now:
     // false when it paints no such hit, and the pointer off it then
     bool pointInPlannerForShot(int kind, const std::string& value, bool click);
+    // ...and the wheel turned over the list of places (or over the card),
+    // the way a real wheel's message comes: false where none is drawn
+    bool wheelPlannerForShot(bool places, int notches);
+    int plannerPlaceScrollForShot() const { return plannerPlaceScroll_; }
+    const std::string& plannerPlaceForShot() const { return plannerPlace_; }
+    const std::string& plannerSystemForShot() const { return plannerSystem_; }
     void suggestForShot();       // ...and the suggestion list, which only
     HWND suggestHandle() const { return notesSuggest_; }   // lives while typing
     // --screenshot only: `typed` added at the end of the open note, and the
@@ -1515,13 +1521,40 @@ private:
     std::string plannerScrollList_;
     void showPlaceFinderFor(const std::string& place);
     void showSystemFinderFor(const std::string& system);
+    // The left column's two lists, as the Blueprints window has its two: the
+    // ores (By ore) or the places (By place, OrePlaces.h). A click on the
+    // card does not switch it - the card answers for whatever was clicked,
+    // and the list marks it where it has it.
+    bool plannerByPlace_ = false;
+    // The place picked in the list of places, kept while the card shows an
+    // ore, so the list's tab brings it back
+    std::string plannerPlacePick_;
+    // The list of places over all systems is longer than the column: its
+    // first row in view (a heading counts as a row), where it was drawn for
+    // the wheel, and whether the pick is to be brought into view on the
+    // next painting (after a tab or a link)
+    int plannerPlaceScroll_ = 0;
+    Gdiplus::RectF plannerPlaceList_;
+    bool plannerRevealPlace_ = false;
+    // The list opens on the player's own system with the place they are
+    // at picked, once for each place they come to: a tab clicked after
+    // that stays. The system and place it was last done for:
+    std::string plannerPresetFor_;
+    std::string plannerPresetKey() const;
+    bool presetPlannerPlaces();   // false where it had been done for this place
+    // The card on a place of the list on the tabs: the one shown if the
+    // list has it, else the one picked before, else where the player is,
+    // else the list's first
+    void settlePlannerPlace();
     // kind 0 ore, 1 system, 2 family, 3 tick box, 4 a link, 5 Report to UEX,
     // 6 the UEX tab, 7 a listing (its page), 8 a gem in the UEX tab, 9 the
     // listings' order ("price", "newest"), 10 a place in the list (what else
     // is mined there), 11 a ROC gem of a place and 12 a hand-mined one (the
     // places of that gem), 13 a family's arrow (its gems' list), 14 a gem in
     // that list ("" for all of them), 15 a field of the Aaron Halo's way in
-    // ("from", "to": its list of places), 16 a place in that list
+    // ("from", "to": its list of places), 16 a place in that list, 17 a place
+    // in the list of places on the left, 18 the left column's tabs ("ore",
+    // "place")
     struct PlanHit { Gdiplus::RectF rect; int kind; std::string value; };
     std::vector<PlanHit> planHits_;
     static LRESULT CALLBACK PlannerProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);

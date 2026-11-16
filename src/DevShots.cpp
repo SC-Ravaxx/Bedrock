@@ -2744,6 +2744,82 @@ int runScreenshots(const std::string& dir) {
         if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_place_suit.png", true);
         std::cout << "ore finder suits: " << (listed ? "Aberdeen's card" : "ABERDEEN NOT LISTED") << std::endl;
     }
+    // ...and the left column turned round, By place: on the player's own
+    // system with the place they are at picked (Stanton, Daymar); over all
+    // systems, longer than the column - the pick in view, then the wheel at
+    // the list's end; Nyx's few; and opened again after the player has
+    // moved on to Pyro IV, on there. Then back on the list of ores, and the
+    // player back at Monox.
+    {
+        gui.setCurrentSystem("Stanton");
+        gui.setPlace("Stanton - Daymar", "Daymar");
+        const bool tab = gui.pointInPlannerForShot(18, "place", true);
+        gui.pointInPlannerForShot(-1, "", false);
+        pump();
+        if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_by_place.png", true);
+        const bool stanton = gui.plannerSystemForShot() == "STANTON" && gui.plannerPlaceForShot() == "Daymar" &&
+                             !gui.pointInPlannerForShot(17, "Pyro IV", false);
+        gui.pointInPlannerForShot(1, "ALL", true);
+        const bool allTop = gui.pointInPlannerForShot(17, "Daymar", false) &&
+                            !gui.pointInPlannerForShot(17, "Keeger Belt", false);
+        gui.pointInPlannerForShot(-1, "", false);
+        pump();
+        if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_by_place_all.png", true);
+        gui.wheelPlannerForShot(true, -20);
+        const bool allEnd = gui.plannerPlaceScrollForShot() > 0 &&
+                            gui.pointInPlannerForShot(17, "Keeger Belt", false) &&
+                            !gui.pointInPlannerForShot(17, "Hurston", false);
+        gui.pointInPlannerForShot(-1, "", false);
+        pump();
+        if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_by_place_all_end.png", true);
+        // ...the wheel over the card leaves the list where it is
+        const int before = gui.plannerPlaceScrollForShot();
+        gui.wheelPlannerForShot(false, 3);
+        const bool cardWheel = gui.plannerPlaceScrollForShot() == before;
+        gui.pointInPlannerForShot(17, "Keeger Belt", true);
+        gui.pointInPlannerForShot(1, "NYX", true);
+        gui.pointInPlannerForShot(-1, "", false);
+        pump();
+        if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_by_place_nyx.png", true);
+        const bool nyx = gui.plannerPlaceForShot() == "Keeger Belt";
+        // shut and opened again where nothing has changed: Nyx stays
+        gui.togglePlanner();
+        gui.togglePlanner();
+        const bool kept = gui.plannerSystemForShot() == "NYX" && gui.plannerPlaceForShot() == "Keeger Belt";
+        // ...and after the player has moved on
+        gui.togglePlanner();
+        gui.setCurrentSystem("Pyro");
+        gui.setPlace("Pyro - Pyro IV", "Pyro IV");
+        gui.togglePlanner();
+        gui.pointInPlannerForShot(-1, "", false);
+        pump();
+        if (gui.plannerHandle()) shoot(gui.plannerHandle(), "planner_by_place_moved.png", true);
+        const bool moved = gui.plannerSystemForShot() == "PYRO" && gui.plannerPlaceForShot() == "Pyro IV";
+        // ...an ore of the place's card: its places, the list of places
+        // staying beside them; its tab back on the place
+        gui.pointInPlannerForShot(0, "Stileron", true);
+        const bool oreCard = gui.plannerPlaceForShot().empty() && gui.pointInPlannerForShot(17, "Pyro IV", false);
+        gui.pointInPlannerForShot(18, "place", true);
+        const bool backOnPlace = gui.plannerPlaceForShot() == "Pyro IV";
+        gui.pointInPlannerForShot(18, "ore", true);
+        const bool ores = gui.pointInPlannerForShot(0, "Laranite", false) &&
+                          !gui.pointInPlannerForShot(17, "Pyro IV", false);
+        gui.pointInPlannerForShot(1, "ALL", true);
+        gui.pointInPlannerForShot(-1, "", false);
+        gui.setPlace("Pyro - Monox", analyzer.placeFilter());
+        pump();
+        std::cout << "ore finder by place: " << (tab ? "tab" : "NO TAB") << ", "
+                  << (stanton ? "Stanton and Daymar picked" : "NOT ON STANTON/DAYMAR") << ", "
+                  << (allTop ? "all with Daymar in view" : "ALL NOT ON DAYMAR") << ", "
+                  << (allEnd ? "wheel to the end" : "WHEEL DID NOT SCROLL") << ", "
+                  << (cardWheel ? "card's wheel apart" : "CARD'S WHEEL MOVED THE LIST") << ", "
+                  << (nyx ? "Nyx keeps the pick" : "NYX LOST THE PICK") << ", "
+                  << (kept ? "kept when reopened" : "NOT KEPT ON REOPENING") << ", "
+                  << (moved ? "moved on to Pyro IV" : "NOT ON PYRO IV AFTER MOVING") << ", "
+                  << (oreCard ? "ore card unmarked" : "ORE CARD MARKED A PLACE") << ", "
+                  << (backOnPlace ? "tab back on the place" : "TAB NOT BACK ON THE PLACE") << ", "
+                  << (ores ? "back to ores" : "NOT BACK TO ORES") << std::endl;
+    }
     // ...and an ore the player has traded: their own deals under what a rock
     // of it holds - bought refined for a recipe, sold as it came out of the
     // rock; a request the shop refused is not among them

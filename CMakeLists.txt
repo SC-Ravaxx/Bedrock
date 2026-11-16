@@ -292,6 +292,7 @@ set(HEADERS
     include/BlueprintLibrary.h
     include/CraftQuality.h
     include/CraftedOnly.h
+    include/OrePlaces.h
     include/Reputation.h
     include/GameState.h
     include/GamePlaces.h

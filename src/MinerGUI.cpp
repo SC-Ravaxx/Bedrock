@@ -8,6 +8,7 @@
 #include "DataBackup.h"
 #include "GameFiles.h"
 #include "MiningLocations.h"
+#include "OrePlaces.h"
 #include "GamePlaces.h"
 #include "CraftingData.h"
 #include "CraftQuality.h"
@@ -2540,6 +2541,7 @@ void MinerGUI::setUexThreads(std::shared_ptr<const UexThreads> threads) {
 void MinerGUI::openUexTabForShot(const char* ore, const char* gem) {
     if (ore) {
         plannerUex_ = true;
+        plannerByPlace_ = false;
         plannerMineral_ = ore;
         plannerGem_ = gem ? gem : "";
         plannerPlace_.clear();
@@ -9696,6 +9698,26 @@ bool MinerGUI::pointInPlannerForShot(int kind, const std::string& value, bool cl
     return false;
 }
 
+bool MinerGUI::wheelPlannerForShot(bool places, int notches) {
+    if (!planner_) return false;
+    hoverPlan_ = {-1, -1};
+    if (HDC dc = GetDC(planner_)) {
+        paintPlanner(dc);
+        ReleaseDC(planner_, dc);
+    }
+    RECT rc;
+    GetClientRect(planner_, &rc);
+    // over the middle of the list of places, or of the card
+    const Gdiplus::RectF over = places ? plannerPlaceList_
+                                       : Gdiplus::RectF((float)rc.right - scaleF(120), (float)rc.bottom / 2, 1, 1);
+    if (over.Width <= 0) return false;
+    POINT at = {(LONG)(over.X + over.Width / 2), (LONG)(over.Y + over.Height / 2)};
+    ClientToScreen(planner_, &at);
+    SendMessageW(planner_, WM_MOUSEWHEEL, MAKEWPARAM(0, (WORD)(short)(notches * WHEEL_DELTA)),
+                 MAKELPARAM((WORD)(short)at.x, (WORD)(short)at.y));
+    return true;
+}
+
 // A name being typed into the open note, and what the notebook offers for
 // it, so the screenshot for the website shows the autocomplete. The letters
 // go in the way a paste would, the caret ends behind them, and the list is
@@ -11353,6 +11375,13 @@ void MinerGUI::showSystemFinderFor(const std::string& system) {
     for (auto& c : upper) c = (char)toupper((unsigned char)c);
     plannerPlace_.clear();
     plannerSystem_ = upper;
+    // (the list of places stays on its tab, on a place of that system, and
+    // the player's own system waits until they move on)
+    plannerPresetFor_ = plannerPresetKey();
+    if (plannerByPlace_) {
+        plannerPlaceScroll_ = 0;
+        settlePlannerPlace();
+    }
     if (!plannerVisible_) togglePlanner();
     else if (planner_) {
         InvalidateRect(planner_, nullptr, TRUE);
@@ -11361,13 +11390,52 @@ void MinerGUI::showSystemFinderFor(const std::string& system) {
 }
 
 void MinerGUI::showPlaceFinderFor(const std::string& place) {
-    plannerPlace_ = place;
+    const std::string named = placeNamed(place);
+    plannerPlace_ = named.empty() ? place : named;
     plannerSystem_ = "ALL";
+    // ...on the list of places, picked there and brought into view
+    plannerByPlace_ = true;
+    plannerUex_ = false;
+    plannerPlacePick_ = plannerPlace_;
+    plannerRevealPlace_ = true;
+    plannerPresetFor_ = plannerPresetKey();
     if (!plannerVisible_) togglePlanner();
     else if (planner_) {
         InvalidateRect(planner_, nullptr, TRUE);
         SetForegroundWindow(planner_);
     }
+}
+
+std::string MinerGUI::plannerPresetKey() const {
+    std::string system = currentSystem_;
+    for (char& c : system) c = (char)toupper((unsigned char)c);
+    return system + "|" + placeNamed(fromW(placeOre_));
+}
+
+bool MinerGUI::presetPlannerPlaces() {
+    const std::string key = plannerPresetKey();
+    if (key == plannerPresetFor_) return false;
+    plannerPresetFor_ = key;
+    const size_t bar = key.find('|');
+    const std::string system = key.substr(0, bar), here = key.substr(bar + 1);
+    if (!system.empty() && !placeGroups(system).empty()) plannerSystem_ = system;
+    if (!here.empty()) plannerPlace_ = here;   // (settlePlannerPlace checks it is listed)
+    plannerPlaceScroll_ = 0;
+    plannerRevealPlace_ = true;
+    return true;
+}
+
+void MinerGUI::settlePlannerPlace() {
+    const std::vector<PlaceGroup> groups = placeGroups(plannerSystem_);
+    const std::string here = placeNamed(fromW(placeOre_));
+    for (const std::string& place : {plannerPlace_, plannerPlacePick_, here}) {
+        if (place.empty() || !placeListed(groups, place)) continue;
+        if (place != plannerPlace_) plannerRevealPlace_ = true;
+        plannerPlace_ = plannerPlacePick_ = place;
+        return;
+    }
+    plannerPlace_ = plannerPlacePick_ = groups.empty() ? std::string() : groups.front().places.front();
+    plannerRevealPlace_ = true;
 }
 
 std::vector<OreLocation> MinerGUI::minedAt(const std::string& place) {
@@ -12459,7 +12527,7 @@ void MinerGUI::openBlueprint(int index) {
 // finder already knows, so it opens on that ore rather than repeating it here
 void MinerGUI::showOreFinderFor(const std::string& material) {
     if (material.empty()) return;
-    plannerPlace_.clear();   // back to the ore-first list
+    plannerPlace_.clear();   // back to the ore-first list (and below to the list of ores)
     // The finder lists ship ore by name; ROC and hand-mined gems live under
     // their own families, and it opens those on the gem
     if (locationsFor(material, MiningFamily::Ship).empty()) {
@@ -12467,6 +12535,7 @@ void MinerGUI::showOreFinderFor(const std::string& material) {
             plannerMineral_ = "ROC deposits";
             plannerGem_ = material;
             plannerSystem_ = "ALL";
+            plannerByPlace_ = false;
             if (!plannerVisible_) togglePlanner();
             else if (planner_) { InvalidateRect(planner_, nullptr, TRUE); SetForegroundWindow(planner_); }
             return;
@@ -12475,6 +12544,7 @@ void MinerGUI::showOreFinderFor(const std::string& material) {
             plannerMineral_ = "Hand minables";
             plannerGem_ = material;
             plannerSystem_ = "ALL";
+            plannerByPlace_ = false;
             if (!plannerVisible_) togglePlanner();
             else if (planner_) { InvalidateRect(planner_, nullptr, TRUE); SetForegroundWindow(planner_); }
             return;
@@ -12483,6 +12553,7 @@ void MinerGUI::showOreFinderFor(const std::string& material) {
     }
     plannerMineral_ = material;
     plannerSystem_ = "ALL";
+    plannerByPlace_ = false;
     if (!plannerVisible_) {
         togglePlanner();
     } else if (planner_) {
@@ -18165,6 +18236,9 @@ void MinerGUI::togglePlanner() {
     haloMenu_ = 0;      // ...nor one of places
     if (plannerVisible_) {
         plannerScroll_ = 0;
+        // the list of places on where the player is, if they have moved on
+        // since it last was
+        if (plannerByPlace_ && presetPlannerPlaces()) settlePlannerPlace();
         placePlanner();
         ShowWindow(planner_, headless_ ? SW_SHOWNOACTIVATE : SW_SHOW);
         InvalidateRect(planner_, nullptr, TRUE);
@@ -18195,8 +18269,18 @@ LRESULT MinerGUI::handlePlannerMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
             // The wheel walks the list of places (or of ores, for a place)
             // when it is longer than its card; the painting keeps it in
             // range. Not under the UEX card, nor on the market tab.
-            if (uexCard_.step || plannerUex_) return 0;
+            if (uexCard_.step) return 0;
             const int notches = GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
+            // ...and over the list of places on the left, that one: three
+            // rows a notch, as Windows scrolls a list
+            POINT at = {(LONG)(short)LOWORD(lParam), (LONG)(short)HIWORD(lParam)};
+            ScreenToClient(hwnd, &at);
+            if (plannerByPlace_ && plannerPlaceList_.Contains((float)at.x, (float)at.y)) {
+                plannerPlaceScroll_ = (std::max)(0, plannerPlaceScroll_ - 3 * notches);
+                InvalidateRect(hwnd, nullptr, FALSE);
+                return 0;
+            }
+            if (plannerUex_) return 0;
             plannerScroll_ = (std::max)(0, plannerScroll_ - notches);
             InvalidateRect(hwnd, nullptr, TRUE);
             return 0;
@@ -18278,7 +18362,9 @@ LRESULT MinerGUI::handlePlannerMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                     return 0;
                 }
                 if (hit.kind == 6) {
+                    // the market is an ore's: the list of ores beside it
                     plannerUex_ = true;
+                    plannerByPlace_ = false;
                     plannerPlace_.clear();
                     InvalidateRect(hwnd, nullptr, TRUE);
                     return 0;
@@ -18326,6 +18412,31 @@ LRESULT MinerGUI::handlePlannerMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                     return 0;
                 }
                 if (hit.kind == 16) return 0;   // (a place in a list that has just shut)
+                if (hit.kind == 17) {
+                    // a place in the list of places: what is mined there
+                    plannerPlace_ = plannerPlacePick_ = hit.value;
+                    InvalidateRect(hwnd, nullptr, TRUE);
+                    return 0;
+                }
+                if (hit.kind == 18) {
+                    if (hit.value == "place") {
+                        // the list of places: on the player's own system and
+                        // place if they have moved on since it last was, the
+                        // card on its pick (again, after an ore of the card)
+                        plannerUex_ = false;
+                        if (!plannerByPlace_) {
+                            plannerByPlace_ = true;
+                            presetPlannerPlaces();
+                        }
+                        settlePlannerPlace();
+                    } else {
+                        // ...the list of ores, the card on the ore picked
+                        plannerByPlace_ = false;
+                        plannerPlace_.clear();
+                    }
+                    InvalidateRect(hwnd, nullptr, TRUE);
+                    return 0;
+                }
                 if (hit.kind == 1) {
                     plannerUex_ = false;
                     plannerSystem_ = hit.value;
@@ -18336,7 +18447,13 @@ LRESULT MinerGUI::handlePlannerMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                         !oreInSystem(plannerMineral_, plannerSystem_)) {
                         plannerMineral_.clear();
                     }
-                    plannerPlace_.clear();
+                    // the list of places stays, the card on a place of it
+                    if (plannerByPlace_) {
+                        plannerPlaceScroll_ = 0;
+                        settlePlannerPlace();
+                    } else {
+                        plannerPlace_.clear();
+                    }
                 }
                 else if (hit.kind == 3) {
                     // ...and the main window has to hear about it: the field
@@ -20122,7 +20239,8 @@ void MinerGUI::paintGemMenu(Gdiplus::Graphics& g, int ch) {
     const float listH = entryH * (float)entries.size() + 2 * pad;
     const float lx = gemMenuAnchor_.X;
     float ly = gemMenuAnchor_.GetBottom() + scaleF(4);
-    if (ly + listH > (float)ch - scaleF(8)) ly = (std::max)(scaleF(8), gemMenuAnchor_.Y - scaleF(4) - listH);
+    // under its row where it ends above the footer, else over the row
+    if (ly + listH > (float)ch - scaleF(24)) ly = (std::max)(scaleF(8), gemMenuAnchor_.Y - scaleF(4) - listH);
     gemMenuList_ = Gdiplus::RectF(lx, ly, listW, listH);
     dropShadow(g, gemMenuList_, scaleF(R_CONTROL), scaleF(10));
     fillRoundRect(g, gemMenuList_, scaleF(R_CONTROL), COL_CARD_HI);
@@ -20763,7 +20881,9 @@ void MinerGUI::paintPlanner(HDC hdc) {
                                      4, "https://uexcorp.space"});
             }
         }
-        g.DrawString(L"Select an ore before the trip \u00B7 Locations where it is the main ore, highest chance first",
+        g.DrawString(plannerByPlace_
+                         ? L"Select a place before the trip \u00B7 Ores mined there, highest chance first"
+                         : L"Select an ore before the trip \u00B7 Locations where it is the main ore, highest chance first",
                      -1, &subFont, Gdiplus::PointF(M + scaleF(15), (float)scale(36)), &dimBrush);
 
         // System tabs: words, the one in use bright with an amber bar lying
@@ -20815,7 +20935,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
         // The ore that fetches most once refined, of those listed: its row
         // blinks red - by the best price UEX knows for a SCU of it, anywhere
         std::string paysMost;
-        if (uexEnabled_ && uexPrices_) {
+        if (uexEnabled_ && uexPrices_ && !plannerByPlace_) {
             std::vector<std::string> listed;
             for (const auto& m : MINERAL_SIGNATURES) {
                 if (oreInSystem(m.name, plannerSystem_)) listed.push_back(m.name);
@@ -20824,11 +20944,37 @@ void MinerGUI::paintPlanner(HDC hdc) {
         }
         planBlinkRow_ = Gdiplus::RectF();
 
-        // Left column: the ship ores by rarity, then the ground families
+        // Left column: the ship ores by rarity, then the ground families -
+        // or the places. Two tabs over it, as the Blueprints window has
+        // them over its two lists: the words alone, the chosen one in full
+        // ink on a short amber rule, both on one hairline.
         const float listTop = (float)scale(108);
         const float leftW = scaleF(214);
         const float rowH = scaleF(21), groupH = scaleF(20);
-        float y = listTop;
+        {
+            const wchar_t* lists[2] = {L"By ore", L"By place"};
+            hairline(g, M, listTop + scaleF(17), M + leftW);
+            float tx = M;
+            for (int i = 0; i < 2; i++) {
+                const bool on = plannerByPlace_ == (i == 1);
+                Gdiplus::RectF tab(tx, listTop - scaleF(4), leftW / 2 - scaleF(2), scaleF(22));
+                const bool hot = isHot(hoverPlan_, tab);
+                g.DrawString(lists[i], -1, &tabFont, tab, &centered, (on || hot) ? &textBrush : &dimBrush);
+                if (on) {
+                    Gdiplus::RectF w;
+                    g.MeasureString(lists[i], -1, &tabFont, Gdiplus::PointF(0, 0), &w);
+                    const float lineW = w.Width - scaleF(2);
+                    fillRoundRect(g, Gdiplus::RectF(tab.X + (tab.Width - lineW) / 2, tab.GetBottom() - scaleF(2),
+                                                    lineW, scaleF(2)),
+                                  scaleF(1), COL_ACCENT);
+                }
+                planHits_.push_back({tab, 18, i == 1 ? "place" : "ore"});
+                tx += leftW / 2 + scaleF(4);
+            }
+        }
+        float y = listTop + scaleF(26);
+        plannerPlaceList_ = Gdiplus::RectF();
+        bool placesScroll = false;   // (the footer says how to see the rest)
         const Rarity order[5] = {Rarity::Legendary, Rarity::Epic, Rarity::Rare, Rarity::Uncommon, Rarity::Common};
         auto oreRow = [&](const std::string& name, const Gdiplus::Color& chipColor, const std::wstring& right,
                           int kind, bool chosen) {
@@ -20887,6 +21033,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
             y += rowH;
         };
         for (Rarity rarity : order) {
+            if (plannerByPlace_) break;
             // Counted first: a heading with nothing under it reads worse than
             // no heading at all, and with a system picked most groups lose
             // members - Stanton has no Legendary ore of its own.
@@ -20910,7 +21057,7 @@ void MinerGUI::paintPlanner(HDC hdc) {
         const bool anyRoc = familyInSystem((int)MiningFamily::ROC, plannerSystem_);
         const bool anyFps = familyInSystem((int)MiningFamily::FPS, plannerSystem_);
         gemMenuAnchor_ = Gdiplus::RectF();
-        if (anyRoc || anyFps) {
+        if ((anyRoc || anyFps) && !plannerByPlace_) {
             y += scaleF(4);
             g.DrawString(L"GROUND", -1, &smallFont, Gdiplus::PointF(M, y + scaleF(4)), &faintBrush);
             y += groupH;
@@ -20921,6 +21068,92 @@ void MinerGUI::paintPlanner(HDC hdc) {
             if (anyFps) {
                 oreRow("Hand minables", COL_GREEN, L"3,000 / node", 2,
                        !byPlace && plannerMineral_ == "Hand minables");
+            }
+        }
+        if (plannerByPlace_) {
+            // The places in the system on the tabs, each kind under its
+            // heading (OrePlaces.h), the figure how many ores the card lists
+            // for it. Over all systems the list is longer than the column:
+            // the wheel walks it, a group's heading staying on top while its
+            // rows go by, and a bar at the column's side shows where in it
+            // the view is. A heading counts as a row.
+            struct PlaceItem { std::wstring heading; std::string place; int group; };
+            std::vector<PlaceItem> items;
+            int pickAt = -1;
+            for (const PlaceGroup& group : placeGroups(plannerSystem_)) {
+                std::wstring head = toW(group.kind);
+                if (!group.system.empty()) head = toW(group.system) + L"  \u00B7  " + head;
+                std::transform(head.begin(), head.end(), head.begin(), ::towupper);
+                const int at = (int)items.size();
+                items.push_back({head, "", at});
+                for (const std::string& place : group.places) {
+                    if (place == plannerPlace_) pickAt = (int)items.size();
+                    items.push_back({L"", place, at});
+                }
+            }
+            const float top = y;
+            const float room = (float)ch - scaleF(28) - top;   // down to the footer
+            auto itemH = [&](int i) { return items[(size_t)i].heading.empty() ? rowH : groupH; };
+            // how many fit from `first` on, under its group's heading kept on
+            // top - and no heading last with none of its rows under it
+            auto fitFrom = [&](int first) {
+                float h = items[(size_t)first].heading.empty() ? groupH : 0.0f;
+                int n = 0;
+                for (int i = first; i < (int)items.size() && h + itemH(i) <= room; i++, n++) h += itemH(i);
+                if (n > 1 && !items[(size_t)(first + n - 1)].heading.empty()) n--;
+                return n;
+            };
+            int lastFirst = 0;   // the first row in view with the list's end in view
+            while (lastFirst < (int)items.size() && lastFirst + fitFrom(lastFirst) < (int)items.size()) lastFirst++;
+            plannerPlaceScroll_ = std::clamp(plannerPlaceScroll_, 0, lastFirst);
+            if (plannerRevealPlace_ && pickAt >= 0 &&
+                (pickAt < plannerPlaceScroll_ || pickAt >= plannerPlaceScroll_ + fitFrom(plannerPlaceScroll_))) {
+                // the pick out of view: its group from the top
+                plannerPlaceScroll_ = (std::min)(items[(size_t)pickAt].group, lastFirst);
+            }
+            plannerRevealPlace_ = false;
+            const int first = plannerPlaceScroll_;
+            const int shown = items.empty() ? 0 : fitFrom(first);
+            plannerPlaceList_ = Gdiplus::RectF(0, top, M + leftW + M / 2, room);
+            placesScroll = lastFirst > 0;
+            auto heading = [&](const std::wstring& words) {
+                g.DrawString(words.c_str(), -1, &smallFont, Gdiplus::PointF(M, y + scaleF(4)), &faintBrush);
+                y += groupH;
+            };
+            Gdiplus::StringFormat trimmed;   // (no name is too long today, at any scale)
+            trimmed.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+            trimmed.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+            if (shown > 0 && items[(size_t)first].heading.empty()) heading(items[(size_t)items[(size_t)first].group].heading);
+            for (int i = first; i < first + shown; i++) {
+                const PlaceItem& item = items[(size_t)i];
+                if (!item.heading.empty()) {
+                    heading(item.heading);
+                    continue;
+                }
+                Gdiplus::RectF row(M, y, leftW, rowH);
+                const bool chosen = item.place == plannerPlace_;
+                if (chosen) selectionFrame(g, row, scaleF(R_CONTROL));
+                else if (isHot(hoverPlan_, row)) fillRoundRect(g, row, scaleF(R_CONTROL), COL_CARD_HI);
+                const std::wstring count = std::to_wstring(oresAtCount(item.place));
+                g.DrawString(count.c_str(), -1, &numFont, Gdiplus::RectF(M, y + scaleF(4), leftW - scaleF(8), rowH),
+                             &rightAlign, &faintBrush);
+                // a place has neither box nor dot: its name further left than
+                // an ore's, where the Blueprints window's lists have theirs
+                const float nx = M + scaleF(22);
+                const float nameW = M + leftW - scaleF(8) - lineWidth(g, count, numFont) - scaleF(6) - nx;
+                g.DrawString(toW(item.place).c_str(), -1, &rowFont, Gdiplus::RectF(nx, y + scaleF(2), nameW, rowH),
+                             &trimmed, chosen ? &textBrush : &dimBrush);
+                planHits_.push_back({row, 17, item.place});
+                y += rowH;
+            }
+            if (placesScroll) {
+                // as the What's new card has it: the track only just there,
+                // the part in view clearly on it
+                const float thumb = (std::max)(scaleF(28), room * (float)shown / (float)items.size());
+                const float at = (room - thumb) * (float)first / (float)lastFirst;
+                const float bx = M + leftW + scaleF(4);
+                fillRoundRect(g, Gdiplus::RectF(bx, top, scaleF(3), room), scaleF(1.5f), tint(COL_TEXT, 18));
+                fillRoundRect(g, Gdiplus::RectF(bx, top + at, scaleF(3), thumb), scaleF(1.5f), tint(COL_TEXT, 80));
             }
         }
         // a list whose family is not in the system on the tabs goes with it
@@ -21688,7 +21921,9 @@ void MinerGUI::paintPlanner(HDC hdc) {
             footerRoom = lx - scaleF(12);
         }
         // the left's words, as many of them as end before it
-        std::wstring footer = L"F / Esc: Close  \u00B7  Tick an ore to highlight it in scans";
+        std::wstring footer = plannerByPlace_ ? L"F / Esc: Close"
+                                              : L"F / Esc: Close  \u00B7  Tick an ore to highlight it in scans";
+        if (placesScroll) footer += L"  \u00B7  Scroll for more places";
         if (!paysMost.empty()) {
             // (not "red": the colour is the player's to pick - the beat is not)
             const std::wstring longer = footer + L"  \u00B7  Blinking: highest price right now";

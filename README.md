@@ -29,8 +29,9 @@ executable and start it. The app tells you when a newer version is out.
 - **Ore Finder:** where an ore is found, what a rock of it usually holds, and
   where refined ore sells best right now (prices players report on
   [UEX](https://uexcorp.space)), next to your own trades from the game log.
-  Clicking the Aaron Halo in it opens a calculator: at which distance left to
-  leave quantum travel for each band.
+  By place it goes the other way round: what is mined on a planet, a moon or
+  in an asteroid field. Clicking the Aaron Halo in it opens a calculator: at
+  which distance left to leave quantum travel for each band.
 - **Gear:** the laser heads, modules and gadgets your ship takes, with the
   nearest shops that sell them and their prices from UEX.
 - **Refinery:** reads your work orders off the refinery terminal and shows

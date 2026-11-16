@@ -7,9 +7,10 @@ Reads the signature value off the mining marker in game (the number next to
 the map pin, e.g. "16,960") straight from the screen and tells you which ore
 in what amount is behind it. On top of that: a place map per ore (click a
 result row) and the ORE FINDER (key F), where you pick an ore BEFORE the trip
-and see where the odds stand - and where it sells best. Clicking the Aaron
-Halo there opens a calculator: at which distance left to leave quantum travel
-for each band.
+and see where the odds stand - and where it sells best. By place it goes the
+other way round: pick a planet, moon or asteroid field and see what is mined
+there. Clicking the Aaron Halo there opens a calculator: at which distance
+left to leave quantum travel for each band.
 
 Getting started
 ---------------
