@@ -386,6 +386,13 @@ static bool placeTaken(const std::string& place) {
     return true;
 }
 
+std::string channelKind(const std::string& channel) {
+    // "LIVE + HOTFIX" is LIVE's
+    const std::string kind = channel.rfind("LIVE", 0) == 0 ? std::string("LIVE") : channel;
+    if (kind == "LIVE" || kind == "PTU" || kind == "EPTU" || kind == "TECH-PREVIEW" || kind == "HOTFIX") return kind;
+    return "";
+}
+
 std::string body(const std::vector<Scan>& scans, const std::string& bedrockVersion, int gameVersion,
                  const std::string& channel, const std::string& session) {
     using UexReports::jsonText;
@@ -396,11 +403,8 @@ std::string body(const std::vector<Scan>& scans, const std::string& bedrockVersi
         std::snprintf(game, sizeof(game), "%d.%d.%d", gameVersion / 10000, gameVersion / 100 % 100, gameVersion % 100);
         out << ",\"game\":" << jsonText(game);
     }
-    // "LIVE + HOTFIX" is LIVE's
-    std::string kind = channel.rfind("LIVE", 0) == 0 ? std::string("LIVE") : channel;
-    if (kind == "LIVE" || kind == "PTU" || kind == "EPTU" || kind == "TECH-PREVIEW" || kind == "HOTFIX") {
-        out << ",\"channel\":" << jsonText(kind);
-    }
+    const std::string kind = channelKind(channel);
+    if (!kind.empty()) out << ",\"channel\":" << jsonText(kind);
     out << ",\"session\":" << jsonText(session) << ",\"rocks\":[";
     char text[96];
     for (size_t i = 0; i < scans.size(); i++) {

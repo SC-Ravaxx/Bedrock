@@ -42,6 +42,8 @@
 #include "ScanPanel.h"
 #include "RockContents.h"
 #include "RockScans.h"
+#include "Feedback.h"
+#include "TextField.h"
 #include "RefineryTerminal.h"
 #include "RefineryOrders.h"
 #include "TradeBook.h"
@@ -1080,6 +1082,170 @@ int runSelfTest() {
             allPassed &= check(told, "a rock tells the service how Bedrock saw it - the screen's height, the label "
                                      "column's size, how its list went - where the app knows");
             if (!told) std::cout << "    report: " << sent << std::endl;
+        }
+
+        // ...and a player's message from the Feedback page, as the service
+        // takes it (Feedback.h; server/refinery/README.md, "Feedback")
+        {
+            namespace F = SCMiner::Feedback;
+            const std::string typed = "  The \"rock panel\" reads C:\\ nothing.\r\nSince 4.10.3 \xC3\xA4hnlich.\t(MOLE)\n\n ";
+            const std::string sent = F::body(typed, " Rock\nHound ", "3.0.4", 41003, "LIVE + HOTFIX", "windows");
+            const bool same = sent ==
+                              "{\"text\":\"The \\\"rock panel\\\" reads C:\\\\ nothing.\\nSince 4.10.3 \xC3\xA4hnlich. (MOLE)\","
+                              "\"name\":\"Rock Hound\",\"version\":\"3.0.4\",\"game\":41003,\"channel\":\"LIVE\","
+                              "\"os\":\"windows\"}";
+            // no name given, a game and a channel not known: the name and
+            // the channel left out, the game 0
+            const bool bare = F::body("a", "  ", "3.0.4", 0, "", "linux") ==
+                                  "{\"text\":\"a\",\"version\":\"3.0.4\",\"game\":0,\"os\":\"linux\"}" &&
+                              F::body("a", "", "3.0.4", 41003, "SOMETHING-NEW", "linux") ==
+                                  "{\"text\":\"a\",\"version\":\"3.0.4\",\"game\":41003,\"os\":\"linux\"}";
+            allPassed &= check(same && bare && std::string(F::platform()) ==
+#ifdef _WIN32
+                                                   "windows",
+#else
+                                                   "linux",
+#endif
+                               "a message goes to the service as it takes it - a quote, a backslash, a line break and "
+                               "an umlaut in it - and without a name where none was given");
+            if (!same) std::cout << "    message: " << sent << std::endl;
+
+            // what does not go, and what is taken out on the way
+            std::string most, over, faces;
+            for (size_t i = 0; i < F::TEXT_MOST; i++) most += "\xC3\xA4";
+            over = most + "b";
+            for (size_t i = 0; i < F::TEXT_MOST; i++) faces += "\xF0\x9F\x98\x80";   // four bytes each
+            const std::string name40(F::NAME_MOST, 'n');
+            const bool empties = F::fault("", "") == F::Fault::Empty && F::fault(" \r\n\t\xC2\xA0 ", "") == F::Fault::Empty &&
+                                 F::body(" \n ", "x", "3.0.4", 41003, "LIVE", "windows").empty();
+            const bool lengths = F::fault(most, "") == F::Fault::None && F::fault("  " + most + "\n", "") == F::Fault::None &&
+                                 F::fault(over, "") == F::Fault::TooLong &&
+                                 F::body(over, "", "3.0.4", 41003, "LIVE", "windows").empty() &&
+                                 F::fault("a", name40) == F::Fault::None &&
+                                 F::fault("a", name40 + "n") == F::Fault::NameTooLong;
+            const std::string widest = F::body(faces, std::string(F::NAME_MOST, 'n'), "3.0.4", 41003, "TECH-PREVIEW", "windows");
+            const bool fitsBody = !widest.empty() && widest.size() <= F::BODY_MOST && F::characters(faces) == F::TEXT_MOST;
+            const bool cleaned = F::message("a\x01" "b\x7F" "c") == "abc" && F::message("a\xC2\x85" "b") == "a\nb" &&
+                                 F::message("a\xE2\x80\xA8" "b\x0B" "c\rd") == "a\nb\nc\nd" &&
+                                 F::message("a\xFF" "b") == "a\xEF\xBF\xBD" "b" && F::name(" a\r\nb\tc ") == "a b c";
+            allPassed &= check(empties && lengths && fitsBody && cleaned,
+                               "a message of nothing or of white space alone does not go, nor one over 4,000 characters; "
+                               "control characters are taken out, a name is one line of 40 at most");
+
+            const bool statuses = F::outcome(201) == F::Outcome::Sent && F::outcome(200) == F::Outcome::Sent &&
+                                  F::outcome(0) == F::Outcome::NoConnection && F::outcome(503) == F::Outcome::NoConnection &&
+                                  F::outcome(429) == F::Outcome::Limited && F::outcome(400) == F::Outcome::Refused &&
+                                  F::outcome(413) == F::Outcome::Refused && F::outcome(415) == F::Outcome::Refused &&
+                                  F::outcome(404) == F::Outcome::Refused;
+            allPassed &= check(statuses, "the service's answer to a message: kept at 201 and 200, no connection without an "
+                                         "answer or at 5xx, too many at 429, turned down at 400, 413 and 415");
+
+            const std::string dot = "  \xC2\xB7  ";
+            const bool along =
+                F::sentWith("3.0.4", 41003, true) ==
+                    "Sent with it: Bedrock 3.0.4" + dot + "Star Citizen 4.10.3" + dot + "Installation number" &&
+                F::sentWith("3.0.4", 0, true) == "Sent with it: Bedrock 3.0.4" + dot + "Installation number" &&
+                F::sentWith("3.0.4", 41003, false) == "Sent with it: Bedrock 3.0.4" + dot + "Star Citizen 4.10.3" &&
+                F::sentWith("3.0.4", 0, false) == "Sent with it: Bedrock 3.0.4";
+            allPassed &= check(along, "the Feedback page names what goes with a message: Bedrock's version, the game's where "
+                                      "the log gave it, the installation number where one is sent");
+        }
+
+        // ...typed into fields the window paints itself (TextField.h)
+        {
+            using SCMiner::TextField;
+            namespace T = SCMiner::Chars;
+            TextField field(true, 12);
+            for (char32_t c : std::u32string(U"Hello")) field.type(c);
+            field.type(U'\r');   // Enter
+            field.type(U'x');
+            const bool broke = field.text() == U"Hello\nx" && field.caret() == 7;
+            field.backspace();
+            field.backspace();   // the x, then the line break
+            const bool joined = field.text() == U"Hello" && field.caret() == 5;
+            field.moveTo(1, false);
+            field.moveTo(5, true);   // "ello" marked
+            const bool marks = field.marked() && field.markedText() == U"ello";
+            field.type(U'i');
+            const bool over = field.text() == U"Hi" && !field.marked() && field.caret() == 2;
+            const bool control = !field.type(0x01) && !field.type(0x7F) && field.text() == U"Hi";
+            const bool filled = field.put(U"0123456789ABCDEF") && field.text() == U"Hi0123456789" && !field.type(U'z') &&
+                                !field.put(U"more");
+            TextField one(false, 40);
+            const bool oneLine = one.put(U"a\r\nb\tc") && one.text() == U"a b c" && !one.type(U'\n') && !one.type(U'\r');
+            allPassed &= check(broke && joined && marks && over && control && filled && oneLine,
+                               "a typed field: Enter breaks the line and Backspace joins it again, a letter takes the "
+                               "place of what is marked, and no more goes in than the field holds");
+
+            TextField words(true, 100);
+            words.set(U"rock panel, MOLE");
+            words.left(false, true);
+            const bool w1 = words.caret() == 12;
+            words.left(false, true);
+            const bool w2 = words.caret() == 10;
+            words.left(false, true);
+            const bool w3 = words.caret() == 5;
+            words.right(true, true);
+            const bool w4 = words.caret() == 10 && words.markedText() == U"panel";
+            words.right(false);   // lets go of the mark at its end
+            const bool w5 = words.caret() == 10 && !words.marked();
+            words.markWord(7);
+            const bool w6 = words.markedText() == U"panel";
+            words.markWord(16);
+            const bool w7 = words.markedText() == U"MOLE";
+            words.moveTo(16, false);
+            words.backspace(true);
+            const bool w8 = words.text() == U"rock panel, ";
+            const bool w9 = words.undo() && words.text() == U"rock panel, MOLE" && words.redo() &&
+                            words.text() == U"rock panel, " && !words.redo();
+            for (char32_t c : std::u32string(U"abc")) words.type(c);
+            const bool w10 = words.text() == U"rock panel, abc" && words.undo() && words.text() == U"rock panel, ";
+            words.markAll();
+            const bool w11 = words.markedText() == U"rock panel, " && words.cut() && words.empty() && words.undo() &&
+                             words.text() == U"rock panel, ";
+            allPassed &= check(w1 && w2 && w3 && w4 && w5 && w6 && w7 && w8 && w9 && w10 && w11,
+                               "a typed field's keys: the caret goes word by word, a double click marks a word, letters "
+                               "typed in a row are one step back, and forward again");
+
+            const std::string faceBytes = "a\xF0\x9F\x98\x80" "b";   // U+1F600 between two letters
+            const std::u32string face = T::fromUtf8(faceBytes);
+            const std::wstring wide = T::toWide(face);
+            const bool one32 = face.size() == 3 && face[1] == 0x1F600 && T::toUtf8(face) == faceBytes &&
+                               T::fromWide(wide) == face && wide.size() == (sizeof(wchar_t) == 2 ? 4u : 3u);
+            const bool half = T::fromWide(std::wstring(1, (wchar_t)0xD83D)) == std::u32string(1, (char32_t)0xFFFD) &&
+                              T::toUtf8(std::u32string(1, (char32_t)0xD83D)) == "\xEF\xBF\xBD";
+            TextField two(true, 2);
+            two.put(face);   // room for two of the three
+            const bool counted = two.text() == face.substr(0, 2);
+            two.backspace();
+            allPassed &= check(one32 && half && counted && two.text() == U"a",
+                               "a character beyond the Basic Multilingual Plane is one place in a typed field and on "
+                               "its way to UTF-8 and back; half a surrogate pair is none");
+
+            // the lines of a field ten letters wide, a letter one wide
+            const SCMiner::TextWidth each = [](size_t from, size_t to) { return (float)(to - from); };
+            const std::u32string text = U"alpha beta gamma\n\nabcdefghijkl";
+            const std::vector<SCMiner::TextLine> lines = SCMiner::wrapLines(text, 10.0f, each);
+            const auto is = [&](size_t k, size_t from, size_t to, bool hard) {
+                return k < lines.size() && lines[k].from == from && lines[k].to == to && lines[k].hard == hard;
+            };
+            const bool laid = lines.size() == 5 && is(0, 0, 11, false) && is(1, 11, 16, true) && is(2, 17, 17, true) &&
+                              is(3, 18, 28, false) && is(4, 28, 30, true);
+            const bool carets = laid && SCMiner::lineOfCaret(lines, 11, false) == 1 && SCMiner::lineOfCaret(lines, 16, false) == 1 &&
+                                SCMiner::lineOfCaret(lines, 17, false) == 2 && SCMiner::lineOfCaret(lines, 28, false) == 4 &&
+                                SCMiner::lineOfCaret(lines, 28, true) == 3 && SCMiner::lineOfCaret(lines, 30, false) == 4;
+            const bool ends = laid && SCMiner::lineEnd(text, lines[0]) == 10 && SCMiner::lineEnd(text, lines[1]) == 16 &&
+                              SCMiner::lineEnd(text, lines[3]) == 28;
+            const bool places = laid && SCMiner::placeAt(lines[1], 2.4f, each) == 13 && SCMiner::placeAt(lines[1], 2.6f, each) == 14 &&
+                                SCMiner::placeAt(lines[1], 99.0f, each) == 16 && SCMiner::placeAt(lines[1], -3.0f, each) == 11;
+            const std::vector<SCMiner::TextLine> spaces = SCMiner::wrapLines(U"aaaa      ", 5.0f, each);
+            const std::vector<SCMiner::TextLine> none = SCMiner::wrapLines(U"", 5.0f, each);
+            const std::vector<SCMiner::TextLine> last = SCMiner::wrapLines(U"a\n", 5.0f, each);
+            const bool edges = spaces.size() == 1 && spaces[0].to == 10 && none.size() == 1 && none[0].to == 0 &&
+                               last.size() == 2 && last[1].from == 2 && last[1].to == 2;
+            allPassed &= check(laid && carets && ends && places && edges,
+                               "a typed field's lines break behind the last word that fits and inside a word wider than "
+                               "the field; the caret stands at a broken line's end or at the next one's start");
         }
 
         // The gadget: what the panel prints with it on, taken back

@@ -235,6 +235,8 @@ set(CORE_SOURCES
     src/LaserRange.cpp
     src/RockContents.cpp
     src/RockScans.cpp
+    src/Feedback.cpp
+    src/TextField.cpp
     src/RefineryTerminal.cpp
     src/RefineryOrders.cpp
     src/RefineryShare.cpp
@@ -309,6 +311,8 @@ set(HEADERS
     include/PanelFive.h
     include/PanelFiveShapes.h
     include/RockScans.h
+    include/Feedback.h
+    include/TextField.h
     include/RefineryTerminal.h
     include/RefineryOrders.h
     include/TradeBook.h

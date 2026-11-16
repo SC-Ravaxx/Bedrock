@@ -220,6 +220,9 @@ std::string newSession();
 // in the ranges the service checks, and the usual rocks' numbers - not a
 // Nyx I rock of 5.0. A report with one it does not take is turned down whole.
 bool sendable(const Scan& scan);
+// The channel as a report to the service names it: "LIVE + HOTFIX" is
+// LIVE's; "" for one the service does not know, which a report leaves out
+std::string channelKind(const std::string& channel);
 // The report: the game's version as Game.log's header gives it, 41002 for
 // 4.10.2, 0 leaves it out; a channel the service does not know is left out,
 // and so is a place with a character the service does not take
