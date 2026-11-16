@@ -796,6 +796,9 @@ struct LaserSuggestion {
     // rock only together
     std::vector<const MiningModule*> passive;
     float passivePower = 0;
+    // A crafted head on board, by its bonus in per cent (+28.84); 0 for a
+    // head off the shelf
+    float crafted = 0;
 };
 
 // Whether a mix holds only while a charge runs: an active module in it
@@ -898,6 +901,50 @@ inline std::vector<const MiningModule*> bestModules(const MiningLoadout& bare, c
 
 }  // namespace detail
 
+// One head against the rock: stock when stock is enough, with the passive
+// modules that do most for this rock when not, and with active ones as well
+// only where no passive mix holds it. A crafted head goes in with its bonus.
+inline LaserSuggestion suggestionFor(const MiningLaser& l, const RockStats& rock, float craftedPower = 0.0f) {
+    const float givesBack = rock.mass * modelOf(rock).decayPerMass;
+    const auto through = [&](const LaserOutput& o) {
+        return o.atRange * resistanceLetsThrough(rock.resistance, o.resistance);
+    };
+    MiningLoadout bare;
+    bare.laser = &l;
+    bare.craftedPower = craftedPower;
+    const LaserOutput plain = outputOf(bare, rock.distance);
+
+    LaserSuggestion pick;
+    pick.laser = &l;
+    pick.crafted = craftedPower;
+    pick.power = through(plain);
+    pick.passivePower = pick.power;
+    pick.stock = true;
+
+    // Stock is enough? Then that is the answer, and no module is named.
+    if (pick.power > 0 && givesBack / pick.power <= 1.0f) {
+        pick.throttle = givesBack / pick.power * 100.0f;
+        pick.breaks = true;
+    } else if (l.slots > 0) {
+        // Otherwise the passive modules that get the most through this
+        // rock; where those do not hold it, the mix with active ones.
+        MiningLoadout fitted = bare;
+        fitted.modules = detail::bestModules(bare, rock, false);
+        pick.passive = fitted.modules;
+        pick.passivePower = through(outputOf(fitted, rock.distance));
+        if (!(pick.passivePower > 0 && givesBack / pick.passivePower <= 1.0f)) {
+            fitted.modules = detail::bestModules(bare, rock);
+        }
+        const LaserOutput best = outputOf(fitted, rock.distance);
+        pick.modules = fitted.modules;
+        pick.power = through(best);
+        pick.stock = false;
+        pick.breaks = pick.power > 0 && givesBack / pick.power <= 1.0f;
+        pick.throttle = pick.power > 0 ? givesBack / pick.power * 100.0f : 0.0f;
+    }
+    return pick;
+}
+
 // Every head that fits this ship, ranked by whether it can hold the rock and
 // then by how much room it leaves. Each one is reported once: stock when stock
 // is enough, with the passive modules that do most for this rock when not,
@@ -906,20 +953,21 @@ inline std::vector<const MiningModule*> bestModules(const MiningLoadout& bare, c
 // hold that lasts beats one that lasts while a charge runs (Surge's 15 s).
 // Of the heads that hold it, one that holds it without a charge comes first.
 //
+// A crafted head on board (`aboard`, the ship's heads) is one more: the same
+// head with its bonus and the modules that do most for the rock - other
+// modules on a head one has rather than a head one has not. It comes first
+// of those that hold the rock the same way, with a charge or without. A
+// crafted head is reported once, however many mounts carry it.
+//
 // The rock's resistance goes in as its OWN figure, and each head takes it
 // through its own factor: a Klein at -45 % gets more of its power through a
 // hard rock than a Helix at -30 %. A head made for one ship only - the
 // Golem's Pitman - is named only when that ship is the one asking.
 inline std::vector<LaserSuggestion> suggestLasers(const RockStats& rock,
                                                   int8_t hardpointSize,
-                                                  float craftedPower = 0.0f,
-                                                  const MiningShip* ship = nullptr) {
+                                                  const MiningShip* ship = nullptr,
+                                                  const std::vector<MiningLoadout>& aboard = {}) {
     std::vector<LaserSuggestion> out;
-    const float givesBack = rock.mass * modelOf(rock).decayPerMass;
-    const auto through = [&](const LaserOutput& o) {
-        return o.atRange * resistanceLetsThrough(rock.resistance, o.resistance);
-    };
-
     for (int i = 0; i < MINING_LASER_COUNT; i++) {
         const MiningLaser& l = MINING_LASERS[i];
         // the mount's own size only, as the game has it (laserFits)
@@ -927,50 +975,27 @@ inline std::vector<LaserSuggestion> suggestLasers(const RockStats& rock,
         // ...but never a head made for another ship
         const MiningShip* only = onlyShipFor(l);
         if (only && only != ship) continue;
-
-        MiningLoadout bare;
-        bare.laser = &l;
-        bare.craftedPower = craftedPower;
-        const LaserOutput plain = outputOf(bare, rock.distance);
-
-        LaserSuggestion pick;
-        pick.laser = &l;
-        pick.power = through(plain);
-        pick.passivePower = pick.power;
-        pick.stock = true;
-
-        // Stock is enough? Then that is the answer, and no module is named.
-        if (pick.power > 0 && givesBack / pick.power <= 1.0f) {
-            pick.throttle = givesBack / pick.power * 100.0f;
-            pick.breaks = true;
-        } else if (l.slots > 0) {
-            // Otherwise the passive modules that get the most through this
-            // rock; where those do not hold it, the mix with active ones.
-            MiningLoadout fitted = bare;
-            fitted.modules = detail::bestModules(bare, rock, false);
-            pick.passive = fitted.modules;
-            pick.passivePower = through(outputOf(fitted, rock.distance));
-            if (!(pick.passivePower > 0 && givesBack / pick.passivePower <= 1.0f)) {
-                fitted.modules = detail::bestModules(bare, rock);
-            }
-            const LaserOutput best = outputOf(fitted, rock.distance);
-            pick.modules = fitted.modules;
-            pick.power = through(best);
-            pick.stock = false;
-            pick.breaks = pick.power > 0 && givesBack / pick.power <= 1.0f;
-            pick.throttle = pick.power > 0 ? givesBack / pick.power * 100.0f : 0.0f;
-        }
-        out.push_back(pick);
+        out.push_back(suggestionFor(l, rock));
+    }
+    for (const MiningLoadout& head : aboard) {
+        if (!head.laser || head.craftedPower == 0.0f || head.laser->size != hardpointSize) continue;
+        const bool seen = std::any_of(out.begin(), out.end(), [&](const LaserSuggestion& p) {
+            return p.crafted != 0.0f && p.laser == head.laser && p.crafted == head.craftedPower;
+        });
+        if (!seen) out.push_back(suggestionFor(*head.laser, rock, head.craftedPower));
     }
 
-    // What holds the rock first, of those what holds it without a charge,
-    // and then what leaves the most room.
+    // What holds the rock first; of those, what holds it without a charge,
+    // then a crafted head on board, then what leaves the most room.
     for (size_t i = 1; i < out.size(); i++) {
         for (size_t j = i; j > 0; j--) {
             const LaserSuggestion& a = out[j];
             const LaserSuggestion& b = out[j - 1];
+            const bool aOwn = a.crafted != 0.0f, bOwn = b.crafted != 0.0f;
             const bool better = a.breaks != b.breaks                                     ? a.breaks
-                                : a.breaks && runsOut(a.modules) != runsOut(b.modules) ? !runsOut(a.modules)
+                                : !a.breaks                                            ? a.power > b.power
+                                : runsOut(a.modules) != runsOut(b.modules)             ? !runsOut(a.modules)
+                                : aOwn != bOwn                                         ? aOwn
                                                                                        : a.power > b.power;
             if (!better) break;
             const LaserSuggestion t = out[j]; out[j] = out[j - 1]; out[j - 1] = t;

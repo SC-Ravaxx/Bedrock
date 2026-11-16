@@ -1823,6 +1823,30 @@ int runScreenshots(const std::string& dir) {
         gui.updateRock(rock);
         pump();
         shoot(gui.windowHandle(), "overlay_rock_short.png");
+        // ...and the Prospector's Helix I crafted (+28.84 %), on a made-up
+        // quantainium of 21,000 kg at 67 % that its Focus III and Rieger-C3
+        // do not hold: the answer is the same head with two Deluge, not a
+        // new one with two Surge
+        {
+            SCMiner::MiningLoadout craftedOne = helixOne;
+            craftedOne.craftedPower = 28.84f;
+            gui.setHeadForShot(0, craftedOne);
+            SCMiner::RockStats q = rock;
+            q.mass = 21000;
+            q.resistance = 67;
+            q.instability = 18.6f;
+            q.scu = 20.4f;
+            gui.updateRock(q);
+            pump();
+            shoot(gui.windowHandle(), "overlay_rock_crafted.png");
+            gui.toggleOverlayMode();
+            pump();
+            shoot(gui.windowHandle(), "rock_suggest_crafted.png");
+            gui.toggleOverlayMode();
+            gui.setHeadForShot(0, helixOne);
+            gui.updateRock(rock);
+            pump();
+        }
         gui.toggleOverlayMode();
         pump();
         // A MOLE on three Arbor MH2s at a gold rock of high resistance: all

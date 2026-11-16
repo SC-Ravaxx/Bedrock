@@ -5962,7 +5962,7 @@ int runSelfTest() {
             rock.mass = 9000.0f;
             rock.resistance = 20.0f;
             auto suggests = [&](const SCMiner::MiningShip* asking) {
-                for (const SCMiner::LaserSuggestion& p : SCMiner::suggestLasers(rock, 1, 0.0f, asking)) {
+                for (const SCMiner::LaserSuggestion& p : SCMiner::suggestLasers(rock, 1, asking)) {
                     if (p.laser == pitman) return true;
                 }
                 return false;
@@ -5998,7 +5998,7 @@ int runSelfTest() {
             int named = 0;
             for (int pass = 0; sized && pass < 3; pass++) {
                 const SCMiner::MiningShip* asking = pass == 0 ? mole : pass == 1 ? prospector : golem;
-                for (const SCMiner::LaserSuggestion& s : SCMiner::suggestLasers(rock, asking->size, 0.0f, asking)) {
+                for (const SCMiner::LaserSuggestion& s : SCMiner::suggestLasers(rock, asking->size, asking)) {
                     sized = sized && s.laser && SCMiner::laserFits(*s.laser, *asking);
                     named++;
                 }
@@ -8023,22 +8023,41 @@ int runSelfTest() {
                     return n > 1;
                 };
                 int asked = 0, doubled = 0, chargedNeedless = 0, chargedFirst = 0, passiveHolds = 0;
-                for (float mass : {3000.0f, 13147.0f, 25000.0f, 48929.0f, 90000.0f}) {
-                    for (float res : {0.0f, 30.0f, 67.0f, 75.0f, 90.0f}) {
-                        for (int8_t size : {(int8_t)1, (int8_t)2}) {
-                            SCMiner::RockStats r;
-                            r.mass = mass;
-                            r.resistance = res;
-                            const float needs = mass * SCMiner::BREAK_DECAY_PER_MASS;
-                            bool charged = false;
-                            for (const SCMiner::LaserSuggestion& p : SCMiner::suggestLasers(r, size)) {
-                                asked++;
-                                if (twoCutting(p)) doubled++;
-                                const bool runsOut = SCMiner::runsOut(p.modules);
-                                if (runsOut && p.passivePower > 0 && needs / p.passivePower <= 1.0f) chargedNeedless++;
-                                if (p.breaks && !runsOut && !p.stock) passiveHolds++;
-                                if (p.breaks && !runsOut && charged) chargedFirst++;
-                                if (p.breaks && runsOut) charged = true;
+                int ownHolds = 0, ownLate = 0;
+                // ...and with a crafted head on board, one of each size: of
+                // the heads that hold the rock the same way, with a charge or
+                // without, it comes before every head off the shelf
+                SCMiner::MiningLoadout ownOne;
+                ownOne.laser = helixOne.laser;
+                ownOne.craftedPower = 28.84f;
+                SCMiner::MiningLoadout ownTwo = onHelixTwo({});
+                ownTwo.craftedPower = 28.84f;
+                for (bool withOwn : {false, true}) {
+                    for (float mass : {3000.0f, 13147.0f, 25000.0f, 48929.0f, 90000.0f}) {
+                        for (float res : {0.0f, 30.0f, 67.0f, 75.0f, 90.0f}) {
+                            for (int8_t size : {(int8_t)1, (int8_t)2}) {
+                                SCMiner::RockStats r;
+                                r.mass = mass;
+                                r.resistance = res;
+                                const float needs = mass * SCMiner::BREAK_DECAY_PER_MASS;
+                                std::vector<SCMiner::MiningLoadout> aboard;
+                                if (withOwn) aboard.push_back(size == 1 ? ownOne : ownTwo);
+                                bool charged = false;
+                                bool shelfHeld[2] = {false, false};   // without a charge, with one
+                                for (const SCMiner::LaserSuggestion& p : SCMiner::suggestLasers(r, size, nullptr, aboard)) {
+                                    asked++;
+                                    if (twoCutting(p)) doubled++;
+                                    const bool runsOut = SCMiner::runsOut(p.modules);
+                                    if (runsOut && p.passivePower > 0 && needs / p.passivePower <= 1.0f) chargedNeedless++;
+                                    if (p.breaks && !runsOut && !p.stock) passiveHolds++;
+                                    if (p.breaks && !runsOut && charged) chargedFirst++;
+                                    if (p.breaks && runsOut) charged = true;
+                                    if (p.breaks && p.crafted != 0.0f) {
+                                        ownHolds++;
+                                        if (shelfHeld[runsOut ? 1 : 0]) ownLate++;
+                                    }
+                                    if (p.breaks && p.crafted == 0.0f) shelfHeld[runsOut ? 1 : 0] = true;
+                                }
                             }
                         }
                     }
@@ -8051,6 +8070,10 @@ int runSelfTest() {
                                        std::to_string(chargedNeedless) + "), and a head holding it on a charge comes "
                                        "after every one holding it without (" + std::to_string(chargedFirst) + "; " +
                                        std::to_string(passiveHolds) + " held on passive modules)");
+                allPassed &= check(ownHolds > 0 && ownLate == 0,
+                                   "a crafted head on board that holds the rock comes before the heads off the shelf "
+                                   "holding it the same way (" + std::to_string(ownLate) + " late of " +
+                                       std::to_string(ownHolds) + ")");
 
                 SCMiner::RockStats sav;
                 sav.mass = 48929.0f;
@@ -8093,6 +8116,29 @@ int runSelfTest() {
                 allPassed &= check(threeRieger,
                                    "the 22,000 kg gold rock at 50 % is a Helix II with three Rieger-C3, near " +
                                        std::to_string((int)std::lround(mole.empty() ? 0.0f : mole[0].throttle)) + " %");
+
+                // The 30,280 kg savrilium at 79 % is three Surge on a Helix II
+                // off the shelf; with a crafted Helix II (+28.84 %) on board,
+                // two of its mounts, the answer is that head with three Deluge
+                // - named once
+                SCMiner::RockStats sav30;
+                sav30.mass = 30280.0f;
+                sav30.resistance = 79.0f;
+                SCMiner::MiningLoadout craftedTwo = onHelixTwo({SCMiner::moduleById("passive_focus_mk3"), rieger});
+                craftedTwo.craftedPower = 28.84f;
+                const std::vector<SCMiner::LaserSuggestion> shelf = SCMiner::suggestLasers(sav30, 2);
+                const std::vector<SCMiner::LaserSuggestion> aboard =
+                    SCMiner::suggestLasers(sav30, 2, nullptr, {craftedTwo, craftedTwo});
+                const bool shelfSurge = !shelf.empty() && shelf[0].crafted == 0.0f && has(shelf[0], surge) == 3;
+                const bool ownDeluge = !aboard.empty() && aboard[0].crafted == 28.84f && aboard[0].breaks &&
+                                       aboard[0].laser == craftedTwo.laser && has(aboard[0], deluge) == 3 &&
+                                       aboard[0].throttle > 75.0f && aboard[0].throttle < 95.0f;
+                const auto ownNamed = std::count_if(aboard.begin(), aboard.end(),
+                                                    [](const SCMiner::LaserSuggestion& p) { return p.crafted != 0.0f; });
+                allPassed &= check(shelfSurge && ownDeluge && ownNamed == 1 && aboard.size() == shelf.size() + 1,
+                                   "30,280 kg at 79 % is three Surge off the shelf, and three Deluge on the crafted "
+                                   "Helix II on board, near " +
+                                       std::to_string((int)std::lround(aboard.empty() ? 0.0f : aboard[0].throttle)) + " %");
 
                 // ...and a hold that needs a charge says for how long
                 const SCMiner::MiningModule* rime = SCMiner::moduleById("active_rime");

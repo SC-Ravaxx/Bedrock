@@ -7922,7 +7922,11 @@ MinerGUI::Suggestion MinerGUI::headSuggestion() const {
     wchar_t text[192];
 
     const int8_t size = ship_ ? ship_->size : loadout_.laser->size;
-    const std::vector<LaserSuggestion> picks = suggestLasers(own, size, 0.0f, ship_);
+    // the heads on board, for a crafted one among them: the same head with
+    // other modules is an answer too
+    std::vector<MiningLoadout> aboard = heads_;
+    aboard.push_back(loadout_);
+    const std::vector<LaserSuggestion> picks = suggestLasers(own, size, ship_, aboard);
     const LaserSuggestion* best = nullptr;
     for (const LaserSuggestion& p : picks) {
         if (!p.laser || (ship_ && !laserFits(*p.laser, *ship_))) continue;
@@ -7932,7 +7936,11 @@ MinerGUI::Suggestion MinerGUI::headSuggestion() const {
         }
     }
     if (best) {
-        s.line = laserShortName(*best->laser) + moduleWords(best->modules);
+        MiningLoadout fit;
+        fit.laser = best->laser;
+        fit.modules = best->modules;
+        fit.craftedPower = best->crafted;
+        s.line = fitWords(fit, true);
         const std::wstring lasts = toW(whileRuns(best->modules));
         if (!lasts.empty()) {
             std::swprintf(text, 192, L"%.0f %% laser power will hold charge steady%ls", best->throttle, lasts.c_str());
@@ -7948,11 +7956,12 @@ MinerGUI::Suggestion MinerGUI::headSuggestion() const {
     // ...but several of the strongest might, on a ship with the heads: on
     // passive modules where those are enough between them, as above. Then
     // the heads and their modules are the card's line, as one head's are,
-    // and how they hold it the note under it.
+    // and how they hold it the note under it. Heads off the shelf only: a
+    // crafted head is one of a kind.
     const LaserSuggestion* strongest = nullptr;
     const LaserSuggestion* steadiest = nullptr;  // the strongest on passive modules alone
     for (const LaserSuggestion& p : picks) {
-        if (!p.laser || (ship_ && !laserFits(*p.laser, *ship_))) continue;
+        if (!p.laser || p.crafted != 0.0f || (ship_ && !laserFits(*p.laser, *ship_))) continue;
         if (p.power > 0 && (!strongest || p.power > strongest->power)) strongest = &p;
         if (p.passivePower > 0 && (!steadiest || p.passivePower > steadiest->passivePower)) steadiest = &p;
     }
