@@ -28034,7 +28034,7 @@ void MinerGUI::drawFeedbackPage(Gdiplus::Graphics& g, int cw, int ch) {
             }
             if (typing && fbTyping_ == 1 && fbCaretOn_ && k == caretRow) {
                 const float x = inside.X + width(row.from, fbText_.caret());
-                g.FillRectangle(&textBrush, Gdiplus::RectF(std::round(x - caretW / 2), rowY + std::round((pitch - caretH) / 2),
+                g.FillRectangle(&textBrush, Gdiplus::RectF(std::round(x), rowY + std::round((pitch - caretH) / 2),
                                                            caretW, caretH));
             }
         }
@@ -28082,7 +28082,7 @@ void MinerGUI::drawFeedbackPage(Gdiplus::Graphics& g, int cw, int ch) {
                          &textBrush);
         }
         if (typing && fbTyping_ == 2 && fbCaretOn_) {
-            g.FillRectangle(&textBrush, Gdiplus::RectF(std::round(x0 + caretX - caretW / 2), std::round(middle - caretH / 2),
+            g.FillRectangle(&textBrush, Gdiplus::RectF(std::round(x0 + caretX), std::round(middle - caretH / 2),
                                                        caretW, caretH));
         }
         g.Restore(unclipped);
