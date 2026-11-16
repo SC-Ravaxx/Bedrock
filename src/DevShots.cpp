@@ -1758,6 +1758,31 @@ int runScreenshots(const std::string& dir) {
             pump();
             shoot(gui.windowHandle(), "site_rock_wont_hold.png");
         }
+        // ...and two rocks no head holds alone, the MOLE's own three not
+        // either: the 68,946 kg savrilium at 60 % of 30 October, held by
+        // three Helix II on passive modules between them, and a made-up one
+        // of 90 t at 75 %, held only while Surge runs
+        {
+            SCMiner::RockStats sav = rock;
+            sav.ore = "SAVRILIUM (ORE)";
+            sav.mass = 68946;
+            sav.resistance = 60;
+            sav.instability = 633.47f;
+            sav.scu = 57.69f;
+            sav.distance = 0;
+            gui.updateRock(sav);
+            pump();
+            shoot(gui.windowHandle(), "rock_together_passive.png");
+            sav.mass = 90000;
+            sav.resistance = 75;
+            sav.instability = 702.0f;
+            sav.scu = 75.3f;
+            gui.updateRock(sav);
+            pump();
+            shoot(gui.windowHandle(), "rock_together_surge.png");
+            gui.updateRock(rock);
+            pump();
+        }
 
         // The rock in the compact overlay, which is the window that is up
         // from the seat: the MOLE on the tin rock, close in; then a
@@ -1821,6 +1846,19 @@ int runScreenshots(const std::string& dir) {
             gui.toggleOverlayMode();
             pump();
             shoot(gui.windowHandle(), "overlay_rock_mole_suggest.png");
+            // ...and the savrilium no head holds alone: the overlay names the
+            // three that hold it together
+            {
+                SCMiner::RockStats sav = gold;
+                sav.ore = "SAVRILIUM (ORE)";
+                sav.mass = 68946;
+                sav.resistance = 60;
+                sav.instability = 633.47f;
+                sav.scu = 57.69f;
+                gui.updateRock(sav);
+                pump();
+                shoot(gui.windowHandle(), "overlay_rock_together.png");
+            }
             gold.mass = 12000;
             gold.resistance = 60;
             gui.updateRock(gold);

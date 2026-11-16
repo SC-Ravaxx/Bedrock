@@ -791,7 +791,41 @@ struct LaserSuggestion {
     float throttle = 0;     // per cent needed to hold the bar
     bool breaks = false;    // whether it can be held at all
     bool stock = false;     // true when no module was needed
+    // The passive modules alone that get the most through - nothing among
+    // them runs out - and what they get through: for heads that hold the
+    // rock only together
+    std::vector<const MiningModule*> passive;
+    float passivePower = 0;
 };
+
+// Whether a mix holds only while a charge runs: an active module in it
+inline bool runsOut(const std::vector<const MiningModule*>& modules) {
+    return std::any_of(modules.begin(), modules.end(), [](const MiningModule* m) { return m && m->active; });
+}
+
+// " while Surge runs, 15 s": how long a hold lasts that needs a charge - the
+// active modules in the mix by name, and the shortest of their runs. "" for a
+// mix with none.
+inline std::string whileRuns(const std::vector<const MiningModule*>& modules) {
+    std::vector<std::string> names;
+    int seconds = 0;
+    for (const MiningModule* m : modules) {
+        if (!m || !m->active) continue;
+        std::string name = m->name;
+        static const std::string TAIL = " Module";
+        if (name.size() > TAIL.size() && name.compare(name.size() - TAIL.size(), TAIL.size(), TAIL) == 0) {
+            name.resize(name.size() - TAIL.size());
+        }
+        if (std::find(names.begin(), names.end(), name) == names.end()) names.push_back(name);
+        if (m->seconds > 0 && (seconds == 0 || m->seconds < seconds)) seconds = m->seconds;
+    }
+    if (names.empty()) return "";
+    std::string out = " while " + names[0];
+    for (size_t i = 1; i < names.size(); i++) out += (i + 1 == names.size() ? " and " : ", ") + names[i];
+    out += names.size() > 1 ? " run" : " runs";
+    if (seconds > 0) out += ", " + std::to_string(seconds) + " s";
+    return out;
+}
 
 namespace detail {
 
@@ -807,14 +841,16 @@ namespace detail {
 // or less resistance - and at most three slots, which is a few hundred
 // mixes a head. Between two mixes that get the same through, the one with
 // fewer active modules wins - they are charges, and run out - and then the
-// one with fewer modules.
-inline std::vector<const MiningModule*> bestModules(const MiningLoadout& bare, const RockStats& rock) {
+// one with fewer modules. With `withActives` false only passive modules go in.
+inline std::vector<const MiningModule*> bestModules(const MiningLoadout& bare, const RockStats& rock,
+                                                    bool withActives = true) {
     std::vector<const MiningModule*> best;
     if (!bare.laser || bare.laser->slots <= 0) return best;
     const int slots = bare.laser->slots;
     std::vector<const MiningModule*> helps;
     for (int i = 0; i < MINING_MODULE_COUNT; i++) {
         const MiningModule& m = MINING_MODULES[i];
+        if (m.active && !withActives) continue;
         if (m.power > 1.0f || m.resistance < 0.0f) helps.push_back(&m);
     }
     const auto through = [&](const std::vector<const MiningModule*>& mods) {
@@ -864,8 +900,11 @@ inline std::vector<const MiningModule*> bestModules(const MiningLoadout& bare, c
 
 // Every head that fits this ship, ranked by whether it can hold the rock and
 // then by how much room it leaves. Each one is reported once: stock when stock
-// is enough, with the modules that do most for this rock when not - because
-// "it works as it is" is a better answer than "buy three modules".
+// is enough, with the passive modules that do most for this rock when not,
+// and with active ones as well only where no passive mix holds it - because
+// "it works as it is" is a better answer than "buy three modules", and a
+// hold that lasts beats one that lasts while a charge runs (Surge's 15 s).
+// Of the heads that hold it, one that holds it without a charge comes first.
 //
 // The rock's resistance goes in as its OWN figure, and each head takes it
 // through its own factor: a Klein at -45 % gets more of its power through a
@@ -897,6 +936,7 @@ inline std::vector<LaserSuggestion> suggestLasers(const RockStats& rock,
         LaserSuggestion pick;
         pick.laser = &l;
         pick.power = through(plain);
+        pick.passivePower = pick.power;
         pick.stock = true;
 
         // Stock is enough? Then that is the answer, and no module is named.
@@ -904,9 +944,15 @@ inline std::vector<LaserSuggestion> suggestLasers(const RockStats& rock,
             pick.throttle = givesBack / pick.power * 100.0f;
             pick.breaks = true;
         } else if (l.slots > 0) {
-            // Otherwise: the modules that get the most through this rock.
+            // Otherwise the passive modules that get the most through this
+            // rock; where those do not hold it, the mix with active ones.
             MiningLoadout fitted = bare;
-            fitted.modules = detail::bestModules(bare, rock);
+            fitted.modules = detail::bestModules(bare, rock, false);
+            pick.passive = fitted.modules;
+            pick.passivePower = through(outputOf(fitted, rock.distance));
+            if (!(pick.passivePower > 0 && givesBack / pick.passivePower <= 1.0f)) {
+                fitted.modules = detail::bestModules(bare, rock);
+            }
             const LaserOutput best = outputOf(fitted, rock.distance);
             pick.modules = fitted.modules;
             pick.power = through(best);
@@ -917,12 +963,15 @@ inline std::vector<LaserSuggestion> suggestLasers(const RockStats& rock,
         out.push_back(pick);
     }
 
-    // What holds the rock first, and among those what leaves the most room.
+    // What holds the rock first, of those what holds it without a charge,
+    // and then what leaves the most room.
     for (size_t i = 1; i < out.size(); i++) {
         for (size_t j = i; j > 0; j--) {
-            const bool better = (out[j].breaks && !out[j - 1].breaks) ||
-                                (out[j].breaks == out[j - 1].breaks &&
-                                 out[j].power > out[j - 1].power);
+            const LaserSuggestion& a = out[j];
+            const LaserSuggestion& b = out[j - 1];
+            const bool better = a.breaks != b.breaks                                     ? a.breaks
+                                : a.breaks && runsOut(a.modules) != runsOut(b.modules) ? !runsOut(a.modules)
+                                                                                       : a.power > b.power;
             if (!better) break;
             const LaserSuggestion t = out[j]; out[j] = out[j - 1]; out[j - 1] = t;
         }

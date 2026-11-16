@@ -1442,7 +1442,9 @@ private:
     };
     GadgetWords gadgetWords() const;
     // The head off the shelf that would break a rock nothing on board holds
-    struct Suggestion { std::wstring line, note; bool good = false; };
+    // good: one head holds the rock; together: only several of them do, and
+    // the line names them
+    struct Suggestion { std::wstring line, note; bool good = false, together = false; };
     Suggestion headSuggestion() const;
     void drawCompactUpdateChip(Gdiplus::Graphics& g, int clientW, float leftOf);
     int  drawLocationCard(Gdiplus::Graphics& g, int clientW, int yPos, int clientH);

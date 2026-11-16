@@ -7907,9 +7907,10 @@ int MinerGUI::drawRockOutput(Gdiplus::Graphics& g, int cw, int yPos) {
 }
 
 // When what is on the ship will not hold the rock: the head that would, off
-// the shop shelf - stock if stock is enough, with the strongest modules it
-// has room for if not - or the plain word that nothing that fits this ship
-// does. On a Golem the Pitman it came with is one of them.
+// the shop shelf - stock if stock is enough, with the passive modules it has
+// room for if those are, with active ones only if nothing else holds it, and
+// then for as long as they run - or the plain word that nothing that fits
+// this ship does. On a Golem the Pitman it came with is one of them.
 MinerGUI::Suggestion MinerGUI::headSuggestion() const {
     Suggestion s;
     if (rock_.mass <= 0 || !loadout_.laser) return s;
@@ -7932,27 +7933,42 @@ MinerGUI::Suggestion MinerGUI::headSuggestion() const {
     }
     if (best) {
         s.line = laserShortName(*best->laser) + moduleWords(best->modules);
-        std::swprintf(text, 192, L"%.0f %% laser power will hold charge steady, more power will raise it%s", best->throttle,
-                      best->stock ? L"  ·  No modules required" : L"");
+        const std::wstring lasts = toW(whileRuns(best->modules));
+        if (!lasts.empty()) {
+            std::swprintf(text, 192, L"%.0f %% laser power will hold charge steady%ls", best->throttle, lasts.c_str());
+        } else {
+            std::swprintf(text, 192, L"%.0f %% laser power will hold charge steady, more power will raise it%s",
+                          best->throttle, best->stock ? L"  ·  No modules required" : L"");
+        }
         s.note = text;
         s.good = true;
         return s;
     }
     s.line = L"NO COMPATIBLE LASER CAN BREAK DEPOSIT SOLO";
-    // ...but several of the strongest might, on a ship with the heads
+    // ...but several of the strongest might, on a ship with the heads: on
+    // passive modules where those are enough between them, as above. Then
+    // the heads and their modules are the card's line, as one head's are,
+    // and how they hold it the note under it.
     const LaserSuggestion* strongest = nullptr;
+    const LaserSuggestion* steadiest = nullptr;  // the strongest on passive modules alone
     for (const LaserSuggestion& p : picks) {
-        if (p.laser && (!ship_ || laserFits(*p.laser, *ship_)) && p.power > 0 &&
-            (!strongest || p.power > strongest->power)) {
-            strongest = &p;
-        }
+        if (!p.laser || (ship_ && !laserFits(*p.laser, *ship_))) continue;
+        if (p.power > 0 && (!strongest || p.power > strongest->power)) strongest = &p;
+        if (p.passivePower > 0 && (!steadiest || p.passivePower > steadiest->passivePower)) steadiest = &p;
     }
     const int arms = ship_ ? ship_->heads : 1;
-    if (strongest && arms > 1 && needs / (strongest->power * arms) <= 1.0f) {
-        std::swprintf(text, 192, L"%d × %s required working together, at approximately %.0f %% each", arms,
-                      (laserShortName(*strongest->laser) + moduleWords(strongest->modules)).c_str(),
-                      needs / (strongest->power * arms) * 100.0f);
+    if (steadiest && arms > 1 && needs / (steadiest->passivePower * arms) <= 1.0f) {
+        s.line = std::to_wstring(arms) + L" × " + laserShortName(*steadiest->laser) + moduleWords(steadiest->passive);
+        std::swprintf(text, 192, L"Required working together, at approximately %.0f %% each",
+                      needs / (steadiest->passivePower * arms) * 100.0f);
         s.note = text;
+        s.together = true;
+    } else if (strongest && arms > 1 && needs / (strongest->power * arms) <= 1.0f) {
+        s.line = std::to_wstring(arms) + L" × " + laserShortName(*strongest->laser) + moduleWords(strongest->modules);
+        std::swprintf(text, 192, L"Required working together, at approximately %.0f %% each%ls",
+                      needs / (strongest->power * arms) * 100.0f, toW(whileRuns(strongest->modules)).c_str());
+        s.note = text;
+        s.together = true;
     } else if (arms > 1) {
         s.note = L"Combining the full power of all available lasers on the ship would not break deposit";
     } else {
@@ -17903,7 +17919,10 @@ void MinerGUI::drawCompactRock(Gdiplus::Graphics& g, int cw, int ch) {
         const Suggestion s = headSuggestion();
         if (!s.line.empty()) {
             Gdiplus::SolidBrush sBrush(s.good ? COL_GREEN : COL_YELLOW);
-            line(s.good ? L"RECOMMENDED LOADOUT - " + s.line : s.line, infoFont, sBrush);
+            line(s.good       ? L"RECOMMENDED LOADOUT - " + s.line
+                 : s.together ? L"ALTERNATIVE LOADOUT - " + s.line
+                              : s.line,
+                 infoFont, sBrush);
             line(s.note, infoFont, faintBrush);
         }
     } else {

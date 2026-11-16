@@ -8013,22 +8013,32 @@ int runSelfTest() {
                                        std::to_string((int)std::lround(alone)) + ")");
 
                 // No suggestion runs two of the actives that cut each other off,
-                // on any head, for the hard rocks on record and a spread of made-up ones
+                // on any head, for the hard rocks on record and a spread of made-up
+                // ones; none takes an active module where its passive ones hold
+                // the rock, and of the heads that hold it, none that needs a
+                // charge comes before one that does not
                 auto twoCutting = [](const SCMiner::LaserSuggestion& p) {
                     int n = 0;
                     for (const SCMiner::MiningModule* m : p.modules) n += SCMiner::cutsOthersOff(*m) ? 1 : 0;
                     return n > 1;
                 };
-                int asked = 0, doubled = 0;
+                int asked = 0, doubled = 0, chargedNeedless = 0, chargedFirst = 0, passiveHolds = 0;
                 for (float mass : {3000.0f, 13147.0f, 25000.0f, 48929.0f, 90000.0f}) {
                     for (float res : {0.0f, 30.0f, 67.0f, 75.0f, 90.0f}) {
                         for (int8_t size : {(int8_t)1, (int8_t)2}) {
                             SCMiner::RockStats r;
                             r.mass = mass;
                             r.resistance = res;
+                            const float needs = mass * SCMiner::BREAK_DECAY_PER_MASS;
+                            bool charged = false;
                             for (const SCMiner::LaserSuggestion& p : SCMiner::suggestLasers(r, size)) {
                                 asked++;
                                 if (twoCutting(p)) doubled++;
+                                const bool runsOut = SCMiner::runsOut(p.modules);
+                                if (runsOut && p.passivePower > 0 && needs / p.passivePower <= 1.0f) chargedNeedless++;
+                                if (p.breaks && !runsOut && !p.stock) passiveHolds++;
+                                if (p.breaks && !runsOut && charged) chargedFirst++;
+                                if (p.breaks && runsOut) charged = true;
                             }
                         }
                     }
@@ -8036,32 +8046,62 @@ int runSelfTest() {
                 allPassed &= check(asked > 0 && doubled == 0,
                                    "no suggested head runs two actives that cut each other off (" +
                                        std::to_string(doubled) + " of " + std::to_string(asked) + ")");
+                allPassed &= check(passiveHolds > 0 && chargedNeedless == 0 && chargedFirst == 0,
+                                   "a suggestion takes active modules only where its passive ones do not hold the rock (" +
+                                       std::to_string(chargedNeedless) + "), and a head holding it on a charge comes "
+                                       "after every one holding it without (" + std::to_string(chargedFirst) + "; " +
+                                       std::to_string(passiveHolds) + " held on passive modules)");
 
                 SCMiner::RockStats sav;
                 sav.mass = 48929.0f;
                 sav.resistance = 75.0f;      // its own, as the MOLE's cockpit printed it
                 const std::vector<SCMiner::LaserSuggestion> picks = SCMiner::suggestLasers(sav, 2);
                 // The 48,929 kg savrilium is a Helix II with three Surge, near
-                // 78 %, and the quantainium a Helix I with two, near 41 %.
+                // 78 %: no passive mix holds it, its best (Rieger-C3 and two
+                // Deluge) wanting more than the head has. The quantainium is a
+                // Helix I with two Deluge, near 69 %, rather than two Surge at
+                // 41 % that last 15 s, and the gold rock a Helix II with three
+                // Rieger-C3.
                 auto has = [](const SCMiner::LaserSuggestion& p, const SCMiner::MiningModule* m) {
                     return std::count(p.modules.begin(), p.modules.end(), m);
                 };
                 const SCMiner::LaserSuggestion* top = picks.empty() ? nullptr : &picks[0];
                 const bool threeSurgeHead = top && top->breaks && top->laser == SCMiner::laserById("thcn_helix_s2") &&
-                                            has(*top, surge) == 3 && top->throttle > 65.0f && top->throttle < 90.0f;
+                                            has(*top, surge) == 3 && top->throttle > 65.0f && top->throttle < 90.0f &&
+                                            !top->passive.empty() &&
+                                            top->passivePower < sav.mass * SCMiner::BREAK_DECAY_PER_MASS;
                 allPassed &= check(threeSurgeHead,
                                    "48,929 kg at 75 % is a Helix II with three Surge, near " +
-                                       std::to_string((int)std::lround(top ? top->throttle : 0.0f)) + " %");
+                                       std::to_string((int)std::lround(top ? top->throttle : 0.0f)) +
+                                       " %, no passive mix holding it");
                 SCMiner::RockStats quant;
                 quant.mass = 13147.0f;
                 quant.resistance = 67.0f;    // 47 % in green through a Helix I
                 const std::vector<SCMiner::LaserSuggestion> one = SCMiner::suggestLasers(quant, 1);
-                const bool twoSurgeHelix = !one.empty() && one[0].breaks && one[0].laser == helixOne.laser &&
-                                           has(one[0], surge) == 2 && one[0].throttle > 30.0f && one[0].throttle < 55.0f;
-                allPassed &= check(twoSurgeHelix,
-                                   "the quantainium wants a Helix I with two Surge, near " +
+                const bool twoDelugeHelix = !one.empty() && one[0].breaks && one[0].laser == helixOne.laser &&
+                                            has(one[0], deluge) == 2 && one[0].modules.size() == 2 &&
+                                            one[0].throttle > 55.0f && one[0].throttle < 85.0f;
+                allPassed &= check(twoDelugeHelix,
+                                   "the quantainium wants a Helix I with two Deluge, near " +
                                        std::to_string((int)std::lround(one.empty() ? 0.0f : one[0].throttle)) + " %");
-                (void)deluge;
+                SCMiner::RockStats gold;
+                gold.mass = 22000.0f;
+                gold.resistance = 50.0f;
+                const std::vector<SCMiner::LaserSuggestion> mole = SCMiner::suggestLasers(gold, 2);
+                const bool threeRieger = !mole.empty() && mole[0].breaks && mole[0].laser == SCMiner::laserById("thcn_helix_s2") &&
+                                         has(mole[0], rieger) == 3;
+                allPassed &= check(threeRieger,
+                                   "the 22,000 kg gold rock at 50 % is a Helix II with three Rieger-C3, near " +
+                                       std::to_string((int)std::lround(mole.empty() ? 0.0f : mole[0].throttle)) + " %");
+
+                // ...and a hold that needs a charge says for how long
+                const SCMiner::MiningModule* rime = SCMiner::moduleById("active_rime");
+                allPassed &= check(SCMiner::whileRuns({surge, surge, surge}) == " while Surge runs, 15 s" &&
+                                       SCMiner::whileRuns({rieger, deluge, deluge}).empty() &&
+                                       SCMiner::whileRuns({}).empty() && rime &&
+                                       SCMiner::whileRuns({surge, rieger, rime}) == " while Surge and Rime run, 15 s",
+                                   "a hold on a charge lasts \"" + SCMiner::whileRuns({surge, surge, surge}) +
+                                       "\", one on passive modules says nothing of the kind");
             }
 
             // ...and whether a gadget is NEEDED or would help, off the balance
