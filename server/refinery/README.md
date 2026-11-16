@@ -158,9 +158,23 @@ An address can send 5 messages an hour and 20 a day, and everyone together
 is kept counts: not one that was turned down, and not one that was kept
 already.
 
+A bug report can bring the player's debug folder with it: Bedrock zips the
+folder and sends the zip after the message. The zip is kept as a file
+beside the database (`feedback/<id>.zip` in the data volume), with its size
+and its sha256 in the message's row, and it is deleted after 90 days; the
+message stays. Nothing in a zip is unpacked on the server. It is checked by
+its directory alone: at most 300 files, no file name that leads out of the
+folder (an absolute path, a drive letter or `..`), and at most 1 GiB
+unpacked by its own count. A zip is at most 32 MiB, an address can send 3 a
+day, and all the zips kept take at most 2 GiB. A zip that may not come does
+not cost the message: the message is kept, and the answer says that the zip
+is refused.
+
 The messages are not handed out: only the operator can read them, from
 inside the containers' network (`/v1/feedback/export.csv`, and the newest
-100 in `/v1/stats`) or with `python app.py --feedback-export FILE`.
+100 in `/v1/stats`) or with `python app.py --feedback-export FILE`. No
+route hands out a zip: the operator copies it out with
+`python app.py --feedback-debug ID FILE`.
 
 ## API
 
@@ -314,6 +328,9 @@ where Bedrock sends one:
   one line, and `os` is `windows` or `linux`.
 - `name`, `game`, `channel` and `os` are optional. Keys the service does not
   know are ignored.
+- `debug`, in a bug report, is the size in bytes of the zip Bedrock sends
+  after the message: the player's debug folder. It is left out, or `0`, when
+  there is none.
 
 The answer is `201 {"ok": true, "stored": true}`, or `200` with
 `"stored": false` when the same sender sent the same text in the last 24
@@ -321,22 +338,56 @@ hours. Errors: `400` for a message that does not fit the format, `413` when
 it is too large, `415` when the content type is not JSON, and `429` when a
 limit is reached.
 
+With `debug`, the answer also says where the zip goes and what lets it in:
+`{"ok": true, "stored": true, "id": 12, "upload": "0123...cdef"}` - the
+message's number and a token of 32 hex characters, good for one upload
+within 60 minutes. A message that was kept already (`200`) gets a new token
+as long as it has no zip, so an upload that failed can be tried again; the
+token before stops holding. When the zip may not come, the answer has
+`"debug": "refused"` instead of `id` and `upload`: the zip is larger than 32
+MiB, the address has been given its 3 tokens of the day, or the zips kept
+leave no room. When the message has its zip already, it has
+`"debug": "stored"`. The message is kept either way.
+
+### `POST /v1/feedback/<id>/debug`
+
+The zip of a bug report's debug folder, sent to its message's number:
+`Content-Type: application/zip`, at most 32 MiB, and the token from the
+message's answer in the `X-Bedrock-Upload` header. The answer is
+`201 {"ok": true, "stored": true}`. Errors:
+
+- `400` when it is not a zip, or has files that are not allowed (see
+  Feedback above)
+- `403` when the token is wrong, was used or is older than 60 minutes
+- `404` when there is no such message
+- `409` when the message has its zip already
+- `411` without a `Content-Length`, `413` when that is more than 32 MiB -
+  nothing of the zip is read then - and `415` when the content type is not
+  `application/zip`
+- `507` when the zips kept leave no room for it
+
+A token lets one zip try: it is used up once the service starts to take the
+zip, whether the zip is then kept or turned down. The other errors leave it
+as it is. An upload never counts towards holding an install back.
+
 ### `GET /v1/feedback/export.csv`
 
 For the operator, from inside the containers' network only, like
 `/v1/stats`. Every message stored, newest first, as CSV: `id`, `received`,
-`install`, `name`, `text`, `version`, `game`, `channel` and `os`, but never
-the token. The same as `python app.py --feedback-export FILE`. The file is
+`install`, `name`, `text`, `version`, `game`, `channel`, `os` and
+`debug_size` (the bytes of its zip, empty when it has none), but never a
+token. The same as `python app.py --feedback-export FILE`. The file is
 UTF-8, and `name` and `text` are whatever was typed: a spreadsheet takes a
 cell that begins with `=`, `+`, `-` or `@` as a formula, so import them as
 text.
 
 ### `GET /v1/health`
 
-The number of readings, of rocks and of feedback messages stored, and
-today's counts for the readings: `{"ok": true, "version": 1,
-"observations": N, "rocks": N, "feedback": N, "today": {"accepted": …,
-"duplicate": …, "implausible": …, "limited": …, "held": …, "rejected": …}}`
+The number of readings, of rocks, of feedback messages and of their zips
+stored, and today's counts for the readings: `{"ok": true, "version": 1,
+"observations": N, "rocks": N, "feedback": N, "feedback_debug": N,
+"today": {"accepted": …, "duplicate": …, "implausible": …, "limited": …,
+"held": …, "rejected": …}}`
 
 ### `GET /v1/stats?days=90`
 
@@ -346,14 +397,16 @@ day (`req:<route>`, `agent:<version>`, `platform:<os>`, `clients`,
 `senders` and the outcomes above, for rocks `rock-senders` and the
 same outcomes as `rocks:accepted` and so on, and for feedback
 `feedback-senders`, `feedback:accepted`, `feedback:duplicate`,
-`feedback:limited` and `feedback:rejected`), the requests by hour, the
+`feedback:limited` and `feedback:rejected`, and for their zips
+`debug:offered`, `debug:refused`, `debug:stored`, `debug:accepted`,
+`debug:rejected`, `debug:denied` and `debug:full`), the requests by hour, the
 readings and quotes received by day, each station's state and how often it
 was read.
 
 And the feedback (`feedback`): the newest 100 messages, newest first
-(`messages`, each with `received`, `install`, `name`, `text`, `version`,
-`game`, `channel` and `os`), how many came in by day (`came_in`), and how
-many are stored (`totals`).
+(`messages`, each with `id`, `received`, `install`, `name`, `text`,
+`version`, `game`, `channel`, `os` and `debug_size`), how many came in by
+day (`came_in`), and how many are stored (`totals`).
 
 ## Running it
 
@@ -366,6 +419,7 @@ Python 3.12 or newer, nothing else:
     python app.py --purge --since 2026-10-11T08:00 --implausible --yes
     python app.py --backup FILE        # a consistent copy while the service runs
     python app.py --feedback-export FILE  # the feedback as CSV, newest first
+    python app.py --feedback-debug ID FILE  # the zip that came with message ID
     python app.py --rocks-export FILE  # the rock scans as CSV
     python make_tables.py              # tables.json again, after the refining headers change
 
@@ -374,8 +428,11 @@ The environment variables `BEDROCK_API_DB`, `BEDROCK_API_PORT`,
 `BEDROCK_API_POSTS_PER_HOUR`, `BEDROCK_API_POSTS_PER_HOUR_ALL`,
 `BEDROCK_API_ROCK_POSTS_PER_HOUR`, `BEDROCK_API_ROCK_POSTS_PER_HOUR_ALL`,
 `BEDROCK_API_ROCKS_PER_HOUR`, `BEDROCK_API_ROCKS_PER_HOUR_ALL`,
-`BEDROCK_API_FEEDBACK_PER_HOUR`, `BEDROCK_API_FEEDBACK_PER_DAY` and
-`BEDROCK_API_FEEDBACK_PER_DAY_ALL` change the defaults.
+`BEDROCK_API_FEEDBACK_PER_HOUR`, `BEDROCK_API_FEEDBACK_PER_DAY`,
+`BEDROCK_API_FEEDBACK_PER_DAY_ALL`, `BEDROCK_API_FEEDBACK_DEBUG_MAX` and
+`BEDROCK_API_FEEDBACK_DEBUG_TOTAL` (both in bytes),
+`BEDROCK_API_FEEDBACK_DEBUG_PER_DAY`, `BEDROCK_API_FEEDBACK_DEBUG_DAYS` and
+`BEDROCK_API_FEEDBACK_UPLOAD_MINUTES` change the defaults.
 
 ## Deploying it behind nginx with Docker Compose
 
@@ -383,8 +440,8 @@ The environment variables `BEDROCK_API_DB`, `BEDROCK_API_PORT`,
    folder next to the compose file, for example `./bedrock-api`.
 2. Add the service in `deploy/compose-service.yml` to the compose file,
    along with its volume, and run `docker compose up -d --build bedrock-api`.
-3. Add the two parts of `deploy/nginx.conf` to the site's configuration.
-   Then check it with `nginx -t` and reload.
+3. Add the parts of `deploy/nginx.conf` to the site's configuration. Then
+   check it with `nginx -t` and reload.
 4. Check it from outside:
    `https://the-forsaken.org/bedrock/api/v1/health`.
 5. Add `deploy/backup.sh` to the daily backup.
@@ -396,4 +453,20 @@ stack's network. To look at the data or clean it up on the server, use
 To read the feedback, write it into the data volume with
 `docker exec bedrock-api python app.py --feedback-export /data/feedback.csv`,
 copy it out with `docker cp bedrock-api:/data/feedback.csv .` and delete it
-there.
+there. A bug report's zip comes out the same way, with
+`--feedback-debug ID /data/debug.zip`. The zips are files in the data
+volume (`/data/feedback`), not in the database: `deploy/backup.sh` does not
+take them.
+
+The zips need a location of their own in nginx, the third part of
+`deploy/nginx.conf`: `/bedrock/api/v1/feedback/` with
+`client_max_body_size 32m`, where the rest of the API takes 64 KB. It has
+`client_body_timeout 120s`, the longest pause an upload may make, and
+`proxy_request_buffering on`: nginx takes the whole zip before it passes it
+on. A slow or broken upload then stays with nginx, the service gets the zip
+in one piece, and an upload that breaks off does not use up its token.
+nginx needs room for a zip while it comes in, 32 MiB for each upload at a
+time (`client_body_temp_path`). The location repeats every line of the
+general one, the proxy lines above all: the service knows by `X-Real-IP`
+that a request came from outside, and `/v1/feedback/export.csv` lies under
+the same prefix.

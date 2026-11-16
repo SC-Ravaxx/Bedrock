@@ -46,7 +46,9 @@ the message, a name where the player gave one, and with them the install's
 number, the versions of Bedrock and the game, and the platform. That is kept
 - the one place a name or an install's number is stored, never the address -
 and it is no reading: what does not fit the format holds nobody back. A few
-an hour from one address, and only the operator gets them out.
+an hour from one address, and only the operator gets them out. A bug report
+may send the player's debug folder after it, as a zip: kept beside the
+database, looked at without unpacking, and gone after 90 days.
 
 Standard library only, SQLite beside it. See README.md.
 """
@@ -65,8 +67,10 @@ import secrets
 import sqlite3
 import statistics
 import sys
+import tempfile
 import threading
 import time
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
@@ -91,6 +95,22 @@ ROCKS_PER_HOUR_ALL = int(os.environ.get("BEDROCK_API_ROCKS_PER_HOUR_ALL", "10000
 FEEDBACK_PER_HOUR = int(os.environ.get("BEDROCK_API_FEEDBACK_PER_HOUR", "5"))          # messages, from one address
 FEEDBACK_PER_DAY = int(os.environ.get("BEDROCK_API_FEEDBACK_PER_DAY", "20"))
 FEEDBACK_PER_DAY_ALL = int(os.environ.get("BEDROCK_API_FEEDBACK_PER_DAY_ALL", "500"))  # ...from everyone
+# A bug report may send the player's debug folder after it, as a zip (POST
+# /v1/feedback/<id>/debug). One zip, in bytes: three or four snapshots of a
+# 5120 x 1440 screen and the logs
+FEEDBACK_DEBUG_MAX = int(os.environ.get("BEDROCK_API_FEEDBACK_DEBUG_MAX", str(32 * 1024 * 1024)))
+# ...from one address in a day: a bug is reported once or twice, and each zip
+# is 32 MiB to take in and to look through
+FEEDBACK_DEBUG_PER_DAY = int(os.environ.get("BEDROCK_API_FEEDBACK_DEBUG_PER_DAY", "3"))
+# ...all that are kept, in bytes: what the data volume has to spare, and the
+# most a flood can leave there
+FEEDBACK_DEBUG_TOTAL = int(os.environ.get("BEDROCK_API_FEEDBACK_DEBUG_TOTAL", str(2 * 1024 ** 3)))
+# ...how many days one is kept: it holds a player's logs and screen, and a bug
+# is looked into within weeks
+FEEDBACK_DEBUG_DAYS = int(os.environ.get("BEDROCK_API_FEEDBACK_DEBUG_DAYS", "90"))
+# ...and how long the token holds that lets it in: Bedrock sends the zip right
+# after the message, and 32 MiB take minutes on a slow line
+FEEDBACK_UPLOAD_MINUTES = int(os.environ.get("BEDROCK_API_FEEDBACK_UPLOAD_MINUTES", "60"))
 MAX_BODY = 16 * 1024
 MAX_ROCK_BODY = 64 * 1024     # a batch of rocks: up to 50, each with its composition
 MAX_FEEDBACK_BODY = 16 * 1024  # a message: 4000 characters of up to four bytes each
@@ -130,6 +150,7 @@ ROUTE_NAMES = {
     ("GET", "/v1/rocks/export.csv"): "rocks-export",
     ("POST", "/v1/feedback"): "feedback",
     ("GET", "/v1/feedback/export.csv"): "feedback-export",
+    ("POST", "/v1/feedback/<id>/debug"): "feedback-debug",
 }
 # Bedrock's own User-Agent: "Bedrock/2.6.6 (Windows)", "(Linux)" - the
 # version and the platform, which is all it says
@@ -221,6 +242,9 @@ FEEDBACK_CHANNEL_MAX = 20
 FEEDBACK_OS = ("windows", "linux")
 FEEDBACK_SAME_HOURS = 24      # the same text from the same sender within this long is kept once
 FEEDBACK_STATS_NEWEST = 100   # the admin view's messages: the newest
+FEEDBACK_DEBUG_ENTRIES = 300  # files in the zip of a debug folder, at most
+FEEDBACK_DEBUG_UNPACKED = 1024 ** 3   # ...and the bytes they come to unpacked, by the zip's own count
+FEEDBACK_UPLOAD_STALL = 60    # seconds a zip may stand still on its way in before the service lets go of it
 # A line break in a message is kept as LF however it was written: a Windows
 # edit field hands back CR LF, a rich edit CR and, for Shift+Enter, VT; FF,
 # NEL and Unicode's line and paragraph separators are the rest there are
@@ -230,6 +254,19 @@ LINE_BREAK = re.compile(r"\r\n?|[\x0b\x0c\x85\u2028\u2029]")
 CONTROL = re.compile(r"[\x00-\x09\x0b-\x1f\x7f-\x9f\ud800-\udfff]")
 # ...a name or a channel, each on one line, no line break either
 CONTROL_OR_BREAK = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029\ud800-\udfff]")
+# The zip of a bug report's debug folder: where it is sent - to its message,
+# by the number the answer gave - and the token it comes with
+# (X-Bedrock-Upload), 32 hex characters from that answer
+DEBUG_ROUTE = re.compile(r"^/v1/feedback/([1-9][0-9]{0,17})/debug\Z")
+UPLOAD = re.compile(r"^[0-9a-f]{32}\Z")
+# ...what one that is not let in is told
+DEBUG_ANSWERS = {"none": (404, "no such message"), "kept": (409, "it has its debug folder already"),
+                 "token": (403, "the token does not fit, was used or holds no longer"),
+                 "full": (507, "no room for it")}
+# ...and the names of the files in it, by their parts: a Windows zip may
+# write them with backslashes, and may name a drive
+ZIP_PARTS = re.compile(r"[/\\]")
+DRIVE = re.compile(r"^[A-Za-z]:")
 
 
 def load_stations(path):
@@ -488,6 +525,12 @@ def validate_feedback(body):
     game = _number(body.get("game"), 0, 999999, "game", optional=True)
     if game is not None and game != body["game"]:
         raise Invalid("game", "game is not a whole number")
+    # the bytes of the zip a bug report wants to send after it, its debug
+    # folder; 0 where none. Whether one of that size may come is not the
+    # format's to say (Store.debug_ticket)
+    debug = _number(body.get("debug"), 0, 2 ** 53, "debug", optional=True)
+    if debug is not None and debug != body["debug"]:
+        raise Invalid("debug", "debug is not a whole number")
     return {
         "text": text,
         "name": _line(body.get("name"), FEEDBACK_NAME_MAX, "name"),
@@ -495,7 +538,50 @@ def validate_feedback(body):
         "game": game or None,
         "channel": _line(body.get("channel"), FEEDBACK_CHANNEL_MAX, "channel"),
         "os": _choice(body.get("os"), FEEDBACK_OS, "os"),
+        "debug": debug or None,
     }
+
+
+def check_zip(path):
+    """The zip in the file `path`, looked at as a bug report's debug folder;
+    Invalid where it is none. Nothing in it is unpacked - a zip made to swell
+    costs nothing here, and zipfile's testzip, which unpacks, is not for
+    this. Only its directory is read: it starts as a zip does, has
+    FEEDBACK_DEBUG_ENTRIES files at most, none with a name that leads out of
+    the folder it is unpacked into (absolute, a drive letter, a ".." on the
+    way), and by its own count they come to FEEDBACK_DEBUG_UNPACKED bytes at
+    most."""
+    with open(path, "rb") as f:
+        if f.read(4) != b"PK\x03\x04":
+            raise Invalid("zip", "not a zip")
+        # Each file has an entry in the zip's directory, and each entry begins
+        # with the same four bytes: where there are far more of those than
+        # files allowed, zipfile is not asked to read them all into memory.
+        entries, before = 0, b""
+        f.seek(0)
+        for piece in iter(lambda: f.read(1024 * 1024), b""):
+            entries += (before + piece).count(b"PK\x01\x02")
+            before = piece[-3:]
+        if entries > 10 * FEEDBACK_DEBUG_ENTRIES:
+            raise Invalid("entries", "the zip has more than %d files" % FEEDBACK_DEBUG_ENTRIES)
+        f.seek(0)
+        try:
+            with zipfile.ZipFile(f) as z:
+                files = z.infolist()
+        except Exception:      # whatever zipfile makes of a directory that is none
+            raise Invalid("zip", "not a zip") from None
+    if not files:
+        raise Invalid("zip", "not a zip")
+    if len(files) > FEEDBACK_DEBUG_ENTRIES:
+        raise Invalid("entries", "the zip has more than %d files" % FEEDBACK_DEBUG_ENTRIES)
+    unpacked = 0
+    for entry in files:
+        parts = ZIP_PARTS.split(entry.orig_filename)
+        if parts[0] == "" or DRIVE.match(entry.orig_filename) or ".." in parts:
+            raise Invalid("name", "a file in the zip has a name that leads out of its folder")
+        unpacked += entry.file_size
+    if unpacked > FEEDBACK_DEBUG_UNPACKED:
+        raise Invalid("size", "the zip unpacks to more than %d bytes" % FEEDBACK_DEBUG_UNPACKED)
 
 
 # ---------------------------------------------------------------- a batch of rocks
@@ -677,7 +763,10 @@ CREATE TABLE IF NOT EXISTS counters (
                                       -- rocks:accepted, rocks:duplicate, rocks:implausible (each rock), rocks:limited,
                                       -- rocks:held, rocks:rejected, rocks:rejected:<field> (each batch), rock-senders;
                                       -- feedback:accepted, feedback:duplicate, feedback:limited, feedback:rejected,
-                                      -- feedback:rejected:<field>, feedback-senders
+                                      -- feedback:rejected:<field>, feedback-senders;
+                                      -- debug:offered, debug:refused, debug:stored (each message that asked to send
+                                      -- its debug folder), debug:accepted, debug:rejected, debug:rejected:<why>,
+                                      -- debug:denied, debug:full (each zip sent)
     count INTEGER NOT NULL,
     PRIMARY KEY (day, name)
 );
@@ -697,7 +786,12 @@ CREATE TABLE IF NOT EXISTS feedback (
     version TEXT NOT NULL,            -- Bedrock's
     game INTEGER,                     -- the game's, 41003 for 4.10.3; NULL where not known
     channel TEXT,
-    os TEXT                           -- windows or linux
+    os TEXT,                          -- windows or linux
+    debug_size INTEGER,               -- the debug folder that came after it, a zip beside the database (<id>.zip):
+    debug_sha256 TEXT,                -- its bytes and its sha256; NULL where none came, or it has gone again
+    debug_received INTEGER,           -- ...and when it came: it goes after FEEDBACK_DEBUG_DAYS
+    upload_hash TEXT,                 -- sha256 of the token that lets the zip in, for one try; NULL where none is out
+    upload_until INTEGER              -- ...and when that token stops holding
 );
 -- the prune's: only the messages of the last two days still have a token
 CREATE INDEX IF NOT EXISTS feedback_token ON feedback (received) WHERE source IS NOT NULL;
@@ -746,6 +840,9 @@ class Store:
             db.executescript(SCHEMA)
         finally:
             db.close()
+        # the debug folders that come with bug reports are kept beside the database, each a zip
+        self.debug_folder = os.path.join(os.path.dirname(os.path.abspath(path)), "feedback")
+        self.debug_columns()
 
     def _db(self):
         db = sqlite3.connect(self.path, timeout=10)
@@ -878,37 +975,174 @@ class Store:
             finally:
                 db.close()
 
-    def add_feedback(self, message, now, tokens, install, allow):
+    def add_feedback(self, message, now, tokens, install, allow, found=None):
         """Keeps a checked message. False where its sender - the install by
         its number, else the address by its tokens (Store.tokens) - sent the
         same text within FEEDBACK_SAME_HOURS: it is kept once. None where it
         is new and `allow` has no room for it: only a message that would be
-        kept counts against the limits."""
+        kept counts against the limits. `found`, a dict where given, gets the
+        `id` of the message: the one kept now, or the one kept already."""
         since = now - FEEDBACK_SAME_HOURS * 3600
         with self.lock:
             db = self._db()
             try:
                 with db:
                     if install:
-                        same = db.execute("SELECT 1 FROM feedback WHERE install = ? AND text = ? AND received > ?",
+                        same = db.execute("SELECT id FROM feedback WHERE install = ? AND text = ? AND received > ?",
                                           (install, message["text"], since))
                     else:
                         # (the tokens outlast the day the text is held against, SOURCE_HOURS - but
                         # not a restart of the service: the salts die with it)
-                        same = db.execute("SELECT 1 FROM feedback WHERE install IS NULL AND source IN (%s)"
+                        same = db.execute("SELECT id FROM feedback WHERE install IS NULL AND source IN (%s)"
                                           " AND text = ? AND received > ?" % ",".join("?" * len(tokens)),
                                           list(tokens) + [message["text"], since])
-                    if same.fetchone():
+                    same = same.fetchone()
+                    if same:
+                        if found is not None:
+                            found["id"] = same["id"]
                         return False
                     if not allow():
                         return None
-                    db.execute("INSERT INTO feedback (received, source, install, name, text, version, game, channel,"
-                               " os) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                               (now, tokens[0], install, message["name"], message["text"], message["version"],
-                                message["game"], message["channel"], message["os"]))
+                    kept = db.execute(
+                        "INSERT INTO feedback (received, source, install, name, text, version, game, channel,"
+                        " os) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (now, tokens[0], install, message["name"], message["text"], message["version"],
+                         message["game"], message["channel"], message["os"]))
+                    if found is not None:
+                        found["id"] = kept.lastrowid
                 return True
             finally:
                 db.close()
+
+    # -- a bug report's debug folder, a zip beside the database
+
+    def debug_columns(self):
+        """A feedback table from before the debug folders gets their columns,
+        and the indexes for them: few messages have a zip, or a token out"""
+        db = self._db()
+        try:
+            have = {row["name"] for row in db.execute("PRAGMA table_info(feedback)")}
+            with db:
+                for column, kind in (("debug_size", "INTEGER"), ("debug_sha256", "TEXT"),
+                                     ("debug_received", "INTEGER"), ("upload_hash", "TEXT"),
+                                     ("upload_until", "INTEGER")):
+                    if column not in have:
+                        db.execute("ALTER TABLE feedback ADD COLUMN %s %s" % (column, kind))
+                db.execute("CREATE INDEX IF NOT EXISTS feedback_debug ON feedback (debug_received)"
+                           " WHERE debug_size IS NOT NULL")
+                db.execute("CREATE INDEX IF NOT EXISTS feedback_upload ON feedback (upload_until)"
+                           " WHERE upload_hash IS NOT NULL")
+        finally:
+            db.close()
+
+    def debug_path(self, number):
+        """Where message `number`'s zip is kept"""
+        return os.path.join(self.debug_folder, "%d.zip" % number)
+
+    @staticmethod
+    def _debug_bytes(db):
+        return db.execute("SELECT COALESCE(SUM(debug_size), 0) FROM feedback"
+                          " WHERE debug_size IS NOT NULL").fetchone()[0]
+
+    def debug_count(self):
+        db = self._db()
+        try:
+            return db.execute("SELECT COUNT(*) FROM feedback WHERE debug_size IS NOT NULL").fetchone()[0]
+        finally:
+            db.close()
+
+    def debug_ticket(self, number, size, now, allow):
+        """A token that lets a zip of `size` bytes in as message `number`'s
+        debug folder, and None - or None and why there is none: "stored"
+        where the message has its zip, "refused" where a zip may not be that
+        large, the zips kept leave no room for it, or `allow` - its sender's
+        zips of the day - has none. Only the token's sha256 is kept, with the
+        time it holds until; it takes the place of one given before."""
+        with self.lock:
+            db = self._db()
+            try:
+                with db:
+                    row = db.execute("SELECT debug_size FROM feedback WHERE id = ?", (number,)).fetchone()
+                    if row is not None and row["debug_size"] is not None:
+                        return None, "stored"
+                    if (row is None or size > FEEDBACK_DEBUG_MAX
+                            or self._debug_bytes(db) + size > FEEDBACK_DEBUG_TOTAL or not allow()):
+                        return None, "refused"
+                    token = secrets.token_hex(16)
+                    db.execute("UPDATE feedback SET upload_hash = ?, upload_until = ? WHERE id = ?",
+                               (hashlib.sha256(token.encode("ascii")).hexdigest(),
+                                now + FEEDBACK_UPLOAD_MINUTES * 60, number))
+                    return token, None
+            finally:
+                db.close()
+
+    def debug_claim(self, number, token, size, now):
+        """Whether a zip of `size` bytes may come in as message `number`'s
+        with `token`: "none" where there is no such message, "kept" where it
+        has its zip, "token" where the token is not the one given for it, was
+        used or holds no longer, "full" where the zips kept leave no room.
+        Else None - and the token is used up: it lets one zip try."""
+        with self.lock:
+            db = self._db()
+            try:
+                with db:
+                    row = db.execute("SELECT debug_size, upload_hash, upload_until FROM feedback WHERE id = ?",
+                                     (number,)).fetchone()
+                    if row is None:
+                        return "none"
+                    if row["debug_size"] is not None:
+                        return "kept"
+                    given = hashlib.sha256((token or "").encode("ascii", "replace")).hexdigest()
+                    if (not token or not row["upload_hash"] or not hmac.compare_digest(given, row["upload_hash"])
+                            or row["upload_until"] < now):
+                        return "token"
+                    if self._debug_bytes(db) + size > FEEDBACK_DEBUG_TOTAL:
+                        return "full"
+                    db.execute("UPDATE feedback SET upload_hash = NULL, upload_until = NULL WHERE id = ?", (number,))
+                    return None
+            finally:
+                db.close()
+
+    def debug_keep(self, number, part, size, sha256, now):
+        """Keeps the checked zip in the file `part` as message `number`'s:
+        moved to its place beside the database, its size and sha256 with the
+        message. "none", "kept" or "full" as debug_claim, where that has come
+        to be so since - the file is then left where it is; else None."""
+        with self.lock:
+            db = self._db()
+            try:
+                with db:
+                    row = db.execute("SELECT debug_size FROM feedback WHERE id = ?", (number,)).fetchone()
+                    if row is None:
+                        return "none"
+                    if row["debug_size"] is not None:
+                        return "kept"
+                    if self._debug_bytes(db) + size > FEEDBACK_DEBUG_TOTAL:
+                        return "full"
+                    os.replace(part, self.debug_path(number))
+                    db.execute("UPDATE feedback SET debug_size = ?, debug_sha256 = ?, debug_received = ?"
+                               " WHERE id = ?", (size, sha256, now, number))
+                    return None
+            finally:
+                db.close()
+
+    def debug_copy(self, number, target):
+        """Message `number`'s zip copied to the file `target`, for whoever
+        runs the service; how many bytes, None where the message has none"""
+        db = self._db()
+        try:
+            row = db.execute("SELECT debug_size FROM feedback WHERE id = ? AND debug_size IS NOT NULL",
+                             (number,)).fetchone()
+        finally:
+            db.close()
+        if row is None:
+            return None
+        size = 0
+        with open(self.debug_path(number), "rb") as zipped, open(target, "wb") as out:
+            for piece in iter(lambda: zipped.read(1024 * 1024), b""):
+                out.write(piece)
+                size += len(piece)
+        return size
 
     def tally(self, now, *names):
         """One more of each, today - and this hour, for the requests (req:)"""
@@ -1012,9 +1246,9 @@ class Store:
 
     def prune(self, now):
         """Readings, rocks and messages lose their sender's token after
-        SOURCE_HOURS, counters go after COUNTER_DAYS and the hourly ones after
-        HOURLY_DAYS, only today's and yesterday's salt stay, and only today's
-        tokens seen"""
+        SOURCE_HOURS, a debug folder's zip goes after FEEDBACK_DEBUG_DAYS,
+        counters go after COUNTER_DAYS and the hourly ones after HOURLY_DAYS,
+        only today's and yesterday's salt stay, and only today's tokens seen"""
         with self.lock:
             db = self._db()
             try:
@@ -1025,10 +1259,37 @@ class Store:
                                (now - SOURCE_HOURS * 3600,))
                     db.execute("UPDATE feedback SET source = NULL WHERE source IS NOT NULL AND received < ?",
                                (now - SOURCE_HOURS * 3600,))
+                    # a debug folder's zip goes after its days, the file and what its message says of
+                    # it - the message stays - and a token that was not used in time holds no more
+                    old = db.execute("SELECT id FROM feedback WHERE debug_size IS NOT NULL AND debug_received < ?",
+                                     (now - FEEDBACK_DEBUG_DAYS * 86400,)).fetchall()
+                    for row in old:
+                        try:
+                            os.remove(self.debug_path(row["id"]))
+                        except FileNotFoundError:
+                            pass
+                        except OSError as e:      # still there: the next prune tries again
+                            sys.stderr.write("prune: %s\n" % e)
+                            continue
+                        db.execute("UPDATE feedback SET debug_size = NULL, debug_sha256 = NULL, debug_received = NULL"
+                                   " WHERE id = ?", (row["id"],))
+                    db.execute("UPDATE feedback SET upload_hash = NULL, upload_until = NULL"
+                               " WHERE upload_hash IS NOT NULL AND upload_until < ?", (now,))
                     db.execute("DELETE FROM counters WHERE day < ?", (utc_day(now - COUNTER_DAYS * 86400),))
                     db.execute("DELETE FROM hourly WHERE hour < ?", (utc_hour(now - HOURLY_DAYS * 86400),))
             finally:
                 db.close()
+        # ...nor does what a zip left behind on its way in, when the service was stopped under it
+        try:
+            parts = [name for name in os.listdir(self.debug_folder) if name.endswith(".part")]
+        except OSError:           # no zip has come yet
+            parts = []
+        for name in parts:
+            try:
+                if os.path.getmtime(os.path.join(self.debug_folder, name)) < now - FEEDBACK_UPLOAD_MINUTES * 60:
+                    os.remove(os.path.join(self.debug_folder, name))
+            except OSError:
+                pass
         keep = {utc_day(now), utc_day(now - 86400)}
         with self.salt_lock:
             for day in [d for d in self.salts if d not in keep]:
@@ -1166,15 +1427,17 @@ class Store:
     def feedback_csv(self, out):
         """Every message kept, the newest first, as CSV into `out`, for
         whoever runs the service - with the install's number and the name
-        where it has them, never the token; how many messages"""
+        where it has them, and the bytes of its debug folder's zip where one
+        came, never a token; how many messages"""
         db = self._db()
         try:
             w = csv.writer(out, lineterminator="\n")
-            w.writerow(["id", "received", "install", "name", "text", "version", "game", "channel", "os"])
+            w.writerow(["id", "received", "install", "name", "text", "version", "game", "channel", "os",
+                        "debug_size"])
             n = 0
             for row in db.execute("SELECT * FROM feedback ORDER BY id DESC"):
                 w.writerow([row["id"], utc_iso(row["received"]), row["install"], row["name"], row["text"],
-                            row["version"], row["game"], row["channel"], row["os"]])
+                            row["version"], row["game"], row["channel"], row["os"], row["debug_size"]])
                 n += 1
             return n
         finally:
@@ -1183,13 +1446,14 @@ class Store:
     def feedback_stats(self, now, days):
         """The feedback for the admin view, which goes out with the stats
         (GET /v1/stats): the newest FEEDBACK_STATS_NEWEST messages, the newest
-        first - with the install's number and the name where the player gave
-        one, never the token - how many came in each of the last `days` days,
+        first - each with its number, the install's and the name where the
+        player gave one, and the bytes of its debug folder's zip where one
+        came, never a token - how many came in each of the last `days` days,
         and how many are kept"""
         db = self._db()
         try:
             messages = [dict(row) for row in db.execute(
-                "SELECT received, install, name, text, version, game, channel, os FROM feedback"
+                "SELECT id, received, install, name, text, version, game, channel, os, debug_size FROM feedback"
                 " ORDER BY id DESC LIMIT ?", (FEEDBACK_STATS_NEWEST,))]
             came_in = {row["day"]: {"messages": row["messages"]} for row in db.execute(
                 "SELECT strftime('%Y-%m-%d', received, 'unixepoch') AS day, COUNT(*) AS messages FROM feedback"
@@ -1343,6 +1607,13 @@ class FeedbackLimiter:
             return True
 
 
+def debug_limit():
+    """The zips' limit: FEEDBACK_DEBUG_PER_DAY from one address, by the day
+    alone - and for everyone together it is their bytes that count
+    (FEEDBACK_DEBUG_TOTAL), not how many"""
+    return FeedbackLimiter(FEEDBACK_DEBUG_PER_DAY, FEEDBACK_DEBUG_PER_DAY, sys.maxsize)
+
+
 class Misfits:
     """The readings that did not fit over the last hour, per install and per
     address - in memory, salted and hashed with a salt that dies with the
@@ -1392,6 +1663,7 @@ class Handler(BaseHTTPRequestHandler):
     rock_limiter = None
     rock_count_limiter = None
     feedback_limiter = None
+    debug_limiter = None
     misfits = None
 
     def log_message(self, fmt, *args):
@@ -1474,6 +1746,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"ok": True, "version": API_VERSION, "observations": self.store.count(),
                                     "rocks": self.store.rock_count(),
                                     "feedback": self.store.feedback_count(),
+                                    "feedback_debug": self.store.debug_count(),
                                     "today": {name: today.get(name, 0) for name in
                                               ("accepted", "duplicate", "implausible", "limited", "held",
                                                "rejected")}})
@@ -1514,10 +1787,13 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         now = int(time.time())
         route = self._route()
-        self._count(now, route)
-        # a refinery reading comes alone, the rocks in batches, a message with its 4000 characters
-        largest = {"/v1/refinery/observations": MAX_BODY, "/v1/rocks/observations": MAX_ROCK_BODY,
-                   "/v1/feedback": MAX_FEEDBACK_BODY}.get(route)
+        upload = DEBUG_ROUTE.match(route or "")
+        self._count(now, "/v1/feedback/<id>/debug" if upload else route)
+        # a refinery reading comes alone, the rocks in batches, a message with its 4000 characters,
+        # and a bug report's debug folder as a zip
+        largest = FEEDBACK_DEBUG_MAX if upload else {
+            "/v1/refinery/observations": MAX_BODY, "/v1/rocks/observations": MAX_ROCK_BODY,
+            "/v1/feedback": MAX_FEEDBACK_BODY}.get(route)
         if largest is None:
             return self._fail(404, "not found")
         try:
@@ -1526,6 +1802,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._fail(411, "length required")
         if length < 0 or length > largest:
             return self._fail(413, "too large")
+        if upload:
+            return self._debug(now, int(upload.group(1)), length)
         if self.headers.get("Content-Type", "").split(";")[0].strip().lower() != "application/json":
             return self._fail(415, "send application/json")
         # nginx puts the address it saw here; the service is reachable from
@@ -1624,31 +1902,124 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, RecursionError):   # not UTF-8, not JSON, nested too deep, a number too long to read
             self.store.tally(now, "feedback:rejected", "feedback:rejected:json")
             return self._fail(400, "not JSON")
+        found = {}
         stored = self.store.add_feedback(message, now, self.store.tokens(address, now), install,
-                                         lambda: self.feedback_limiter.allow(address, now))
+                                         lambda: self.feedback_limiter.allow(address, now), found)
         if stored is None:
             self.store.tally(now, "feedback:limited")
             return self._fail(429, "too many messages, try again later")
         names = ["feedback:accepted" if stored else "feedback:duplicate"]
         if self.store.first_today("feedback-senders", self.store.source(self._who(address), now), now):
             names.append("feedback-senders")
+        answer = {"ok": True, "stored": stored}
+        if message["debug"]:
+            # A bug report that wants to send its debug folder after it: the answer says where to (the
+            # message's number) and gives the token that lets the zip in - or that it is not taken. The
+            # message is kept either way; one kept already is asked again, as its zip may not have come.
+            token, why = self.store.debug_ticket(found["id"], message["debug"], now,
+                                                 lambda: self.debug_limiter.allow(address, now))
+            if token:
+                answer.update(id=found["id"], upload=token)
+            else:
+                answer["debug"] = why
+            names.append("debug:offered" if token else "debug:" + why)
         self.store.tally(now, *names)
-        return self._send(201 if stored else 200, {"ok": True, "stored": stored})
+        return self._send(201 if stored else 200, answer)
+
+    def _body(self, length, out=None, digest=None):
+        """The request's body, read to its end as it comes - into the file
+        `out` and through `digest` where given, else dropped; whether all of
+        it came. One that stands still for FEEDBACK_UPLOAD_STALL is let go."""
+        self.connection.settimeout(FEEDBACK_UPLOAD_STALL)
+        while length:
+            try:
+                piece = self.rfile.read(min(length, 256 * 1024))
+            except OSError:
+                return False
+            if not piece:
+                return False
+            if out is not None:
+                out.write(piece)
+                digest.update(piece)
+            length -= len(piece)
+        return True
+
+    def _turn_away(self, code, why, length):
+        """A zip that is not let in: what is sent of it is read and dropped,
+        then the answer given. Whoever sends it - nginx, with the whole zip
+        in hand by then - is still writing: cut off there it may not get to
+        read the answer, and Bedrock would be told 502 and not why."""
+        if not self._body(length):
+            self.close_connection = True      # broken off: nobody is there to be answered
+            return None
+        return self._fail(code, why)
+
+    def _debug(self, now, number, length):
+        """A bug report's debug folder (POST /v1/feedback/<id>/debug): a zip,
+        let in by the token its message's answer gave (X-Bedrock-Upload), which
+        is good for one try. It is written to a file beside the database as it
+        comes, never held in memory whole, looked at without unpacking
+        (check_zip), and kept as <id>.zip with its size and sha256. A zip
+        turned down counts against nobody (misfits)."""
+        if self.headers.get("Content-Type", "").split(";")[0].strip().lower() != "application/zip":
+            return self._turn_away(415, "send application/zip", length)
+        token = (self.headers.get("X-Bedrock-Upload") or "").strip().lower()
+        why = self.store.debug_claim(number, token if UPLOAD.match(token) else None, length, now)
+        if why:
+            self.store.tally(now, "debug:full" if why == "full" else "debug:denied")
+            return self._turn_away(*DEBUG_ANSWERS[why], length)
+        part, fault = None, None
+        try:
+            os.makedirs(self.store.debug_folder, mode=0o700, exist_ok=True)
+            handle, part = tempfile.mkstemp(dir=self.store.debug_folder, prefix="upload-", suffix=".part")
+            digest = hashlib.sha256()
+            with os.fdopen(handle, "wb") as out:
+                whole = self._body(length, out, digest)
+            if not whole:
+                # broken off on its way: nobody is there to be answered
+                self.store.tally(now, "debug:rejected", "debug:rejected:broken")
+                self.close_connection = True
+                return None
+            check_zip(part)
+            why = self.store.debug_keep(number, part, length, digest.hexdigest(), now)
+            if not why:
+                part = None
+        except Invalid as e:
+            fault = e
+        except OSError as e:      # the volume is full, or not to be written
+            sys.stderr.write("debug: %s\n" % e)
+            why = "full"
+        finally:
+            if part:
+                try:
+                    os.remove(part)
+                except OSError:
+                    pass
+        if fault:
+            self.store.tally(now, "debug:rejected", "debug:rejected:" + fault.code)
+            return self._fail(400, str(fault))
+        if why:      # the room went, or another zip came in for it, while this one was on its way
+            self.store.tally(now, "debug:full" if why == "full" else "debug:denied")
+            return self._fail(*DEBUG_ANSWERS[why])
+        self.store.tally(now, "debug:accepted")
+        return self._send(201, {"ok": True, "stored": True})
 
 
 def serve(store, limiter, host="0.0.0.0", port=PORT, misfits=None, rock_limiter=None, rock_count_limiter=None,
-          feedback_limiter=None):
+          feedback_limiter=None, debug_limiter=None):
     """The service, not started yet: serve_forever() on the result. A thread
     beside it prunes every ten minutes (Store.prune). The rocks have limits
     of their own: batches (ROCK_POSTS_PER_HOUR) and rocks (ROCKS_PER_HOUR).
     So has the feedback: messages an hour and a day (FEEDBACK_PER_HOUR,
-    FEEDBACK_PER_DAY)."""
+    FEEDBACK_PER_DAY), and the zips that come after them a day
+    (FEEDBACK_DEBUG_PER_DAY)."""
     handler = type("BoundHandler", (Handler,), {
         "store": store, "limiter": limiter, "misfits": misfits or Misfits(),
         "rock_limiter": rock_limiter or Limiter(ROCK_POSTS_PER_HOUR, ROCK_POSTS_PER_HOUR_ALL),
         "rock_count_limiter": rock_count_limiter or Limiter(ROCKS_PER_HOUR, ROCKS_PER_HOUR_ALL),
         "feedback_limiter": feedback_limiter or FeedbackLimiter(FEEDBACK_PER_HOUR, FEEDBACK_PER_DAY,
-                                                                FEEDBACK_PER_DAY_ALL)})
+                                                                FEEDBACK_PER_DAY_ALL),
+        "debug_limiter": debug_limiter or debug_limit()})
     server = ThreadingHTTPServer((host, port), handler)
     server.daemon_threads = True
 
@@ -1680,6 +2051,8 @@ def main(argv=None):
     parser.add_argument("--rocks-export", metavar="FILE", help="write the rocks kept to FILE as CSV and exit")
     parser.add_argument("--feedback-export", metavar="FILE",
                         help="write the feedback kept to FILE as CSV, the newest first, and exit")
+    parser.add_argument("--feedback-debug", nargs=2, metavar=("ID", "FILE"),
+                        help="copy the debug folder that came with message ID, a zip, to FILE and exit")
     parser.add_argument("--stats", action="store_true", help="what came in over the last 14 days, and exit")
     parser.add_argument("--purge", action="store_true",
                         help="take readings out: those observed from --since to --until (UTC), of --station or "
@@ -1708,6 +2081,14 @@ def main(argv=None):
             n = store.feedback_csv(f)
         print("%d message%s written to %s" % (n, "" if n == 1 else "s", args.feedback_export))
         return 0
+    if args.feedback_debug:
+        number, target = args.feedback_debug
+        size = store.debug_copy(int(number), target) if number.isdigit() else None
+        if size is None:
+            print("message %s has no debug folder" % number)
+            return 1
+        print("%d bytes written to %s" % (size, target))
+        return 0
     if args.stats:
         for day, names in sorted(store.counters(utc_day(time.time() - 13 * 86400)).items()):
             print(day, "  ".join("%s %d" % (name, n) for name, n in sorted(names.items())))
@@ -1728,7 +2109,8 @@ def main(argv=None):
     server = serve(store, Limiter(POSTS_PER_HOUR, POSTS_PER_HOUR_ALL),
                    rock_limiter=Limiter(ROCK_POSTS_PER_HOUR, ROCK_POSTS_PER_HOUR_ALL),
                    rock_count_limiter=Limiter(ROCKS_PER_HOUR, ROCKS_PER_HOUR_ALL),
-                   feedback_limiter=FeedbackLimiter(FEEDBACK_PER_HOUR, FEEDBACK_PER_DAY, FEEDBACK_PER_DAY_ALL))
+                   feedback_limiter=FeedbackLimiter(FEEDBACK_PER_HOUR, FEEDBACK_PER_DAY, FEEDBACK_PER_DAY_ALL),
+                   debug_limiter=debug_limit())
     print("bedrock-api: %s on port %d, %d stations known, %s" % (
         DB_PATH, PORT, len(STATIONS), "refining model loaded" if TABLES else "no refining model"), flush=True)
     try:
