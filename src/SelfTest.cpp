@@ -8117,6 +8117,22 @@ int runSelfTest() {
                                        "5.0 panel on the MOLE turret: its column under the reticle, the mass's five "
                                        "numerals, the volume right of them, three list lines (got " +
                                            turret.note.substr(0, 120) + turretTaken + ")");
+                    // The app's own picture of a Torite rock on the PTU (17
+                    // November 2026 12:15:04, MOLE pilot seat, HDR desktop, tone
+                    // mapped): 4975, 24%, 168.58, 15.04 SCU. The resistance reads
+                    // sure: 0.31 from halfway to the likeliest other glyph with
+                    // the glyphs' likeness taken over the matching's own shifts,
+                    // 0.27 at one alignment.
+                    const cv::Mat toriteCut = testPicture("scanpanel/panel5_torite.png", L"SELFTEST_FIVE_TORITE");
+                    const bool wasToneMapped = SCMiner::panelToneMapped();
+                    SCMiner::setPanelToneMapped(true);
+                    SCMiner::ScanPanel torite;
+                    const bool toriteSeen =
+                        !toriteCut.empty() && SCMiner::readPanelFive(onScreen(toriteCut, 3001, 596), torite, nullptr);
+                    SCMiner::setPanelToneMapped(wasToneMapped);
+                    allPassed &= check(toriteSeen && torite.note.find(" -/24%(") != std::string::npos,
+                                       "5.0 panel on the app's picture of a Torite rock: the resistance 24% sure (got " +
+                                           torite.note.substr(0, 160) + ")");
                 }
             }
 

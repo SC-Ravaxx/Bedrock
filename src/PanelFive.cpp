@@ -385,28 +385,51 @@ const std::vector<Known>& knownGlyphs() {
     return known;
 }
 
-// How alike two glyphs' shapes are: their correlation over the part both
-// cover, from their right edges; worked out once for every pair
-double likeness(const Known& a, const Known& b) {
-    static const std::vector<std::vector<double>> table = [] {
-        const std::vector<Known>& known = knownGlyphs();
-        std::vector<std::vector<double>> t(known.size(), std::vector<double>(known.size(), 1.0));
-        for (size_t i = 0; i < known.size(); i++) {
-            for (size_t j = 0; j < known.size(); j++) {
-                const int w = (std::min)(known[i].cell.cols, known[j].cell.cols);
-                cv::Mat x = known[i].cell(cv::Rect(known[i].cell.cols - w, 0, w, GLYPH_H)).clone();
-                cv::Mat y = known[j].cell(cv::Rect(known[j].cell.cols - w, 0, w, GLYPH_H)).clone();
-                x -= cv::mean(x)[0];
-                y -= cv::mean(y)[0];
-                const double n = cv::norm(x) * cv::norm(y);
-                t[i][j] = n > 1e-9 ? x.dot(y) / n : 0;
+// How alike two glyphs' shapes are as the matching sees them: b's best score
+// on a clean cut of a - a's shape on blank ground, its right edge where the
+// place ends - over the shifts the matching allows there (slackLeft to the
+// left, slackRight to the right, a pixel up or down). Taken at one alignment,
+// right edges together, the shifts raised the other glyph's score and not
+// its likeness: a clean cut of a 6 stood (1 - shifted) / (2 (1 - aligned))
+// from halfway to an 8, under the 0.5 every clean cut stands now, and on the
+// app's pictures of 17 November 2026 the figures' margins came to 0.06-0.14
+// in the median. Worked out once for every pair and slack up to 3.
+constexpr int MOST_SLACK = 3;
+double shiftedLikeness(const cv::Mat& a, const cv::Mat& b, int slackLeft, int slackRight) {
+    const int right = (std::max)(a.cols, b.cols + slackLeft);
+    double ground = 0;
+    cv::minMaxLoc(a, &ground);
+    cv::Mat clean(GLYPH_H + 2, right + slackRight, CV_32F, cv::Scalar(ground));
+    a.copyTo(clean(cv::Rect(right - a.cols, 1, a.cols, GLYPH_H)));
+    cv::Mat result;
+    cv::matchTemplate(clean(cv::Rect(right - b.cols - slackLeft, 0, b.cols + slackLeft + slackRight, GLYPH_H + 2)), b,
+                      result, cv::TM_CCOEFF_NORMED);
+    double best = 0;
+    cv::minMaxLoc(result, nullptr, &best);
+    return best;
+}
+double likeness(const Known& a, const Known& b, int slackLeft, int slackRight) {
+    const std::vector<Known>& known = knownGlyphs();
+    const size_t n = known.size();
+    static const std::vector<double> table = [&known, n] {
+        std::vector<double> t((MOST_SLACK + 1) * (MOST_SLACK + 1) * n * n, 1.0);
+        for (int l = 0; l <= MOST_SLACK; l++) {
+            for (int r = 0; r <= MOST_SLACK; r++) {
+                for (size_t i = 0; i < n; i++) {
+                    for (size_t j = 0; j < n; j++) {
+                        t[((size_t)(l * (MOST_SLACK + 1) + r) * n + i) * n + j] =
+                            shiftedLikeness(known[i].cell, known[j].cell, l, r);
+                    }
+                }
             }
         }
         return t;
     }();
-    const std::vector<Known>& known = knownGlyphs();
     const size_t i = (size_t)(&a - known.data()), j = (size_t)(&b - known.data());
-    return i < table.size() && j < table.size() ? table[i][j] : 1.0;
+    if (slackLeft < 0 || slackRight < 0 || slackLeft > MOST_SLACK || slackRight > MOST_SLACK || i >= n || j >= n) {
+        return shiftedLikeness(a.cell, b.cell, (std::max)(slackLeft, 0), (std::max)(slackRight, 0));
+    }
+    return table[((size_t)(slackLeft * (MOST_SLACK + 1) + slackRight) * n + i) * n + j];
 }
 
 // A figure's format from its right end: slots of the glyphs allowed there,
@@ -563,7 +586,7 @@ Reading slide(const Line& line, int right, const Format& format, int firstSlack,
         // how much nearer its own shape the glyph is than each other glyph's
         for (const auto& [other, score] : tried) {
             if (other->c == bestC) continue;
-            const double apart = 2.0 * (1.0 - likeness(*mine, *other));
+            const double apart = 2.0 * (1.0 - likeness(*mine, *other, slackLeft, slackRight));
             if (apart > 1e-6) out.margin = (std::min)(out.margin, (best - score) / apart);
         }
         // a zero or an eight where either may stand: their counters say which
