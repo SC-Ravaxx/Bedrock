@@ -2048,7 +2048,8 @@ void Application::readLoadoutOnHud(const cv::Mat& frame, const ScanPanel& panel)
     // the very next look, for good.
     // No HUD in the picture at all - the mining mode off - is looked for
     // again every two seconds: the table is not there, and finding that out
-    // is a matter of some 40 ms.
+    // is a matter of some 80 ms, both tables' shapes looked for (40 with the
+    // old one alone; on 22 snapshots of 4.10.3, 37-47 against 71-101 ms).
     const auto now = std::chrono::steady_clock::now();
     // The reading a new rock asked for (loadoutCheckForRock) comes once the
     // rock's list is on view, or six seconds on where none comes in. Both go
