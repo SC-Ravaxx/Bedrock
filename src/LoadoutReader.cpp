@@ -32,7 +32,8 @@ cv::Rect laserBand(const cv::Size& frame) {
 }
 
 // The Prospector's HUD stands at size 1 at 1440 lines; the Golem's runs
-// from 1.15 to 1.8 as the view moves
+// from 1.15 to 1.8 as the view moves. Since 4.10.3 both stand at 0.96 to
+// 1.03 of the size of their own table's shape.
 const std::vector<double>& tableScales(int rows) {
     static std::vector<double> scales;
     static int forRows = -1;
@@ -44,10 +45,61 @@ const std::vector<double>& tableScales(int rows) {
     return scales;
 }
 
-// How well the table must match: the Prospector's matches at 0.75 to
-// 0.96. Nothing is taken on the table alone - the line over it has to
-// read as a laser.
-constexpr double TABLE_BAR = 0.65;
+// Where the reader looks about the laser's table, at size 1 from the
+// table's first letter's left edge and top - for each of the two tables the
+// game has drawn. Star Citizen 4.10.3 drew the table anew: a seventh row,
+// SHATTER DMG under WINDOW SIZE, and all of it a fifth larger but the letters,
+// whose shape found none of it. The module list kept its size and stands
+// some 20 higher against the table. Measured on the self-test's picture of
+// a Prospector's HUD before 4.10.3 and on 13 snapshots since (8 of a
+// Prospector's HUD, 5 of a Golem's, 5,120 x 1,440 - the Golem's HUD is the
+// Prospector's size since):
+//
+//                              up to 4.10.2     since 4.10.3
+//   rows, apart                6, 15.5          7, 18.85
+//   FRACTURE PWR, wide         84               101
+//   the laser's line           -57 to -42       -69 to -51
+//   ...its first letter        +42 Helix I      +50 Helix I, +45 Pitman
+//   GEAR CPLD ESP              -101 to -89      -112 to -96
+//   MINING MODULES, top        -548             -570 to -564, Golem -512
+//   ...the list's last line    -286 to -268     -302 to -277
+//   ...the modules' names from +37              +23 to +46
+//   the Head column's box      +90 to +122      +108 to +147
+//   ...its figures             +97 to +117      +117 to +139
+//   icons over the modules     141, 38.5 on     171, 45.5 on
+//
+// The module list moves against the table by some 20 across from one
+// picture to the next, and the global chat, where the player has it left
+// of the list, ends 1 to 25 short of the table's first letter: since
+// 4.10.3 the list is read from 10 right of that letter, where no module's
+// name begins and no chat runs on into one.
+struct TableLayout {
+    char shape;                // the table's shape (PanelShapes.h)
+    int ink;                   // ...the ink it is looked for in (channelGrey)
+    double bar;                // ...how well it must match
+    double pitch;              // from one row's top to the next
+    double headLeft, headWidth, headHeight;      // a figure of the Head column
+    double laserFrom, laserFromWide;             // the laser's line: read from here, then from there
+    double laserTop, laserRight, laserBottom;
+    double listLeft, listTop, listRight, listBottom;          // the module list
+    double iconsLeft, iconsTop, iconsWidth, iconsHeight;      // the icons over the modules' columns
+    double firstIcon, iconPitch, iconSlack;      // ...the first one's middle, the next on, how far off
+};
+
+// How well the table must match. The first: the Prospector's matches at
+// 0.75 to 0.96. Nothing is taken on the table alone - the line over it has
+// to read as a laser.
+const TableLayout TABLE_LAYOUTS[] = {
+    {'F', 5, 0.65, 15.5, 88, 40, 17, 15, -60, -80, 330, -28, -10, -560, 360, -105, 125, -27, 175, 20, 141, 38.5, 12},
+    {'S', 0, 0.70, 18.85, 111, 33, 18, 18, -72, -90, 340, -34, 10, -590, 360, -118, 152, -32, 208, 26, 171, 45.5, 14},
+};
+
+const TableLayout* tableLayout(char shape) {
+    for (const TableLayout& layout : TABLE_LAYOUTS) {
+        if (layout.shape == shape) return &layout;
+    }
+    return nullptr;
+}
 
 // A name as the HUD writes it and as the game does, folded so that what the
 // second reader may confuse meets: upper case, letters and numerals only, a
@@ -367,12 +419,14 @@ std::string readRowOnce(const cv::Mat& bgr, const cv::Rect& row, double s, TextL
 // icon - a cross, a beacon - right of "Head", about 15 above the table's
 // first row, the first 141 right of the table's first letter and the next
 // 38.5 on (at 1440 lines; the Golem's table, with nothing fitted, has
-// none). Where each stands, from the table's first letter. A busy ground
-// makes more of them than there are, and runs into one now and then.
-std::vector<double> moduleIcons(const cv::Mat& bgr, const cv::Point& table, double s) {
+// none) - since 4.10.3 171 and 45.5 on (TableLayout). Where each stands,
+// from the table's first letter. A busy ground makes more of them than
+// there are, and runs into one now and then.
+std::vector<double> moduleIcons(const cv::Mat& bgr, const cv::Point& table, double s, const TableLayout& layout) {
     std::vector<double> icons;
-    const cv::Rect where = cv::Rect((int)std::lround(table.x + 125 * s), (int)std::lround(table.y - 27 * s),
-                                    (int)std::lround(175 * s), (int)std::lround(20 * s)) &
+    const cv::Rect where = cv::Rect((int)std::lround(table.x + layout.iconsLeft * s),
+                                    (int)std::lround(table.y + layout.iconsTop * s),
+                                    (int)std::lround(layout.iconsWidth * s), (int)std::lround(layout.iconsHeight * s)) &
                            cv::Rect(0, 0, bgr.cols, bgr.rows);
     if (where.width < 10 || where.height < 6) return icons;
     const cv::Mat ink = letteringInk(bgr(where), s);
@@ -421,13 +475,17 @@ std::vector<double> moduleIcons(const cv::Mat& bgr, const cv::Point& table, doub
 // the overcharge rate and the charge window, in per cent - FRACTURE PWR 119
 // for a Focus III (-5 %) beside a Rieger-C3 (+25 %), WINDOW SIZE 83 for the
 // Helix I's -40 % with them. Row by row 15.5 apart from the top of FRACTURE
-// PWR, the figure 97 to 117 right of its first letter, in a box. Read on
-// its own every time: two figures a numeral apart are what it is read for.
-int readHeadCell(const cv::Mat& bgr, const cv::Point& table, double s, int row, TextLineReader& lines,
-                 double& sure) {
+// PWR, the figure 97 to 117 right of its first letter, in a box - since
+// 4.10.3 18.85 apart and 117 to 139 right, the cell inside the box's sides
+// (TableLayout). SHATTER DMG, the seventh row, came in under WINDOW SIZE, so
+// the rows read here keep their numbers. Read on its own every time: two
+// figures a numeral apart are what it is read for.
+int readHeadCell(const cv::Mat& bgr, const cv::Point& table, double s, const TableLayout& layout, int row,
+                 TextLineReader& lines, double& sure) {
     sure = 0;
-    const cv::Rect cell = cv::Rect((int)std::lround(table.x + 88 * s), (int)std::lround(table.y + (15.5 * row - 4) * s),
-                                   (int)std::lround(40 * s), (int)std::lround(17 * s)) &
+    const cv::Rect cell = cv::Rect((int)std::lround(table.x + layout.headLeft * s),
+                                   (int)std::lround(table.y + (layout.pitch * row - 4) * s),
+                                   (int)std::lround(layout.headWidth * s), (int)std::lround(layout.headHeight * s)) &
                           cv::Rect(0, 0, bgr.cols, bgr.rows);
     if (cell.width < 10 || cell.height < 6) return -1;
     const TextLineReader::Line line = lines.read(bgr(cell));
@@ -773,21 +831,39 @@ bool headColumnAgrees(const MiningLaser& laser, const std::vector<const MiningMo
 bool findLaserTable(const cv::Mat& frame, SeenLoadout& seen) {
     seen = SeenLoadout();
     if (frame.empty()) return false;
-    static const PanelShape* table = [] {
-        for (int i = 0; i < PANEL_SHAPE_COUNT; i++) {
-            if (PANEL_SHAPES[i].glyph == 'F') return &PANEL_SHAPES[i];
+    // Both tables, each in its own ink, and the better of those over their
+    // bars. The first in whiteness: its words are white on every HUD it has
+    // been seen on, over the Prospector's blue and the Golem's sand. The
+    // second in the darkest channel: since 4.10.3 the words are thin and
+    // fringed with colour, and in whiteness little of them is left.
+    const TableLayout* best = nullptr;
+    double nearest = -2;
+    for (const TableLayout& layout : TABLE_LAYOUTS) {
+        const PanelShape* table = nullptr;
+        for (int i = 0; i < PANEL_SHAPE_COUNT && !table; i++) {
+            if (PANEL_SHAPES[i].glyph == layout.shape) table = &PANEL_SHAPES[i];
         }
-        return (const PanelShape*)nullptr;
-    }();
-    if (!table) return false;
-    // in whiteness: the table's words are white on every HUD it has been seen
-    // on, over the Prospector's blue and the Golem's sand
-    const ShapeFound found = findShapeIn(frame, laserBand(frame.size()), 5, *table, tableScales(frame.rows));
-    seen.score = found.score;
-    if (found.score < TABLE_BAR) return false;
+        if (!table) continue;
+        const ShapeFound found = findShapeIn(frame, laserBand(frame.size()), layout.ink, *table, tableScales(frame.rows));
+        if (DEV_ENV("SCMINER_LOADOUT_TRACE")) {
+            std::cerr << "  [loadout] table " << layout.shape << " " << found.score << " at " << found.at << " x"
+                      << found.scale << std::endl;
+        }
+        if (found.score >= layout.bar && (!best || found.score > seen.score)) {
+            best = &layout;
+            seen.score = found.score;
+            seen.table = found.at;
+            seen.scale = found.scale;
+        }
+        // none found: the score that came nearest its bar
+        if (!best && found.score - layout.bar > nearest) {
+            nearest = found.score - layout.bar;
+            seen.score = found.score;
+        }
+    }
+    if (!best) return false;
     seen.tableFound = true;
-    seen.table = found.at;
-    seen.scale = found.scale;
+    seen.tableShape = best->shape;
     return true;
 }
 
@@ -797,6 +873,8 @@ cv::Mat hudLetteringInk(const cv::Mat& bgr, double scale) {
 
 bool readSeenLoadout(const cv::Mat& frame, TextLineReader& lines, SeenLoadout& seen) {
     if (!findLaserTable(frame, seen) || !lines.ready()) return false;
+    const TableLayout* layout = tableLayout(seen.tableShape);
+    if (!layout) return false;
     cv::Mat bgr;
     if (frame.channels() == 4) cv::cvtColor(frame, bgr, cv::COLOR_BGRA2BGR);
     else if (frame.channels() == 1) cv::cvtColor(frame, bgr, cv::COLOR_GRAY2BGR);
@@ -809,18 +887,19 @@ bool readSeenLoadout(const cv::Mat& frame, TextLineReader& lines, SeenLoadout& s
                screen;
     };
     // The laser's name, on the line over the table: 41 to 55 above its first
-    // word on the Prospector, 47 to 59 on the Golem. It ends where the table
-    // ends and runs left as far as it is long: HELIX I MINING LASER begins 36
-    // to the right of the table's first word, HOFSTEDE-S1 MINING LASER some
-    // 10 to its left, which a line read from 15 cuts to "FSTEDE-SI MINING
-    // LASER", no laser at all. Every laser a Prospector or a Golem takes but
-    // the Helix I and the Pitman has a longer name. From 60 to the left,
-    // though, the line takes in more of whatever is about and the reader
-    // squeezes it into its fixed width, which loses Helix and Pitman names
-    // (39 in 5,766 pictures): so from 15 first, and from 60 only when that
-    // named none.
-    for (const double from : {15.0, -60.0}) {
-        const cv::Rect header = around(from, -80, 330, -28);
+    // word on the Prospector, 47 to 59 on the Golem (51 to 69 on both since
+    // 4.10.3, see TableLayout). It ends where the table ends and runs left
+    // as far as it is long: HELIX I MINING LASER begins 36 to the right of
+    // the table's first word, HOFSTEDE-S1 MINING LASER some 10 to its left,
+    // which a line read from 15 cuts to "FSTEDE-SI MINING LASER", no laser at
+    // all. Every laser a Prospector or a Golem takes but the Helix I and the
+    // Pitman has a longer name. From 60 to the left, though, the line takes
+    // in more of whatever is about and the reader squeezes it into its fixed
+    // width, which loses Helix and Pitman names (39 in 5,766 pictures): so
+    // from 15 first, and from 60 only when that named none - since 4.10.3
+    // from 18 and 72.
+    for (const double from : {layout->laserFrom, layout->laserFromWide}) {
+        const cv::Rect header = around(from, layout->laserTop, layout->laserRight, layout->laserBottom);
         for (const cv::Rect& row : textRows(bgr(header), s)) {
             const std::string text = readRow(bgr(header), row, s, lines);
             if (const MiningLaser* laser = laserByHudLine(text)) {
@@ -836,9 +915,9 @@ bool readSeenLoadout(const cv::Mat& frame, TextLineReader& lines, SeenLoadout& s
     if (!seen.laser) return false;
     // The modules, above it: each under its own name - "FOCUS III MODULE" -
     // with what it is and what it does on the lines below. The list begins
-    // under MINING MODULES, about 500 above the table on both HUDs; GEAR,
+    // under MINING MODULES, 500 to 570 above the table on both HUDs; GEAR,
     // CPLD and ESP stand between it and the laser.
-    const cv::Rect list = around(-10, -560, 360, -105);
+    const cv::Rect list = around(layout->listLeft, layout->listTop, layout->listRight, layout->listBottom);
     bool headed = false, unknown = false;
     std::vector<std::pair<std::string, std::vector<std::string>>> blocks;
     // Each module's name is followed by PASSIVE or ACTIVE. One of those with
@@ -904,7 +983,7 @@ bool readSeenLoadout(const cv::Mat& frame, TextLineReader& lines, SeenLoadout& s
     // it loses the names.
     if (listed) {
         for (int r = 0; r < 6; r++) {
-            if (r != 4) seen.head[r] = readHeadCell(bgr, seen.table, s, r, lines, seen.headSure[r]);
+            if (r != 4) seen.head[r] = readHeadCell(bgr, seen.table, s, *layout, r, lines, seen.headSure[r]);
         }
         seen.headAgrees = headColumnAgrees(*seen.laser, seen.modules, seen.head, seen.headSure);
     }
@@ -913,11 +992,11 @@ bool readSeenLoadout(const cv::Mat& frame, TextLineReader& lines, SeenLoadout& s
     // the list's next module's would stand is a module the list lost. Not the
     // count of them, which the ground behind makes too many as often as not
     // (a Golem with nothing fitted had 1 to 4).
-    const std::vector<double> icons = moduleIcons(bgr, seen.table, s);
+    const std::vector<double> icons = moduleIcons(bgr, seen.table, s, *layout);
     seen.moduleColumns = (int)icons.size();
-    const double next = 141 + 38.5 * (double)seen.modules.size();
+    const double next = layout->firstIcon + layout->iconPitch * (double)seen.modules.size();
     for (const double x : icons) {
-        if (std::abs(x - next) <= 12) seen.iconPastList = true;
+        if (std::abs(x - next) <= layout->iconSlack) seen.iconPastList = true;
     }
     seen.modulesRead = listed && seen.headAgrees && !seen.iconPastList;
     return true;

@@ -26,6 +26,10 @@ struct SeenLoadout {
     cv::Point table;
     double scale = 0;
     double score = -1;
+    // ...and which of the game's two tables it is (PanelShapes.h): 'F' as
+    // the HUD drew it up to Star Citizen 4.10.2, 'S' since 4.10.3 - each has
+    // its line, its list, its Head column and its icons at places of its own
+    char tableShape = 0;
     // the line over the table, as the second reader gave it, and the laser
     // it names
     std::string laserText;
@@ -41,7 +45,7 @@ struct SeenLoadout {
     bool iconPastList = false;
     // the table's Head column as read, FRACTURE PWR to WINDOW SIZE in per
     // cent (-1: not read), and whether it is what the laser and the modules
-    // read make of it
+    // read make of it. SHATTER DMG, the seventh row since 4.10.3, is not read.
     int head[6] = {-1, -1, -1, -1, -1, -1};
     double headSure[6] = {0, 0, 0, 0, 0, 0};   // the reader's mean certainty
     bool headAgrees = false;
@@ -52,8 +56,9 @@ struct SeenLoadout {
     bool complete() const { return laser != nullptr && modulesRead; }
 };
 
-// The laser's table, left of the middle of the screen. False when the mining
-// HUD is not up.
+// The laser's table, left of the middle of the screen, in either of the
+// shapes the game has drawn it in (SeenLoadout::tableShape). False when the
+// mining HUD is not up.
 bool findLaserTable(const cv::Mat& frame, SeenLoadout& seen);
 
 // ...and the laser and its modules, read by the second reader. Costs a line
