@@ -3,6 +3,7 @@
 #include "RockScans.h"
 #include "TextField.h"
 
+#include <algorithm>
 #include <cstdio>
 
 namespace SCMiner {
@@ -148,7 +149,9 @@ Answer answer(const std::string& json) {
         upload.find_first_not_of("0123456789abcdef", 1) == 33) {
         out.upload = upload.substr(1, 32);
     }
-    out.debugRefused = member(json, "debug") == "\"refused\"";
+    const std::string debug = member(json, "debug");
+    out.debugRefused = debug == "\"refused\"";
+    out.debugStored = debug == "\"stored\"";
     return out;
 }
 
@@ -161,11 +164,62 @@ std::vector<std::string> debugHeaders(const std::string& upload) {
 }
 
 DebugOutcome debugOutcome(int status) {
-    if (status == 201) return DebugOutcome::Sent;
+    // (409: the message has its zip - one sent again whose answer was lost
+    // on the way back)
+    if (status == 201 || status == 409) return DebugOutcome::Sent;
     if (status == 413) return DebugOutcome::TooLarge;
     if (status == 507) return DebugOutcome::Full;
     if (status <= 0 || (status >= 500 && status < 600)) return DebugOutcome::NoConnection;
-    return DebugOutcome::Refused;
+    return DebugOutcome::TurnedDown;
+}
+
+Result send(const std::string& body, const std::string& zip, const Post& post, const Progress& progress) {
+    Result out;
+    if (body.empty()) {
+        out.status = 413;
+        return out;
+    }
+    std::string said;
+    out.status = post("/v1/feedback", {"Content-Type: application/json"}, body, nullptr, said);
+    // a message that did not go takes no zip; one without a zip is done
+    if (zip.empty() || outcome(out.status) != Outcome::Sent) return out;
+    const Answer told = answer(said);
+    if (told.debugStored) {
+        out.debug = DebugOutcome::Sent;
+        return out;
+    }
+    if (told.debugRefused || told.id <= 0 || told.upload.empty()) {
+        out.debug = DebugOutcome::Refused;
+        return out;
+    }
+    if (progress) progress(0, (std::int64_t)zip.size());
+    std::string ignored;
+    out.debugStatus = post(debugPath(told.id), debugHeaders(told.upload), zip, progress, ignored);
+    out.debug = debugOutcome(out.debugStatus);
+    return out;
+}
+
+Shown shown(Outcome message, DebugOutcome debug) {
+    switch (message) {
+        case Outcome::NoConnection: return Shown::NoConnection;
+        case Outcome::Limited: return Shown::Limited;
+        case Outcome::Refused: return Shown::Refused;
+        case Outcome::Sent: break;
+    }
+    switch (debug) {
+        case DebugOutcome::NoConnection: return Shown::DebugNoConnection;
+        case DebugOutcome::TooLarge: return Shown::DebugTooLarge;
+        case DebugOutcome::Full: return Shown::DebugFull;
+        case DebugOutcome::TurnedDown: return Shown::DebugTurnedDown;
+        case DebugOutcome::Refused: return Shown::DebugRefused;
+        case DebugOutcome::None:
+        case DebugOutcome::Sent: break;
+    }
+    return Shown::Sent;
+}
+
+int megabytes(std::int64_t bytes) {
+    return (int)std::clamp<std::int64_t>(bytes / (1024 * 1024), 1, 1 << 30);
 }
 
 std::string gameName(int gameVersion) {
@@ -175,12 +229,13 @@ std::string gameName(int gameVersion) {
     return text;
 }
 
-std::string sentWith(const std::string& bedrockVersion, int gameVersion, bool installSent) {
+std::string sentWith(const std::string& bedrockVersion, int gameVersion, bool installSent, bool debugFolder) {
     const std::string dot = "  \xC2\xB7  ";
     std::string out = "Sent with it: Bedrock " + bedrockVersion;
     const std::string game = gameName(gameVersion);
     if (!game.empty()) out += dot + "Star Citizen " + game;
     if (installSent) out += dot + "Installation number";
+    if (debugFolder) out += dot + "Debug folder";
     return out;
 }
 

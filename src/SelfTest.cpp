@@ -1203,10 +1203,157 @@ int runSelfTest() {
                 F::debugOutcome(413) == F::DebugOutcome::TooLarge &&
                 F::debugOutcome(500) == F::DebugOutcome::NoConnection &&
                 F::debugOutcome(503) == F::DebugOutcome::NoConnection && F::debugOutcome(507) == F::DebugOutcome::Full &&
-                F::debugOutcome(403) == F::DebugOutcome::Refused && F::debugOutcome(409) == F::DebugOutcome::Refused;
-            allPassed &= check(upload, "the zip goes to /v1/feedback/<id>/debug with its token; stored at 201, no connection "
-                                       "without an answer or at 5xx, too large at 413, the service full at 507, turned "
-                                       "down at 403 and 409");
+                F::debugOutcome(400) == F::DebugOutcome::TurnedDown && F::debugOutcome(403) == F::DebugOutcome::TurnedDown &&
+                F::debugOutcome(404) == F::DebugOutcome::TurnedDown && F::debugOutcome(409) == F::DebugOutcome::Sent;
+            allPassed &= check(upload, "the zip goes to /v1/feedback/<id>/debug with its token; stored at 201 and 409, no "
+                                       "connection without an answer or at 5xx, too large at 413, the service full at 507, "
+                                       "turned down at 400, 403 and 404");
+
+            // the answer to a message sent again that has its zip: no
+            // token, nothing more to send - as strictly read as the rest
+            const F::Answer stored = F::answer("{\"ok\": true, \"stored\": false, \"debug\": \"stored\"}");
+            bool storedOnly = stored.debugStored && !stored.debugRefused && stored.id == 0 && stored.upload.empty() &&
+                              !refused.debugStored && !granted.debugStored && !plain.debugStored;
+            for (const std::string& text :
+                 {std::string("{\"debug\": \"Stored\"}"), std::string("{\"debug\": \"stored \"}"),
+                  std::string("{\"debug\": true}"), std::string("{\"error\": {\"debug\": \"stored\"}}"),
+                  std::string("{\"note\": \"\\\"debug\\\": \\\"stored\\\"\"}"), std::string("[{\"debug\": \"stored\"}]")}) {
+                storedOnly = storedOnly && !F::answer(text).debugStored;
+            }
+            allPassed &= check(storedOnly, "the service's answer says \"stored\" where a message sent again has its zip "
+                                           "already; \"Stored\", an inner object's or a word in a string do not count");
+
+            // Send, all of it, through a poster that answers as told and
+            // notes what it was asked to send: the message, then the zip
+            struct Call {
+                std::string path;
+                std::vector<std::string> headers;
+                std::string payload;
+            };
+            struct Sending {
+                F::Result result;
+                std::vector<Call> calls;
+                std::vector<std::pair<std::int64_t, std::int64_t>> told;
+            };
+            const std::string zip = "PK\x03\x04" + std::string(3000, 'z');
+            const auto sendWith = [&](const std::string& zipBytes, int status, const std::string& said, int uploadStatus) {
+                Sending out;
+                const std::string body = F::body("a", "", "3.0.4", 41003, "LIVE", "windows", (std::int64_t)zipBytes.size());
+                out.result = F::send(
+                    body, zipBytes,
+                    [&](const std::string& path, const std::vector<std::string>& headers, const std::string& payload,
+                        const F::Progress& progress, std::string& answer) {
+                        out.calls.push_back({path, headers, payload});
+                        if (out.calls.size() == 1) {
+                            answer = said;
+                            return status;
+                        }
+                        // the zip, in two pieces
+                        const std::int64_t size = (std::int64_t)payload.size();
+                        if (progress) {
+                            progress(size / 2, size);
+                            progress(size, size);
+                        }
+                        answer = "{\"ok\": true, \"stored\": true}";
+                        return uploadStatus;
+                    },
+                    [&](std::int64_t sentBytes, std::int64_t total) { out.told.push_back({sentBytes, total}); });
+                return out;
+            };
+            const std::string granting = "{\"ok\": true, \"stored\": true, \"id\": 42, \"upload\": \"" + token + "\"}";
+            const std::int64_t zipSize = (std::int64_t)zip.size();
+
+            const Sending alone = sendWith("", 201, "{\"ok\": true, \"stored\": true}", 0);
+            const bool messageAlone = alone.result.status == 201 && alone.result.debug == F::DebugOutcome::None &&
+                                      alone.calls.size() == 1 && alone.calls[0].path == "/v1/feedback" &&
+                                      alone.calls[0].headers == std::vector<std::string>{"Content-Type: application/json"} &&
+                                      alone.calls[0].payload == withoutZip && alone.told.empty() &&
+                                      F::send("", zip, [&](const std::string&, const std::vector<std::string>&,
+                                                           const std::string&, const F::Progress&, std::string&) {
+                                          return 201;
+                                      }).status == 413;
+            allPassed &= check(messageAlone, "Send without a debug folder is one request: the message, saying nothing of a zip");
+
+            const Sending upped = sendWith(zip, 201, granting, 201);
+            const std::vector<std::pair<std::int64_t, std::int64_t>> steps = {{0, zipSize}, {zipSize / 2, zipSize},
+                                                                              {zipSize, zipSize}};
+            const bool goesUp =
+                upped.result.status == 201 && upped.result.debug == F::DebugOutcome::Sent &&
+                upped.result.debugStatus == 201 && upped.calls.size() == 2 &&
+                upped.calls[0].payload.find(",\"debug\":" + std::to_string(zipSize) + "}") != std::string::npos &&
+                upped.calls[1].path == "/v1/feedback/42/debug" && upped.calls[1].headers == F::debugHeaders(token) &&
+                upped.calls[1].payload == zip && upped.told == steps;
+            allPassed &= check(goesUp, "Send with a debug folder: the message says its zip's size, the zip goes up after it "
+                                       "to the message's number with its token, how far it is told from 0 on");
+
+            bool uploads = true;
+            for (const auto& [status, debug] :
+                 std::vector<std::pair<int, F::DebugOutcome>>{{409, F::DebugOutcome::Sent},
+                                                              {413, F::DebugOutcome::TooLarge},
+                                                              {507, F::DebugOutcome::Full},
+                                                              {0, F::DebugOutcome::NoConnection},
+                                                              {502, F::DebugOutcome::NoConnection},
+                                                              {403, F::DebugOutcome::TurnedDown}}) {
+                const Sending one = sendWith(zip, 201, granting, status);
+                uploads = uploads && one.result.status == 201 && one.result.debug == debug &&
+                          one.result.debugStatus == status && one.calls.size() == 2;
+            }
+            allPassed &= check(uploads, "an upload answered 409 - the message has its zip, one sent again after its answer "
+                                        "was lost - counts as sent, as 201 does; 413, 507, none or 5xx, 403 do not");
+
+            // no upload: the answer says the service has the zip, or lets
+            // none in, or gives no token; the message did not go
+            const Sending again = sendWith(zip, 200, "{\"ok\": true, \"stored\": false, \"debug\": \"stored\"}", 201);
+            const Sending turnedAway = sendWith(zip, 201, "{\"ok\": true, \"stored\": true, \"debug\": \"refused\"}", 201);
+            const Sending tokenless = sendWith(zip, 201, "{\"ok\": true, \"stored\": true}", 201);
+            const Sending both = sendWith(zip, 201,
+                                       "{\"ok\": true, \"id\": 42, \"upload\": \"" + token + "\", \"debug\": \"refused\"}", 201);
+            bool held = again.result.debug == F::DebugOutcome::Sent && again.calls.size() == 1 &&
+                        turnedAway.result.debug == F::DebugOutcome::Refused && turnedAway.calls.size() == 1 &&
+                        tokenless.result.debug == F::DebugOutcome::Refused && tokenless.calls.size() == 1 &&
+                        both.result.debug == F::DebugOutcome::Refused && both.calls.size() == 1 &&
+                        again.told.empty() && turnedAway.told.empty() && tokenless.told.empty();
+            for (int status : {0, 429, 400, 413, 503}) {
+                const Sending failed = sendWith(zip, status, granting, 201);
+                held = held && failed.result.status == status && failed.result.debug == F::DebugOutcome::None &&
+                       failed.calls.size() == 1 && failed.told.empty();
+            }
+            allPassed &= check(held, "no upload where the message's answer says its zip is stored, refuses it or gives no "
+                                     "token, nor where the message did not go");
+
+            // what the page shows, for every message outcome and debug
+            // folder's
+            bool page = true;
+            const std::vector<F::DebugOutcome> debugs = {F::DebugOutcome::None,         F::DebugOutcome::Sent,
+                                                         F::DebugOutcome::Refused,      F::DebugOutcome::NoConnection,
+                                                         F::DebugOutcome::TooLarge,     F::DebugOutcome::Full,
+                                                         F::DebugOutcome::TurnedDown};
+            const std::vector<F::Shown> whenSent = {F::Shown::Sent,         F::Shown::Sent,
+                                                    F::Shown::DebugRefused, F::Shown::DebugNoConnection,
+                                                    F::Shown::DebugTooLarge, F::Shown::DebugFull,
+                                                    F::Shown::DebugTurnedDown};
+            for (size_t i = 0; i < debugs.size(); i++) {
+                page = page && F::shown(F::Outcome::Sent, debugs[i]) == whenSent[i] &&
+                       F::shown(F::Outcome::NoConnection, debugs[i]) == F::Shown::NoConnection &&
+                       F::shown(F::Outcome::Limited, debugs[i]) == F::Shown::Limited &&
+                       F::shown(F::Outcome::Refused, debugs[i]) == F::Shown::Refused;
+            }
+            allPassed &= check(page, "the page shows SENT for a message that went with its debug folder or without one "
+                                     "wanted, why the folder did not go where it did not, NOT SENT for a message that did not");
+
+            const bool alongDebug =
+                F::sentWith("3.0.4", 41003, true, true) == "Sent with it: Bedrock 3.0.4" + dot + "Star Citizen 4.10.3" + dot +
+                                                               "Installation number" + dot + "Debug folder" &&
+                F::sentWith("3.0.4", 0, false, true) == "Sent with it: Bedrock 3.0.4" + dot + "Debug folder" &&
+                F::sentWith("3.0.4", 41003, true, false) == F::sentWith("3.0.4", 41003, true);
+            allPassed &= check(alongDebug, "the Feedback page names the debug folder last among what goes with a message "
+                                           "while it is to go, and not otherwise");
+
+            const std::int64_t mb = 1024 * 1024;
+            const bool sizes = F::megabytes(0) == 1 && F::megabytes(1) == 1 && F::megabytes(2 * mb - 1) == 1 &&
+                               F::megabytes(12 * mb + mb / 2) == 12 && F::megabytes(28 * mb) == 28 &&
+                               F::megabytes((std::int64_t)F::DEBUG_MOST) == 32;
+            allPassed &= check(sizes, "an upload's sizes in whole MB, rounded down, 1 at least");
         }
 
         // ...and the debug folder that goes with a bug report, as a zip
