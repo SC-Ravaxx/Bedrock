@@ -264,6 +264,7 @@ private:
     PanelSteadier rockSteadier_;
     int rockUnsettled_ = 0;       // looks in a row that found a panel and settled nothing
     RockScans::LookCheck rockCheck_;  // figures no rock can have wait, as unsettled ones do
+    RockScans::MassCheck massCheck_;  // a line or face look's mass a numeral off the view's waits for a second
     RockScans::Recorder rockScans_;   // the rocks the view took, for rock_scans.csv
     // ...and sent to the service (RockScans) unless the player takes the tick
     // off in Settings (sharerocks=0), where the build carries the service's

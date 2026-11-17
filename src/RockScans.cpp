@@ -123,6 +123,34 @@ void keepScu(const RockStats& held, RockStats& look) {
     look.scu = held.scu;
 }
 
+bool numeralOff(float a, float b) {
+    if (a <= 0 || b <= 0 || std::fabs(a - b) <= 1.0f) return false;
+    if (oneNumeralApart(a, b, 0)) return true;
+    char x[32], y[32];
+    std::snprintf(x, sizeof(x), "%.0f", a);
+    std::snprintf(y, sizeof(y), "%.0f", b);
+    std::string longer = x, shorter = y;
+    if (longer.size() < shorter.size()) std::swap(longer, shorter);
+    if (longer.size() != shorter.size() + 1) return false;
+    for (size_t i = 0; i < longer.size(); i++) {
+        if (longer.substr(0, i) + longer.substr(i + 1) == shorter) return true;
+    }
+    return false;
+}
+
+bool MassCheck::takes(const RockStats& shown, const RockStats& look) {
+    if (!numeralOff(shown.mass, look.mass)) {
+        waiting_ = 0;
+        return true;
+    }
+    if (waiting_ > 0 && std::fabs(waiting_ - look.mass) <= 1.0f) {
+        waiting_ = 0;
+        return true;
+    }
+    waiting_ = look.mass;
+    return false;
+}
+
 static int hundredths(float scu) {
     return (int)std::lround(scu * 100.0f);
 }

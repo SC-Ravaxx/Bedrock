@@ -97,6 +97,29 @@ bool anotherRock(const RockStats& held, const RockStats& look);
 // A mass one numeral off may be another rock and takes nothing.
 void keepScu(const RockStats& held, RockStats& look);
 
+// Whether one mass is another as a misread makes it: one numeral more, one
+// numeral less, or one numeral other (89,667 or 9,966 for 8,966). False
+// where they are the same to the kilogram or either is not above 0.
+bool numeralOff(float a, float b);
+
+// The view's guard for the looks the second reader and the face reader
+// read, which come to it one by one: a look whose mass is the view's
+// misread (numeralOff) waits for a second look that reads the same. In the
+// MOLE's pilot seat on 17 November 2026 the line reader read 11,294 as
+// 112,943 and 8,966 as 89,667, one look each; every shape look empties the
+// window the view takes the middle of, so the look after one stood alone,
+// and the view showed those masses and lost the SCU with them. The other
+// figures are not asked: the instability the shapes settled for that rock
+// was 513.11 for 513.44, so they could not tell the same rock either.
+class MassCheck {
+public:
+    // Whether the view takes the look now, the view showing `shown`
+    bool takes(const RockStats& shown, const RockStats& look);
+
+private:
+    float waiting_ = 0;   // the mass of the look held back
+};
+
 // One rock as the view took it: a line of rock_scans.csv, and what goes to
 // the service where the player shares (sharerocks=1).
 struct ScanPart {

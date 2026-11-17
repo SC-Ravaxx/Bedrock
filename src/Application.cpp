@@ -1841,6 +1841,14 @@ void Application::lookForRock() {
             }
             rockUnsettled_ = 0;
         }
+        // A mass the view's with a numeral more, less or other - what the
+        // second reader makes of the pilot seat's fringed figures now and
+        // then - waits for a second look that reads it the same
+        // (RockScans::MassCheck)
+        if (shownMass_ > 0 && !massCheck_.takes(shownRock_, panel.stats)) {
+            logRockReading(panel, nullptr, range.metres, "a numeral off the mass on view, once");
+            return;
+        }
         // Another rock's look starts the window again rather than average
         // two rocks: its mass off by more than a misread, and another figure
         // with it (RockScans::anotherRock)

@@ -1033,6 +1033,43 @@ int runSelfTest() {
                                "own keeps that, and neither another rock nor a mass one numeral off takes it");
         }
 
+        // A line look whose mass is the view's misread waits for a second
+        // look: the MOLE's pilot seat, 17 November 2026, 11,294 kg at 33.38
+        // SCU read once as 112,943 - the view showed that mass and lost the
+        // SCU - and 8,966 once as 89,667
+        {
+            using namespace SCMiner::RockScans;
+            allPassed &= check(numeralOff(11294, 112943) && numeralOff(11294, 111294) && numeralOff(8966, 89667) &&
+                                   numeralOff(8966, 9966) && numeralOff(8966, 966) && !numeralOff(8966, 8966) &&
+                                   !numeralOff(8966, 8967) && !numeralOff(8966, 4586) && !numeralOff(11294, 1129400) &&
+                                   !numeralOff(0, 8966),
+                               "a mass with a numeral more, less or other is the view's misread (112943, 111294 and "
+                               "89667 for 11294 and 8966); the same to the kilogram, another rock and two numerals more "
+                               "are not");
+            SCMiner::RockStats shown;
+            shown.mass = 11294;
+            shown.scu = 33.38f;
+            shown.resistance = 50;
+            shown.instability = 513.11f;
+            SCMiner::RockStats misread = shown;
+            misread.mass = 112943;
+            misread.scu = 0;
+            misread.instability = 513.44f;
+            SCMiner::RockStats same = misread;
+            same.mass = 11294;
+            SCMiner::RockStats other = misread;
+            other.mass = 4586;
+            MassCheck view;
+            const bool first = view.takes(shown, misread);
+            const bool back = view.takes(shown, same);
+            const bool again = view.takes(shown, misread);
+            const bool twice = view.takes(shown, misread);
+            const bool another = view.takes(shown, other);
+            allPassed &= check(!first && back && !again && twice && another,
+                               "the view holds a look whose mass is its own misread (112943 for 11294) until a second "
+                               "look reads the same, and takes the same mass and another rock's at once");
+        }
+
         // ...and the report that shares them with the service
         // (server/refinery/README.md, "Rock scans")
         {
@@ -7641,6 +7678,42 @@ int runSelfTest() {
                                                std::string(1, golem.labelGlyph ? golem.labelGlyph : '-') + ", " +
                                                std::to_string((int)g.mass) + ", '" + golem.figures[1].text + "', '" +
                                                golem.figures[2].text + "')");
+                    }
+                    // The MOLE's pilot seat on his 5,120 x 1,440 HDR screen,
+                    // as the app saw it (17 November 2026, 13:49:20): the
+                    // shapes find the labels and read none of the mass, and
+                    // the second reader read the whole row as 111,294, a
+                    // fringe of the 1s read as a numeral of its own, and no
+                    // volume. Counted off its ink the mass has five numerals,
+                    // and the row cut where they end reads 11,294; the volume
+                    // is read by line as well.
+                    const cv::Mat pilotHdr =
+                        testPicture("scanpanel/panel_pilot_4103_hdr.png", L"SELFTEST_PILOT_4103_HDR");
+                    allPassed &= check(!pilotHdr.empty(),
+                                       "the MOLE pilot seat's panel off his HDR screen is beside the build or inside "
+                                       "the exe");
+                    if (SCMiner::TextLineReader* const second = panelLines(); second && !pilotHdr.empty()) {
+                        cv::Mat seatScreen(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+                        pilotHdr.copyTo(seatScreen(cv::Rect(3020, 620, pilotHdr.cols, pilotHdr.rows)));
+                        // the app's way: the shapes, then the second reader on
+                        // the rows their labels place
+                        SCMiner::ScanPanel seat;
+                        for (int look = 0; look < 4 && !seat.found; look++) {
+                            seat = SCMiner::ScanPanel();
+                            SCMiner::readPanelByShape(seatScreen, seat);
+                            if (!seat.found && (seat.labels.x >= 0 || seat.tryLabels.x >= 0)) {
+                                SCMiner::readPanelByLines(seatScreen, *second, seat);
+                            }
+                        }
+                        const SCMiner::RockStats& c = seat.stats;
+                        allPassed &= check(seat.found && c.mass == 11294.0f && c.resistance == 50.0f &&
+                                               std::abs(c.instability - 513.44f) < 0.005f,
+                                           "...its mass by line with the numerals its ink shows: 11294, 50 %, 513.44 "
+                                           "(got " + std::to_string((int)c.mass) + ", " +
+                                               std::to_string((int)c.resistance) + " %, " +
+                                               std::to_string(c.instability) + "; " + seat.note + ")");
+                        allPassed &= check(seat.found && std::abs(c.scu - 33.38f) < 0.005f,
+                                           "...and its volume by line: 33.38 SCU (got " + std::to_string(c.scu) + ")");
                     }
                     // The MOLE's TURRET, over a sunlit red rock: its figures
                     // are the largest on the screen and no shapes are cut for
