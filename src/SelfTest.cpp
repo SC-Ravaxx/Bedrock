@@ -8756,6 +8756,35 @@ int runSelfTest() {
             allPassed &= check(before == "Quartz x1" && !underway.isExactMatch(2105, name, count),
                                "in Nyx with no place named 2,105 is a Quartz of Nyx I, out in open space nothing "
                                "(got " + before + ")");
+            // ...but only in 5.0: 4.10 has no rocks of Nyx I, and with them
+            // every match in Nyx off open space doubled - 7,200 two Bexalite
+            // or four, 50 % each, on 17 Nov 2026
+            auto exact = [](SCMiner::SignatureAnalyzer& a, int value) {
+                std::string out;
+                for (const auto& r : a.analyzeSignature(value)) {
+                    if (r.difference >= 1.0) continue;
+                    if (!out.empty()) out += ", ";
+                    out += r.name + " x" + std::to_string(r.clusterSize);
+                }
+                return out.empty() ? std::string("nothing") : out;
+            };
+            using Rocks = SCMiner::SignatureAnalyzer::Rocks;
+            SCMiner::SignatureAnalyzer live;
+            live.setSystemFilter("NYX");
+            live.setGround(Ground::Surface);
+            live.setGameGeneration(4);
+            const std::string onLive = exact(live, 7200);
+            const bool liveUsual = live.rocksHere() == Rocks::Usual && !live.isExactMatch(2105, name, count);
+            live.setPlaceFilter("Nyx I");
+            const bool liveAtNyx1 = live.rocksHere() == Rocks::Usual && exact(live, 4210) == "Quartz x1";
+            live.setPlaceFilter("");
+            live.setGameGeneration(5);
+            const std::string onFive = exact(live, 7200);
+            const bool fiveEither = live.rocksHere() == Rocks::Either;
+            allPassed &= check(onLive == "Bexalite x2" && liveUsual && liveAtNyx1 &&
+                                   onFive == "Bexalite x2, Bexalite x4" && fiveEither,
+                               "in 4.10 no place has rocks of its own: in Nyx 7,200 is two Bexalite, in 5.0 two or "
+                               "four (got " + onLive + " / " + onFive + ")");
         }
         // The 2,000 family by where the ship is
         SCMiner::SignatureAnalyzer grounded;

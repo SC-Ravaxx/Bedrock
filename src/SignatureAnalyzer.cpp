@@ -113,6 +113,11 @@ const std::map<std::string, SignatureAnalyzer::Table>& tables() {
 
 void SignatureAnalyzer::chooseTable() const {
     const auto& all = tables();
+    // In 4.10 no place has rocks of its own (setGameGeneration)
+    if (!ownRocks()) {
+        table_ = &all.at("");
+        return;
+    }
     // A place with rocks of its own reads by those alone, any other place
     // the tables know by the usual ones
     if (!placeName_.empty()) {
@@ -139,6 +144,7 @@ const SignatureAnalyzer::Table& SignatureAnalyzer::signatures() const {
 }
 
 SignatureAnalyzer::Rocks SignatureAnalyzer::rocksHere() const {
+    if (!ownRocks()) return Rocks::Usual;
     const auto& all = tables();
     if (!placeName_.empty()) return all.count("@" + placeName_) ? Rocks::Own : Rocks::Usual;
     if (ground_ != Ground::Space && all.count("+" + systemFilter_)) return Rocks::Either;

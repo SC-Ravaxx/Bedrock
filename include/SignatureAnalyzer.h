@@ -42,6 +42,14 @@ public:
     enum class Ground { Unknown, Space, Surface };
     void setGround(Ground ground) { ground_ = ground; chooseTable(); }
     Ground ground() const { return ground_; }
+    // Which game the log is of: 4 for 4.10, 5 for 5.0, 0 while the log has
+    // not said (the app sets it from the log's header). A place's own rocks
+    // (PLACE_SIGNATURES: Nyx I) came with 5.0. In 4.10 Nyx I has none, and
+    // their halved signatures doubled every match in Nyx off open space:
+    // 7,200 read as two Bexalite or four, 50 % each (17 Nov 2026). So a game
+    // before 5.0 reads by the usual table alone, as Bedrock 3.0.3 did.
+    void setGameGeneration(int generation) { generation_ = generation; chooseTable(); }
+    int gameGeneration() const { return generation_; }
     // What a candidate out of scope is out of: "NYX", "Pyro II (Monox)",
     // or "open space"
     std::string scopeName() const {
@@ -166,6 +174,10 @@ private:
     std::vector<std::string> placeMinerals_;   // the ores listed at that place
     bool atPlace(const std::string& mineral) const;
     Ground ground_ = Ground::Unknown;
+    int generation_ = 0;        // see setGameGeneration
+    // Whether a place's own rocks count: not in a game known to be older
+    // than 5.0
+    bool ownRocks() const { return generation_ == 0 || generation_ >= 5; }
     bool outOfPlace_ = false;
     // Chosen by the setters; the first use chooses when none has run
     mutable const Table* table_ = nullptr;

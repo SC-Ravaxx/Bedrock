@@ -5370,6 +5370,17 @@ void Application::pollLibrary() {
     } else if (gameState_.poll()) {
         applyGameState();
     }
+    // ...and which game it is of, by its header: a place's own rocks (Nyx
+    // I's) count from 5.0 on - SignatureAnalyzer::setGameGeneration
+    if (const int generation = library_.liveGameVersion() / 10000; generation != analyzer_.gameGeneration()) {
+        analyzer_.setGameGeneration(generation);
+        std::cout << "\nSignatures of game " << (generation > 0 ? std::to_string(generation) : std::string("unknown"))
+                  << (generation > 0 && generation < 5 ? ": no place has rocks of its own" : "") << std::endl;
+        if (gui_ && lastRecognizedSignature_ > 0) {
+            auto results = analyzer_.analyzeSignature(lastRecognizedSignature_);
+            gui_->updateResults(lastRecognizedSignature_, results, -1.0, analyzer_.outOfPlace());
+        }
+    }
     if (gameState_.gadgetChanges() != gadgetChangesSeen_) applyGadget();
     // Ask again once an hour. Only from UpToDate: a check in flight must
     // not be started twice, a version already found must not be forgotten
