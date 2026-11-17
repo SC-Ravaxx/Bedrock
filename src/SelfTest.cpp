@@ -1887,8 +1887,10 @@ int runSelfTest() {
             // and no older one in its place
             const size_t whole = D::zipSize(picked);
             const std::vector<D::Entry> fewer = D::pick(folder, masks, whole - 1);
-            const std::vector<D::Entry> three = D::pick(folder, masks, D::zipSize(std::vector<D::Entry>(
-                                                                           picked.begin(), picked.begin() + 9)));
+            // (the texts, the snapshot and three cuts; none where fewer came)
+            const std::vector<D::Entry> firstNine(picked.begin(), picked.begin() + (std::min)(picked.size(), (size_t)9));
+            const std::vector<D::Entry> three =
+                picked.size() >= 9 ? D::pick(folder, masks, D::zipSize(firstNine)) : std::vector<D::Entry>();
             const bool limited = namesOf(fewer) == std::vector<std::string>(expected.begin(), expected.end() - 2) &&
                                  D::zipSize(fewer) <= whole - 1 &&
                                  namesOf(three) == std::vector<std::string>(expected.begin(), expected.begin() + 9);
