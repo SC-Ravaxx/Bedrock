@@ -41,6 +41,8 @@ constexpr double LIST_PITCH = 21.3;
 constexpr double QUALITY_END = 229.5;        // a line's quality ends here
 constexpr double NAME_FROM = 70.0;           // ...and its name stands between these
 constexpr double NAME_TO = 192.0;
+constexpr double SHARE_ENDS_FROM = 40.0;     // a share's per cent sign ends between these:
+constexpr double SHARE_ENDS_TO = 66.0;       // "8.57%" at 46, "100.00%" at 61 to 62 (17 November 2026)
 constexpr int COLUMN_W = 100;                // the label column's shape, from 3 before
 constexpr int COLUMN_H = 72;                 // the labels and 3 above MASS
 constexpr double COLUMN_INSET = 3.0;
@@ -274,11 +276,26 @@ Line lineAt(const cv::Mat& ink, const cv::Rect& wanted, double s, double floor) 
     return line;
 }
 
-// The word of a line that ends at `end` (in the line's units); -1 for none
-int wordEndingAt(const Line& line, double end) {
+// Where a word's lettering ends: without a last glyph much shorter than the
+// lettering - the small triangle 5.0 sets after the figure it points at. On
+// the recording of 17 November 2026 it stands 8 to 9 units tall against the
+// numerals' 13, 6 to 7 wide, its left 8 to 9 units after the figure on the
+// Prospector and the MOLE, and on the Golem (larger numerals) 2 to 6 - near
+// enough there to join the figure's word. A dot never ends a figure.
+int textRight(const Line& line, size_t word) {
+    const std::vector<cv::Rect>& w = line.words[word];
+    const int tall = line.bottom - line.top;
+    if (w.size() >= 2 && tall > 0 && w.back().height < 0.75 * tall) return w[w.size() - 2].x + w[w.size() - 2].width;
+    return line.right(word);
+}
+
+// The word of a line whose lettering ends at `end` (in the line's units), up
+// to `before` short of it or `after` past it; -1 for none
+int wordEndingAt(const Line& line, double end, double before = 3.5, double after = 3.5) {
     for (int w = (int)line.words.size() - 1; w >= 0; w--) {
-        if (std::abs(line.right((size_t)w) - end) <= 3.5) return w;
-        if (line.right((size_t)w) < end - 3.5) break;
+        const int right = textRight(line, (size_t)w);
+        if (right >= end - before && right <= end + after) return w;
+        if (right < end - before) break;
     }
     return -1;
 }
@@ -416,9 +433,11 @@ bool fills(const std::string& backwards, const Format& format) {
 
 // A figure read from its right end, glyph by glyph: at each place every glyph
 // its format allows there is matched a pixel or two either way and the best
-// taken. It ends where the format is whole and no ink follows. `right` is
-// where its last glyph ends in the line.
-Reading slide(const Line& line, int right, const Format& format, int firstSlack, double sureScore, double sureMargin) {
+// taken. It ends where the format is whole and no ink follows, or where the
+// next glyph would begin left of `leftmost`. `right` is where its last glyph
+// ends in the line.
+Reading slide(const Line& line, int right, const Format& format, int firstSlack, double sureScore, double sureMargin,
+              int leftmost = -100000) {
     Reading out;
     if (line.ink.empty() || line.top < 0 || knownGlyphs().empty()) return out;
     const int baseTop = line.top - GLYPH_ABOVE;
@@ -479,6 +498,8 @@ Reading slide(const Line& line, int right, const Format& format, int firstSlack,
         if (!bestC) break;
         // nothing like a glyph where the format could end: the figure ends
         if (mayEnd && best < 0.5) break;
+        // ...and nothing is read left of where the figure can begin
+        if (bestBox.x < leftmost) break;
         // how much nearer its own shape the glyph is than each other glyph's
         for (const auto& [other, score] : tried) {
             if (other->c == bestC) continue;
@@ -554,6 +575,7 @@ struct Drawing {
 };
 Drawing g_drawing;
 std::string g_file;      // the frame being read, for the bench
+std::string g_listWords; // the list's lines as cut, for the bench (SCMINER_FIVE_WORDS)
 Drawing* drawing() {
     static const bool on = DEV_ENV("SCMINER_FIVE_DRAW") != nullptr;
     return on && !g_drawing.picture.empty() ? &g_drawing : nullptr;
@@ -706,6 +728,21 @@ double envOr(const char* name, double fallback) {
     return set ? std::atof(set) : fallback;
 }
 
+// For the bench: a line's lettering top and bottom and its words, in units
+// from the labels' left edge (SCMINER_FIVE_WORDS)
+std::string wordsOf(const char* name, const Line& line, double labelsX, double s) {
+    if (!DEV_ENV("SCMINER_FIVE_WORDS")) return "";
+    char text[64];
+    std::snprintf(text, sizeof(text), "; %s %d-%d", name, line.top, line.bottom);
+    std::string out = text;
+    for (size_t w = 0; w < line.words.size(); w++) {
+        std::snprintf(text, sizeof(text), " %.1f-%.1f", (line.origin.x + line.left(w) * line.s - labelsX) / s,
+                      (line.origin.x + line.right(w) * line.s - labelsX) / s);
+        out += text;
+    }
+    return out;
+}
+
 }  // namespace
 
 bool fiveWhole(const std::string& text, float& value) {
@@ -838,7 +875,7 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
         Figure f;
         f.word = endingAt(line, end);
         if (f.word < 0) return f;
-        f.read = slide(line, line.right((size_t)f.word), format, 2, sureScore, sureMargin);
+        f.read = slide(line, textRight(line, (size_t)f.word), format, 2, sureScore, sureMargin);
         drawRead(line, f.read);
         return f;
     };
@@ -865,12 +902,14 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
     Figure resDelta, instDelta;
     const bool resOwn = modifier(resLine, res, resDelta);
     const bool instOwn = modifier(instLine, inst, instDelta);
-    // the volume, left of SCU at the line's end
+    // the volume, left of SCU at the line's end. SCU is the line's last word
+    // and can end a little further right than the figures: up to 239 on
+    // the Prospector and the MOLE, to 241 on the Golem (17 November 2026)
     Figure volume, scuWord;
     const Line volumeLine = lineOf(VOLUME_TOP, 128, FIGURES_END + 8);
-    scuWord.word = endingAt(volumeLine, FIGURES_END);
+    scuWord.word = wordEndingAt(volumeLine, volumeLine.unit(X(FIGURES_END)), 3.5, 8.0);
     if (scuWord.word >= 0) {
-        scuWord.read = slide(volumeLine, volumeLine.right((size_t)scuWord.word), SCU_WORD, 2, sureScore, sureMargin);
+        scuWord.read = slide(volumeLine, textRight(volumeLine, (size_t)scuWord.word), SCU_WORD, 2, sureScore, sureMargin);
         drawRead(volumeLine, scuWord.read);
         if (scuWord.read.sure && scuWord.read.text == "SCU") {
             // S's shape holds the space before it, so the volume ends where it begins
@@ -882,7 +921,7 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
     // the bench's harvest: each figure by the truth, glyph by glyph
     if (harvest()) {
         auto take = [&](const char* field, const Line& line, int word, const std::string& truth, int slack) {
-            if (word >= 0) harvestForced(field, line, line.right((size_t)word), truth, slack);
+            if (word >= 0) harvestForced(field, line, textRight(line, (size_t)word), truth, slack);
         };
         take("mass", massLine, endingAt(massLine, FIGURES_END), truthOf(2), 2);
         take("res", resLine, endingAt(resLine, FIGURES_END), truthOf(4), 2);
@@ -944,6 +983,8 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
                   shown(inst) + " " + shown(volume);
     auto delta = [](float figure, float d) { return figure < 0 ? std::string("-") : std::to_string((int)std::lround(d)); };
     panel.note += "; delta r" + delta(r.resistance, r.resistanceDelta) + " i" + delta(r.instability, r.instabilityDelta);
+    panel.note += wordsOf("mass", massLine, L, s) + wordsOf("res", resLine, L, s) + wordsOf("inst", instLine, L, s) +
+                  wordsOf("vol", volumeLine, L, s);
     // For the bench: the list too, its qualities narrowed by the ore the
     // second reader names (SCMINER_FIVE_LIST)
     if (DEV_ENV("SCMINER_FIVE_LIST") && lines && lines->ready()) {
@@ -961,6 +1002,7 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
                           (row.byValues ? std::to_string(row.quality) + "v" : row.qualityText + (row.qualitySure ? "" : "?")) +
                           (row.dim ? "d" : "");
         }
+        panel.note += g_listWords;
     }
     panel.figures[0].text = mass.word >= 0 ? mass.read.text : std::string();
     panel.labels = column.labels;
@@ -1003,20 +1045,67 @@ std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& pa
     static const double sureScore = envOr("SCMINER_FIVE_SCORE", 0.80);
     static const double sureMargin = envOr("SCMINER_FIVE_MARGIN", 0.3);
     double brightest = 0;
+    g_listWords.clear();
     for (int row = 0; row < 7; row++) {
         const Line line = lineOf(LIST_TOP + row * LIST_PITCH);
-        // a line of the list begins with its share at the labels' edge
-        if (line.words.size() < 2 || std::abs(line.left(0) - line.unit(L - part.x)) > 4) break;
+        g_listWords += wordsOf(("row" + std::to_string(row)).c_str(), line, L - part.x, s);
+        // A line of the list begins with its share at the labels' edge. Over a
+        // bright rock the ground's ink can join the share's word on its left
+        // (6 to 12 units on the MOLE, 17 November 2026), and the inert rest's
+        // long name scrolls back and forth in its column until it touches
+        // the share ("100.00%NERT MATERIALS" one word). So the share's word is
+        // the first that reaches to where shares end, beginning up to 16
+        // units before the edge; nothing is read left of the edge less 4
+        // (the shares begin 0 to 4 after it); and where the word runs on past
+        // where shares end, the share ends at the glyph that reads best as one.
+        const double edge = line.unit(L - part.x);
+        const int leftmost = (int)std::floor(edge - 4);
+        int sw = -1;
+        for (size_t w = 0; w < line.words.size(); w++) {
+            if (line.right(w) < edge + 8) continue;   // a speck before it
+            if (line.left(w) <= edge + 4 && line.left(w) >= edge - 16) sw = (int)w;
+            break;
+        }
+        if (sw < 0 || ((size_t)sw + 1 == line.words.size() && line.right((size_t)sw) <= edge + SHARE_ENDS_TO)) break;
         FiveListLine entry;
-        const Reading share = slide(line, line.right(0), SHARE, 2, sureScore, sureMargin);
+        int shareEnd = line.right((size_t)sw);
+        Reading share;
+        if (shareEnd >= edge + SHARE_ENDS_FROM && shareEnd <= edge + SHARE_ENDS_TO) {
+            share = slide(line, shareEnd, SHARE, 2, sureScore, sureMargin, leftmost);
+        } else {
+            // joined to the name, or broken by a gap: every glyph that ends
+            // where shares end is tried, and every fourth unit there (a per
+            // cent sign touching the name's first letter is one piece with it)
+            std::vector<int> ends;
+            for (size_t w = (size_t)sw; w < line.words.size() && line.left(w) < edge + SHARE_ENDS_TO; w++) {
+                for (const cv::Rect& g : line.words[w]) ends.push_back(g.x + g.width);
+            }
+            for (double u = SHARE_ENDS_FROM; u <= SHARE_ENDS_TO; u += 4) ends.push_back((int)std::lround(edge + u));
+            double best = -2;
+            for (const int end : ends) {
+                if (end < edge + SHARE_ENDS_FROM || end > edge + SHARE_ENDS_TO) continue;
+                const Reading r = slide(line, end, SHARE, 2, sureScore, sureMargin, leftmost);
+                const double score = fills(std::string(r.text.rbegin(), r.text.rend()), SHARE) ? r.least : r.least - 1;
+                if (score > best) {
+                    best = score;
+                    share = r;
+                    shareEnd = r.boxes.empty() ? end : r.boxes.back().x + r.boxes.back().width;
+                }
+            }
+        }
         entry.shareText = share.text;
-        entry.shareSure = share.sure && share.left <= line.left(0) + 2;
+        entry.shareSure =
+            share.sure && share.left <= (std::max)(line.left((size_t)sw), (int)std::lround(edge + 4)) + 2;
         float v = 0;
         if (entry.shareSure && fiveShare(share.text, v)) entry.share = v;
         else entry.shareSure = false;
-        const int q = wordEndingAt(line, line.unit(X(QUALITY_END) - part.x));
-        if (q > 0) {
-            const Reading quality = slide(line, line.right((size_t)q), QUALITY, 2, sureScore, sureMargin);
+        // the quality, the line's last word: it ends at 229 to 233 on the
+        // Prospector and the MOLE and at 234 to 241 on the Golem's larger
+        // numerals (17 November 2026)
+        const int q = wordEndingAt(line, line.unit(X(QUALITY_END) - part.x), 3.5, 12.0);
+        if (q > sw) {
+            const int qRight = textRight(line, (size_t)q);
+            const Reading quality = slide(line, qRight, QUALITY, 2, sureScore, sureMargin);
             entry.qualityText = quality.text;
             entry.qualitySure = quality.sure && quality.left <= line.left((size_t)q) + 2;
             if (entry.qualitySure && fiveWhole(quality.text, v)) entry.quality = (int)v;
@@ -1028,13 +1117,13 @@ std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& pa
             // fits every glyph at 0.80 or better.
             if (!entry.qualitySure && qualities && !qualities->empty() && quality.boxes.size() >= 3) {
                 const cv::Rect word = line.inFrame(cv::Rect(cv::Point(quality.left, line.top),
-                                                            cv::Point(line.right((size_t)q), line.bottom))) +
+                                                            cv::Point(qRight, line.bottom))) +
                                       part.tl();
                 const bool green = greenOf(bgrOf(frame), word);
                 int fits = 0, chosen = -1;
                 for (int value : *qualities) {
                     if (green ? value < 700 : (value < 300 || value >= 700)) continue;
-                    if (fitOf(line, line.right((size_t)q), std::to_string(value)) >= sureScore) {
+                    if (fitOf(line, qRight, std::to_string(value)) >= sureScore) {
                         fits++;
                         chosen = value;
                     }
@@ -1048,7 +1137,8 @@ std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& pa
         }
         // how bright the share is: the inert rest's line is drawn faint
         double most = 0;
-        const cv::Rect shareBox = cv::Rect(cv::Point(line.left(0), line.top), cv::Point(line.right(0), line.bottom)) &
+        const cv::Rect shareBox = cv::Rect(cv::Point((std::max)(share.left, line.left((size_t)sw)), line.top),
+                                           cv::Point(shareEnd, line.bottom)) &
                                   cv::Rect(0, 0, line.ink.cols, line.ink.rows);
         if (shareBox.area() > 0) cv::minMaxLoc(line.ink(shareBox), nullptr, &most);
         entry.bright = most;
@@ -1057,6 +1147,17 @@ std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& pa
                                cv::Point(X(NAME_TO), Y(LIST_TOP + row * LIST_PITCH + CAP + 3)))) &
                      cv::Rect(0, 0, frame.cols, frame.rows);
         out.push_back(entry);
+        // The list ends where its shares add up to the rock (cut after the
+        // second place: 100 less a hundredth a line, to 100 - as
+        // readRockContents takes them): a line under it is the ground's ink
+        double sum = 0;
+        bool all = true;
+        for (const FiveListLine& e : out) {
+            float p = 0;
+            if (fiveShare(e.shareText, p)) sum += p;
+            else all = false;
+        }
+        if (all && sum > 100.0 - 0.01 * (double)out.size() - 0.006 && sum < 100.006) break;
     }
     for (FiveListLine& entry : out) entry.dim = entry.bright < 0.7 * brightest;
     return out;
