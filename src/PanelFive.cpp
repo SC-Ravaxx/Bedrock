@@ -484,6 +484,18 @@ double countersOf(const cv::Mat& ink, const cv::Rect& box) {
 }
 constexpr double ZERO_COUNTERS = 0.80;    // a zero from here up
 constexpr double EIGHT_COUNTERS = 0.65;   // an eight to here
+// A tone-mapped frame (an HDR desktop, the app's own picture: see
+// setPanelToneMapped) shows the zeros' counters darker. At the truth's
+// places on the app's 55 pictures of 17 November 2026: zeros 0.79 in the
+// median (113), eights 0.51 (156) and 0.76 at the most; on the recording of
+// the same day zeros 0.84 (312), eights 0.56 (124) and up to 0.84. There a
+// zero counts from 0.77 up, over every eight the app's pictures showed. The
+// eights keep their limit: the app's zeros reach down to 0.22, and a limit
+// under all of them would leave hardly an eight.
+constexpr double ZERO_COUNTERS_TONE_MAPPED = 0.77;
+double zeroCounters() {
+    return panelToneMapped() ? ZERO_COUNTERS_TONE_MAPPED : ZERO_COUNTERS;
+}
 
 // Whether a text read backwards fills its format: every slot at least as
 // often as it must be, none more often than it may
@@ -593,7 +605,7 @@ Reading slide(const Line& line, int right, const Format& format, int firstSlack,
         if ((bestC == '0' || bestC == '8') && allowed.find('0') != std::string::npos &&
             allowed.find('8') != std::string::npos) {
             const double c = countersOf(line.ink, bestBox);
-            out.zeroEight = (std::min)(out.zeroEight, bestC == '0' ? c - ZERO_COUNTERS : EIGHT_COUNTERS - c);
+            out.zeroEight = (std::min)(out.zeroEight, bestC == '0' ? c - zeroCounters() : EIGHT_COUNTERS - c);
         }
         backwards += bestC;
         out.boxes.push_back(bestBox);
@@ -1340,7 +1352,7 @@ std::vector<int> fiveQualities(const std::string& rockOre) {
 
 char zeroOrEight(const cv::Mat& cell) {
     const double c = countersOf(cell, cv::Rect(0, 0, cell.cols, cell.rows));
-    return c >= ZERO_COUNTERS ? '0' : c <= EIGHT_COUNTERS ? '8' : 0;
+    return c >= zeroCounters() ? '0' : c <= EIGHT_COUNTERS ? '8' : 0;
 }
 
 int numeralsOff(const std::string& a, const std::string& b) {

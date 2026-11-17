@@ -57,6 +57,7 @@ BEDROCK_BLOB(bedrock_blob_selftest_five_golem, BEDROCK_TESTS_DIR "/scanpanel/pan
 BEDROCK_BLOB(bedrock_blob_selftest_five_mole, BEDROCK_TESTS_DIR "/scanpanel/panel5_mole_pilot.png")
 BEDROCK_BLOB(bedrock_blob_selftest_five_turret, BEDROCK_TESTS_DIR "/scanpanel/panel5_turret.png")
 BEDROCK_BLOB(bedrock_blob_selftest_five_torite, BEDROCK_TESTS_DIR "/scanpanel/panel5_torite.png")
+BEDROCK_BLOB(bedrock_blob_selftest_five_golem_app, BEDROCK_TESTS_DIR "/scanpanel/panel5_golem_app.png")
 BEDROCK_BLOB(bedrock_blob_selftest_golem, BEDROCK_TESTS_DIR "/scanpanel/panel_golem_long_1440.png")
 BEDROCK_BLOB(bedrock_blob_selftest_loadout, BEDROCK_TESTS_DIR "/scanpanel/loadout_prospector_1440.jpg")
 BEDROCK_BLOB(bedrock_blob_selftest_loadout_4103, BEDROCK_TESTS_DIR "/scanpanel/loadout_prospector_4103.png")
@@ -128,6 +129,8 @@ bool embeddedResource(const std::string& name, const unsigned char** data, size_
         {"SELFTEST_FIVE_MOLE", bedrock_blob_selftest_five_mole_start, bedrock_blob_selftest_five_mole_end},
         {"SELFTEST_FIVE_TURRET", bedrock_blob_selftest_five_turret_start, bedrock_blob_selftest_five_turret_end},
         {"SELFTEST_FIVE_TORITE", bedrock_blob_selftest_five_torite_start, bedrock_blob_selftest_five_torite_end},
+        {"SELFTEST_FIVE_GOLEM_APP", bedrock_blob_selftest_five_golem_app_start,
+         bedrock_blob_selftest_five_golem_app_end},
         {"SELFTEST_GOLEM", bedrock_blob_selftest_golem_start, bedrock_blob_selftest_golem_end},
         {"SELFTEST_LOADOUT", bedrock_blob_selftest_loadout_start, bedrock_blob_selftest_loadout_end},
         {"SELFTEST_LOADOUT_4103", bedrock_blob_selftest_loadout_4103_start, bedrock_blob_selftest_loadout_4103_end},

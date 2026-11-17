@@ -8133,6 +8133,20 @@ int runSelfTest() {
                     allPassed &= check(toriteSeen && torite.note.find(" -/24%(") != std::string::npos,
                                        "5.0 panel on the app's picture of a Torite rock: the resistance 24% sure (got " +
                                            torite.note.substr(0, 160) + ")");
+                    // The app's own picture of the Golem's panel (17 November
+                    // 2026 08:33:50, HDR desktop, tone mapped): 18782, 0%, +35%
+                    // 28.80, 26.28 SCU. The resistance's zero reads sure: its
+                    // counters measure 0.78, a zero on a tone-mapped frame from
+                    // 0.77 up, elsewhere from 0.80.
+                    const cv::Mat golemAppCut = testPicture("scanpanel/panel5_golem_app.png", L"SELFTEST_FIVE_GOLEM_APP");
+                    SCMiner::setPanelToneMapped(true);
+                    SCMiner::ScanPanel golemApp;
+                    const bool golemAppSeen = !golemAppCut.empty() &&
+                                              SCMiner::readPanelFive(onScreen(golemAppCut, 3133, 462), golemApp, nullptr);
+                    SCMiner::setPanelToneMapped(wasToneMapped);
+                    allPassed &= check(golemAppSeen && golemApp.note.find(" -/0%(") != std::string::npos,
+                                       "5.0 panel on the app's picture of the Golem: the resistance 0% sure (got " +
+                                           golemApp.note.substr(0, 160) + ")");
                 }
             }
 
