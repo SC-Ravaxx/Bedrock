@@ -27958,7 +27958,6 @@ bool MinerGUI::feedbackKey(HWND hwnd, WPARAM key) {
 }
 
 void MinerGUI::drawFeedbackPage(Gdiplus::Graphics& g, int cw, int ch) {
-    (void)ch;
     Gdiplus::Font labelFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
     Gdiplus::Font textFont(&textFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::Font buttonFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
@@ -28242,8 +28241,13 @@ void MinerGUI::drawFeedbackPage(Gdiplus::Graphics& g, int cw, int ch) {
     const Fitted hint = fitLines(g, L"For a wrong reading, press Ctrl+Alt+S in the game first, then send with the debug "
                                     L"folder attached.",
                                  smallFont, wide - scaleF(4));
+    // (its box reaches down to the page's foot rather than ending under the
+    // last line: at 110 % the Linux build sets 12.1 px as 12, and the two
+    // lines it measures come out a fraction short of Windows' two)
+    const float hintY = card.GetBottom() + scaleF(12);
     g.DrawString(hint.text.c_str(), -1, &smallFont,
-                 Gdiplus::RectF(left, card.GetBottom() + scaleF(12), wide, heightOf(hint, smallFont)), &lines, &dimBrush);
+                 Gdiplus::RectF(left, hintY, wide, (std::max)(heightOf(hint, smallFont), (float)ch - hintY)), &lines,
+                 &dimBrush);
 }
 
 void MinerGUI::loadColours() {
