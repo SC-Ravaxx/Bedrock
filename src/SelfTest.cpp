@@ -8020,6 +8020,48 @@ int runSelfTest() {
                 allPassed &= check(first && !misread && other && unread && !unreadSoon && unreadLater &&
                                        SCMiner::numeralsOff("954", "1954") == 1 && SCMiner::numeralsOff("88", "1139") == 4,
                                    "5.0 panel pictures on the PTU: one per rock, a mass one numeral off is the same rock");
+                // Where the 5.0 reader lands on the Golem's and the MOLE
+                // turret's panels (PTU recording of 17 November 2026): the
+                // label column, the figures' words, the list's lines. Which
+                // glyphs it reads there is not checked: a recording does not
+                // tell the thin numerals apart well enough (PanelFive.cpp).
+                {
+                    auto onScreen = [](const cv::Mat& cut, int x, int y) {
+                        cv::Mat screen(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+                        if (!cut.empty()) cut.copyTo(screen(cv::Rect(x, y, cut.cols, cut.rows)));
+                        return screen;
+                    };
+                    const cv::Mat golemCut = testPicture("scanpanel/panel5_golem.png", L"SELFTEST_FIVE_GOLEM");
+                    const cv::Mat moleCut = testPicture("scanpanel/panel5_mole_turret.png", L"SELFTEST_FIVE_MOLE");
+                    allPassed &= check(!golemCut.empty() && !moleCut.empty(),
+                                       "the 5.0 panels of the Golem and the MOLE turret are beside the build or inside the exe");
+                    const cv::Mat golemScreen = onScreen(golemCut, 3086, 413), moleScreen = onScreen(moleCut, 3018, 582);
+                    SCMiner::ScanPanel golem, mole;
+                    const bool golemSeen = !golemCut.empty() && SCMiner::readPanelFive(golemScreen, golem, nullptr);
+                    const bool moleSeen = !moleCut.empty() && SCMiner::readPanelFive(moleScreen, mole, nullptr);
+                    // the Golem: 5646 with the triangle close after it, 39.52 SCU
+                    allPassed &= check(golemSeen && golem.labelGlyph == SCMiner::FIVE_PANEL &&
+                                           std::abs(golem.labels.x - 3165) <= 6 && std::abs(golem.labels.y - 526) <= 6 &&
+                                           golem.figures[0].text.size() == 4 &&
+                                           golem.note.find(" -; delta") == std::string::npos,
+                                       "5.0 panel on the Golem: its column, the mass's four numerals before the triangle, "
+                                       "the volume (got " + golem.note.substr(0, 140) + ")");
+                    // the MOLE turret: 27519, and three lines - 14.57% 521,
+                    // 51.80% 325, 33.62% and INERT MATERIALS scrolled to its end
+                    const std::vector<SCMiner::FiveListLine> rows =
+                        moleSeen ? SCMiner::readFiveList(moleScreen, mole) : std::vector<SCMiner::FiveListLine>();
+                    std::string taken;
+                    bool shares = rows.size() == 3;
+                    for (const SCMiner::FiveListLine& row : rows) {
+                        shares &= row.shareText.size() == 6 && row.shareText.back() == '%';
+                        taken += " " + row.shareText + "|" + row.qualityText;
+                    }
+                    allPassed &= check(moleSeen && std::abs(mole.labels.x - 3086) <= 6 && std::abs(mole.labels.y - 678) <= 6 &&
+                                           mole.figures[0].text.size() == 5 && shares && rows[0].qualityText.size() == 3 &&
+                                           rows[1].qualityText.size() == 3,
+                                       "5.0 panel on the MOLE turret: its column, the mass's five numerals, three list "
+                                       "lines, each share whole and nothing more (got " + mole.figures[0].text + taken + ")");
+                }
             }
 
             // What to reach for when the head on the ship will not do. The

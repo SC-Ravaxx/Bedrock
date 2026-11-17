@@ -1055,15 +1055,16 @@ std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& pa
         // long name scrolls back and forth in its column until it touches
         // the share ("100.00%NERT MATERIALS" one word). So the share's word is
         // the first that reaches to where shares end, beginning up to 16
-        // units before the edge; nothing is read left of the edge less 4
-        // (the shares begin 0 to 4 after it); and where the word runs on past
-        // where shares end, the share ends at the glyph that reads best as one.
+        // units before the edge or 8 after it (the Golem's shares begin 2 to
+        // 6 after it, the others' 0 to 4); nothing is read left of the edge
+        // less 4; and where the word runs on past where shares end, the share
+        // ends at the glyph that reads best as one.
         const double edge = line.unit(L - part.x);
         const int leftmost = (int)std::floor(edge - 4);
         int sw = -1;
         for (size_t w = 0; w < line.words.size(); w++) {
             if (line.right(w) < edge + 8) continue;   // a speck before it
-            if (line.left(w) <= edge + 4 && line.left(w) >= edge - 16) sw = (int)w;
+            if (line.left(w) <= edge + 8 && line.left(w) >= edge - 16) sw = (int)w;
             break;
         }
         if (sw < 0 || ((size_t)sw + 1 == line.words.size() && line.right((size_t)sw) <= edge + SHARE_ENDS_TO)) break;

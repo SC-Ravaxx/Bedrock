@@ -53,6 +53,8 @@ BEDROCK_BLOB(bedrock_blob_selftest_turret_4103, BEDROCK_TESTS_DIR "/scanpanel/pa
 BEDROCK_BLOB(bedrock_blob_selftest_prospector_4103, BEDROCK_TESTS_DIR "/scanpanel/panel_prospector_4103.png")
 BEDROCK_BLOB(bedrock_blob_selftest_pilot_4103, BEDROCK_TESTS_DIR "/scanpanel/panel_pilot_4103.png")
 BEDROCK_BLOB(bedrock_blob_selftest_golem_hdr, BEDROCK_TESTS_DIR "/scanpanel/panel_golem_hdr.png")
+BEDROCK_BLOB(bedrock_blob_selftest_five_golem, BEDROCK_TESTS_DIR "/scanpanel/panel5_golem.png")
+BEDROCK_BLOB(bedrock_blob_selftest_five_mole, BEDROCK_TESTS_DIR "/scanpanel/panel5_mole_turret.png")
 BEDROCK_BLOB(bedrock_blob_selftest_golem, BEDROCK_TESTS_DIR "/scanpanel/panel_golem_long_1440.png")
 BEDROCK_BLOB(bedrock_blob_selftest_loadout, BEDROCK_TESTS_DIR "/scanpanel/loadout_prospector_1440.jpg")
 BEDROCK_BLOB(bedrock_blob_selftest_loadout_4103, BEDROCK_TESTS_DIR "/scanpanel/loadout_prospector_4103.png")
@@ -120,6 +122,8 @@ bool embeddedResource(const std::string& name, const unsigned char** data, size_
          bedrock_blob_selftest_prospector_4103_end},
         {"SELFTEST_PILOT_4103", bedrock_blob_selftest_pilot_4103_start, bedrock_blob_selftest_pilot_4103_end},
         {"SELFTEST_GOLEM_HDR", bedrock_blob_selftest_golem_hdr_start, bedrock_blob_selftest_golem_hdr_end},
+        {"SELFTEST_FIVE_GOLEM", bedrock_blob_selftest_five_golem_start, bedrock_blob_selftest_five_golem_end},
+        {"SELFTEST_FIVE_MOLE", bedrock_blob_selftest_five_mole_start, bedrock_blob_selftest_five_mole_end},
         {"SELFTEST_GOLEM", bedrock_blob_selftest_golem_start, bedrock_blob_selftest_golem_end},
         {"SELFTEST_LOADOUT", bedrock_blob_selftest_loadout_start, bedrock_blob_selftest_loadout_end},
         {"SELFTEST_LOADOUT_4103", bedrock_blob_selftest_loadout_4103_start, bedrock_blob_selftest_loadout_4103_end},
