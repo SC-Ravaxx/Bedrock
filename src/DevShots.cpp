@@ -2464,13 +2464,18 @@ int runScreenshots(const std::string& dir) {
         shoot(gui.windowHandle(), "main_page_datarunner_empty.png");
         gui.railPickForShot(SCMiner::MinerGUI::RailItem::Scan);
         pump();
-        // The Feedback page, as the rail opens it: empty; a message of three
-        // lines and a name typed; sent, the name still there; and one the
-        // service could not be reached for. The page's state is set and
-        // nothing is sent: the run gives the window no way to send.
+        // The Feedback page, as the rail opens it: empty, the debug folder
+        // ticked as at every start; a message of three lines and a name
+        // typed; the same with the tick off; the debug folder going up; sent,
+        // the name still there; sent and the debug folder not, the service
+        // having refused it; and one the service could not be reached for.
+        // The page's state is set and nothing is sent or picked: the run
+        // gives the window no way to send.
         {
+            namespace F = SCMiner::Feedback;
             const std::wstring message = L"The rock panel reads nothing from the MOLE's pilot seat.\n"
                                          L"Since 4.10.3, the turrets are fine.\nSnapshot taken with Ctrl+Alt+S.";
+            const std::int64_t mb = 1024 * 1024;
             gui.railPickForShot(SCMiner::MinerGUI::RailItem::Feedback);
             gui.feedbackForShot(L"", L"", 1, 0, 0);
             pump();
@@ -2478,9 +2483,22 @@ int runScreenshots(const std::string& dir) {
             gui.feedbackForShot(message, L"Stonecutter", 2, 0, 0);
             pump();
             shoot(gui.windowHandle(), "main_page_feedback_typed.png");
+            gui.feedbackForShot(message, L"Stonecutter", 2, 0, 0);
+            gui.feedbackDebugForShot(false, F::DebugOutcome::None, 0, 0, 0);
+            pump();
+            shoot(gui.windowHandle(), "main_page_feedback_untick.png");
+            gui.feedbackForShot(message, L"Stonecutter", 1, 1, 0);
+            gui.feedbackDebugForShot(true, F::DebugOutcome::None, 0, 12 * mb + mb / 3, 28 * mb + mb / 2);
+            pump();
+            shoot(gui.windowHandle(), "main_page_feedback_upload.png");
             gui.feedbackForShot(L"", L"Stonecutter", 1, 2, 201);
+            gui.feedbackDebugForShot(true, F::DebugOutcome::Sent, 201, 0, 0);
             pump();
             shoot(gui.windowHandle(), "main_page_feedback_sent.png");
+            gui.feedbackForShot(L"", L"Stonecutter", 1, 2, 201);
+            gui.feedbackDebugForShot(true, F::DebugOutcome::Refused, 0, 0, 0);
+            pump();
+            shoot(gui.windowHandle(), "main_page_feedback_sent_nodebug.png");
             gui.feedbackForShot(message, L"Stonecutter", 1, 2, 0);
             pump();
             shoot(gui.windowHandle(), "main_page_feedback_failed.png");

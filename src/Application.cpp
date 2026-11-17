@@ -10,6 +10,7 @@
 
 #include "AppPaths.h"
 #include "CraftingData.h"
+#include "DebugZip.h"
 #include "MiniJson.h"
 #include "RefineryData.h"
 #include "RefiningData.h"
@@ -851,7 +852,9 @@ void Application::runWithGUI(HINSTANCE hInstance) {
     gui_->setRockShareCallback([this](bool on) { setRockShare(on); });
     // ...and the Feedback page, in the rail under the same condition: what
     // Send does, and what the page says goes along
-    gui_->setFeedbackCallback([this](const std::string& text, const std::string& name) { sendFeedback(text, name); });
+    gui_->setFeedbackCallback([this](const std::string& text, const std::string& name, bool debugFolder) {
+        sendFeedback(text, name, debugFolder);
+    });
     serviceFeedback();
     loadPlaceOverride();
     gui_->setLiveModeCallback([this](bool active) { applyLiveMode(active); });
@@ -2352,35 +2355,62 @@ int Application::feedbackGame() {
     return library_.channel().rfind("LIVE", 0) == 0 ? library_.liveGameVersion() : 0;
 }
 
-// Send clicked: the message to the service, off the UI thread. One attempt;
-// the page gets the status it was answered with (serviceFeedback), and
-// keeps the message where it did not go.
-void Application::sendFeedback(const std::string& text, const std::string& name) {
+// Send clicked: the message to the service and, with the page's tick, the
+// debug folder after it - picked, the user's name masked and zipped in
+// memory, never written anywhere - all on one job off the UI thread
+// (Feedback::send). One attempt; the page is told how far the zip is and
+// what came of it all (serviceFeedback), and keeps the message where it did
+// not go.
+void Application::sendFeedback(const std::string& text, const std::string& name, bool debugFolder) {
     if (!gui_) return;
     if (feedbackJob_.valid()) return;   // (one at a time: the page sends none while one is on its way)
     const std::string base = refineryServiceUrl();
     if (base.empty()) {
-        gui_->feedbackAnswered(0);   // (no entry in the rail without the address)
+        gui_->feedbackAnswered(Feedback::Result{});   // (no entry in the rail without the address)
         return;
     }
-    const std::string body =
-        Feedback::body(text, name, BEDROCK_VERSION, feedbackGame(), library_.channel(), Feedback::platform());
-    if (body.empty()) {
+    if (Feedback::fault(text, name) != Feedback::Fault::None) {
         // (the page sends nothing that does not fit; were it to, this is
         // what the service would say)
-        gui_->feedbackAnswered(413);
+        Feedback::Result tooLarge;
+        tooLarge.status = 413;
+        gui_->feedbackAnswered(tooLarge);
         return;
     }
-    std::vector<std::string> headers = installHeader();
-    headers.push_back("Content-Type: application/json");
+    const std::filesystem::path folder = debugFolder ? AppPaths::data() / "debug" : std::filesystem::path();
+    const int game = feedbackGame();
+    const std::string channel = library_.channel();
+    const std::vector<std::string> install = installHeader();
+    const auto upload = std::make_shared<FeedbackUpload>();
+    feedbackUpload_ = upload;
     try {
-        feedbackJob_ = std::async(std::launch::async, [url = base + "/v1/feedback", headers, body]() {
-            HttpAnswer answer;
-            httpsPost(url, headers, body, answer, 64 * 1024);
-            return answer.status;
+        feedbackJob_ = std::async(std::launch::async, [base, install, text, name, game, channel, folder, upload]() {
+            // the debug folder as it goes; no folder, or nothing in it: no zip
+            std::string zip;
+            if (!folder.empty()) {
+                const std::vector<DebugZip::Entry> picked =
+                    DebugZip::pick(folder, DebugZip::masksHere(), Feedback::DEBUG_MOST);
+                if (!picked.empty()) zip = DebugZip::zip(picked);
+            }
+            const std::string body = Feedback::body(text, name, BEDROCK_VERSION, game, channel, Feedback::platform(),
+                                                    (std::int64_t)zip.size());
+            const Feedback::Post post = [&](const std::string& path, const std::vector<std::string>& headers,
+                                            const std::string& payload, const Feedback::Progress& progress,
+                                            std::string& said) {
+                std::vector<std::string> all = install;
+                all.insert(all.end(), headers.begin(), headers.end());
+                HttpAnswer answer;
+                httpsPost(base + path, all, payload, answer, 64 * 1024, progress);
+                said = answer.body;
+                return answer.status;
+            };
+            return Feedback::send(body, zip, post, [upload](std::int64_t sent, std::int64_t total) {
+                upload->total = total;
+                upload->sent = sent;
+            });
         });
     } catch (const std::system_error&) {
-        gui_->feedbackAnswered(0);   // no thread to be had: it did not go
+        gui_->feedbackAnswered(Feedback::Result{});   // no thread to be had: it did not go
     }
 }
 
@@ -2395,8 +2425,12 @@ void Application::serviceFeedback() {
         feedbackInstallTold_ = install;
         gui_->setFeedback(!refineryServiceUrl().empty(), game, install);
     }
-    if (feedbackJob_.valid() && feedbackJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+    if (!feedbackJob_.valid()) return;
+    if (feedbackJob_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
         gui_->feedbackAnswered(feedbackJob_.get());
+    } else if (feedbackUpload_) {
+        // how far the zip is: the page draws itself again where its MB change
+        gui_->feedbackProgress(feedbackUpload_->sent.load(), feedbackUpload_->total.load());
     }
 }
 

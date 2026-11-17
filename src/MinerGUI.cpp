@@ -4196,8 +4196,9 @@ void MinerGUI::paintWindowBody(Gdiplus::Graphics& g, int cw, int ch) {
 // Down the full window's left, a step darker than the window: Bedrock's
 // mark at the head, the pages - the scan, each plugin and the plugins' list -
 // and the tools that have windows of their own, lit while those are open;
-// the settings and the Datarunner at the foot. A count where the window has
-// one: the Datarunner's pictures waiting, the Refinery's work orders done.
+// the feedback, the settings and the Datarunner at the foot. A count where
+// the window has one: the Datarunner's pictures waiting, the Refinery's work
+// orders done.
 void MinerGUI::drawRail(Gdiplus::Graphics& g, int rw, int ch) {
     railHits_.clear();
     if (rw <= 0) return;
@@ -4215,8 +4216,8 @@ void MinerGUI::drawRail(Gdiplus::Graphics& g, int rw, int ch) {
 
     const float itemW = 60 * s, itemH = 52 * s, gap = 2 * s;
     const float x = ((float)rw - itemW) / 2.0f;
-    // the settings, the Datarunner under them and - where the build can send
-    // it - the feedback last
+    // the foot: the feedback - where the build can send it -, the settings
+    // under it and the Datarunner last
     const int footItems = fbAvailable_ ? 3 : 2;
     const float footY = (float)ch - 12 * s - footItems * itemH - (footItems - 1) * gap;
     // Bedrock's amber square at the head, over the pages
@@ -4271,7 +4272,7 @@ void MinerGUI::drawRail(Gdiplus::Graphics& g, int rw, int ch) {
     y = lineY + 9 * s;
     for (const auto& e : pluginList_) {
         if (!e.installed || !e.problem.empty()) continue;
-        // (as many as leave room for the list's own above the settings)
+        // (as many as leave room for the list's own above the foot)
         if (y + 2 * itemH + gap > footY - gap) break;
         item(R::Plugin, toW(e.name.empty() ? e.id : e.name), e.id, pluginPage_ && pluginShown_ == e.id, 0,
              COL_ACCENT);
@@ -4279,9 +4280,9 @@ void MinerGUI::drawRail(Gdiplus::Graphics& g, int rw, int ch) {
     item(R::Plugins, L"Plugins", "", pluginPage_ && pluginShown_.empty(), 0, COL_ACCENT);
 
     y = (std::max)(y, footY);
+    if (fbAvailable_) item(R::Feedback, L"Feedback", "", feedbackPage_, 0, COL_ACCENT);
     item(R::Settings, L"Settings", "", settingsVisible_, 0, COL_ACCENT);
     item(R::Datarunner, L"Datarunner", "", page && datarunnerOpen_, datarunnerWaiting(), COL_ACCENT);
-    if (fbAvailable_) item(R::Feedback, L"Feedback", "", feedbackPage_, 0, COL_ACCENT);
 }
 
 void MinerGUI::railPick(RailItem item, const std::string& id) {
@@ -27545,11 +27546,14 @@ void MinerGUI::leaveFeedbackPage() {
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
-void MinerGUI::feedbackAnswered(int status) {
+void MinerGUI::feedbackAnswered(const Feedback::Result& result) {
     if (fbState_ != FeedbackState::Sending) return;
     fbState_ = FeedbackState::Answered;
-    fbStatus_ = status;
-    if (Feedback::outcome(status) == Feedback::Outcome::Sent) {
+    fbStatus_ = result.status;
+    fbDebug_ = result.debug;
+    fbDebugStatus_ = result.debugStatus;
+    fbUpSent_ = fbUpTotal_ = 0;
+    if (Feedback::outcome(result.status) == Feedback::Outcome::Sent) {
         // it went: the field is empty for the next one, the name stays
         fbText_.set(U"");
         fbScroll_ = 0.0f;
@@ -27562,14 +27566,29 @@ void MinerGUI::feedbackAnswered(int status) {
     if (hwnd_ && feedbackPage_) InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
+void MinerGUI::feedbackProgress(std::int64_t sent, std::int64_t total) {
+    if (fbState_ != FeedbackState::Sending) return;
+    // drawn again only where what the page shows changes: whole MB
+    const auto shown = [](std::int64_t s, std::int64_t t) {
+        return t > 0 ? std::make_pair(Feedback::megabytes(s), Feedback::megabytes(t)) : std::make_pair(0, 0);
+    };
+    const bool changed = shown(sent, total) != shown(fbUpSent_, fbUpTotal_);
+    fbUpSent_ = sent;
+    fbUpTotal_ = total;
+    if (changed && hwnd_ && feedbackPage_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
 void MinerGUI::sendFeedback() {
     if (fbState_ == FeedbackState::Sending || !onFeedback_) return;
     const std::string text = Chars::toUtf8(fbText_.text()), name = Chars::toUtf8(fbName_.text());
     if (Feedback::fault(text, name) != Feedback::Fault::None) return;
     fbState_ = FeedbackState::Sending;
     fbStatus_ = 0;
+    fbDebug_ = Feedback::DebugOutcome::None;
+    fbDebugStatus_ = 0;
+    fbUpSent_ = fbUpTotal_ = 0;
     if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
-    onFeedback_(text, name);   // (the answer may come at once)
+    onFeedback_(text, name, fbAttach_);   // (the answer may come at once)
 }
 
 void MinerGUI::feedbackForShot(const std::wstring& text, const std::wstring& name, int typing, int state, int status) {
@@ -27578,6 +27597,10 @@ void MinerGUI::feedbackForShot(const std::wstring& text, const std::wstring& nam
     fbTyping_ = std::clamp(typing, 0, 2);
     fbState_ = state == 1 ? FeedbackState::Sending : state == 2 ? FeedbackState::Answered : FeedbackState::Idle;
     fbStatus_ = status;
+    fbAttach_ = true;
+    fbDebug_ = Feedback::DebugOutcome::None;
+    fbDebugStatus_ = 0;
+    fbUpSent_ = fbUpTotal_ = 0;
     fbCaretOn_ = true;
     fbCaretAtEnd_ = false;
     fbGoalX_ = -1.0f;
@@ -27586,6 +27609,16 @@ void MinerGUI::feedbackForShot(const std::wstring& text, const std::wstring& nam
     fbToCaret_ = true;
     fbDragging_ = false;
     fbClicks_ = 0;
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void MinerGUI::feedbackDebugForShot(bool attach, Feedback::DebugOutcome debug, int debugStatus, std::int64_t sent,
+                                    std::int64_t total) {
+    fbAttach_ = attach;
+    fbDebug_ = debug;
+    fbDebugStatus_ = debugStatus;
+    fbUpSent_ = sent;
+    fbUpTotal_ = total;
     if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
@@ -27605,7 +27638,9 @@ std::string MinerGUI::feedbackStateForShot() const {
     };
     return "typing " + std::to_string(fbTyping_) + ", " + field("message", fbText_) + ", " + field("name", fbName_) +
            ", lines " + std::to_string(fbLines_.size()) + ", scroll " + std::to_string((int)std::lround(fbScroll_)) +
-           ", state " + std::to_string((int)fbState_) + " status " + std::to_string(fbStatus_) +
+           ", state " + std::to_string((int)fbState_) + " status " + std::to_string(fbStatus_) + ", attach " +
+           std::to_string((int)fbAttach_) + ", debug " + std::to_string((int)fbDebug_) + " status " +
+           std::to_string(fbDebugStatus_) + ", upload " + std::to_string(fbUpSent_) + " of " + std::to_string(fbUpTotal_) +
            (feedbackPage_ ? "" : ", page not up");
 }
 
@@ -27675,9 +27710,15 @@ void MinerGUI::feedbackTouched(HWND hwnd, bool edited) {
 void MinerGUI::pressFeedback(HWND hwnd, float px, float py, bool shift) {
     const int field = fbTextRect_.Contains(px, py) ? 1 : fbNameRect_.Contains(px, py) ? 2 : 0;
     if (field == 0) {
-        // Send; beside everything the caret stays where it is, as it does
-        // beside a field of Windows' own
-        if (fbSendRect_.Contains(px, py)) sendFeedback();
+        // Send, and the tick - not while a message is on its way, which
+        // goes as it was sent; beside everything the caret stays where it
+        // is, as it does beside a field of Windows' own
+        if (fbSendRect_.Contains(px, py)) {
+            sendFeedback();
+        } else if (fbTickRect_.Contains(px, py) && fbState_ != FeedbackState::Sending) {
+            fbAttach_ = !fbAttach_;
+            InvalidateRect(hwnd, nullptr, FALSE);
+        }
         return;
     }
     Gdiplus::Bitmap scratch(1, 1, PixelFormat32bppPARGB);
@@ -27956,11 +27997,18 @@ void MinerGUI::drawFeedbackPage(Gdiplus::Graphics& g, int cw, int ch) {
     fbTextRect_ = Gdiplus::RectF(left, top + scaleF(26), wide, FEEDBACK_ROWS * pitch + 2 * scaleF(8));
     const float nameLabelY = fbTextRect_.GetBottom() + scaleF(14);
     fbNameRect_ = Gdiplus::RectF(left, nameLabelY + scaleF(16), wide, scaleF(28));
+    // the debug folder's tick under the name, as wide as its words: a quiet
+    // button carrying its box, as Settings has for the rock scans
+    const wchar_t* tickWords = L"Attach debug folder";
+    const float boxS = scaleF(11), boxPad = scaleF(10);
+    fbTickRect_ = Gdiplus::RectF(left, fbNameRect_.GetBottom() + scaleF(12),
+                                 std::ceil(boxPad + boxS + scaleF(7) + lineWidth(g, tickWords, buttonFont) + boxPad),
+                                 scaleF(28));
     // what goes along with a message, broken where its parts meet (a few
     // pixels short of the room: fitLines' note on 110 %)
-    const Fitted along = fitLines(g, toW(Feedback::sentWith(BEDROCK_VERSION, fbGame_, fbInstallSent_)), smallFont,
-                                  wide - scaleF(4));
-    const float alongY = fbNameRect_.GetBottom() + scaleF(12), alongH = heightOf(along, smallFont);
+    const Fitted along = fitLines(g, toW(Feedback::sentWith(BEDROCK_VERSION, fbGame_, fbInstallSent_, fbAttach_)),
+                                  smallFont, wide - scaleF(4));
+    const float alongY = fbTickRect_.GetBottom() + scaleF(12), alongH = heightOf(along, smallFont);
     fbSendRect_ = Gdiplus::RectF(left, alongY + alongH + scaleF(12), scaleF(100), scaleF(30));
     const Gdiplus::RectF card(cardX, top, cardW, fbSendRect_.GetBottom() + scaleF(16) - top);
     mainscanCard(g, card, px);
@@ -28089,6 +28137,30 @@ void MinerGUI::drawFeedbackPage(Gdiplus::Graphics& g, int cw, int ch) {
     }
     fbToCaret_ = false;
 
+    // ---- the debug folder's tick: locked, as the fields are, while a
+    // message is on its way
+    {
+        const bool hot = fbState_ != FeedbackState::Sending && isHot(hoverMain_, fbTickRect_);
+        drawButton(g, fbTickRect_, L"", buttonFont, ButtonKind::Secondary, hot, radius);
+        const Gdiplus::RectF box(fbTickRect_.X + boxPad, fbTickRect_.Y + (fbTickRect_.Height - boxS) / 2.0f, boxS, boxS);
+        if (fbAttach_) {
+            fillRoundRect(g, box, scaleF(2), COL_ACCENT);
+            Gdiplus::Pen tick(COL_ACCENT_INK, scaleF(1.8f));
+            g.DrawLine(&tick, box.X + scaleF(2.5f), box.Y + scaleF(5.5f), box.X + scaleF(4.5f), box.Y + scaleF(8));
+            g.DrawLine(&tick, box.X + scaleF(4.5f), box.Y + scaleF(8), box.X + scaleF(8.5f), box.Y + scaleF(3));
+        } else {
+            strokeRoundRect(g, box, scaleF(2), hot ? COL_TEXT_DIM : COL_TEXT_FAINT);
+        }
+        Gdiplus::StringFormat middleLeft;
+        middleLeft.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+        middleLeft.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+        Gdiplus::SolidBrush ink(hot ? COL_TEXT : tint(COL_TEXT, 215));
+        g.DrawString(tickWords, -1, &buttonFont,
+                     Gdiplus::RectF(box.GetRight() + scaleF(7), fbTickRect_.Y, fbTickRect_.GetRight() - box.GetRight(),
+                                    fbTickRect_.Height),
+                     &middleLeft, &ink);
+    }
+
     // ---- what goes along, Send, and what came of it
     g.DrawString(along.text.c_str(), -1, &smallFont, Gdiplus::RectF(left, alongY, wide, alongH), &lines, &dimBrush);
     const bool sending = fbState_ == FeedbackState::Sending;
@@ -28106,21 +28178,49 @@ void MinerGUI::drawFeedbackPage(Gdiplus::Graphics& g, int cw, int ch) {
     Gdiplus::Color stateInk = COL_TEXT_DIM;
     if (sending) {
         state = L"SENDING";
+        // ...and once the debug folder goes up, how far it is
+        if (fbUpTotal_ > 0) {
+            state += L"  \u00B7  " + std::to_wstring(Feedback::megabytes(fbUpSent_)) + L" / " +
+                     std::to_wstring(Feedback::megabytes(fbUpTotal_)) + L" MB";
+        }
     } else if (fbState_ == FeedbackState::Answered) {
-        switch (Feedback::outcome(fbStatus_)) {
-            case Feedback::Outcome::Sent:
+        // the message went and its debug folder did not: yellow, between
+        // the green of all sent and the red of nothing
+        const std::wstring folderNot = L"SENT - Debug folder not sent: ";
+        switch (Feedback::shown(Feedback::outcome(fbStatus_), fbDebug_)) {
+            case Feedback::Shown::Sent:
                 state = L"SENT - Thank you";
                 stateInk = COL_GREEN;
                 break;
-            case Feedback::Outcome::NoConnection:
+            case Feedback::Shown::DebugNoConnection:
+                state = folderNot + L"no connection";
+                stateInk = COL_YELLOW;
+                break;
+            case Feedback::Shown::DebugTooLarge:
+                state = folderNot + L"too large";
+                stateInk = COL_YELLOW;
+                break;
+            case Feedback::Shown::DebugFull:
+                state = folderNot + L"the server is full";
+                stateInk = COL_YELLOW;
+                break;
+            case Feedback::Shown::DebugTurnedDown:
+                state = folderNot + L"turned down (" + std::to_wstring(fbDebugStatus_) + L")";
+                stateInk = COL_YELLOW;
+                break;
+            case Feedback::Shown::DebugRefused:
+                state = folderNot + L"refused";
+                stateInk = COL_YELLOW;
+                break;
+            case Feedback::Shown::NoConnection:
                 state = L"NOT SENT - No connection to Bedrock's server. Try again.";
                 stateInk = COL_RED;
                 break;
-            case Feedback::Outcome::Limited:
+            case Feedback::Shown::Limited:
                 state = L"NOT SENT - Too many messages. Try again later.";
                 stateInk = COL_RED;
                 break;
-            case Feedback::Outcome::Refused:
+            case Feedback::Shown::Refused:
                 state = L"NOT SENT - The server turned it down (" + std::to_wstring(fbStatus_) + L")";
                 stateInk = COL_RED;
                 break;
@@ -28139,8 +28239,8 @@ void MinerGUI::drawFeedbackPage(Gdiplus::Graphics& g, int cw, int ch) {
     }
 
     // ---- under the card: what to do first where Bedrock read something wrong
-    const Fitted hint = fitLines(g, L"For a wrong reading, press Ctrl+Alt+S in the game first: the snapshot in debug\\ shows "
-                                    L"what Bedrock saw.",
+    const Fitted hint = fitLines(g, L"For a wrong reading, press Ctrl+Alt+S in the game first, then send with the debug "
+                                    L"folder attached.",
                                  smallFont, wide - scaleF(4));
     g.DrawString(hint.text.c_str(), -1, &smallFont,
                  Gdiplus::RectF(left, card.GetBottom() + scaleF(12), wide, heightOf(hint, smallFont)), &lines, &dimBrush);

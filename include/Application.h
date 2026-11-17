@@ -203,17 +203,24 @@ private:
     bool rockGameUp_ = false;   // the game's window seen since the game last closed (tendRockScans)
     void setRockShare(bool on);
     void serviceRockShare();
-    // A message from the Feedback page (Feedback.h): one POST to the service
-    // when Send is clicked, off the UI thread, and the status it was
-    // answered with back to the page - no second try, nothing kept. The page
-    // is told what goes along with a message whenever that changes: the
-    // game's version as the rock scans send it, and whether the
+    // A message from the Feedback page (Feedback.h): when Send is clicked the
+    // message, and with the page's tick the debug folder zipped after it
+    // (DebugZip.h), all on one job off the UI thread - no second try,
+    // nothing kept. The page is told how far the zip's upload is, what came
+    // of it all, and what goes along with a message whenever that changes:
+    // the game's version as the rock scans send it, and whether the
     // installation number.
-    void sendFeedback(const std::string& text, const std::string& name);
+    void sendFeedback(const std::string& text, const std::string& name, bool debugFolder);
     void serviceFeedback();
     int feedbackGame();
-    std::future<int> feedbackJob_;      // one going: the status it was answered with
-    int feedbackGameTold_ = -1;         // what the page was last told
+    // ...how far the zip's upload is: its bytes out and its size, 0 until it
+    // starts - the job's to write; serviceFeedback reads them for the page
+    struct FeedbackUpload {
+        std::atomic<std::int64_t> sent{0}, total{0};
+    };
+    std::shared_ptr<FeedbackUpload> feedbackUpload_;
+    std::future<Feedback::Result> feedbackJob_;   // one going: what came of it
+    int feedbackGameTold_ = -1;                   // what the page was last told
     bool feedbackInstallTold_ = false;
     // The laser's range to the rock: the middle of the gauge's last five
     // readings, none older than RANGE_KEPT; 0 when there is none, which the

@@ -304,17 +304,27 @@ public:
     // page's entry only then -, the game's version as a message carries it
     // (41003; 0 not known) and whether the installation number goes along
     void setFeedback(bool available, int gameVersion, bool installSent);
-    // Send clicked: the message and the name as typed, UTF-8. What came of
-    // it comes back through feedbackAnswered.
-    using FeedbackCallback = std::function<void(const std::string& text, const std::string& name)>;
+    // Send clicked: the message and the name as typed, UTF-8, and whether
+    // the debug folder goes along (the page's tick). What came of it comes
+    // back through feedbackAnswered.
+    using FeedbackCallback = std::function<void(const std::string& text, const std::string& name, bool debugFolder)>;
     void setFeedbackCallback(FeedbackCallback callback) { onFeedback_ = std::move(callback); }
-    // The status the service answered with; 0 where no answer came
-    void feedbackAnswered(int status);
+    // How far the debug folder's upload is: its bytes out and its size, 0
+    // before it starts. The page is drawn again where the MB it shows change.
+    void feedbackProgress(std::int64_t sent, std::int64_t total);
+    // What came of it: the message's status (0 where no answer came) and its
+    // debug folder's
+    void feedbackAnswered(const Feedback::Result& result);
     // --screenshot only: the page's fields and state for a picture, nothing
     // sent - what is typed, which field has the caret (0 none, 1 the
     // message, 2 the name), and the state: 0 nothing sent, 1 sending, 2
-    // answered with `status`
+    // answered with `status`. The tick on, no debug folder's state.
     void feedbackForShot(const std::wstring& text, const std::wstring& name, int typing, int state, int status);
+    // ...then the tick, and the debug folder's state: what came of it
+    // (answered) or how far its upload is (sending; `total` 0: not begun) -
+    // nothing picked, nothing sent
+    void feedbackDebugForShot(bool attach, Feedback::DebugOutcome debug, int debugStatus, std::int64_t sent,
+                              std::int64_t total);
     // ...and what the fields hold, where the caret stands and what is
     // marked, as one line of text
     std::string feedbackStateForShot() const;
@@ -1675,8 +1685,9 @@ private:
     void pressGear(HWND hwnd, float px, float py);
 
     // The Feedback page (feedbackPage_): a message and a name typed into two
-    // fields the window paints itself (TextField.h), Send, and what came of
-    // it. What is typed stays for the session, in memory only.
+    // fields the window paints itself (TextField.h), the debug folder's
+    // tick, Send, and what came of it. What is typed and the tick stay for
+    // the session, in memory only.
     bool fbAvailable_ = false;     // the build carries the service's address: the rail has the entry
     int fbGame_ = 0;               // the game's version as a message carries it; 0 not known
     bool fbInstallSent_ = false;   // the installation number goes along
@@ -1684,9 +1695,14 @@ private:
     TextField fbText_{true, Feedback::TEXT_MOST};
     TextField fbName_{false, Feedback::NAME_MOST};
     int fbTyping_ = 0;             // the field with the caret: 1 the message, 2 the name; 0 neither
+    bool fbAttach_ = true;         // Attach debug folder: on at every start
     enum class FeedbackState { Idle, Sending, Answered };
     FeedbackState fbState_ = FeedbackState::Idle;
     int fbStatus_ = 0;             // Answered: the status the service answered with
+    Feedback::DebugOutcome fbDebug_ = Feedback::DebugOutcome::None;   // ...what came of the debug folder
+    int fbDebugStatus_ = 0;        // ...and the status its upload was answered with
+    std::int64_t fbUpSent_ = 0;    // Sending: the debug folder's bytes out, and its size (0: not going up yet)
+    std::int64_t fbUpTotal_ = 0;
     bool fbCaretOn_ = true;        // the caret's blink
     bool fbCaretAtEnd_ = false;    // the caret at the end of a line broken inside a word, not at the next one's start
     float fbGoalX_ = -1.0f;        // the arrows up and down keep to this place across lines
@@ -1699,7 +1715,7 @@ private:
     int fbClicks_ = 0;
     char32_t fbHalf_ = 0;          // the first half of a character Windows sends in two
     // Where the page's pieces were drawn, in the page's pixels
-    Gdiplus::RectF fbTextRect_, fbNameRect_, fbSendRect_;
+    Gdiplus::RectF fbTextRect_, fbNameRect_, fbTickRect_, fbSendRect_;
     // The message's lines as last laid out, and what they were laid out for
     std::vector<TextLine> fbLines_;
     unsigned long long fbLinesOf_ = ~0ull;
