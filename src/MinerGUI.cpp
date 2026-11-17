@@ -6200,17 +6200,15 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
     // number twice. Power is the fracture figure. The other four are the
     // change from a stock 100, the way instability already was: 90 reads
     // as -10 %.
-    if (heads_.size() > 1) {
-        const std::wstring statsLabel = L"LASER STATS  ·  " + headPlace(headShown_);
-        g.DrawString(statsLabel.c_str(), -1, &labelFont, Gdiplus::PointF(left, y), &faintBrush);
-    } else {
-        g.DrawString(L"LASER STATS", -1, &labelFont, Gdiplus::PointF(left, y), &faintBrush);
-    }
-    y += scaleF(17);
-    if (!loadout_.laser) {
-        g.DrawString(L"Select a laser head", -1, &noteFont, Gdiplus::PointF(left, y), &faintBrush);
-        y += scaleF(20);
-    } else {
+    // No head, no figures: the field above asks for one.
+    if (loadout_.laser) {
+        if (heads_.size() > 1) {
+            const std::wstring statsLabel = L"LASER STATS  ·  " + headPlace(headShown_);
+            g.DrawString(statsLabel.c_str(), -1, &labelFont, Gdiplus::PointF(left, y), &faintBrush);
+        } else {
+            g.DrawString(L"LASER STATS", -1, &labelFont, Gdiplus::PointF(left, y), &faintBrush);
+        }
+        y += scaleF(17);
         MiningLoadout bare;
         bare.laser = loadout_.laser;
         const LaserOutput base = outputOf(bare);
@@ -6236,7 +6234,8 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
         Gdiplus::Font statFont(&numeralFamily(), scaleF(Type::NUMBER), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
         const float tagW = scaleF(48);
         const float colW = (wide - tagW) / 5.0f;
-        static const wchar_t* const names[5] = {L"POWER", L"WINDOW", L"RATE", L"RESIST", L"INSTAB"};
+        // (the rock card's words; the overlay alone has RES and INST, for room)
+        static const wchar_t* const names[5] = {L"POWER", L"WINDOW", L"RATE", L"RESISTANCE", L"INSTABILITY"};
         for (int i = 0; i < 5; i++) {
             g.DrawString(names[i], -1, &labelFont,
                          Gdiplus::PointF(left + tagW + colW * (float)i, y), &faintBrush);
@@ -6252,9 +6251,8 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
         };
         drawRow(L"BASE", baseFigures, dimBrush);
         drawRow(L"FINAL", finalFigures, textBrush);
-        y += scaleF(24);
+        y += scaleF(24) + scaleF(6);
     }
-    y += scaleF(6);
 
     // --- one field per slot. Three always, in a row: a head with fewer
     // leaves the spare fields where they are and dead, so the row does not
@@ -6278,8 +6276,12 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
             g.DrawString(count, -1, &labelFont, Gdiplus::PointF(left + labelW.Width + scaleF(4), y), &dimBrush);
         }
     }
-    g.DrawString(slots == 0 ? L"No module slots on this laser head" : L"Right-click a slot to empty it", -1, &noteFont,
-                 Gdiplus::RectF(left, y + scaleF(1), wide, scaleF(14)), &right, &faintBrush);
+    // (not in the phone's picture: a long press is the right click there,
+    // and None in a slot's list does the same)
+    if (slots == 0 || !phonePainting_) {
+        g.DrawString(slots == 0 ? L"No module slots on this laser head" : L"Right-click a slot to empty it", -1,
+                     &noteFont, Gdiplus::RectF(left, y + scaleF(1), wide, scaleF(14)), &right, &faintBrush);
+    }
     y += scaleF(17);
     const float moduleGap = scaleF(8);
     const float moduleW = (wide - 2 * moduleGap) / 3.0f;
@@ -6333,7 +6335,7 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
             g.FillRectangle(&textBrush,
                             Gdiplus::RectF(caretX, barY, (std::max)(1.0f, std::round(scaleF(1.5f))), barH));
             if (moduleFilter_.empty()) {
-                g.DrawString(L"Filter", -1, &rowFont,
+                g.DrawString(L"Type to filter", -1, &rowFont,
                              Gdiplus::RectF(caretX + scaleF(5), field.Y, textBox.Width - scaleF(8), field.Height),
                              &moduleLine, &faintBrush);
             }
