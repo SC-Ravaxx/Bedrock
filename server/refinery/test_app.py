@@ -1259,6 +1259,49 @@ class ServiceTest(unittest.TestCase):
             self.assertEqual(f.read(), data)
         self.assertFalse(os.path.exists(target + ".none"))
 
+    def fetch(self, path, address=None, method="GET"):
+        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_address[1], timeout=10)
+        try:
+            connection.putrequest(method, app.PREFIX + path)
+            if address:
+                connection.putheader("X-Real-IP", address)
+            connection.endheaders()
+            answer = connection.getresponse()
+            return answer.status, dict(answer.getheaders()), answer.read()
+        finally:
+            connection.close()
+
+    def test_the_operator_gets_a_zip_back_from_inside_only(self):
+        data = self.zipped()
+        number, token = self.ticket(data)
+        self.assertEqual(self.upload(number, token, data), (201, {"ok": True, "stored": True}))
+        path = "/v1/feedback/%d/debug.zip" % number
+        code, headers, body = self.fetch(path)
+        self.assertEqual((code, headers["Content-Type"], int(headers["Content-Length"]), body),
+                         (200, "application/zip", len(data), data))
+        self.assertEqual(headers["Content-Disposition"], 'attachment; filename="bedrock-feedback-%d.zip"' % number)
+        self.assertEqual(headers["Cache-Control"], "no-store")
+        code, headers, body = self.fetch(path, method="HEAD")
+        self.assertEqual((code, int(headers["Content-Length"]), body), (200, len(data), b""))
+        # through nginx it is not there, and that is all it says
+        code, _, body = self.fetch(path, address="203.0.113.9")
+        self.assertEqual((code, json.loads(body)), (404, {"ok": False, "error": "not found"}))
+        self.assertEqual(self.today()["req:feedback-debug-zip"], 1)
+        # a message without one, and no message
+        code, answer = self.send_feedback(address="203.0.113.5")
+        self.assertEqual(code, 201)
+        none = (404, {"ok": False, "error": "no debug folder"})
+        for other in (number + 1, 99):
+            code, _, body = self.fetch("/v1/feedback/%d/debug.zip" % other)
+            self.assertEqual((code, json.loads(body)), none)
+        for wrong in ("/v1/feedback/0/debug.zip", "/v1/feedback/x/debug.zip", "/v1/feedback/1/debug.zip/"):
+            code, _, body = self.fetch(wrong)
+            self.assertEqual((code, json.loads(body)), (404, {"ok": False, "error": "not found"}))
+        # gone with its 90 days, it is not handed out either
+        self.store.prune(int(time.time()) + app.FEEDBACK_DEBUG_DAYS * 86400 + 1)
+        code, _, body = self.fetch(path)
+        self.assertEqual((code, json.loads(body)), none)
+
     def test_a_zip_comes_in_with_the_token_its_message_was_answered_with(self):
         data = self.zipped()
         number, token = self.ticket(data)

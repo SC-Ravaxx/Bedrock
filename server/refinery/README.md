@@ -172,9 +172,10 @@ is refused.
 
 The messages are not handed out: only the operator can read them, from
 inside the containers' network (`/v1/feedback/export.csv`, and the newest
-100 in `/v1/stats`) or with `python app.py --feedback-export FILE`. No
-route hands out a zip: the operator copies it out with
-`python app.py --feedback-debug ID FILE`.
+100 in `/v1/stats`) or with `python app.py --feedback-export FILE`. A zip
+only goes to the operator as well, from inside the containers' network
+(`/v1/feedback/<id>/debug.zip`) or with `python app.py --feedback-debug ID
+FILE`.
 
 ## API
 
@@ -380,6 +381,14 @@ token. The same as `python app.py --feedback-export FILE`. The file is
 UTF-8, and `name` and `text` are whatever was typed: a spreadsheet takes a
 cell that begins with `=`, `+`, `-` or `@` as a formula, so import them as
 text.
+
+### `GET /v1/feedback/<id>/debug.zip`
+
+For the operator, from inside the containers' network only, like the
+export: the zip that came with message `<id>`, as it was kept
+(`application/zip`, `Content-Disposition: attachment`). 404 "no debug
+folder" where the message has none or there is no such message, 404 "not
+found" through nginx. The same as `python app.py --feedback-debug ID FILE`.
 
 ### `GET /v1/health`
 

@@ -151,6 +151,7 @@ ROUTE_NAMES = {
     ("POST", "/v1/feedback"): "feedback",
     ("GET", "/v1/feedback/export.csv"): "feedback-export",
     ("POST", "/v1/feedback/<id>/debug"): "feedback-debug",
+    ("GET", "/v1/feedback/<id>/debug.zip"): "feedback-debug-zip",
 }
 # Bedrock's own User-Agent: "Bedrock/2.6.6 (Windows)", "(Linux)" - the
 # version and the platform, which is all it says
@@ -258,6 +259,9 @@ CONTROL_OR_BREAK = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029\ud800-\udfff]")
 # by the number the answer gave - and the token it comes with
 # (X-Bedrock-Upload), 32 hex characters from that answer
 DEBUG_ROUTE = re.compile(r"^/v1/feedback/([1-9][0-9]{0,17})/debug\Z")
+# ...and the zip handed back, to the operator from inside the containers'
+# network only (the admin view passes it on to whoever is logged in there)
+DEBUG_FILE_ROUTE = re.compile(r"^/v1/feedback/([1-9][0-9]{0,17})/debug\.zip\Z")
 UPLOAD = re.compile(r"^[0-9a-f]{32}\Z")
 # ...what one that is not let in is told
 DEBUG_ANSWERS = {"none": (404, "no such message"), "kept": (409, "it has its debug folder already"),
@@ -1126,6 +1130,16 @@ class Store:
             finally:
                 db.close()
 
+    def debug_size(self, number):
+        """The bytes of message `number`'s zip, None where it has none"""
+        db = self._db()
+        try:
+            row = db.execute("SELECT debug_size FROM feedback WHERE id = ? AND debug_size IS NOT NULL",
+                             (number,)).fetchone()
+        finally:
+            db.close()
+        return None if row is None else row[0]
+
     def debug_copy(self, number, target):
         """Message `number`'s zip copied to the file `target`, for whoever
         runs the service; how many bytes, None where the message has none"""
@@ -1740,7 +1754,10 @@ class Handler(BaseHTTPRequestHandler):
             days = max(1, min(COUNTER_DAYS, days))
             # ...and the feedback goes out with them
             return self._send(200, dict(self.store.stats(now, days), feedback=self.store.feedback_stats(now, days)))
-        self._count(now, route)
+        zipped = DEBUG_FILE_ROUTE.match(route or "")
+        self._count(now, "/v1/feedback/<id>/debug.zip" if zipped else route)
+        if zipped:
+            return self._debug_zip(int(zipped.group(1)))
         if route == "/v1/health":
             today = self.store.counters(utc_day(now)).get(utc_day(now), {})
             return self._send(200, {"ok": True, "version": API_VERSION, "observations": self.store.count(),
@@ -1783,6 +1800,30 @@ class Handler(BaseHTTPRequestHandler):
         return self._fail(404, "not found")
 
     do_HEAD = do_GET
+
+    def _debug_zip(self, number):
+        """GET /v1/feedback/<id>/debug.zip: the zip that came with message
+        `number`, for the operator, like the export - through nginx it is not
+        there. Handed out in pieces, not read whole."""
+        if self.headers.get("X-Real-IP"):
+            return self._fail(404, "not found")
+        if self.store.debug_size(number) is None:
+            return self._fail(404, "no debug folder")
+        try:
+            zipped = open(self.store.debug_path(number), "rb")
+        except OSError:
+            return self._fail(404, "no debug folder")
+        with zipped:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Length", str(os.fstat(zipped.fileno()).st_size))
+            self.send_header("Content-Disposition", 'attachment; filename="bedrock-feedback-%d.zip"' % number)
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            if self.command != "HEAD":
+                for piece in iter(lambda: zipped.read(1024 * 1024), b""):
+                    self.wfile.write(piece)
+        return None
 
     def do_POST(self):
         now = int(time.time())
