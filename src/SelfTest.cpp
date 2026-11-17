@@ -1838,8 +1838,15 @@ int runSelfTest() {
             auto put = [&](const std::string& name, const std::string& bytes) {
                 std::ofstream(folder / name, std::ios::binary | std::ios::trunc) << bytes;
             };
-            const D::Masks masks{"C:\\Users\\Mining", "Mining"};
-            put("session.txt", "data:    C:\\Users\\Mining\\AppData\\Local\\Bedrock\n");
+            // the home folder by this system's rules, as pick() masks it
+            // (Linux: ~)
+            const bool windowsRules = D::RULES_HERE == D::Rules::Windows;
+            const std::string homePath =
+                windowsRules ? "C:\\Users\\Mining\\AppData\\Local\\Bedrock" : "/home/mining/.local/share/bedrock";
+            const std::string homeLeak = windowsRules ? "\\Mining\\" : "/mining/";
+            const std::string homeMark = windowsRules ? "%USERPROFILE%" : "~/";
+            const D::Masks masks = windowsRules ? D::Masks{"C:\\Users\\Mining", "Mining"} : D::Masks{"/home/mining", "mining"};
+            put("session.txt", "data:    " + homePath + "\n");
             put("snapshot_20200101_100000.png", "\x89PNG " + std::string(20000, 's'));
             put("snapshot_20200101_100000.txt", "snapshot\n");
             put("panel_miss_1.png", "\x89PNG " + std::string(50000, 'w'));
@@ -1852,8 +1859,7 @@ int runSelfTest() {
             const auto now = fs::file_time_type::clock::now();
             for (size_t k = 0; k < order.size(); k++) {
                 put(order[k] + ".png", "\x89PNG " + std::string(30000, (char)('a' + k)));
-                put(order[k] + ".txt", "frame 5120x1440\nkept rock 1129" + std::to_string(k) +
-                                           "\nread C:\\Users\\Mining\\AppData\\Local\\Bedrock\n");
+                put(order[k] + ".txt", "frame 5120x1440\nkept rock 1129" + std::to_string(k) + "\nread " + homePath + "\n");
                 fs::last_write_time(folder / (order[k] + ".png"), now - std::chrono::minutes(k + 1), ec);
             }
             std::vector<std::string> expected = {"session.txt", "snapshot_20200101_100000.png",
@@ -1871,11 +1877,11 @@ int runSelfTest() {
             bool masked = true;
             for (const D::Entry& entry : picked) {
                 if (entry.name.size() > 4 && entry.name.compare(entry.name.size() - 4, 4, ".txt") == 0) {
-                    masked = masked && entry.data.find("\\Mining\\") == std::string::npos;
+                    masked = masked && entry.data.find(homeLeak) == std::string::npos;
                 }
             }
             const bool tenNewest = namesOf(picked) == expected && masked &&
-                                   picked.size() > 4 && picked[4].data.find("%USERPROFILE%") != std::string::npos;
+                                   picked.size() > 4 && picked[4].data.find(homeMark) != std::string::npos;
             allPassed &= check(tenNewest, "a debug folder's zip takes the ten newest panel cuts after the snapshots, newest "
                                           "first by the file's time, each with its .txt masked; not the whole screen");
             if (namesOf(picked) != expected) {
