@@ -3752,9 +3752,9 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             if (loadoutOpen_) {
                 // The laser list lies over the card. While it is down it takes
                 // the click: a head in it is fitted, and anywhere else - the
-                // field included - only puts the list away. A phone's picture
-                // draws the field closed, so a tap there is the card's.
-                if (laserPickerOpen_ && !phoneTapping_) {
+                // field included - only puts the list away. A tap in the
+                // phone's picture alike: the list drops there too.
+                if (laserPickerOpen_) {
                     for (const auto& hit : loadoutHits_) {
                         if (hit.kind != 0 || !hit.rect.Contains(px, py)) continue;
                         putHeadLaser(&MINING_LASERS[hit.value]);
@@ -3889,7 +3889,6 @@ LRESULT MinerGUI::handleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                         craftedEditing_ = true;
                         SetFocus(hwnd);   // the digits have to land here
                     } else if (hit.kind == 8) {
-                        if (phoneTapping_) return 0;
                         craftedEditing_ = false;
                         modulePicker_ = -1;
                         moduleFilter_.clear();
@@ -6087,8 +6086,8 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
     // --- the head
     // A field, not a standing list: six heads open took the room the stats
     // need. The list drops under the field, drawn last so it lies over the
-    // card, and a click anywhere else puts it away. A phone's picture keeps
-    // the field closed: the head is picked at the PC, as the crafted figure is typed there.
+    // card, and a click anywhere else puts it away - in the phone's picture
+    // as well, where a tap on the field opens it as a module field's does.
     auto laserStock = [](const MiningLaser& l) {
         wchar_t stats[96];
         std::swprintf(stats, 96, L"%.0f  ·  %.0f m  ·  %d slot%s", l.fracture, l.fullRange, l.slots,
@@ -6097,7 +6096,7 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
     };
     Gdiplus::RectF laserField;
     std::vector<int> laserChoices;
-    const bool laserListOpen = laserPickerOpen_ && !phonePainting_;
+    const bool laserListOpen = laserPickerOpen_;
     g.DrawString(L"LASER HEAD", -1, &labelFont, Gdiplus::PointF(left, y), &faintBrush);
     // A one-seat ship shows what it carries on its mining HUD, and what is
     // read there is this fit's from then on (setSeenLoadout) - said here, or
@@ -6389,7 +6388,6 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
     // it is picked in the rock view where the rock is. See drawRockAdvice.
 
     // The dropped list, last, so it lies over the stats and the modules.
-    // A phone's picture leaves it out: the field above is drawn closed.
     if (laserListOpen && !laserChoices.empty()) {
         const float rowH = scaleF(26);
         const float pad = scaleF(6);
