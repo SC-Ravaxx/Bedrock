@@ -283,13 +283,23 @@ bool GameState::parse(std::string_view line, Event* out) {
         said = true;
     }
     // "Loading screen for Nyx : SC_Frontend closed after 44.25 seconds"
+    // ...and "Loading screen for Frontend_Main : ...", the main menu: at the
+    // start of the game, and whenever the player leaves the universe for it
+    // (three times on 17 Nov, out of the MOLE, the Prospector and the
+    // Golem). Nobody sits in a ship in the menu, and the way back in is a
+    // spawn, so whatever seat the log last gave is left - while the ship
+    // stays named, as when its seat is left.
     static constexpr std::string_view LOADING = "Loading screen for ";
     if (const size_t k = line.find(LOADING); k != std::string_view::npos) {
         const size_t b = k + LOADING.size();
         const size_t e = line.find(' ', b);
+        const std::string_view word = line.substr(b, e == std::string_view::npos ? std::string_view::npos : e - b);
         std::string name;
-        if (systemWord(line.substr(b, e == std::string_view::npos ? std::string_view::npos : e - b), &name)) {
+        if (systemWord(word, &name)) {
             if (system) *system = name;
+            said = true;
+        } else if (word == "Frontend_Main") {
+            event.menu = true;
             said = true;
         }
     }
@@ -705,6 +715,11 @@ bool GameState::applyOwn(const Event& event) {
     if (event.statsEnd) {
         if (statsWhole_ && statsBodies_ && !statsTerrain_) terrain_ = RockPlaceState::Terrain::None;
         statsWhole_ = false;
+    }
+    // The main menu: out of whatever seat the log last gave (see parse)
+    if (event.menu && inSeat_) {
+        inSeat_ = false;
+        changed = true;
     }
     // A hull destroyed with the player in it: gone, and said on to whoever
     // keeps fits by hull (lostHulls())

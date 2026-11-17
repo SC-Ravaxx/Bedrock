@@ -153,9 +153,10 @@ public:
         std::string gadgetRock;    // ...and the rock's class
         bool gadgetInHand = false; // or the gadget back in the player's hand
         std::string location;      // a terminal opened at this place: the inventory request's Location[...]
+        bool menu = false;         // back in the main menu: out of the universe, and so out of any seat
         bool any() const {
             return !system.empty() || !ship.empty() || !place.empty() || !target.empty() ||
-                   !zone.empty() || arrived || !location.empty() || cells >= 0 || statsBegin || statsEnd;
+                   !zone.empty() || arrived || !location.empty() || cells >= 0 || statsBegin || statsEnd || menu;
         }
     };
     static bool parse(std::string_view line, Event* out);

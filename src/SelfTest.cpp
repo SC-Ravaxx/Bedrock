@@ -6058,6 +6058,28 @@ int runSelfTest() {
                                "from the Prospector into the Golem Teach's Special: the ship is the Golem, seated, "
                                "the second boarding (got " + flown.ship() + ")");
         }
+        {
+            // Back to the main menu out of the Prospector's seat (17 Nov,
+            // 14:47:44): out of the seat, the ship still named - and boarding
+            // it again after the way back in is a boarding of its own
+            SCMiner::GameState menu;
+            auto feed = [&](const char* line) {
+                SCMiner::GameState::Event event;
+                if (SCMiner::GameState::parse(line, &event)) menu.apply(event);
+            };
+            const char* const BOARD = "<2026-11-17T14:37:45.327Z> [Notice] <SHUDEvent_OnNotification> Added "
+                                      "notification \"You have joined channel 'MISC Prospector : Someone'.";
+            feed(BOARD);
+            const bool seated = menu.inSeat();
+            feed("<2026-11-17T14:47:44.878Z> Loading screen for Frontend_Main : SC_Frontend closed after 6.55 seconds");
+            const bool outInMenu = !menu.inSeat() && menu.ship() == "MISC Prospector";
+            feed("<2026-11-17T14:48:48.713Z> Loading screen for Nyx : SC_Frontend closed after 50.89 seconds");
+            const bool spawned = !menu.inSeat() && menu.system() == "Nyx";
+            feed(BOARD);
+            allPassed &= check(seated && outInMenu && spawned && menu.inSeat() && menu.boardings() == 2,
+                               "the main menu ends the seat, not the ship's name; the same ship boarded after the "
+                               "way back in is the second boarding (got " + std::to_string(menu.boardings()) + ")");
+        }
         allPassed &= check(!SCMiner::GameState::parseLine(
                                "<2026-09-10T15:07:38.737Z> [Notice] <SHUDEvent_OnNotification> Added notification "
                                "\"You have joined channel 'Global'.\"", &sys, &ship, &leaving),
