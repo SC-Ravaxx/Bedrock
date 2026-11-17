@@ -2,6 +2,7 @@
 #include "GamePlaces.h"
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -100,9 +101,11 @@ public:
     bool inSpace() const { return inSpace_; }
     // The quantum destination the player picked last, by the internal name
     // the log gives it ("LOC_RR_S2_L4", "OOC_Stanton_2b_Daymar" - placeByDestination
-    // turns it into a place), from the pick until the drive arrives there;
-    // "" before and after. A route left before the end - out of quantum
-    // travel in the Aaron Halo - keeps it until the next pick.
+    // turns it into a place; 5.0's entity id of a body, "876113521728", as
+    // the body's name the log gave with it, "nyx1"), from the pick until the
+    // drive arrives there; "" before and after. A route left before the end
+    // - out of quantum travel in the Aaron Halo - keeps it until the next
+    // pick.
     const std::string& target() const { return target_; }
     // ...and where that route set off, as the route's own line names it
     // ("Projected Start Location is ARC-L1 Wide Forest Station for route to
@@ -154,9 +157,14 @@ public:
         bool gadgetInHand = false; // or the gadget back in the player's hand
         std::string location;      // a terminal opened at this place: the inventory request's Location[...]
         bool menu = false;         // back in the main menu: out of the universe, and so out of any seat
+        // A body and its entity id, off the planet's own lines in 5.0 -
+        // "Planet 'nyx1' (entity 876113521728)" - whose quantum targets give
+        // the id where 4.10 gave the name
+        std::string body, bodyId;
         bool any() const {
             return !system.empty() || !ship.empty() || !place.empty() || !target.empty() ||
-                   !zone.empty() || arrived || !location.empty() || cells >= 0 || statsBegin || statsEnd || menu;
+                   !zone.empty() || arrived || !location.empty() || cells >= 0 || statsBegin || statsEnd || menu ||
+                   !bodyId.empty();
         }
     };
     static bool parse(std::string_view line, Event* out);
@@ -199,6 +207,7 @@ private:
     std::string hull_;       // see hull(): the last id a line of the player's own named...
     std::string hullShip_;   // ...and the ship it named with it, which has to be ship_ still
     std::vector<std::string> lost_;   // see lostHulls()
+    std::map<std::string, std::string> bodies_;   // a body's internal name by its entity id (Event::bodyId)
     std::string gadget_, gadgetEntity_, gadgetRock_, gadgetStamp_;   // see gadgetOnRock()
     int gadgetChanges_ = 0;
     int boardings_ = 0;

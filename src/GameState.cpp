@@ -196,6 +196,28 @@ bool GameState::parse(std::string_view line, Event* out) {
             said = true;
         }
     }
+    // 5.0 picks a body by its entity id - "Player has selected point
+    // 876113521728", where 4.10 wrote "nyx1" - and the planet's own lines
+    // name the id, at login, long before any pick:
+    //   <Planet Update Branch Inputs> Planet 'nyx1' (entity 876113521728) first update: ...
+    // In seven 5.0 logs: 29 bodies so, each with the same id in every log;
+    // none in 4.10. apply() turns a target by such an id into the name.
+    static constexpr std::string_view PLANET = "> Planet '";
+    static constexpr std::string_view ENTITY = "' (entity ";
+    if (const size_t k = line.find(PLANET); k != std::string_view::npos) {
+        const size_t b = k + PLANET.size();
+        const size_t e = line.find(ENTITY, b);
+        if (e != std::string_view::npos && e > b) {
+            const size_t ib = e + ENTITY.size();
+            size_t ie = ib;
+            while (ie < line.size() && std::isdigit(static_cast<unsigned char>(line[ie]))) ie++;
+            if (ie > ib && ie < line.size() && line[ie] == ')') {
+                event.body = std::string(line.substr(b, e - b));
+                event.bodyId = std::string(line.substr(ib, ie - ib));
+                said = true;
+            }
+        }
+    }
     if (line.find("Quantum Drive has arrived at final destination") != std::string_view::npos &&
         line.find("| NOT AUTH |") != std::string_view::npos) {
         event.arrived = true;
@@ -505,8 +527,24 @@ bool GameState::applyGadget(const Event& event) {
 // written a few hundred milliseconds BEFORE the line that names the player
 // picking in it, so a route of a ship not yet known as the player's is held
 // for a moment and counts once the player's own line names that ship.
-bool GameState::apply(const Event& event) {
-    if (!event.gadget.empty()) return applyGadget(event);   // a line of its own, about no ship
+bool GameState::apply(const Event& line) {
+    if (!line.gadget.empty()) return applyGadget(line);   // a line of its own, about no ship
+    // A body's entity id, for the 5.0 targets that give only the id...
+    if (!line.bodyId.empty()) {
+        bodies_[line.bodyId] = line.body;
+        return false;
+    }
+    // ...which are read as the body's name, the way 4.10 gave it and
+    // placeByDestination knows it
+    const auto targetBody = bodies_.find(line.target);
+    const auto routeBody = bodies_.find(line.routeTo);
+    Event named;
+    if (targetBody != bodies_.end() || routeBody != bodies_.end()) {
+        named = line;
+        if (targetBody != bodies_.end()) named.target = targetBody->second;
+        if (routeBody != bodies_.end()) named.routeTo = routeBody->second;
+    }
+    const Event& event = targetBody != bodies_.end() || routeBody != bodies_.end() ? named : line;
     bool changed = false;
     if (event.playerAct && !event.navShip.empty()) {
         if (event.navShip != ownShip_) {
@@ -791,6 +829,7 @@ void GameState::setGameLog(const std::filesystem::path& log) {
     hull_.clear();
     hullShip_.clear();
     lost_.clear();
+    bodies_.clear();
     if (!gadget_.empty()) gadgetChanges_++;
     gadget_.clear();
     gadgetEntity_.clear();
@@ -835,6 +874,7 @@ bool GameState::poll() {
         hull_.clear();
         hullShip_.clear();
         lost_.clear();
+        bodies_.clear();
         if (!gadget_.empty()) {
             gadgetChanges_++;
             changed = true;

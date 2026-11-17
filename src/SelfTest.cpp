@@ -6575,6 +6575,49 @@ int runSelfTest() {
                                "nyx1 is Nyx I, a body, and the statistics' line puts the ship there (got " +
                                    planet.place() + ")");
         }
+        {
+            // 5.0 picks a body by its entity id, and the planet's own line
+            // names the id at login: Levski to Nyx I in a Hornet (16 Nov) is
+            // at Nyx I on arrival, not four minutes later with the next route
+            SCMiner::GameState byId;
+            auto feedId = [&](const char* line) {
+                SCMiner::GameState::Event event;
+                if (SCMiner::GameState::parse(line, &event)) byId.apply(event);
+            };
+            feedId("<2026-11-16T21:45:11.545Z> [Notice] <Planet Update Branch Inputs> Planet 'nyx1' (entity "
+                   "876113521728) first update: tech type 2, V5 behaviour yes, server no, dedicated no, render "
+                   "window yes, editor no [Team_PlanetTech][Planet]");
+            feedId("<2026-11-16T21:45:21.678Z> [Notice] <RequestLocationInventory> Player[<player>] requested "
+                   "inventory for Location[Nyx_Levski] [Team_CoreGameplayFeatures][Inventory]");
+            feedId("<2026-11-16T21:59:20.130Z> [Notice] <Player Selected Quantum Target - Local> [ItemNavigation][CL]"
+                   "[34240] | NOT AUTH | ANVL_Hornet_F7CS_Mk2_876145772294[876145772294]|CSCItemNavigation::"
+                   "OnPlayerSelectedQuantumTarget|Player has selected point 876113521728 as their destination, "
+                   "routing locally [Team_CGP4][QuantumTravel]");
+            feedId("<2026-11-16T21:59:20.131Z> [Notice] <Calculate Route> [ItemNavigation][CL][34240] | NOT AUTH | "
+                   "ANVL_Hornet_F7CS_Mk2_876145772294[876145772294]|CSCItemNavigation::CalculateRoute|Projected Start "
+                   "Location is Levski for route to destination 876113521728 [Team_CGP4][QuantumTravel]");
+            const std::string picked = byId.target(), from = byId.routeStart(), before = byId.place();
+            feedId("<2026-11-16T22:01:59.005Z> [Notice] <Quantum Drive Arrived - Arrived at Final Destination> "
+                   "[ItemNavigation][CL][34240] | NOT AUTH | ANVL_Hornet_F7CS_Mk2_876145772294[876145772294]|"
+                   "CSCItemNavigation::OnQuantumDriveArrived|Quantum Drive has arrived at final destination "
+                   "[Team_CGP4][QuantumTravel]");
+            const std::string arrived = byId.place();
+            // ...and an id no line named - a surface location - stays an id,
+            // and its arrival leaves the place as it was
+            feedId("<2026-11-16T22:05:43.183Z> [Notice] <Player Selected Quantum Target - Local> [ItemNavigation][CL]"
+                   "[34240] | NOT AUTH | ANVL_Hornet_F7CS_Mk2_876145772294[876145772294]|CSCItemNavigation::"
+                   "OnPlayerSelectedQuantumTarget|Player has selected point 876116703927 as their destination, "
+                   "routing locally [Team_CGP4][QuantumTravel]");
+            const std::string surface = byId.target();
+            feedId("<2026-11-16T22:07:25.550Z> [Notice] <Quantum Drive Arrived - Arrived at Final Destination> "
+                   "[ItemNavigation][CL][34240] | NOT AUTH | ANVL_Hornet_F7CS_Mk2_876145772294[876145772294]|"
+                   "CSCItemNavigation::OnQuantumDriveArrived|Quantum Drive has arrived at final destination "
+                   "[Team_CGP4][QuantumTravel]");
+            allPassed &= check(picked == "nyx1" && from == "Levski" && before == "Levski" && arrived == "Nyx I" &&
+                                   surface == "876116703927" && byId.place() == "Nyx I",
+                               "a body picked by its 5.0 entity id is the body the planet's line named: Nyx I on "
+                               "arrival from Levski (got " + picked + ", " + from + " -> " + arrived + ")");
+        }
         // A planet's low-orbit station is no Lagrange point, and a Lagrange
         // point itself is one
         allPassed &= check(placeByDestination("rs_ext_pyro3_leo", "").name == "Orbituary" &&
