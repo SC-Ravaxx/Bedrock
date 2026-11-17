@@ -370,6 +370,10 @@ bool GameState::parse(std::string_view line, Event* out) {
     //   Added notification "You have joined channel 'MISC Prospector : <owner>'.
     // Only a channel named "<ship> : <owner>" is a ship's; the display name
     // is what the log gives, so that is what every source hands back.
+    // A name can hold a quote of its own - "Drake Golem Teach's Special",
+    // "Argo MOLE Teach's Special" - so the channel ends where the sentence
+    // does, at "'." (all 516 channel lines of seven 5.0 and two 4.10 logs
+    // end so); a handle holds no quote.
     static constexpr std::string_view JOINED = "You have joined channel '";
     static constexpr std::string_view LEFT = "You have left the channel '";
     for (int pass = 0; pass < 2; pass++) {
@@ -377,7 +381,8 @@ bool GameState::parse(std::string_view line, Event* out) {
         const size_t k = line.find(key);
         if (k == std::string_view::npos) continue;
         const size_t b = k + key.size();
-        const size_t e = line.find('\'', b);
+        size_t e = line.find("'.", b);
+        if (e == std::string_view::npos) e = line.find('\'', b);
         if (e == std::string_view::npos) continue;
         const std::string_view channel = line.substr(b, e - b);
         const size_t owner = channel.find(" : ");

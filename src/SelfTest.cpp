@@ -6019,6 +6019,45 @@ int runSelfTest() {
             "<2026-09-10T15:07:38.737Z> [Notice] <UpdateNotificationItem> Notification \"You have left the channel "
             "'Aegis Idris-P : Someone'.\"", &sys, &ship, &leaving);
         allPassed &= check(l && ship == "Aegis Idris-P" && leaving, "leaving a ship names it by its crew channel");
+        // A ship's name can hold a quote: the Golem in both 5.0 and 4.10
+        // logs is "Drake Golem Teach's Special", and its channel went
+        // unread - the scan log kept the Prospector before it
+        sys.clear(); ship.clear(); leaving = true;
+        const bool golem = SCMiner::GameState::parseLine(
+            "<2026-11-17T14:51:32.378Z> [Notice] <SHUDEvent_OnNotification> Added notification \"You have joined "
+            "channel 'Drake Golem Teach's Special : Someone'.", &sys, &ship, &leaving);
+        const std::string golemShip = ship;
+        sys.clear(); ship.clear(); leaving = false;
+        const bool moleLeft = SCMiner::GameState::parseLine(
+            "<2026-11-17T14:34:52.895Z> [Notice] <UpdateNotificationItem> Notification \"You have left the channel "
+            "'Argo MOLE Teach's Special : Someone'.", &sys, &ship, &leaving);
+        const char* golemHud = SCMiner::hudShipOf(0, golemShip, true);
+        allPassed &= check(golem && golemShip == "Drake Golem Teach's Special" &&
+                               SCMiner::GameState::model(golemShip) == "Golem" &&
+                               SCMiner::RockScans::shipKind(golemShip) == "golem" && golemHud &&
+                               std::string(golemHud) == "golem" && moleLeft && ship == "Argo MOLE Teach's Special" &&
+                               leaving && SCMiner::GameState::model(ship) == "MOLE",
+                           "a ship's name with a quote in it is read whole off its crew channel: the Golem Teach's "
+                           "Special boarded, the MOLE of that edition left (got '" + golemShip + "', '" + ship + "')");
+        {
+            // ...and so the ship changes from the Prospector to it, as on 17 Nov
+            SCMiner::GameState flown;
+            for (const char* line :
+                 {"<2026-11-17T14:37:45.327Z> [Notice] <SHUDEvent_OnNotification> Added notification \"You have "
+                  "joined channel 'MISC Prospector : Someone'.",
+                  "<2026-11-17T14:51:32.378Z> [Notice] <SHUDEvent_OnNotification> Added notification \"You have "
+                  "joined channel 'Drake Golem Teach's Special : Someone'.",
+                  "<2026-11-17T14:51:57.452Z> [Notice] <Failed to get starmap route data!> [ItemNavigation][CL][11380] "
+                  "| NOT AUTH | DRAK_Golem_Teach_876257603438[876257603438]|CSCItemNavigation::"
+                  "GetStarmapRouteSegmentData|No Route loaded! [Team_CGP4][QuantumTravel]"}) {
+                SCMiner::GameState::Event event;
+                if (SCMiner::GameState::parse(line, &event)) flown.apply(event);
+            }
+            allPassed &= check(SCMiner::GameState::model(flown.ship()) == "Golem" && flown.inSeat() &&
+                                   flown.boardings() == 2,
+                               "from the Prospector into the Golem Teach's Special: the ship is the Golem, seated, "
+                               "the second boarding (got " + flown.ship() + ")");
+        }
         allPassed &= check(!SCMiner::GameState::parseLine(
                                "<2026-09-10T15:07:38.737Z> [Notice] <SHUDEvent_OnNotification> Added notification "
                                "\"You have joined channel 'Global'.\"", &sys, &ship, &leaving),
