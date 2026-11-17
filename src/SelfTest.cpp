@@ -8020,11 +8020,13 @@ int runSelfTest() {
                 allPassed &= check(first && !misread && other && unread && !unreadSoon && unreadLater &&
                                        SCMiner::numeralsOff("954", "1954") == 1 && SCMiner::numeralsOff("88", "1139") == 4,
                                    "5.0 panel pictures on the PTU: one per rock, a mass one numeral off is the same rock");
-                // Where the 5.0 reader lands on the Golem's and the MOLE
-                // turret's panels (PTU recording of 17 November 2026): the
-                // label column, the figures' words, the list's lines. Which
-                // glyphs it reads there is not checked: a recording does not
-                // tell the thin numerals apart well enough (PanelFive.cpp).
+                // Where the 5.0 reader lands on the Golem's panel, the MOLE
+                // pilot seat's (PTU recording of 17 November 2026) and the
+                // MOLE turret's row under the reticle (the app's own snapshot
+                // of 08:55:14): the label column, the figures' words, the
+                // list's lines. Which glyphs it reads there is not checked: a
+                // recording does not tell the thin numerals apart well enough
+                // (PanelFive.cpp).
                 {
                     auto onScreen = [](const cv::Mat& cut, int x, int y) {
                         cv::Mat screen(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
@@ -8032,9 +8034,11 @@ int runSelfTest() {
                         return screen;
                     };
                     const cv::Mat golemCut = testPicture("scanpanel/panel5_golem.png", L"SELFTEST_FIVE_GOLEM");
-                    const cv::Mat moleCut = testPicture("scanpanel/panel5_mole_turret.png", L"SELFTEST_FIVE_MOLE");
-                    allPassed &= check(!golemCut.empty() && !moleCut.empty(),
-                                       "the 5.0 panels of the Golem and the MOLE turret are beside the build or inside the exe");
+                    const cv::Mat moleCut = testPicture("scanpanel/panel5_mole_pilot.png", L"SELFTEST_FIVE_MOLE");
+                    const cv::Mat turretCut = testPicture("scanpanel/panel5_turret.png", L"SELFTEST_FIVE_TURRET");
+                    allPassed &= check(!golemCut.empty() && !moleCut.empty() && !turretCut.empty(),
+                                       "the 5.0 panels of the Golem, the MOLE pilot seat and the MOLE turret are beside "
+                                       "the build or inside the exe");
                     const cv::Mat golemScreen = onScreen(golemCut, 3086, 413), moleScreen = onScreen(moleCut, 3018, 582);
                     SCMiner::ScanPanel golem, mole;
                     const bool golemSeen = !golemCut.empty() && SCMiner::readPanelFive(golemScreen, golem, nullptr);
@@ -8046,7 +8050,7 @@ int runSelfTest() {
                                            golem.note.find(" -; delta") == std::string::npos,
                                        "5.0 panel on the Golem: its column, the mass's four numerals before the triangle, "
                                        "the volume (got " + golem.note.substr(0, 140) + ")");
-                    // the MOLE turret: 27519, and three lines - 14.57% 521,
+                    // the MOLE pilot seat: 27519, and three lines - 14.57% 521,
                     // 51.80% 325, 33.62% and INERT MATERIALS scrolled to its end
                     const std::vector<SCMiner::FiveListLine> rows =
                         moleSeen ? SCMiner::readFiveList(moleScreen, mole) : std::vector<SCMiner::FiveListLine>();
@@ -8059,8 +8063,29 @@ int runSelfTest() {
                     allPassed &= check(moleSeen && std::abs(mole.labels.x - 3086) <= 6 && std::abs(mole.labels.y - 678) <= 6 &&
                                            mole.figures[0].text.size() == 5 && shares && rows[0].qualityText.size() == 3 &&
                                            rows[1].qualityText.size() == 3,
-                                       "5.0 panel on the MOLE turret: its column, the mass's five numerals, three list "
+                                       "5.0 panel on the MOLE pilot seat: its column, the mass's five numerals, three list "
                                        "lines, each share whole and nothing more (got " + mole.figures[0].text + taken + ")");
+                    // the MOLE turret: its row under the reticle - 27519, 0%,
+                    // -35% 20.83, 34.63 SCU right of the figures, and the same
+                    // three lines with INERT MATERIAL cut by its scroll
+                    const cv::Mat turretScreen = onScreen(turretCut, 2311, 1056);
+                    SCMiner::ScanPanel turret;
+                    const bool turretSeen = !turretCut.empty() && SCMiner::readPanelFive(turretScreen, turret, nullptr);
+                    const std::vector<SCMiner::FiveListLine> turretRows =
+                        turretSeen ? SCMiner::readFiveList(turretScreen, turret) : std::vector<SCMiner::FiveListLine>();
+                    std::string turretTaken;
+                    bool turretShares = turretRows.size() == 3;
+                    for (const SCMiner::FiveListLine& row : turretRows) {
+                        turretShares &= row.shareText.size() == 6 && row.shareText.back() == '%';
+                        turretTaken += " " + row.shareText + "|" + row.qualityText;
+                    }
+                    allPassed &= check(turretSeen && std::abs(turret.labels.x - 2388) <= 6 &&
+                                           std::abs(turret.labels.y - 1162) <= 6 && turret.figures[0].text.size() == 5 &&
+                                           turret.note.find(" -; delta") == std::string::npos && turretShares &&
+                                           turretRows[0].qualityText.size() == 3 && turretRows[1].qualityText.size() == 3,
+                                       "5.0 panel on the MOLE turret: its column under the reticle, the mass's five "
+                                       "numerals, the volume right of them, three list lines (got " +
+                                           turret.note.substr(0, 120) + turretTaken + ")");
                 }
             }
 

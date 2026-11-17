@@ -52,6 +52,47 @@ constexpr int CELL_W = 16;                   // ...as harvested, ending where th
 constexpr double WORD_GAP = 4.5;             // wider than this between two pieces: two words
 constexpr int LINE_BORDER = 6;               // nothing round a line's ink
 
+// Where a panel's parts stand, in units from the labels' left edge and the
+// MASS label's top. The list's places are from its shares' left edge.
+struct Layout {
+    double figuresEnd, deltaEnd;     // the figures end here, and the laser's modifiers
+    double volumeTop;                // COMPOSITION's line: the volume and SCU
+    double listLeft;                 // the shares' left edge
+    double volumeFrom, scuEnd;       // the volume's line from here; SCU ends here
+    double listTop, listPitch;
+    double listEnd;                  // a list line's lettering ends by here
+    double qualityEnd, nameFrom, nameTo;
+    double shareEndsFrom, shareEndsTo;   // a share's per cent sign ends between these, from the shares' edge
+};
+// The panel beside the reticle: Prospector, Golem, the MOLE's pilot seat
+constexpr Layout BESIDE{FIGURES_END, DELTA_END, VOLUME_TOP, 0.0, 128.0, FIGURES_END, LIST_TOP, LIST_PITCH,
+                        FIGURES_END, QUALITY_END, NAME_FROM, NAME_TO, SHARE_ENDS_FROM, SHARE_ENDS_TO};
+// The MOLE turret's: one row under the reticle - its laser table, the
+// panel's labels with their figures, and to their right COMPOSITION and the
+// list. Measured on the app's own snapshots of 17 November 2026 08:55:14 and
+// 08:55:17 (5120x1440; the column found at size 1.096, labels from x 2388,
+// MASS's top at y 1162 and 1175): the figures end at 236.3 on all three
+// rows, a marker after the mass from 246.4, the modifier -35% at 176.1; the
+// ore's name above MASS as beside the reticle; COMPOSITION's line from
+// -67.5; the shares from x 323.9 to 326.6, the list's lines from 16.4 and
+// 21.0 apart. From the shares' left edge (322.5) the names stand from 79 to
+// 201 (INERT MATERIALS), the qualities end at 235 to 237 and SCU at 242 to
+// 243. Its lettering is 4 to 8 per cent wider for its labels' size than
+// beside the reticle (14.57% ends at 60.7 there, 53.4 beside it), so its
+// shares end from 44 to 73; the lines measure their glyphs by their own
+// height.
+constexpr Layout TURRET{236.3, 176.1, -67.0, 322.5, 128.0, 241.0, 16.4, 21.0, 245.0, 233.0, 74.0, 205.0, 44.0, 73.0};
+
+// The turret's row stands under the reticle: its labels at cy + 0.31h on
+// both snapshots; the panel beside it has them from cy - 0.14h (Golem) to
+// cy (Prospector, MOLE pilot seat) on the recording and the app's pictures
+bool turretRow(const cv::Point& labels, const cv::Size& frame) {
+    return labels.y > frame.height / 2.0 + 0.15 * frame.height;
+}
+const Layout& layoutOf(const cv::Point& labels, const cv::Size& frame) {
+    return turretRow(labels, frame) ? TURRET : BESIDE;
+}
+
 cv::Mat bgrOf(const cv::Mat& frame) {
     if (frame.channels() == 4) {
         cv::Mat bgr;
@@ -134,6 +175,16 @@ cv::Rect bandOf(const cv::Size& frame) {
     const cv::Rect band((int)std::lround(cx - 0.05 * h), (int)std::lround(cy - 0.45 * h), (int)std::lround(1.05 * h),
                         (int)std::lround(0.85 * h));
     return band & cv::Rect(0, 0, frame.width, frame.height);
+}
+
+// ...and where the MOLE turret's row has its labels, under the reticle and
+// left of the band: from x 2387 (cx - 0.12h) and y 1164-1176 (cy + 0.31h) on
+// the snapshots of 17 November 2026, with room round them
+cv::Rect turretBandOf(const cv::Size& frame) {
+    const double h = frame.height, cx = frame.width / 2.0, cy = frame.height / 2.0;
+    const cv::Rect part((int)std::lround(cx - 0.22 * h), (int)std::lround(cy + 0.17 * h), (int)std::lround(0.30 * h),
+                        (int)std::lround(0.30 * h));
+    return part & cv::Rect(0, 0, frame.width, frame.height);
 }
 
 // The label column over a part of the frame's ink, at the sizes given:
@@ -290,10 +341,11 @@ int textRight(const Line& line, size_t word) {
 }
 
 // The word of a line whose lettering ends at `end` (in the line's units), up
-// to `before` short of it or `after` past it; -1 for none
-int wordEndingAt(const Line& line, double end, double before = 3.5, double after = 3.5) {
+// to `before` short of it or `after` past it; -1 for none. `whole`: the
+// word's own end, with whatever short glyph it ends in.
+int wordEndingAt(const Line& line, double end, double before = 3.5, double after = 3.5, bool whole = false) {
     for (int w = (int)line.words.size() - 1; w >= 0; w--) {
-        const int right = textRight(line, (size_t)w);
+        const int right = whole ? line.right((size_t)w) : textRight(line, (size_t)w);
         if (right >= end - before && right <= end + after) return w;
         if (right < end - before) break;
     }
@@ -381,6 +433,7 @@ struct Reading {
     double margin = 0.5;     // ...and how far the least sure glyph stands from halfway to another
     double zeroEight = 9;    // ...and how far the zero/eight test held at its closest (countersOf), 9 for none
     int left = 0;            // where the figure begins, in the line
+    bool cut = false;        // it ended at its leftmost place with ink still going on
     std::vector<cv::Rect> boxes;   // each glyph's cell, in the line
 };
 
@@ -434,7 +487,8 @@ bool fills(const std::string& backwards, const Format& format) {
 // A figure read from its right end, glyph by glyph: at each place every glyph
 // its format allows there is matched a pixel or two either way and the best
 // taken. It ends where the format is whole and no ink follows, or where the
-// next glyph would begin left of `leftmost`. `right` is where its last glyph
+// next glyph would begin left of `leftmost` - and then it is not sure: the
+// ink runs on, and what it is was not read. `right` is where its last glyph
 // ends in the line.
 Reading slide(const Line& line, int right, const Format& format, int firstSlack, double sureScore, double sureMargin,
               int leftmost = -100000) {
@@ -498,8 +552,14 @@ Reading slide(const Line& line, int right, const Format& format, int firstSlack,
         if (!bestC) break;
         // nothing like a glyph where the format could end: the figure ends
         if (mayEnd && best < 0.5) break;
-        // ...and nothing is read left of where the figure can begin
-        if (bestBox.x < leftmost) break;
+        // ...and nothing is read left of where the figure can begin. A
+        // glyph's likeness there ends the figure unsure: on the MOLE's
+        // picture of 17 November 2026 08:54:15 a blurred 44.92% stood 6 left
+        // of the list's edge and was read 4.92%, sure.
+        if (bestBox.x < leftmost) {
+            out.cut = true;
+            break;
+        }
         // how much nearer its own shape the glyph is than each other glyph's
         for (const auto& [other, score] : tried) {
             if (other->c == bestC) continue;
@@ -530,7 +590,7 @@ Reading slide(const Line& line, int right, const Format& format, int firstSlack,
     std::reverse(out.boxes.begin(), out.boxes.end());
     out.left = x;
     out.sure = fills(backwards, format) && out.least >= sureScore && out.margin >= sureMargin &&
-               out.zeroEight >= 0;
+               out.zeroEight >= 0 && !out.cut;
     return out;
 }
 
@@ -811,22 +871,35 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
     const cv::Mat bgr = bgrOf(frame);
     const double screen = frame.rows / 1440.0;
     const cv::Rect band = bandOf(frame.size());
+    const cv::Rect turretBand = turretBandOf(frame.size());
     const cv::Mat ink = [&] {
         cv::Mat all = cv::Mat::zeros(bgr.size(), CV_32F);
+        if (turretBand.area() > 0) inkOf(bgr(turretBand), screen).copyTo(all(turretBand));
         inkOf(bgr(band), screen).copyTo(all(band));
         return all;
     }();
     std::vector<double> scales;
     for (double f = 0.78; f <= 1.27; f += 0.06) scales.push_back(screen * f);
-    const Column column = findColumn(ink, band, scales);
+    // the panel beside the reticle, or the MOLE turret's row under it. The
+    // turret's labels must match well: on the 3,600 frames of 15 November
+    // 2026 (a Prospector, no turret) the row under the reticle matched them
+    // at 0.30 to 0.67, the turret's own at 0.82 and 0.85 (17 November 2026)
+    static const double turretBar = envOr("SCMINER_FIVE_TURRET_BAR", 0.75);
+    const Column beside = findColumn(ink, band, scales);
+    const Column underneath = findColumn(ink, turretBand, scales);
+    // where the labels stand says the layout (layoutOf): a column in the
+    // turret's row is one only at the turret's bar, whichever part found it
+    auto fits = [&](const Column& c) { return !turretRow(c.labels, frame.size()) || c.score >= turretBar; };
+    const Column column = fits(underneath) && (!fits(beside) || underneath.score > beside.score) ? underneath : beside;
     static const double bar = envOr("SCMINER_FIVE_BAR", 0.5);
     char note[320];
-    std::snprintf(note, sizeof(note), "five: column %.2f at %d,%d x%.3f", column.score, column.labels.x, column.labels.y,
-                  column.scale);
+    std::snprintf(note, sizeof(note), "five: column %.2f at %d,%d x%.3f%s", column.score, column.labels.x, column.labels.y,
+                  column.scale, turretRow(column.labels, frame.size()) ? " turret" : "");
     panel.note = note;
-    if (column.score < bar) return false;
+    if (column.score < bar || !fits(column)) return false;
     const double s = column.scale;
     const int L = column.labels.x, T = column.labels.y;
+    const Layout& lay = layoutOf(column.labels, frame.size());
     auto X = [&](double u) { return (int)std::lround(L + u * s); };
     auto Y = [&](double u) { return (int)std::lround(T + u * s); };
     // a line of the panel at its place, from `from` to `to` right of the labels
@@ -837,16 +910,21 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
     auto endingAt = [&](const Line& line, double end) { return wordEndingAt(line, line.unit(X(end))); };
     // A 5.0 panel, not 4.10's with the same labels: 4.10 writes its figures
     // after the labels, 5.0 at the panel's right edge, and there a word ends
-    // on the MASS line
     // on the MASS line - or the column is 5.0's beyond doubt, and the
-    // panel is one whose mass is lost to the ground behind it
+    // panel is one whose mass is lost to the ground behind it. Here the
+    // word's own end counts, a short last glyph and all: on the 3,600
+    // frames of 15 November 2026, measured by its lettering alone
+    // (textRight), 599 of the 694 with a panel passed and 81 of the 2,906
+    // without one; by the word's own end 592 and 70 (the reader before 17
+    // November 2026: 592 and 73).
     static const double sureColumn = envOr("SCMINER_FIVE_SURE_COLUMN", 0.85);
-    const Line massLine = lineOf(0, 60, FIGURES_END + 8);
-    if (endingAt(massLine, FIGURES_END) < 0 && column.score < sureColumn) {
+    const Line massLine = lineOf(0, 60, lay.figuresEnd + 8);
+    if (wordEndingAt(massLine, massLine.unit(X(lay.figuresEnd)), 3.5, 3.5, true) < 0 && column.score < sureColumn) {
         panel.note += "; nothing at the right edge";
         return false;
     }
-    startDrawing(bgr, cv::Rect(cv::Point(X(-10), Y(-55)), cv::Point(X(FIGURES_END + 15), Y(LIST_TOP + 6 * LIST_PITCH))));
+    startDrawing(bgr, cv::Rect(cv::Point(X(-10), Y((std::min)(-55.0, lay.volumeTop - 10))),
+                               cv::Point(X(lay.listLeft + lay.scuEnd + 15), Y(lay.listTop + 6 * lay.listPitch))));
     drawBox(cv::Rect(L, T, (int)std::lround(95 * s), (int)std::lround((2 * ROW_PITCH + CAP) * s)), cv::Scalar(255, 255, 0));
     // the label column as found, at size 1, for averaging into its shape
     if (Harvest* h = harvest()) {
@@ -891,14 +969,14 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
         }
         if (before.empty()) return true;
         if (before.size() != 1) return false;
-        delta = figure(line, DELTA_END, DELTA);
+        delta = figure(line, lay.deltaEnd, DELTA);
         return delta.word == before[0] && delta.read.sure;
     };
-    const Line resLine = lineOf(ROW_PITCH, 100, FIGURES_END + 8);
-    const Line instLine = lineOf(2 * ROW_PITCH, 100, FIGURES_END + 8);
-    const Figure mass = figure(massLine, FIGURES_END, WHOLE);
-    const Figure res = figure(resLine, FIGURES_END, PERCENT);
-    const Figure inst = figure(instLine, FIGURES_END, TWO_PLACES);
+    const Line resLine = lineOf(ROW_PITCH, 100, lay.figuresEnd + 8);
+    const Line instLine = lineOf(2 * ROW_PITCH, 100, lay.figuresEnd + 8);
+    const Figure mass = figure(massLine, lay.figuresEnd, WHOLE);
+    const Figure res = figure(resLine, lay.figuresEnd, PERCENT);
+    const Figure inst = figure(instLine, lay.figuresEnd, TWO_PLACES);
     Figure resDelta, instDelta;
     const bool resOwn = modifier(resLine, res, resDelta);
     const bool instOwn = modifier(instLine, inst, instDelta);
@@ -906,8 +984,9 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
     // and can end a little further right than the figures: up to 239 on
     // the Prospector and the MOLE, to 241 on the Golem (17 November 2026)
     Figure volume, scuWord;
-    const Line volumeLine = lineOf(VOLUME_TOP, 128, FIGURES_END + 8);
-    scuWord.word = wordEndingAt(volumeLine, volumeLine.unit(X(FIGURES_END)), 3.5, 8.0);
+    const double volumeEnd = lay.listLeft + lay.scuEnd;
+    const Line volumeLine = lineOf(lay.volumeTop, lay.listLeft + lay.volumeFrom, volumeEnd + 8);
+    scuWord.word = wordEndingAt(volumeLine, volumeLine.unit(X(volumeEnd)), 3.5, 8.0);
     if (scuWord.word >= 0) {
         scuWord.read = slide(volumeLine, textRight(volumeLine, (size_t)scuWord.word), SCU_WORD, 2, sureScore, sureMargin);
         drawRead(volumeLine, scuWord.read);
@@ -923,12 +1002,12 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
         auto take = [&](const char* field, const Line& line, int word, const std::string& truth, int slack) {
             if (word >= 0) harvestForced(field, line, textRight(line, (size_t)word), truth, slack);
         };
-        take("mass", massLine, endingAt(massLine, FIGURES_END), truthOf(2), 2);
-        take("res", resLine, endingAt(resLine, FIGURES_END), truthOf(4), 2);
-        take("resdelta", resLine, endingAt(resLine, DELTA_END), truthOf(3), 2);
-        take("inst", instLine, endingAt(instLine, FIGURES_END), truthOf(6), 2);
-        take("instdelta", instLine, endingAt(instLine, DELTA_END), truthOf(5), 2);
-        if (!truthOf(7).empty()) take("scu", volumeLine, endingAt(volumeLine, FIGURES_END), truthOf(7) + "SCU", 2);
+        take("mass", massLine, endingAt(massLine, lay.figuresEnd), truthOf(2), 2);
+        take("res", resLine, endingAt(resLine, lay.figuresEnd), truthOf(4), 2);
+        take("resdelta", resLine, endingAt(resLine, lay.deltaEnd), truthOf(3), 2);
+        take("inst", instLine, endingAt(instLine, lay.figuresEnd), truthOf(6), 2);
+        take("instdelta", instLine, endingAt(instLine, lay.deltaEnd), truthOf(5), 2);
+        if (!truthOf(7).empty()) take("scu", volumeLine, endingAt(volumeLine, volumeEnd), truthOf(7) + "SCU", 2);
         std::vector<std::string> parts;
         {
             std::stringstream ss(truthOf(8));
@@ -936,7 +1015,8 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
             while (std::getline(ss, p, ';')) parts.push_back(p);
         }
         for (int row = 0; row < (int)parts.size(); row++) {
-            const Line line = lineOf(LIST_TOP + row * LIST_PITCH, -8, FIGURES_END + 8);
+            const Line line =
+                lineOf(lay.listTop + row * lay.listPitch, lay.listLeft - 8, lay.listLeft + lay.listEnd + 8);
             if (line.words.size() < 2) continue;
             // share|name|quality|colour
             std::vector<std::string> f;
@@ -946,8 +1026,8 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
                 while (std::getline(ss, cell, '|')) f.push_back(cell);
             }
             if (f.size() < 3) continue;
-            if (std::abs(line.left(0) - line.unit(L)) <= 4) take("share", line, 0, f[0] + "%", 2);
-            if (!f[2].empty()) take("quality", line, endingAt(line, QUALITY_END), f[2], 2);
+            if (std::abs(line.left(0) - line.unit(X(lay.listLeft))) <= 4) take("share", line, 0, f[0] + "%", 2);
+            if (!f[2].empty()) take("quality", line, endingAt(line, lay.listLeft + lay.qualityEnd), f[2], 2);
         }
     }
 
@@ -993,14 +1073,18 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
         placed.labelScale = s;
         const std::string ore = oreByLine(frame, panel.oreRow.area() > 0 ? panel.oreRow
                                                    : cv::Rect(cv::Point(X(-4), Y(ORE_TOP - 3)),
-                                                              cv::Point(X(FIGURES_END + 4), Y(ORE_TOP + CAP + 3))) &
+                                                              cv::Point(X(lay.figuresEnd + 4), Y(ORE_TOP + CAP + 3))) &
                                                          cv::Rect(0, 0, frame.cols, frame.rows), *lines);
         const std::vector<int> values = fiveQualities(ore);
         panel.note += "; ore '" + ore + "' list";
         for (const FiveListLine& row : readFiveList(frame, placed, &values)) {
+            // the name as the list's reader reads it (the inert rest is known
+            // by it), spaces as '_'
+            std::string name = row.name.area() > 0 ? lines->read(frame(row.name)).text : std::string();
+            std::replace(name.begin(), name.end(), ' ', '_');
             panel.note += " " + row.shareText + (row.shareSure ? "" : "?") + "|" +
                           (row.byValues ? std::to_string(row.quality) + "v" : row.qualityText + (row.qualitySure ? "" : "?")) +
-                          (row.dim ? "d" : "");
+                          (row.dim ? "d" : "") + "|n=" + name;
         }
         panel.note += g_listWords;
     }
@@ -1009,9 +1093,10 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
     panel.labelScale = s;
     panel.labelGlyph = FIVE_PANEL;
     panel.confidence = column.score;
-    panel.box = cv::Rect(cv::Point(X(-6), Y(-50)), cv::Point(X(FIGURES_END + 12), Y(LIST_TOP + 5 * LIST_PITCH))) &
+    panel.box = cv::Rect(cv::Point(X(-6), Y((std::min)(-50.0, lay.volumeTop - 6))),
+                         cv::Point(X(lay.listLeft + lay.scuEnd + 12), Y(lay.listTop + 5 * lay.listPitch))) &
                 cv::Rect(0, 0, frame.cols, frame.rows);
-    panel.oreRow = cv::Rect(cv::Point(X(-4), Y(ORE_TOP - 3)), cv::Point(X(FIGURES_END + 4), Y(ORE_TOP + CAP + 3))) &
+    panel.oreRow = cv::Rect(cv::Point(X(-4), Y(ORE_TOP - 3)), cv::Point(X(lay.figuresEnd + 4), Y(ORE_TOP + CAP + 3))) &
                    cv::Rect(0, 0, frame.cols, frame.rows);
     endDrawing();
     return true;
@@ -1020,9 +1105,11 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
 cv::Rect fiveContentsRegion(const ScanPanel& panel, const cv::Size& frame) {
     if (panel.labels.x < 0 || panel.labelScale <= 0) return cv::Rect();
     const double s = panel.labelScale;
-    const cv::Rect wanted(cv::Point((int)std::lround(panel.labels.x - 12 * s), (int)std::lround(panel.labels.y + (LIST_TOP - 8) * s)),
-                          cv::Point((int)std::lround(panel.labels.x + (FIGURES_END + 12) * s),
-                                    (int)std::lround(panel.labels.y + (LIST_TOP + 7 * LIST_PITCH) * s)));
+    const Layout& lay = layoutOf(panel.labels, frame);
+    const cv::Rect wanted(cv::Point((int)std::lround(panel.labels.x + (lay.listLeft - 12) * s),
+                                    (int)std::lround(panel.labels.y + (lay.listTop - 8) * s)),
+                          cv::Point((int)std::lround(panel.labels.x + (lay.listLeft + lay.listEnd + 12) * s),
+                                    (int)std::lround(panel.labels.y + (lay.listTop + 7 * lay.listPitch) * s)));
     return wanted & cv::Rect(0, 0, frame.width, frame.height);
 }
 
@@ -1031,15 +1118,19 @@ std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& pa
     if (frame.empty() || panel.labels.x < 0 || panel.labelScale <= 0 || knownGlyphs().empty()) return out;
     const double s = panel.labelScale;
     const int L = panel.labels.x, T = panel.labels.y;
+    const Layout& lay = layoutOf(panel.labels, frame.size());
     auto X = [&](double u) { return (int)std::lround(L + u * s); };
     auto Y = [&](double u) { return (int)std::lround(T + u * s); };
     // the list's ink, and its lines cut out of it
-    const cv::Rect part = cv::Rect(cv::Point(X(-16), Y(LIST_TOP - 12)), cv::Point(X(FIGURES_END + 16), Y(LIST_TOP + 7.5 * LIST_PITCH))) &
+    const cv::Rect part = cv::Rect(cv::Point(X(lay.listLeft - 16), Y(lay.listTop - 12)),
+                                   cv::Point(X(lay.listLeft + lay.listEnd + 16), Y(lay.listTop + 7.5 * lay.listPitch))) &
                           cv::Rect(0, 0, frame.cols, frame.rows);
-    if (part.width < 100 * s || part.height < 2 * LIST_PITCH * s) return out;
+    if (part.width < 100 * s || part.height < 2 * lay.listPitch * s) return out;
     const cv::Mat ink = inkOf(bgrOf(frame)(part), s);
     auto lineOf = [&](double top) {
-        const cv::Rect r = cv::Rect(cv::Point(X(-8), Y(top - 4)), cv::Point(X(FIGURES_END + 8), Y(top + CAP + 4))) - part.tl();
+        const cv::Rect r = cv::Rect(cv::Point(X(lay.listLeft - 8), Y(top - 4)),
+                                    cv::Point(X(lay.listLeft + lay.listEnd + 8), Y(top + CAP + 4))) -
+                           part.tl();
         return lineAt(ink, r, s, 12.0);
     };
     static const double sureScore = envOr("SCMINER_FIVE_SCORE", 0.80);
@@ -1047,45 +1138,80 @@ std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& pa
     double brightest = 0;
     g_listWords.clear();
     for (int row = 0; row < 7; row++) {
-        const Line line = lineOf(LIST_TOP + row * LIST_PITCH);
-        g_listWords += wordsOf(("row" + std::to_string(row)).c_str(), line, L - part.x, s);
+        const Line line = lineOf(lay.listTop + row * lay.listPitch);
+        g_listWords += wordsOf(("row" + std::to_string(row)).c_str(), line, X(lay.listLeft) - part.x, s);
         // A line of the list begins with its share at the labels' edge. Over a
         // bright rock the ground's ink can join the share's word on its left
         // (6 to 12 units on the MOLE, 17 November 2026), and the inert rest's
         // long name scrolls back and forth in its column until it touches
         // the share ("100.00%NERT MATERIALS" one word). So the share's word is
-        // the first that reaches to where shares end, beginning up to 16
-        // units before the edge or 8 after it (the Golem's shares begin 2 to
-        // 6 after it, the others' 0 to 4); nothing is read left of the edge
-        // less 4; and where the word runs on past where shares end, the share
-        // ends at the glyph that reads best as one.
-        const double edge = line.unit(L - part.x);
-        const int leftmost = (int)std::floor(edge - 4);
-        int sw = -1;
-        for (size_t w = 0; w < line.words.size(); w++) {
-            if (line.right(w) < edge + 8) continue;   // a speck before it
-            if (line.left(w) <= edge + 8 && line.left(w) >= edge - 16) sw = (int)w;
-            break;
+        // the first that reaches past the edge by 3 - a speck can stand
+        // before it, and the faint inert share breaks into pieces as short as
+        // 4 of 41.78% ending 5.5 after the edge (the MOLE's pilot seat, 17
+        // November 2026 08:54) - beginning up to 16 units before the edge or
+        // 8 after it (the Golem's shares begin 2 to 6 after it, the others' 0
+        // to 4); nothing is read left of the edge less 4; and where the word
+        // runs on past where shares end, or ends short of them, the share ends
+        // at the glyph that reads best as one.
+        const double edgeOfLine = line.unit(X(lay.listLeft) - part.x);
+        auto shareWordOf = [&](const Line& l, double edge) {
+            for (size_t w = 0; w < l.words.size(); w++) {
+                if (l.right(w) < edge + 3) continue;   // a speck before it
+                if (l.left(w) <= edge + 8 && l.left(w) >= edge - 16) return (int)w;
+                break;
+            }
+            return -1;
+        };
+        // The inert rest's share is drawn faint beside its white name, and
+        // the line's ink, cut at 0.4 of its brightest, leaves of it a few
+        // specks (41.78% as 12-14 and 25-31 on the Golem, 17 November 2026):
+        // so where the line has no share, the share's own stretch is looked
+        // at alone - if a name follows it on the line.
+        const Line* sl = &line;
+        Line shareOnly;
+        double edge = edgeOfLine;
+        int sw = shareWordOf(line, edge);
+        if (sw < 0) {
+            shareOnly = lineAt(ink,
+                               cv::Rect(cv::Point(X(lay.listLeft - 8), Y(lay.listTop + row * lay.listPitch - 4)),
+                                        cv::Point(X(lay.listLeft + lay.shareEndsTo + 6),
+                                                  Y(lay.listTop + row * lay.listPitch + CAP + 4))) -
+                                   part.tl(),
+                               s, 12.0);
+            const double e = shareOnly.unit(X(lay.listLeft) - part.x);
+            const int w = shareWordOf(shareOnly, e);
+            // a name: a word of some length right of where shares end
+            bool named = false;
+            for (size_t k = 0; k < line.words.size(); k++) {
+                named = named || (line.left(k) > edgeOfLine + lay.shareEndsTo && line.right(k) - line.left(k) >= 12);
+            }
+            if (w >= 0 && named) {
+                sl = &shareOnly;
+                sw = w;
+                edge = e;
+            }
         }
-        if (sw < 0 || ((size_t)sw + 1 == line.words.size() && line.right((size_t)sw) <= edge + SHARE_ENDS_TO)) break;
+        const int leftmost = (int)std::floor(edge - 4);
+        if (sw < 0 || (sl == &line && (size_t)sw + 1 == line.words.size() && line.right((size_t)sw) <= edge + lay.shareEndsTo))
+            break;
         FiveListLine entry;
-        int shareEnd = line.right((size_t)sw);
+        int shareEnd = sl->right((size_t)sw);
         Reading share;
-        if (shareEnd >= edge + SHARE_ENDS_FROM && shareEnd <= edge + SHARE_ENDS_TO) {
-            share = slide(line, shareEnd, SHARE, 2, sureScore, sureMargin, leftmost);
+        if (shareEnd >= edge + lay.shareEndsFrom && shareEnd <= edge + lay.shareEndsTo) {
+            share = slide(*sl, shareEnd, SHARE, 2, sureScore, sureMargin, leftmost);
         } else {
             // joined to the name, or broken by a gap: every glyph that ends
             // where shares end is tried, and every fourth unit there (a per
             // cent sign touching the name's first letter is one piece with it)
             std::vector<int> ends;
-            for (size_t w = (size_t)sw; w < line.words.size() && line.left(w) < edge + SHARE_ENDS_TO; w++) {
-                for (const cv::Rect& g : line.words[w]) ends.push_back(g.x + g.width);
+            for (size_t w = (size_t)sw; w < sl->words.size() && sl->left(w) < edge + lay.shareEndsTo; w++) {
+                for (const cv::Rect& g : sl->words[w]) ends.push_back(g.x + g.width);
             }
-            for (double u = SHARE_ENDS_FROM; u <= SHARE_ENDS_TO; u += 4) ends.push_back((int)std::lround(edge + u));
+            for (double u = lay.shareEndsFrom; u <= lay.shareEndsTo; u += 4) ends.push_back((int)std::lround(edge + u));
             double best = -2;
             for (const int end : ends) {
-                if (end < edge + SHARE_ENDS_FROM || end > edge + SHARE_ENDS_TO) continue;
-                const Reading r = slide(line, end, SHARE, 2, sureScore, sureMargin, leftmost);
+                if (end < edge + lay.shareEndsFrom || end > edge + lay.shareEndsTo) continue;
+                const Reading r = slide(*sl, end, SHARE, 2, sureScore, sureMargin, leftmost);
                 const double score = fills(std::string(r.text.rbegin(), r.text.rend()), SHARE) ? r.least : r.least - 1;
                 if (score > best) {
                     best = score;
@@ -1096,15 +1222,15 @@ std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& pa
         }
         entry.shareText = share.text;
         entry.shareSure =
-            share.sure && share.left <= (std::max)(line.left((size_t)sw), (int)std::lround(edge + 4)) + 2;
+            share.sure && share.left <= (std::max)(sl->left((size_t)sw), (int)std::lround(edge + 4)) + 2;
         float v = 0;
         if (entry.shareSure && fiveShare(share.text, v)) entry.share = v;
         else entry.shareSure = false;
         // the quality, the line's last word: it ends at 229 to 233 on the
         // Prospector and the MOLE and at 234 to 241 on the Golem's larger
-        // numerals (17 November 2026)
-        const int q = wordEndingAt(line, line.unit(X(QUALITY_END) - part.x), 3.5, 12.0);
-        if (q > sw) {
+        // numerals (17 November 2026); well right of the share
+        const int q = wordEndingAt(line, line.unit(X(lay.listLeft + lay.qualityEnd) - part.x), 3.5, 12.0);
+        if (q >= 0 && line.left((size_t)q) > edgeOfLine + lay.shareEndsTo) {
             const int qRight = textRight(line, (size_t)q);
             const Reading quality = slide(line, qRight, QUALITY, 2, sureScore, sureMargin);
             entry.qualityText = quality.text;
@@ -1138,14 +1264,15 @@ std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& pa
         }
         // how bright the share is: the inert rest's line is drawn faint
         double most = 0;
-        const cv::Rect shareBox = cv::Rect(cv::Point((std::max)(share.left, line.left((size_t)sw)), line.top),
-                                           cv::Point(shareEnd, line.bottom)) &
-                                  cv::Rect(0, 0, line.ink.cols, line.ink.rows);
-        if (shareBox.area() > 0) cv::minMaxLoc(line.ink(shareBox), nullptr, &most);
+        const cv::Rect shareBox = cv::Rect(cv::Point((std::max)(share.left, sl->left((size_t)sw)), sl->top),
+                                           cv::Point(shareEnd, sl->bottom)) &
+                                  cv::Rect(0, 0, sl->ink.cols, sl->ink.rows);
+        if (shareBox.area() > 0) cv::minMaxLoc(sl->ink(shareBox), nullptr, &most);
         entry.bright = most;
         brightest = (std::max)(brightest, most);
-        entry.name = (cv::Rect(cv::Point(X(NAME_FROM), Y(LIST_TOP + row * LIST_PITCH - 3)),
-                               cv::Point(X(NAME_TO), Y(LIST_TOP + row * LIST_PITCH + CAP + 3)))) &
+        const double top = lay.listTop + row * lay.listPitch;
+        entry.name = (cv::Rect(cv::Point(X(lay.listLeft + lay.nameFrom), Y(top - 3)),
+                               cv::Point(X(lay.listLeft + lay.nameTo), Y(top + CAP + 3)))) &
                      cv::Rect(0, 0, frame.cols, frame.rows);
         out.push_back(entry);
         // The list ends where its shares add up to the rock (cut after the
@@ -1219,9 +1346,12 @@ bool FivePanelKeep::wanted(const std::string& mass, double seconds) {
 cv::Rect FivePanelKeep::cut(const ScanPanel& panel, const cv::Size& frame) {
     if (panel.labels.x < 0 || panel.labelScale <= 0) return cv::Rect();
     const double s = panel.labelScale;
+    const Layout& lay = layoutOf(panel.labels, frame);
     auto X = [&](double u) { return (int)std::lround(panel.labels.x + u * s); };
     auto Y = [&](double u) { return (int)std::lround(panel.labels.y + u * s); };
-    return cv::Rect(cv::Point(X(-60), Y(-90)), cv::Point(X(FIGURES_END + 60), Y(LIST_TOP + 8 * LIST_PITCH))) &
+    // the turret's row is wide and low: its list stands right of the figures
+    return cv::Rect(cv::Point(X(-60), Y((std::min)(-90.0, lay.volumeTop - 30))),
+                    cv::Point(X(lay.listLeft + lay.scuEnd + 60), Y(lay.listTop + 8 * lay.listPitch))) &
            cv::Rect(0, 0, frame.width, frame.height);
 }
 
