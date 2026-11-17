@@ -571,4 +571,12 @@ std::string rockPlaceByHand(std::string_view handPlace) {
     return tablePlace(plainName(handPlace));
 }
 
+std::string oreLocationAround(std::string_view placeName) {
+    const std::string name = plainName(placeName);
+    for (const Around& around : AROUND) {
+        if (sameName(name, around.station)) return oreLocationOf(around.place);
+    }
+    return "";
+}
+
 }  // namespace SCMiner

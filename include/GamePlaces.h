@@ -90,5 +90,9 @@ struct RockPlaceState {
 std::string rockPlace(const RockPlaceState& state);
 // ...and for a place set by hand: sent when it is such a place, else ""
 std::string rockPlaceByHand(std::string_view handPlace);
+// The ore tables' location around a station or city that stands in one -
+// "Glaciem Ring" for Levski, the place rockPlace sends a rock found from
+// there with - or "" for any other place
+std::string oreLocationAround(std::string_view placeName);
 
 }  // namespace SCMiner

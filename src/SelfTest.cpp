@@ -9176,6 +9176,43 @@ int runSelfTest() {
                                    onFive == "Bexalite x2, Bexalite x4" && fiveEither,
                                "in 4.10 no place has rocks of its own: in Nyx 7,200 is two Bexalite, in 5.0 two or "
                                "four (got " + onLive + " / " + onFive + ")");
+            // Levski stands in the Glaciem Ring, and a rock found from there
+            // is sent as the ring's (rockPlace): the table follows it - the
+            // usual rocks alone, in 5.0 and before the log says which game,
+            // where both tables made 7,200 two Bexalite or four (17 Nov 2026).
+            // The place the app's way, through standAt.
+            auto at = [](SCMiner::SignatureAnalyzer& a, const char* place, int generation) {
+                a.setSystemFilter("NYX");
+                a.setGameGeneration(generation);
+                SCMiner::standAt(a, SCMiner::placeByLogName(place, "Nyx"), false);
+            };
+            SCMiner::SignatureAnalyzer levski5, levski0, levski4, nyx1Named;
+            at(levski5, "Levski", 5);
+            at(levski0, "Levski", 0);
+            at(levski4, "Levski", 4);
+            at(nyx1Named, "Nyx I", 5);
+            const std::string atLevski5 = exact(levski5, 7200), atLevski0 = exact(levski0, 7200);
+            allPassed &= check(SCMiner::oreLocationAround("Levski") == "Glaciem Ring" &&
+                                   levski5.placeFilter().empty() && levski5.ground() == Ground::Surface &&
+                                   atLevski5 == "Bexalite x2" && levski5.rocksHere() == Rocks::Usual &&
+                                   atLevski0 == "Bexalite x2" && levski0.rocksHere() == Rocks::Usual &&
+                                   exact(levski4, 7200) == "Bexalite x2" && levski4.rocksHere() == Rocks::Usual,
+                               "at Levski 7,200 is two Bexalite alone, by the Glaciem Ring's rocks, in 5.0 and before "
+                               "the log says which game (got " + atLevski5 + " / " + atLevski0 + ")");
+            const std::string atNyx1 = exact(nyx1Named, 7200);
+            allPassed &= check(nyx1Named.rocksHere() == Rocks::Own && atNyx1 == "Bexalite x4" &&
+                                   exact(nyx1Named, 4210) == "Quartz x2",
+                               "...and at Nyx I, named by the log, its own rocks still: 7,200 four Bexalite, 4,210 two "
+                               "Quartz (got " + atNyx1 + ")");
+            // ...and the place after Levski the app has no name for, or the
+            // system picked by hand: both kinds again
+            SCMiner::standAt(levski5, SCMiner::placeByLogName("Somewhere new", "Nyx"), false);
+            const bool unknownEither = levski5.rocksHere() == Rocks::Either;
+            at(levski0, "Levski", 5);
+            levski0.setRocksAround("");
+            allPassed &= check(unknownEither && levski0.rocksHere() == Rocks::Either,
+                               "past Levski at a place the app has no name for, and at Levski with the system picked "
+                               "by hand, both kinds count again");
         }
         // The 2,000 family by where the ship is
         SCMiner::SignatureAnalyzer grounded;

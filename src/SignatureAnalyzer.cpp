@@ -119,9 +119,10 @@ void SignatureAnalyzer::chooseTable() const {
         return;
     }
     // A place with rocks of its own reads by those alone, any other place
-    // the tables know by the usual ones
-    if (!placeName_.empty()) {
-        const auto own = all.find("@" + placeName_);
+    // the tables know by the usual ones - and a station or city in such a
+    // place as that place: Levski as the Glaciem Ring (setRocksAround)
+    if (const std::string& at = rocksAt(); !at.empty()) {
+        const auto own = all.find("@" + at);
         table_ = own != all.end() ? &own->second : &all.at("");
         return;
     }
@@ -146,7 +147,7 @@ const SignatureAnalyzer::Table& SignatureAnalyzer::signatures() const {
 SignatureAnalyzer::Rocks SignatureAnalyzer::rocksHere() const {
     if (!ownRocks()) return Rocks::Usual;
     const auto& all = tables();
-    if (!placeName_.empty()) return all.count("@" + placeName_) ? Rocks::Own : Rocks::Usual;
+    if (const std::string& at = rocksAt(); !at.empty()) return all.count("@" + at) ? Rocks::Own : Rocks::Usual;
     if (ground_ != Ground::Space && all.count("+" + systemFilter_)) return Rocks::Either;
     return Rocks::Usual;
 }

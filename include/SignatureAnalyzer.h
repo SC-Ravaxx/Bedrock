@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <string>
+#include "GamePlaces.h"
 #include "MiningData.h"
 #include "OCREngine.h"
 
@@ -42,6 +43,15 @@ public:
     enum class Ground { Unknown, Space, Surface };
     void setGround(Ground ground) { ground_ = ground; chooseTable(); }
     Ground ground() const { return ground_; }
+    // A station or city that stands in a place of the tables (GamePlaces'
+    // oreLocationAround): that place's ore location - "Glaciem Ring" at
+    // Levski - or "". Levski has no rocks and no ore location of its own:
+    // in Nyx off open space both tables would count there, and every
+    // signature show twice - 7,200 two Bexalite or four, 50 % each (17 Nov
+    // 2026). The table follows the place around it instead, as a rock found
+    // from there is sent with it (rockPlace): at Levski the usual rocks
+    // alone, until the log names another place.
+    void setRocksAround(const std::string& oreLocation) { around_ = oreLocation; chooseTable(); }
     // Which game the log is of: 4 for 4.10, 5 for 5.0, 0 while the log has
     // not said (the app sets it from the log's header). A place's own rocks
     // (PLACE_SIGNATURES: Nyx I) came with 5.0. In 4.10 Nyx I has none, and
@@ -172,6 +182,10 @@ private:
     std::string systemFilter_;  // empty = no filter
     std::string placeName_;     // the place filter, "" when none
     std::vector<std::string> placeMinerals_;   // the ores listed at that place
+    std::string around_;        // see setRocksAround
+    // The place whose rocks the table follows: the place filter's, else the
+    // one around a station or city
+    const std::string& rocksAt() const { return placeName_.empty() ? around_ : placeName_; }
     bool atPlace(const std::string& mineral) const;
     Ground ground_ = Ground::Unknown;
     int generation_ = 0;        // see setGameGeneration
@@ -198,5 +212,21 @@ private:
 
     static uint8_t systemMask(const std::string& system);
 };
+
+// Where the log puts the ship - or the player, by hand - as the analyzer
+// needs it: the place's ores, the rocks around a station or city, and the
+// ground (a body, open space, or no idea; a station or a belt the tables
+// know counts as space). `place` is placeByLogName's, `inSpace` what the
+// log said when it named no place. Application::applyGameState calls it
+// on every new place.
+inline void standAt(SignatureAnalyzer& analyzer, const GamePlace& place, bool inSpace) {
+    using Ground = SignatureAnalyzer::Ground;
+    analyzer.setPlaceFilter(place.known() ? place.oreLocation : std::string());
+    analyzer.setRocksAround(place.known() ? oreLocationAround(place.name) : std::string());
+    analyzer.setGround(!place.known()       ? (inSpace ? Ground::Space : Ground::Unknown)
+                       : place.surface == 1 ? Ground::Surface
+                       : place.surface == 0 ? Ground::Space
+                                            : Ground::Unknown);
+}
 
 } // namespace SCMiner

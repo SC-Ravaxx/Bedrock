@@ -814,11 +814,14 @@ void Application::runWithGUI(HINSTANCE hInstance) {
         currentSystem_ = system;
         analyzer_.setSystemFilter(system);
         // The wider choice, made on purpose: the place filter steps back
-        // until the log names a new place (see applyGameState)
+        // until the log names a new place (see applyGameState) - and so do
+        // the rocks around a station: at Levski, Nyx picked by hand counts
+        // Nyx I's rocks again beside the usual ones
         if (!analyzer_.placeFilter().empty()) {
             analyzer_.setPlaceFilter("");
             if (gui_) gui_->setPlace(placeLine_, "");
         }
+        analyzer_.setRocksAround("");
         std::cout << "System switched to: " << system << std::endl;
 
         // Re-run the analysis for the current signature with the new filter
@@ -4709,14 +4712,13 @@ void Application::applyGameState() {
             placeLine_ = line;
             placeOre_ = ore;
             g_place = line;
-            analyzer_.setPlaceFilter(ore);
-            // The ground under the ship: a body, open space, or no idea. A
-            // station or a belt the tables know counts as space too.
+            // The place's ores, the rocks around a station or city (Levski:
+            // the Glaciem Ring's) and the ground under the ship - a body,
+            // open space, or no idea; a station or a belt the tables know
+            // counts as space too
+            standAt(analyzer_, place, gameState_.inSpace());
             using Ground = SignatureAnalyzer::Ground;
-            const Ground ground = place.known()
-                ? (place.surface == 1 ? Ground::Surface : place.surface == 0 ? Ground::Space : Ground::Unknown)
-                : (gameState_.inSpace() ? Ground::Space : Ground::Unknown);
-            analyzer_.setGround(ground);
+            const Ground ground = analyzer_.ground();
             if (gui_) {
                 gui_->setPlace(line, analyzer_.placeFilter(), ground == Ground::Space);
                 // ...and the place itself, for the gear's shops, nearest first
