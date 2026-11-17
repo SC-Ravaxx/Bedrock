@@ -77,6 +77,7 @@ struct TableLayout {
     char shape;                // the table's shape (PanelShapes.h)
     int ink;                   // ...the ink it is looked for in (channelGrey)
     double bar;                // ...how well it must match
+    bool turretsToo;           // ...and whether a MOLE turret's table has it as well
     double pitch;              // from one row's top to the next
     double headLeft, headWidth, headHeight;      // a figure of the Head column
     double laserFrom, laserFromWide;             // the laser's line: read from here, then from there
@@ -88,10 +89,11 @@ struct TableLayout {
 
 // How well the table must match. The first: the Prospector's matches at
 // 0.75 to 0.96. Nothing is taken on the table alone - the line over it has
-// to read as a laser.
+// to read as a laser. Since 4.10.3 a MOLE turret's table is drawn as the
+// one-seat ships' are, over the turret's laser - see namesTurretLaser.
 const TableLayout TABLE_LAYOUTS[] = {
-    {'F', 5, 0.65, 15.5, 88, 40, 17, 15, -60, -80, 330, -28, -10, -560, 360, -105, 125, -27, 175, 20, 141, 38.5, 12},
-    {'S', 0, 0.70, 18.85, 111, 33, 18, 18, -72, -90, 340, -34, 10, -590, 360, -118, 152, -32, 208, 26, 171, 45.5, 14},
+    {'F', 5, 0.65, false, 15.5, 88, 40, 17, 15, -60, -80, 330, -28, -10, -560, 360, -105, 125, -27, 175, 20, 141, 38.5, 12},
+    {'S', 0, 0.70, true, 18.85, 111, 33, 18, 18, -72, -90, 340, -34, 10, -590, 360, -118, 152, -32, 208, 26, 171, 45.5, 14},
 };
 
 const TableLayout* tableLayout(char shape) {
@@ -688,6 +690,29 @@ const MiningModule* moduleFromBlock(const std::string& nameLine, const std::vect
     return ties == 0 ? best : nullptr;
 }
 
+// Whether a line names a laser of size 2 to the letter - HOFSTEDE-S2 MINING
+// LASER, HELIX II MINING LASER: a MOLE turret's, over a table drawn as the
+// one-seat ships' are since 4.10.3, which laserByHudLine would take for the
+// size 1 a letter away. A Helix I read as HELIX II is lost to it on that
+// look; read as a Prospector's, a turret would have put the Hofstede-S1 on
+// it (four of seven turret snapshots matched the table at 0.59 to 0.66).
+bool namesTurretLaser(const std::string& line) {
+    const std::string f = folded(line, true);
+    const size_t at = f.find("MININGLASER");
+    if (at == std::string::npos) return false;
+    const std::string read = f.substr(0, at);
+    const std::string tail = folded("Mining Laser");
+    for (int i = 0; i < MINING_LASER_COUNT; i++) {
+        if (MINING_LASERS[i].size != 2) continue;
+        std::string name = folded(MINING_LASERS[i].name);
+        if (name.size() > tail.size() && name.compare(name.size() - tail.size(), tail.size(), tail) == 0) {
+            name.resize(name.size() - tail.size());
+        }
+        if (name == read) return true;
+    }
+    return false;
+}
+
 }  // namespace
 
 // Of the size the HUD is read on: the Prospector's and the Golem's lasers are
@@ -902,6 +927,11 @@ bool readSeenLoadout(const cv::Mat& frame, TextLineReader& lines, SeenLoadout& s
         const cv::Rect header = around(from, layout->laserTop, layout->laserRight, layout->laserBottom);
         for (const cv::Rect& row : textRows(bgr(header), s)) {
             const std::string text = readRow(bgr(header), row, s, lines);
+            // a MOLE turret's table: nothing of it is a one-seat ship's
+            if (layout->turretsToo && namesTurretLaser(text)) {
+                seen.laserText = text;
+                return false;
+            }
             if (const MiningLaser* laser = laserByHudLine(text)) {
                 seen.laserText = text;
                 seen.laser = laser;

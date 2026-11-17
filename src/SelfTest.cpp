@@ -7046,6 +7046,63 @@ int runSelfTest() {
                 allPassed &= check(seen.complete() && seen.laser && std::string(seen.laser->name) == "Helix I Mining Laser" &&
                                        names == std::vector<std::string>{"Focus III Module", "Rieger-C3 Module"},
                                    "...and a Prospector's HUD reads as Helix I with Focus III and Rieger-C3 (got " + got + ")");
+                allPassed &= check(seen.tableShape == 'F', "...on the table as the HUD drew it up to Star Citizen 4.10.2 "
+                                                           "(got '" + std::string(1, seen.tableShape ? seen.tableShape : '-') +
+                                                               "')");
+            }
+            // ...and the table as Star Citizen 4.10.3 draws it: seven rows, a
+            // fifth larger, in a thin face fringed with colour - its own shape
+            // ('S') and its own places for the laser's line, the module list,
+            // the Head column and the icons (LoadoutReader's TableLayout). Cut
+            // from the app's own pictures at 5,120 x 1,440 and put back where
+            // they were on a black screen: a Prospector's Helix I with a
+            // Rieger-C3 and a Focus III (the list's left edge and what stood
+            // left of it, the global chat, blacked out), and a Golem's Pitman
+            // with nothing fitted under MINING MODULES. The Head column's
+            // coloured figures are read at the new rows; a grey 100 may come
+            // back unread.
+            {
+                const struct {
+                    const char* file;
+                    const wchar_t* resource;
+                    int x, y;
+                    const char* laser;
+                    std::vector<std::string> modules;
+                    int head[6];   // -1: not read; 100: 100 or not read
+                } huds[] = {
+                    {"scanpanel/loadout_prospector_4103.png", L"SELFTEST_LOADOUT_4103", 1788, 587, "Helix I Mining Laser",
+                     {"Focus III Module", "Rieger-C3 Module"}, {119, 70, 100, 100, -1, 83}},
+                    {"scanpanel/loadout_golem_4103.png", L"SELFTEST_LOADOUT_GOLEM_4103", 1644, 397, "Pitman Mining Laser",
+                     {}, {100, 125, 135, 60, -1, 140}},
+                };
+                for (const auto& h : huds) {
+                    const cv::Mat cut = testPicture(h.file, h.resource);
+                    allPassed &= check(!cut.empty(), std::string("the 4.10.3 HUD's picture ") + h.file +
+                                                         " is beside the build or inside the exe");
+                    if (cut.empty() || !reader) continue;
+                    cv::Mat screen(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+                    cut.copyTo(screen(cv::Rect(h.x, h.y, cut.cols, cut.rows)));
+                    SCMiner::SeenLoadout seen;
+                    SCMiner::readSeenLoadout(screen, *reader, seen);
+                    std::vector<std::string> names;
+                    for (const SCMiner::MiningModule* m : seen.modules) names.push_back(m->name);
+                    std::sort(names.begin(), names.end());
+                    std::string got = std::string(1, seen.tableShape ? seen.tableShape : '-') + " " +
+                                      (seen.laser ? seen.laser->name : "-");
+                    for (const std::string& n : names) got += ", " + n;
+                    bool head = true;
+                    got += "; head";
+                    for (int r = 0; r < 6; r++) {
+                        got += (r ? "/" : " ") + std::to_string(seen.head[r]);
+                        if (h.head[r] == 100) head &= seen.head[r] == 100 || seen.head[r] < 0;
+                        else if (h.head[r] >= 0) head &= seen.head[r] == h.head[r];
+                    }
+                    allPassed &= check(seen.tableShape == 'S' && seen.complete() && seen.laser &&
+                                           std::string(seen.laser->name) == h.laser && names == h.modules && head,
+                                       std::string("...and 4.10.3's table reads as ") + h.laser +
+                                           (h.modules.empty() ? " with nothing fitted" : " with its modules") +
+                                           ", the Head column at its new rows (got " + got + ")");
+                }
             }
             // ...and a MOLE turret's: the line over its table names the head
             // the player flies, a laser of size 2. Three turrets' HUDs at 5120 x
