@@ -7066,6 +7066,23 @@ int runSelfTest() {
             }
         }
 
+        // Edit ship has the keys while one of its lists is down, so Esc
+        // closes the list: past processMessages IsDialogMessage would make
+        // it IDCANCEL and close Bedrock (the laser head's list did so). With
+        // nothing down or typed into, Esc goes on as before.
+        {
+            using SCMiner::MinerGUI;
+            const bool laserList = MinerGUI::editShipTakesKeys(true, false, false, -1, true);
+            const bool moduleList = MinerGUI::editShipTakesKeys(true, false, false, 2, false);
+            const bool typed = MinerGUI::editShipTakesKeys(true, true, false, -1, false) &&
+                               MinerGUI::editShipTakesKeys(true, false, true, -1, false);
+            const bool idle = !MinerGUI::editShipTakesKeys(true, false, false, -1, false) &&
+                              !MinerGUI::editShipTakesKeys(false, false, false, -1, false);
+            allPassed &= check(laserList && moduleList && typed && idle,
+                               "Edit ship keeps the keys while its laser head's or a module's list is down, so Esc "
+                               "closes the list and not Bedrock");
+        }
+
         // loadout.txt: one [ship] section per fit, the player's own ships.
         // Older files read as fits named after their ship - the one-ship file
         // with no section, and one section per kind of ship - and two

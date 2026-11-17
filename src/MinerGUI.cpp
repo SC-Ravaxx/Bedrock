@@ -2840,8 +2840,12 @@ bool MinerGUI::processMessages() {
                 break;
             }
         }
+        // Edit ship's two lists likewise, while one is down: Esc closes the
+        // list there, and IsDialogMessage would make it IDCANCEL, which
+        // closes Bedrock.
         const bool typingHere = (lookingOpen_ || datarunnerOpen_ ||
-                                 (loadoutOpen_ && (craftedEditing_ || nameEditing_ || modulePicker_ >= 0)) ||
+                                 editShipTakesKeys(loadoutOpen_, craftedEditing_, nameEditing_, modulePicker_,
+                                                   laserPickerOpen_) ||
                                  (pluginPageUp() && !pluginTyping_.empty()) || feedbackTyping()) &&
             msg.hwnd == hwnd_ &&
             (msg.message == WM_KEYDOWN || msg.message == WM_KEYUP ||
@@ -5759,6 +5763,11 @@ void MinerGUI::closeOtherSheets(const bool& opening) {
         showUexWelcome(0);
         uexOfferPending_ = true;
     }
+}
+
+bool MinerGUI::editShipTakesKeys(bool cardOpen, bool craftedEditing, bool nameEditing, int moduleListSlot,
+                                 bool laserListOpen) {
+    return cardOpen && (craftedEditing || nameEditing || moduleListSlot >= 0 || laserListOpen);
 }
 
 void MinerGUI::showLoadout(bool open) {

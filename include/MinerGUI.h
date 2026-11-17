@@ -374,6 +374,13 @@ public:
     };
     static LoadoutFile readLoadoutFile(std::istream& in);
     static void writeLoadoutFile(std::ostream& out, const LoadoutFile& file);
+    // Whether the Edit ship card has the keys: its crafted % or its title
+    // being typed, or one of its lists down (a module slot's, the laser
+    // head's). processMessages hands every key to the window then - no
+    // shortcut, and no IsDialogMessage, which makes Esc IDCANCEL and closes
+    // Bedrock instead of the list. Public for the self-test.
+    static bool editShipTakesKeys(bool cardOpen, bool craftedEditing, bool nameEditing, int moduleListSlot,
+                                  bool laserListOpen);
     // Trims heads to what a ship can fly: its number of hardpoints, heads
     // that fit them, no more modules than slots
     static void fitHeads(const MiningShip& ship, std::vector<MiningLoadout>& heads);
