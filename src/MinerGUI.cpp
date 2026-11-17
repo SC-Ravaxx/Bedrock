@@ -28004,10 +28004,13 @@ void MinerGUI::drawFeedbackPage(Gdiplus::Graphics& g, int cw, int ch) {
                                  std::ceil(boxPad + boxS + scaleF(7) + lineWidth(g, tickWords, buttonFont) + boxPad),
                                  scaleF(28));
     // what goes along with a message, broken where its parts meet (a few
-    // pixels short of the room: fitLines' note on 110 %)
+    // pixels short of the room: fitLines' note on 110 %) - its room the
+    // line's with the debug folder, for Send to stay put when the tick changes
     const Fitted along = fitLines(g, toW(Feedback::sentWith(BEDROCK_VERSION, fbGame_, fbInstallSent_, fbAttach_)),
                                   smallFont, wide - scaleF(4));
-    const float alongY = fbTickRect_.GetBottom() + scaleF(12), alongH = heightOf(along, smallFont);
+    const Fitted alongMost = fitLines(g, toW(Feedback::sentWith(BEDROCK_VERSION, fbGame_, fbInstallSent_, true)),
+                                      smallFont, wide - scaleF(4));
+    const float alongY = fbTickRect_.GetBottom() + scaleF(12), alongH = heightOf(alongMost, smallFont);
     fbSendRect_ = Gdiplus::RectF(left, alongY + alongH + scaleF(12), scaleF(100), scaleF(30));
     const Gdiplus::RectF card(cardX, top, cardW, fbSendRect_.GetBottom() + scaleF(16) - top);
     mainscanCard(g, card, px);
