@@ -736,6 +736,24 @@ int runSelfTest() {
                                    ", Brandt" + brandtSays + ")");
         }
 
+        // ...and Edit ship's module list says the same of a module, in the
+        // same words and order, the parts joined by "  ·  ", an active one
+        // led by Active
+        {
+            using SCMiner::MinerGUI;
+            const std::wstring dot = L"  \u00B7  ";
+            const std::wstring torrent = MinerGUI::moduleListWords(*SCMiner::moduleById("passive_torrent_mk3"));
+            const std::wstring surge = MinerGUI::moduleListWords(*SCMiner::moduleById("active_surge"));
+            const std::wstring overrun = MinerGUI::moduleListWords(*SCMiner::moduleById("passive_overrun"));
+            allPassed &= check(torrent == L"+45 % Optimal charge rate" + dot + L"-1 % Optimal charge window" &&
+                                   surge == L"Active" + dot + L"+50 % Laser power" + dot + L"-15.5 % Resistance" + dot +
+                                                L"+10 % Instability" &&
+                                   overrun == L"-24.8 % Resistance" + dot + L"+2 % Laser power" + dot +
+                                                  L"-15 % Extraction power",
+                               "Edit ship's module list words a module as the Gear page's i does: Torrent III, Surge "
+                               "and Overrun");
+        }
+
         // Figures no rock can have, and the panel's first picture of a rock
         // the game has not finished scanning - each one off his panels
         {

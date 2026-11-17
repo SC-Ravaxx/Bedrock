@@ -381,6 +381,11 @@ public:
     // Bedrock instead of the list. Public for the self-test.
     static bool editShipTakesKeys(bool cardOpen, bool craftedEditing, bool nameEditing, int moduleListSlot,
                                   bool laserListOpen);
+    // A row of Edit ship's module list: what the module does, in the words
+    // and order of the Gear page's i (moduleEffects), the parts joined by
+    // "  \u00B7  ", led by Active for one that is fired. Public for the
+    // self-test.
+    static std::wstring moduleListWords(const MiningModule& m);
     // Trims heads to what a ship can fly: its number of hardpoints, heads
     // that fit them, no more modules than slots
     static void fitHeads(const MiningShip& ship, std::vector<MiningLoadout>& heads);
