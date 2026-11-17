@@ -432,10 +432,18 @@ address) and, in the folder debug\:
                    that the newest replaces the oldest
   - region_config.txt     a copy of your settings, so that the folder debug\
                    holds everything on its own
-  - panel5_*.png/.txt     only on the PTU: the Star Citizen 5.0 rock panel as
-                   Bedrock saw it, one per rock, to make its reading better;
-                   twenty at most, after that the newest replaces the oldest
-No screen recording, no video.
+  - panel_*.png/.txt      the rock panel as Bedrock saw it, cut out of the
+                   game picture - the panel only, nothing else of the
+                   screen: one per rock, and one when Bedrock sees a panel
+                   it can't read; twenty at most, after that the newest
+                   replaces the oldest
+  - panel5_*.png/.txt     the same for the Star Citizen 5.0 rock panel,
+                   twenty more
+No screen recording, no video. Nothing in debug\ leaves your PC unless you
+send a message on the Feedback page with "Attach debug folder" ticked. It
+then carries the logs and the copy of your settings, the three newest
+snapshots and the ten newest panel pictures, your Windows user name taken
+out of the texts.
 With the box in Blueprints ticked (see Your library), also game_text_LIVE.ini
 - the game's text, kept until the game's files change - and, in the game's
 folder, data\Localization\english\global.ini and one line in user.cfg.
