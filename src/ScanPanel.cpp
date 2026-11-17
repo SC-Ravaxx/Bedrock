@@ -4117,14 +4117,18 @@ bool readPanelByLines(const cv::Mat& frame, TextLineReader& lines, ScanPanel& pa
     // fringe as a numeral of its own - 11,294 as 111,294 and 112,943, 8,966
     // as 89,667 (17 November 2026, 3 of 52 line looks). From two units left
     // of where the layout starts the figure, so a first numeral a pixel
-    // early is not cut.
+    // early is not cut. In that seat only: over the turret's, the Golem's
+    // and the Prospector's recordings the count was off where the line was
+    // right, on 18 of 6,700 bench frames (the turret's 1,042 kg counted as
+    // five numerals).
     const PanelFont& font = layout.font ? *layout.font : PROSPECTOR_FONT;
     const int massLeft = at - (int)std::lround(2 * s);
     const cv::Rect massBox =
         cv::Rect(massLeft, rows[1].y, (std::max)(1, rows[1].x + rows[1].width - massLeft), rows[1].height) &
         cv::Rect(0, 0, frame.cols, frame.rows);
     cv::Rect massInk;
-    const int massNumerals = numeralsInBox(asBgr(frame), massBox, font.advance * s, &massInk);
+    const int massNumerals =
+        &layout == &COCKPIT_4103_PANEL ? numeralsInBox(asBgr(frame), massBox, font.advance * s, &massInk) : 0;
     // ...and the row about where that ink stands, cut a numeral past its
     // end, for reading it once more where the whole row read another count
     // (his snapshot 13:49:20: 111,294 off the whole row)
