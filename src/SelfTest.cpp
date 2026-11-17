@@ -7020,6 +7020,25 @@ int runSelfTest() {
             allPassed &= check(spawned.empty() && rock.rockPlace() == "Nyx - Glaciem Ring" && rock.place() == "Levski",
                                "spawned at Levski and out into the ring: no place before the terminal, then the Glaciem "
                                "Ring - the header still at Levski (got " + said(rock.rockPlace()) + ")");
+            {
+                // ...and the spawn's terminal line written while a long
+                // loading screen was still up - 54 s before one up 138.73 s
+                // (17 Nov): the ring all the same; a line from before the
+                // screen came up says nothing about the spawn
+                SCMiner::GameState spawn;
+                auto feedSpawn = [&](const std::string& line) {
+                    SCMiner::GameState::Event event;
+                    if (SCMiner::GameState::parse(line, &event)) spawn.apply(event);
+                };
+                feedSpawn("<2026-11-17T14:26:03.571Z> " + TERMINAL + "Nyx_Levski" + TEAM);
+                feedSpawn("<2026-11-17T14:26:57.043Z> Loading screen for Nyx : SC_Frontend closed after 138.73 seconds");
+                const std::string during = spawn.rockPlace();
+                feedSpawn("<2026-11-17T14:40:00.000Z> Loading screen for Nyx : SC_Frontend closed after 45.02 seconds");
+                allPassed &= check(during == "Nyx - Glaciem Ring" && spawn.rockPlace().empty() && spawn.place() == "Levski",
+                                   "a terminal line written while the loading screen was still up is the spawn's: the "
+                                   "ring; one from before the screen came up is not (got " + said(during) + ", " +
+                                       said(spawn.rockPlace()) + ")");
+            }
             // A contract's coordinates from there: a pick, a nav point without
             // a name - the geodes of a QV Breaker Station, not the ring
             feedRock("<2026-10-29T15:00:00.000Z> " + PICK + "NavPoint_Dynamic_830000000202" + PICKED);

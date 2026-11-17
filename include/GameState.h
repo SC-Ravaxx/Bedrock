@@ -134,6 +134,7 @@ public:
         std::string stamp;    // "2026-09-27T09:27:53": the line's own time, UTC; "" without one
         std::string system;   // an explicit system name
         bool systemFromRoute = false;   // ...named by a route as its start: out in space
+        double loadingFor = 0;          // ...or by a loading screen, up this many seconds ("closed after 138.73 seconds")
         std::string ship;
         bool leaving = false;
         std::string place;    // the start location of a route, when it is a place
@@ -219,6 +220,7 @@ private:
     Event heldRoute_;
     bool holding_ = false;
     std::string namedPlace_, namedSystem_, namedStamp_;   // see namedPlace()
+    std::string locationStamp_;   // when a terminal last named a place the app knows
     // For rockPlace(): a quantum target picked, until it is arrived at or a
     // place line other than its own route says where the ship is...
     bool travelling_ = false;

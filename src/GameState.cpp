@@ -319,6 +319,12 @@ bool GameState::parse(std::string_view line, Event* out) {
         std::string name;
         if (systemWord(word, &name)) {
             if (system) *system = name;
+            // ...and how long the screen was up: a terminal line written
+            // meanwhile is the spawn's own (applyOwn)
+            static constexpr std::string_view AFTER = "closed after ";
+            if (const size_t a = line.find(AFTER, b); a != std::string_view::npos) {
+                event.loadingFor = std::atof(std::string(line.substr(a + AFTER.size(), 12)).c_str());
+            }
             said = true;
         } else if (word == "Frontend_Main") {
             event.menu = true;
@@ -626,7 +632,18 @@ bool GameState::applyOwn(const Event& event) {
     };
     setSystem(event.system);
     if (!event.system.empty()) name("", event.system);
-    if (!event.system.empty() && !event.systemFromRoute) placeUnnamed();
+    // A loading screen is a spawn: the place named before is not where the
+    // player is now - unless a terminal named it while the screen was still
+    // up, which is the spawn's own line. It comes 0-2 s after the screen
+    // as a rule, but in 2 of 10 5.0 logins, both long, before it: 17 s
+    // before a screen up 59 s, 54 s before one up 138.73 s (17 Nov: the
+    // rocks of the next twenty minutes went without a place).
+    if (!event.system.empty() && !event.systemFromRoute) {
+        const bool spawnNamed = event.loadingFor > 0 && locationStamp_.size() == 19 && event.stamp.size() == 19 &&
+                                locationStamp_ <= event.stamp &&
+                                withinSeconds(locationStamp_, event.stamp, static_cast<int>(event.loadingFor) + 1);
+        if (!spawnNamed) placeUnnamed();
+    }
     if (event.systemFromRoute) {
         setPlace("");   // out in space: no place any more
         inSpace_ = true;
@@ -685,6 +702,7 @@ bool GameState::applyOwn(const Event& event) {
             if (!place.system.empty()) setSystem(place.system);
             jumpTo_.clear();
             placeSaid(false);
+            locationStamp_ = event.stamp;
         } else if (event.location != "INVALID_LOCATION_ID") {
             placeUnnamed();
         }
@@ -840,6 +858,7 @@ void GameState::setGameLog(const std::filesystem::path& log) {
     namedPlace_.clear();
     namedSystem_.clear();
     namedStamp_.clear();
+    locationStamp_.clear();
     travelling_ = false;
     unnamed_ = false;
     rockPlaceFresh();
@@ -875,6 +894,7 @@ bool GameState::poll() {
         hullShip_.clear();
         lost_.clear();
         bodies_.clear();
+        locationStamp_.clear();
         if (!gadget_.empty()) {
             gadgetChanges_++;
             changed = true;
