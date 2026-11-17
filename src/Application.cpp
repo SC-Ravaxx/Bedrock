@@ -1701,24 +1701,9 @@ void Application::lookForRock() {
     // they were not cut for - the MOLE's turret (see readPanelByLines)
     const ScanPanel panel = readScanPanel(frame, rockOcr_, &glyphReader_, &textLines_);
     if (panel.found || panel.labels.x >= 0) lastRockPanel_ = std::chrono::steady_clock::now();
-    // On the PTU, the app's own picture of a 5.0 panel, one per rock, to make
-    // the reader better with: the frame is tone mapped where the desktop is HDR
-    if (panel.labelGlyph == FIVE_PANEL && library_.channel().rfind("PTU", 0) == 0 &&
-        fiveKeep_.wanted(panel.figures[0].text,
-                         std::chrono::duration<double>(now.time_since_epoch()).count())) {
-        const cv::Rect cut = FivePanelKeep::cut(panel, frame.size());
-        if (cut.area() > 0) {
-            std::error_code ec;
-            std::filesystem::create_directories(dataPath("debug"), ec);
-            const int n = FivePanelKeep::nextNumber(dataPath("debug"));
-            const std::string name = "debug/panel5_" + std::to_string(n);
-            cv::imwrite(dataPath(name + ".png"), frame(cut));
-            std::ofstream about(dataPath(name + ".txt"), std::ios::trunc);
-            about << "frame " << frame.cols << "x" << frame.rows << "\ncut " << cut.x << "," << cut.y << " " << cut.width
-                  << "x" << cut.height << "\ntone mapped " << (toneMapped ? 1 : 0) << "\nlabels " << panel.labels.x << ","
-                  << panel.labels.y << " x" << panel.labelScale << "\nread " << panel.note << "\n";
-        }
-    }
+    // The app's own picture of the panel, for a bug report: one per rock, and
+    // one of a panel seen and not read (PanelKeep.h)
+    keepPanelPicture(frame, panel, toneMapped, now);
     if (panel.found) keepPanelSpot(cv::Size(viewport->width, viewport->height));
     // The panel's own ship, where the log has the player in no seat
     if (const char* id = panelShip_.look(panel.found && panel.labels.x >= 0 ? panel.labelGlyph : 0,
@@ -1963,6 +1948,26 @@ void Application::lookForRock() {
     // that changes under the eye is worse than one that is late. A signature
     // read after a miss takes it back sooner - see RockViewHold.
     if (rockHold_.missed()) rockGone("");
+}
+
+// The cut is written here, on the scan's own thread, once a rock at most: a
+// PNG of the panel alone. The frame is tone mapped where the desktop is HDR.
+// Nothing read depends on it.
+void Application::keepPanelPicture(const cv::Mat& frame, const ScanPanel& panel, bool toneMapped,
+                                   std::chrono::steady_clock::time_point now) {
+    const PanelKeep::Kept kept =
+        panelKeep_.look(panel, frame.size(), std::chrono::duration<double>(now.time_since_epoch()).count());
+    if (kept == PanelKeep::Kept::None) return;
+    PanelKeep::About about;
+    about.channel = library_.channel();
+    about.ship = g_shipLabel;
+    about.seated = gameState_.inSeat();
+    about.toneMapped = toneMapped;
+    std::string name;
+    if (panelKeep_.write(dataPath("debug"), frame, panel, kept, about, &name)) {
+        std::cout << "[rock] kept a picture of the panel" << (kept == PanelKeep::Kept::Unread ? " it could not read" : "")
+                  << ": debug/" << name << ".png" << std::endl;
+    }
 }
 
 // The rock is off the screen: the view goes back to the signatures, and

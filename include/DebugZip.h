@@ -9,9 +9,13 @@
 //   scan_log.csv                       the header line and the last 2 MiB
 //   snapshot_*.png                     the three newest, newest first, each
 //                                      followed by its .txt
+//   panel_<n>.png, panel5_<n>.png      the ten newest cuts of the rock panel
+//                                      (PanelKeep.h) by the file's time,
+//                                      newest first, each followed by its .txt
 // A part from the end always begins at a line's start. Nothing else goes: no
-// .old file, no other picture, no subfolder. The texts always go; the zip's
-// limit only leaves snapshots out. Every text (all but the .png) is masked.
+// .old file, no other picture (panel_miss_<n>.png is the whole screen), no
+// subfolder. The texts always go; the zip's limit only leaves pictures out.
+// Every text (all but the .png) is masked.
 //
 // The zip follows PKWARE's APPNOTE: stored entries (method 0 - the pictures
 // are PNG already, and no library is needed for it), names under debug/ in
@@ -30,6 +34,7 @@ inline constexpr std::size_t WHOLE_MOST = 1024 * 1024;       // session.txt, reg
 inline constexpr std::size_t TABLE_TAIL = 4 * 1024 * 1024;   // rock_scans.csv, rock_readings.csv: beside the header
 inline constexpr std::size_t LOG_TAIL = 2 * 1024 * 1024;     // scan_log.csv: beside the header
 inline constexpr std::size_t SNAPSHOTS = 3;                  // the newest snapshot pairs tried
+inline constexpr std::size_t PANEL_CUTS = 10;                // the newest panel cuts tried, with their .txt
 
 // A file of the zip: its name in the debug folder, its bytes as they go, and
 // when it was written (Unix seconds; the zip's date for it)
@@ -81,7 +86,8 @@ std::string masked(const std::string& text, const Masks& masks, Rules rules = RU
 // system's rules. Snapshots: of the three newest - by the time in the name
 // (snapshot_YYYYMMDD_HHMMSS.png), else by the file's time - as many as keep
 // the zip within `most` bytes, newest first; a pair that would take it over
-// is left out, and no older one is tried in its place.
+// is left out, and no older one is tried in its place. The panel's cuts after
+// them the same way, of the ten newest.
 std::vector<Entry> pick(const std::filesystem::path& debugFolder, const Masks& masks, std::size_t most);
 
 // The zip of `entries`, each under debug/: stored, the UTF-8 flag (bit 11),

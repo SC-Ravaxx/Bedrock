@@ -8,6 +8,7 @@
 #include "GlyphReader.h"
 #include "OCREngine.h"
 #include "PanelFive.h"
+#include "PanelKeep.h"
 #include "ScanPanel.h"
 #include "ScreenCapture.h"
 #include "SignatureAnalyzer.h"
@@ -125,6 +126,12 @@ int runPanelBench(const std::string& dir, const std::string& outCsv, int shard, 
     };
 
     int done = 0;
+    // BEDROCK_PANEL_KEEP=<folder>: every frame through the app's keep
+    // (PanelKeep.h), the looks 0.7 s apart, and the cut of each frame with a
+    // label column written there whatever the keep says, with its size and
+    // what the write took
+    const char* keepDir = DEV_ENV("BEDROCK_PANEL_KEEP");
+    SCMiner::PanelKeep keep;
     for (size_t i = 0; i < files.size(); i++) {
         if (shards > 1 && (int)(i % (size_t)shards) != shard) continue;
         const cv::Mat frame = cv::imread(files[i], cv::IMREAD_COLOR);
@@ -134,6 +141,23 @@ int runPanelBench(const std::string& dir, const std::string& outCsv, int shard, 
         const SCMiner::ScanPanel p = SCMiner::readScanPanel(frame, ocr, &glyphs, panelLines());
         const double ms = std::chrono::duration<double, std::milli>(
                               std::chrono::steady_clock::now() - started).count();
+        if (keepDir) {
+            using SCMiner::PanelKeep;
+            const PanelKeep::Kept kept = keep.look(p, frame.size(), (double)i * 0.7);
+            std::string name;
+            const auto t0 = std::chrono::steady_clock::now();
+            const bool wrote = keep.write(keepDir, frame, p, kept == PanelKeep::Kept::None ? PanelKeep::Kept::Rock : kept,
+                                          PanelKeep::About(), &name);
+            const double writeMs =
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+            std::error_code ec;
+            const auto bytes = wrote ? std::filesystem::file_size(std::filesystem::path(keepDir) / (name + ".png"), ec) : 0;
+            const cv::Rect cut = PanelKeep::cut(p, frame.size());
+            std::cout << "keep " << std::filesystem::path(files[i]).filename().string() << " "
+                      << (kept == PanelKeep::Kept::Rock ? "rock" : kept == PanelKeep::Kept::Unread ? "unread" : "-") << " "
+                      << (wrote ? name : std::string("none")) << " " << cut.width << "x" << cut.height << " " << bytes
+                      << " bytes " << writeMs << " ms" << std::endl;
+        }
         const SCMiner::RockStats& r = p.stats;
         char figures[160];
         std::snprintf(figures, sizeof(figures), "%.0f,%.0f,%s,%.2f,%.2f", r.mass, r.resistance,

@@ -11,6 +11,7 @@
 #include "MiningAdvice.h"
 #include "ScanPanel.h"
 #include "PanelFive.h"
+#include "PanelKeep.h"
 #include <deque>
 #include <map>
 #include "SignatureAnalyzer.h"
@@ -254,7 +255,11 @@ private:
     // move.
     std::deque<RockStats> rockReadings_;
     int rockMissShots_ = 0;      // pictures kept of a panel the shapes missed
-    FivePanelKeep fiveKeep_;     // ...and of 5.0 panels on the PTU
+    PanelKeep panelKeep_;        // ...and of the panel, one per rock, for a bug report
+    // ...written beside the readings: the cut of `frame` where panelKeep_
+    // says so (PanelKeep.h)
+    void keepPanelPicture(const cv::Mat& frame, const ScanPanel& panel, bool toneMapped,
+                          std::chrono::steady_clock::time_point now);
     static RockStats steadyRock(const std::deque<RockStats>& readings);
     // Whether the rock is made of the 5.0 numbers (RockStats::v5)
     void rockModelFor(RockStats& rock) const;

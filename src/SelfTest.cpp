@@ -33,6 +33,7 @@
 #include "OCREngine.h"
 #include "PanelFive.h"
 #include "PanelFiveShapes.h"
+#include "PanelKeep.h"
 #include "PanelShapes.h"
 #include "PhoneServer.h"
 #include "Plugins.h"
@@ -140,6 +141,42 @@ bool partsAre(const SCMiner::RockContents& contents, const std::vector<PartWante
         }
     }
     return true;
+}
+
+// The app's own picture of a 4.10 panel (PanelKeep.h): the panel's figure
+// lines, its heading (60 above the MASS label) and its composition list
+// (rockContentsRegion) inside it, and no more than 300 x 400 at the labels'
+// size
+static bool panelCutHolds(const SCMiner::ScanPanel& panel, const cv::Size& screen, std::string& got) {
+    const cv::Rect cut = SCMiner::PanelKeep::cut(panel, screen);
+    got = std::to_string(cut.x) + "," + std::to_string(cut.y) + " " + std::to_string(cut.width) + "x" +
+          std::to_string(cut.height);
+    const double s = panel.labelScale;
+    bool holds = cut.area() > 0 && s > 0 && cut.y <= panel.labels.y - 60 * s && cut.width <= 300 * s + 1 &&
+                 cut.height <= 400 * s + 1;
+    const std::vector<cv::Rect> lines = SCMiner::panelFigureLines(panel, screen);
+    if (!holds) got += "; size or top";
+    holds = holds && lines.size() == 4;
+    for (size_t i = 0; i < lines.size(); i++) {
+        // the ore's name line ends where the second reader's room for a long
+        // name ends, past the panel's own right edge (the rule's hook at 222)
+        const cv::Rect line = i == 0 ? cv::Rect(lines[i].x, lines[i].y, (std::min)(lines[i].width, cut.br().x - lines[i].x),
+                                                lines[i].height)
+                                     : lines[i];
+        if ((line & cut) != line) {
+            holds = false;
+            got += "; line " + std::to_string(line.x) + "," + std::to_string(line.y) + " " + std::to_string(line.width) +
+                   "x" + std::to_string(line.height);
+        }
+    }
+    const cv::Rect list = SCMiner::rockContentsRegion(panel, screen);
+    if ((list & cut) != list) {
+        got += "; list " + std::to_string(list.x) + "," + std::to_string(list.y) + " " + std::to_string(list.width) + "x" +
+               std::to_string(list.height);
+    }
+    got += "; labels " + std::to_string(panel.labels.x) + "," + std::to_string(panel.labels.y) + " x" +
+           std::to_string(s).substr(0, 5);
+    return holds && list.area() > 0 && (list & cut) == list;
 }
 
 // A test picture: beside the build where there is one, out of the exe where
@@ -1424,6 +1461,154 @@ int runSelfTest() {
             allPassed &= check(sizes, "an upload's sizes in whole MB, rounded down, 1 at least");
         }
 
+        // The app's own pictures of the rock panel (PanelKeep.h): one per
+        // rock, one of a panel seen and not read, two rings of twenty
+        {
+            using SCMiner::PanelKeep;
+            const cv::Size screen(5120, 1440);
+            // a look: the labels where the MOLE pilot seat has them on his
+            // screen (17 November 2026), read or not, the mass as read
+            auto lookAt = [](char glyph, bool found, const std::string& mass) {
+                SCMiner::ScanPanel p;
+                p.labels = cv::Point(3056, 680);
+                p.labelScale = 1.0;
+                p.labelGlyph = glyph;
+                p.found = found;
+                p.figures[0].text = mass;
+                p.figures[0].placed = !mass.empty();
+                if (found) {
+                    p.stats.mass = (float)std::atof(mass.c_str());
+                    p.figuresRead = 3;
+                }
+                return p;
+            };
+            const SCMiner::ScanPanel nothing;
+            // A sequence of looks 0.7 s apart, as a player scans rocks in a
+            // cluster: on the PTU (5.0) the masses of the twenty pictures the
+            // PTU build kept in two minutes on 17 November 2026 - panels still
+            // scanning (000, its zeros read as eights), rocks looked at again,
+            // 40024 read as 48824 - then on LIVE (4.10.3) a blank look, a
+            // numeral misread, 12560 read as 18568
+            const std::vector<std::pair<bool, std::string>> five = {
+                {false, "000"},  {false, "088"},  {true, "8728"},  {true, "8728"},  {true, "8720"},
+                {true, "25612"}, {true, "25512"}, {true, "19554"}, {true, "25612"}, {true, "40024"},
+                {true, "48824"}, {false, ""},     {true, "19554"}, {false, "000"},  {true, "40024"}};
+            const std::vector<std::pair<bool, std::string>> live = {
+                {true, "11294"}, {true, "11294"}, {false, ""},     {true, "11284"}, {true, "5891"}, {true, "11294"},
+                {true, "5891"},  {true, "12560"}, {true, "12568"}, {true, "18568"}, {true, "5891"}};
+            PanelKeep keep;
+            double t = 0;
+            std::string rocks;
+            int unreadKept = 0;
+            for (const auto& [found, mass] : five) {
+                const PanelKeep::Kept kept = keep.look(lookAt(SCMiner::FIVE_PANEL, found, mass), screen, t += 0.7);
+                if (kept == PanelKeep::Kept::Rock) rocks += " 5:" + mass;
+                if (kept == PanelKeep::Kept::Unread) unreadKept++;
+            }
+            for (const auto& [found, mass] : live) {
+                const PanelKeep::Kept kept = keep.look(lookAt('Q', found, mass), screen, t += 0.7);
+                if (kept == PanelKeep::Kept::Rock) rocks += " 4:" + mass;
+                if (kept == PanelKeep::Kept::Unread) unreadKept++;
+            }
+            allPassed &= check(rocks == " 5:8728 5:25612 5:19554 5:40024 4:11294 4:5891 4:12560" && unreadKept == 0,
+                               "the panel's pictures: one per rock on a sequence of looks at 5.0 and 4.10 panels - none "
+                               "for a mass a numeral off, a zero read as an eight, a rock looked at again, a panel still "
+                               "scanning (got" + rocks + ", " + std::to_string(unreadKept) + " unread)");
+
+            // A panel whose labels are found and figures not: one picture once
+            // it stays so for five seconds, no more while it stays - an hour
+            // of looks - one a minute at most, none for a rock kept already
+            PanelKeep seen;
+            double s = 0;
+            int early = 0, hour = 0, back = 0, soon = 0, golem = 0, broken = 0;
+            auto unreadLook = [&](const std::string& mass, char glyph) {
+                return seen.look(lookAt(glyph, false, mass), screen, s += 0.7) == PanelKeep::Kept::Unread;
+            };
+            for (int i = 0; i < 6; i++) early += unreadLook("", 'T');                      // 4.2 s
+            for (int i = 0; i < 5143; i++) hour += unreadLook("", 'T');                    // an hour
+            for (int i = 0; i < 18; i++) seen.look(nothing, screen, s += 0.7);             // away 12.6 s
+            for (int i = 0; i < 10; i++) back += unreadLook("", 'T');                      // back: one
+            for (int i = 0; i < 18; i++) seen.look(nothing, screen, s += 0.7);
+            for (int i = 0; i < 10; i++) soon += unreadLook("", 'T');                      // inside the minute
+            for (int i = 0; i < 18; i++) seen.look(nothing, screen, s += 0.7);
+            seen.look(lookAt('G', true, "4097"), screen, s += 70);                          // a Golem rock read...
+            for (int i = 0; i < 20; i++) golem += unreadLook("4097", 'G');                  // ...its figures red
+            for (int i = 0; i < 18; i++) seen.look(nothing, screen, s += 0.7);
+            for (int round = 0; round < 4; round++) {                                      // read now and then
+                for (int i = 0; i < 6; i++) broken += unreadLook("", 'T');
+                seen.look(lookAt('T', true, std::to_string(20000 + round * 3000)), screen, s += 0.7);
+            }
+            allPassed &= check(early == 0 && hour == 1 && back == 1 && soon == 0 && golem == 0 && broken == 0,
+                               "a panel seen and not read: one picture once it stays unread for five seconds, none more "
+                               "in an hour of looks at it, one a minute at most, none for a rock pictured already or "
+                               "between readings (got " + std::to_string(early) + " " + std::to_string(hour) + " " +
+                                   std::to_string(back) + " " + std::to_string(soon) + " " + std::to_string(golem) + " " +
+                                   std::to_string(broken) + ")");
+
+            // The two rings in a folder of their own: twenty-one pictures of
+            // each, the 21st in the first's place; a new start goes on after
+            // the newest file; the .txt says what it is
+            namespace fs = std::filesystem;
+            std::error_code ec;
+            const fs::path folder = fs::temp_directory_path(ec) / "bedrock-panelkeep-selftest";
+            fs::remove_all(folder, ec);
+            cv::Mat frame(screen, CV_8UC3, cv::Scalar(0, 0, 0));
+            cv::putText(frame, "MASS: 11294", cv::Point(3056, 700), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 140, 255), 2);
+            PanelKeep::About about;
+            about.channel = "LIVE";
+            about.ship = "ARGO MOLE";
+            about.seated = true;
+            about.toneMapped = true;
+            PanelKeep rings;
+            std::vector<std::string> names;
+            bool wrote = true;
+            for (int i = 0; i < 21; i++) {
+                for (char glyph : {'Q', SCMiner::FIVE_PANEL}) {
+                    std::string name;
+                    wrote &= rings.write(folder.string(), frame, lookAt(glyph, true, "11294"),
+                                         i == 20 ? PanelKeep::Kept::Unread : PanelKeep::Kept::Rock, about, &name);
+                    names.push_back(name);
+                }
+            }
+            int files = 0;
+            for (fs::directory_iterator it(folder, ec), done; !ec && it != done; it.increment(ec)) files++;
+            auto textOf = [](const fs::path& file) {
+                std::ifstream in(file, std::ios::binary);
+                return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+            };
+            const std::string first = textOf(folder / "panel_1.txt"), second = textOf(folder / "panel_2.txt");
+            const bool named = names.size() == 42 && names[0] == "panel_1" && names[1] == "panel5_1" &&
+                               names[38] == "panel_20" && names[39] == "panel5_20" && names[40] == "panel_1" &&
+                               names[41] == "panel5_1";
+            const bool told = first.find("frame 5120x1440") == 0 && first.find("\ntone mapped 1") != std::string::npos &&
+                              first.find("\nkept unread") != std::string::npos &&
+                              first.find("\npanel 4.10, MOLE pilot seat") != std::string::npos &&
+                              first.find("\nship ARGO MOLE, seated") != std::string::npos &&
+                              first.find("\nchannel LIVE") != std::string::npos &&
+                              second.find("\nkept rock 11294") != std::string::npos &&
+                              textOf(folder / "panel5_2.txt").find("\npanel 5.0") != std::string::npos;
+            // a new start: panel_7 the newest file, panel5_20 too
+            const auto now = fs::file_time_type::clock::now();
+            fs::last_write_time(folder / "panel_7.png", now + std::chrono::hours(1), ec);
+            fs::last_write_time(folder / "panel5_20.png", now + std::chrono::hours(1), ec);
+            PanelKeep restarted;
+            const int nextPanel = restarted.nextNumber(folder.string(), "panel");
+            const int nextFive = restarted.nextNumber(folder.string(), "panel5");
+            const cv::Mat back1 = cv::imread((folder / "panel_1.png").string());
+            const cv::Rect cut = PanelKeep::cut(lookAt('Q', true, "11294"), screen);
+            allPassed &= check(wrote && named && files == 80 && told && nextPanel == 8 && nextFive == 1 &&
+                                   back1.cols == cut.width && back1.rows == cut.height,
+                               "the panel's pictures go round two rings of twenty, panel_<n> for 4.10 and panel5_<n> for "
+                               "5.0: the 21st takes the first's place, a new start goes on after the newest file, each "
+                               ".txt says what it is (got " + std::to_string(files) + " files, next " +
+                                   std::to_string(nextPanel) + " and " + std::to_string(nextFive) + ")");
+            if (!named || !told) {
+                std::cout << "    names: " << (names.size() > 41 ? names[40] + " " + names[41] : std::string("-"))
+                          << "\n    panel_1.txt: " << first << std::endl;
+            }
+            fs::remove_all(folder, ec);
+        }
+
         // ...and the debug folder that goes with a bug report, as a zip
         // (DebugZip.h): a made-up folder of a made-up user, "Mining"
         {
@@ -1457,7 +1642,7 @@ int runSelfTest() {
             // what stays out
             put("scan_log.old.csv", logHeader + "20:14:59,1,ok,1,99\n");
             put("rock_readings.old.csv", "time,ore,mass\n");
-            put("panel5_1.png", "\x89PNG panel");
+            put("panel_miss_1.png", "\x89PNG the whole screen");
             put("region_3.png", "\x89PNG region");
             put("uex_sent/a.jpg", "jpg");
             put("recording/x.mp4", "mp4");
@@ -1637,6 +1822,78 @@ int runSelfTest() {
             }
             allPassed &= check(cutWhole, "a text over its limit goes as whole lines of its end, within the limit also where "
                                          "<user> is longer than the name it hides");
+            fs::remove_all(folder, ec);
+        }
+
+        // ...with the rock panel's cuts (PanelKeep.h): the ten newest by the
+        // file's time after the snapshots, each with its .txt masked; the
+        // whole screen (panel_miss_<n>.png) stays out
+        {
+            namespace D = SCMiner::DebugZip;
+            namespace fs = std::filesystem;
+            std::error_code ec;
+            const fs::path folder = fs::temp_directory_path(ec) / "bedrock-debugzip-cuts-selftest";
+            fs::remove_all(folder, ec);
+            fs::create_directories(folder, ec);
+            auto put = [&](const std::string& name, const std::string& bytes) {
+                std::ofstream(folder / name, std::ios::binary | std::ios::trunc) << bytes;
+            };
+            const D::Masks masks{"C:\\Users\\Mining", "Mining"};
+            put("session.txt", "data:    C:\\Users\\Mining\\AppData\\Local\\Bedrock\n");
+            put("snapshot_20200101_100000.png", "\x89PNG " + std::string(20000, 's'));
+            put("snapshot_20200101_100000.txt", "snapshot\n");
+            put("panel_miss_1.png", "\x89PNG " + std::string(50000, 'w'));
+            put("panel_01.png", "\x89PNG not a ring's");
+            // fifteen cuts, their times in another order than their numbers:
+            // the k-th of `order` k minutes old
+            const std::vector<std::string> order = {"panel_3",  "panel5_2", "panel_12", "panel_1",  "panel5_1",
+                                                    "panel_7",  "panel_2",  "panel_11", "panel_4",  "panel_9",
+                                                    "panel5_3", "panel_5",  "panel_6",  "panel_8",  "panel_10"};
+            const auto now = fs::file_time_type::clock::now();
+            for (size_t k = 0; k < order.size(); k++) {
+                put(order[k] + ".png", "\x89PNG " + std::string(30000, (char)('a' + k)));
+                put(order[k] + ".txt", "frame 5120x1440\nkept rock 1129" + std::to_string(k) +
+                                           "\nread C:\\Users\\Mining\\AppData\\Local\\Bedrock\n");
+                fs::last_write_time(folder / (order[k] + ".png"), now - std::chrono::minutes(k + 1), ec);
+            }
+            std::vector<std::string> expected = {"session.txt", "snapshot_20200101_100000.png",
+                                                 "snapshot_20200101_100000.txt"};
+            for (size_t k = 0; k < 10; k++) {
+                expected.push_back(order[k] + ".png");
+                expected.push_back(order[k] + ".txt");
+            }
+            auto namesOf = [](const std::vector<D::Entry>& entries) {
+                std::vector<std::string> names;
+                for (const D::Entry& entry : entries) names.push_back(entry.name);
+                return names;
+            };
+            const std::vector<D::Entry> picked = D::pick(folder, masks, SCMiner::Feedback::DEBUG_MOST);
+            bool masked = true;
+            for (const D::Entry& entry : picked) {
+                if (entry.name.size() > 4 && entry.name.compare(entry.name.size() - 4, 4, ".txt") == 0) {
+                    masked = masked && entry.data.find("\\Mining\\") == std::string::npos;
+                }
+            }
+            const bool tenNewest = namesOf(picked) == expected && masked &&
+                                   picked.size() > 4 && picked[4].data.find("%USERPROFILE%") != std::string::npos;
+            allPassed &= check(tenNewest, "a debug folder's zip takes the ten newest panel cuts after the snapshots, newest "
+                                          "first by the file's time, each with its .txt masked; not the whole screen");
+            if (namesOf(picked) != expected) {
+                std::cout << "    picked:";
+                for (const std::string& name : namesOf(picked)) std::cout << " " << name;
+                std::cout << std::endl;
+            }
+            // ...within its limit: a cut that would take it over is left out,
+            // and no older one in its place
+            const size_t whole = D::zipSize(picked);
+            const std::vector<D::Entry> fewer = D::pick(folder, masks, whole - 1);
+            const std::vector<D::Entry> three = D::pick(folder, masks, D::zipSize(std::vector<D::Entry>(
+                                                                           picked.begin(), picked.begin() + 9)));
+            const bool limited = namesOf(fewer) == std::vector<std::string>(expected.begin(), expected.end() - 2) &&
+                                 D::zipSize(fewer) <= whole - 1 &&
+                                 namesOf(three) == std::vector<std::string>(expected.begin(), expected.begin() + 9);
+            allPassed &= check(limited, "...within the zip's limit: a cut that would take it over is left out, and no "
+                                        "older one in its place");
             fs::remove_all(folder, ec);
         }
 
@@ -7571,6 +7828,10 @@ int runSelfTest() {
                                            "...and at its 4.10.3 size: 13923, 15 %, 491.90 and 44.98 SCU (got " +
                                                std::to_string((int)c.mass) + ", " + std::to_string((int)c.resistance) +
                                                " %, " + std::to_string(c.instability) + ", " + std::to_string(c.scu) + ")");
+                        std::string cutAt;
+                        const bool held = tower.found && panelCutHolds(tower, towerScreen.size(), cutAt);
+                        allPassed &= check(held, "...and the app's own picture of it: the panel with its heading and its "
+                                                 "composition list, no more (got " + cutAt + ")");
                     }
                     // The Prospector's white panel after a turret's orange one,
                     // the search held back as the app holds it: the size the
@@ -7641,6 +7902,10 @@ int runSelfTest() {
                                                std::to_string((int)c.mass) + ", " + std::to_string((int)c.resistance) +
                                                " %, " + std::to_string(c.instability) + ", " + std::to_string(c.scu) +
                                                ")");
+                        std::string cutAt;
+                        const bool held = seat.found && panelCutHolds(seat, seatScreen.size(), cutAt);
+                        allPassed &= check(held, "...and the app's own picture of the pilot seat's: the panel with its "
+                                                 "heading and its composition list, no more (got " + cutAt + ")");
                     }
                     // The Golem on an HDR desktop: the picture comes tone
                     // mapped, its lettering orange where an SDR capture has it
@@ -8093,12 +8358,8 @@ int runSelfTest() {
                 allPassed &= check(named && list.parts.size() == 4 && list.parts[0].ore == "Savrilium" &&
                                        list.parts[1].ore == "Savrilium" && list.parts[2].ore == "Gold" && list.parts[3].inert,
                                    "5.0 list: Savrilium 580 and 322 stay two lines, Gold 553, the inert rest");
-                // On the PTU the app keeps its own picture of a 5.0 panel,
-                // one per rock: a mass a numeral off is the same rock misread
-                SCMiner::FivePanelKeep keep;
-                const bool first = keep.wanted("2322", 0.0), misread = keep.wanted("2382", 1.0),
-                           other = keep.wanted("1139", 2.0), unread = keep.wanted("", 3.0),
-                           unreadSoon = keep.wanted("", 30.0), unreadLater = keep.wanted("", 64.0);
+                // (how many numerals two masses differ in, set right-aligned)
+                const bool counted = SCMiner::numeralsOff("2322", "2382") == 1 && SCMiner::numeralsOff("2322", "1139") == 4;
                 // The slashed zero against the eight: an eight shows both its
                 // counters dark, the zero's slash fills one of them; a glyph
                 // halfway between the two is neither
@@ -8121,9 +8382,9 @@ int runSelfTest() {
                                        "5.0 panel: the slashed zero and the eight told apart by their counters, "
                                        "a glyph between them left unread");
                 }
-                allPassed &= check(first && !misread && other && unread && !unreadSoon && unreadLater &&
-                                       SCMiner::numeralsOff("954", "1954") == 1 && SCMiner::numeralsOff("88", "1139") == 4,
-                                   "5.0 panel pictures on the PTU: one per rock, a mass one numeral off is the same rock");
+                allPassed &= check(counted && SCMiner::numeralsOff("954", "1954") == 1 &&
+                                       SCMiner::numeralsOff("88", "1139") == 4,
+                                   "5.0 panel: how many numerals two masses differ in, set right-aligned");
                 // Where the 5.0 reader lands on the Golem's panel, the MOLE
                 // pilot seat's (PTU recording of 17 November 2026) and the
                 // MOLE turret's row under the reticle (the app's own snapshot

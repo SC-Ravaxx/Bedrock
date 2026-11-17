@@ -238,6 +238,24 @@ std::int64_t takenAt(const fs::path& file, const std::string& name) {
     return writtenAt(file);
 }
 
+// A cut of the rock panel (PanelKeep.h): panel_<n>.png or panel5_<n>.png,
+// <n> a number without a leading 0 - not panel_miss_<n>.png, which is the
+// whole screen
+bool panelCut(const std::string& name) {
+    for (const std::string ring : {"panel_", "panel5_"}) {
+        if (name.size() <= ring.size() + 4 || name.compare(0, ring.size(), ring) != 0 ||
+            name.compare(name.size() - 4, 4, ".png") != 0) {
+            continue;
+        }
+        const std::string number = name.substr(ring.size(), name.size() - ring.size() - 4);
+        if (number.size() <= 4 && number[0] != '0' &&
+            std::all_of(number.begin(), number.end(), [](char c) { return c >= '0' && c <= '9'; })) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // ---- the zip --------------------------------------------------------------
 
 constexpr std::uint32_t SIG_LOCAL = 0x04034b50;
@@ -415,19 +433,44 @@ std::vector<Entry> pick(const fs::path& debugFolder, const Masks& masks, std::si
     std::sort(shots.begin(), shots.end(),
               [](const Shot& a, const Shot& b) { return a.taken != b.taken ? a.taken > b.taken : a.name > b.name; });
     if (shots.size() > SNAPSHOTS) shots.resize(SNAPSHOTS);
-    for (const Shot& shot : shots) {
+    // a picture and its .txt, or neither where they would take the zip over
+    // `most`
+    auto pair = [&](const fs::path& png, const std::string& name) {
         const std::size_t before = out.size();
         Entry picture;
-        if (!wholeFile(shot.png, most, picture.data)) continue;   // no picture over the limit is read at all
-        picture.name = shot.name;
-        picture.written = writtenAt(shot.png);
+        if (!wholeFile(png, most, picture.data)) return;   // no picture over the limit is read at all
+        picture.name = name;
+        picture.written = writtenAt(png);
         out.push_back(std::move(picture));
-        fs::path note = shot.png;
+        fs::path note = png;
         note.replace_extension(".txt");
         text(note, WHOLE_MOST, false);
         const std::size_t size = zipSize(out);
         if (size == 0 || size > most) out.resize(before);
+    };
+    for (const Shot& shot : shots) pair(shot.png, shot.name);
+
+    // The rock panel's cuts, newest first by the file's time - the ring's
+    // numbers say nothing of their order
+    struct Cut {
+        fs::path png;
+        std::string name;
+        fs::file_time_type when{};
+    };
+    std::vector<Cut> cuts;
+    for (fs::directory_iterator it(debugFolder, ec), done; !ec && it != done; it.increment(ec)) {
+        std::error_code kind;
+        if (!it->is_regular_file(kind)) continue;
+        const std::string name = nameOf(it->path());
+        if (!panelCut(name)) continue;
+        std::error_code time;
+        const fs::file_time_type when = fs::last_write_time(it->path(), time);
+        if (!time) cuts.push_back({it->path(), name, when});
     }
+    std::sort(cuts.begin(), cuts.end(),
+              [](const Cut& a, const Cut& b) { return a.when != b.when ? a.when > b.when : a.name > b.name; });
+    if (cuts.size() > PANEL_CUTS) cuts.resize(PANEL_CUTS);
+    for (const Cut& cut : cuts) pair(cut.png, cut.name);
     return out;
 }
 

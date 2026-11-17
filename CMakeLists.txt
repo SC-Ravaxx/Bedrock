@@ -231,6 +231,7 @@ set(CORE_SOURCES
     src/GamePlaces.cpp
     src/ScanPanel.cpp
     src/PanelFive.cpp
+    src/PanelKeep.cpp
     src/LoadoutReader.cpp
     src/LaserRange.cpp
     src/RockContents.cpp
@@ -311,6 +312,7 @@ set(HEADERS
     include/RockContents.h
     include/PanelFive.h
     include/PanelFiveShapes.h
+    include/PanelKeep.h
     include/RockScans.h
     include/Feedback.h
     include/DebugZip.h

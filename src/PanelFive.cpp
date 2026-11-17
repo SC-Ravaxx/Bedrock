@@ -1366,19 +1366,7 @@ int numeralsOff(const std::string& a, const std::string& b) {
     return off;
 }
 
-bool FivePanelKeep::wanted(const std::string& mass, double seconds) {
-    if (mass.empty()) {
-        if (seconds - unreadAt_ < 60.0) return false;
-        unreadAt_ = seconds;
-        return true;
-    }
-    if (any_ && numeralsOff(mass, mass_) <= 1) return false;
-    any_ = true;
-    mass_ = mass;
-    return true;
-}
-
-cv::Rect FivePanelKeep::cut(const ScanPanel& panel, const cv::Size& frame) {
+cv::Rect fivePanelCut(const ScanPanel& panel, const cv::Size& frame) {
     if (panel.labels.x < 0 || panel.labelScale <= 0) return cv::Rect();
     const double s = panel.labelScale;
     const Layout& lay = layoutOf(panel.labels, frame);
@@ -1388,23 +1376,6 @@ cv::Rect FivePanelKeep::cut(const ScanPanel& panel, const cv::Size& frame) {
     return cv::Rect(cv::Point(X(-60), Y((std::min)(-90.0, lay.volumeTop - 30))),
                     cv::Point(X(lay.listLeft + lay.scuEnd + 60), Y(lay.listTop + 8 * lay.listPitch))) &
            cv::Rect(0, 0, frame.width, frame.height);
-}
-
-int FivePanelKeep::nextNumber(const std::string& dir) {
-    int newest = 0;
-    std::filesystem::file_time_type when{};
-    std::error_code ec;
-    for (int n = 1; n <= RING; n++) {
-        const std::filesystem::path file = std::filesystem::path(dir) / ("panel5_" + std::to_string(n) + ".png");
-        if (!std::filesystem::exists(file, ec)) continue;
-        const auto t = std::filesystem::last_write_time(file, ec);
-        if (ec) continue;
-        if (newest == 0 || t > when) {
-            newest = n;
-            when = t;
-        }
-    }
-    return newest % RING + 1;
 }
 
 }  // namespace SCMiner

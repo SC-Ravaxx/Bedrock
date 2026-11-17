@@ -83,26 +83,8 @@ char zeroOrEight(const cv::Mat& cell);
 // "2382" one, "954" and "1954" one, "88" and "1139" four
 int numeralsOff(const std::string& a, const std::string& b);
 
-// The app's own pictures of 5.0 panels, kept on the PTU to make the reader
-// better with (debug/panel5_<n>.png, and .txt with where it was cut and what
-// was read): one per rock - a mass more than one numeral off the last kept
-// one's; with no mass read, one a minute - in a ring of twenty files.
-class FivePanelKeep {
-public:
-    static constexpr int RING = 20;
-    // A look whose mass read as `mass` (the likeliest text, "" for none) at
-    // `seconds` (a steady clock): true when it is to be kept
-    bool wanted(const std::string& mass, double seconds);
-    // The part of the frame kept: the panel with room round it
-    static cv::Rect cut(const ScanPanel& panel, const cv::Size& frame);
-    // The number of the next file, 1 to RING: the one after the newest
-    // panel5_<n>.png in `dir`, 1 when there is none
-    static int nextNumber(const std::string& dir);
-
-private:
-    std::string mass_;
-    bool any_ = false;
-    double unreadAt_ = -1e9;
-};
+// The part of the frame the app keeps of a 5.0 panel (PanelKeep.h): the
+// panel with room round it
+cv::Rect fivePanelCut(const ScanPanel& panel, const cv::Size& frame);
 
 }  // namespace SCMiner
