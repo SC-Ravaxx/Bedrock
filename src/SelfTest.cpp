@@ -1002,6 +1002,37 @@ int runSelfTest() {
                                "is too - not for a quarter off alone");
         }
 
+        // A look of the rock on view that read no SCU keeps the view's: the
+        // MOLE's turret, 17 November 2026, 12,868 kg at 25.27 SCU, and the
+        // line reader's looks between, which read none
+        {
+            using namespace SCMiner::RockScans;
+            SCMiner::RockStats held;
+            held.mass = 12868;
+            held.scu = 25.27f;
+            held.resistance = 14;
+            held.resistanceAdjusted = true;
+            held.instability = 22.96f;
+            SCMiner::RockStats look = held;
+            look.scu = 0;
+            keepScu(held, look);
+            SCMiner::RockStats own = held;
+            own.scu = 25.21f;
+            keepScu(held, own);
+            SCMiner::RockStats other = look;
+            other.mass = 8460;
+            other.scu = 0;
+            keepScu(held, other);
+            SCMiner::RockStats oneOff = look;
+            oneOff.mass = 12866;
+            oneOff.scu = 0;
+            keepScu(held, oneOff);
+            allPassed &= check(std::fabs(look.scu - 25.27f) < 0.001f && std::fabs(own.scu - 25.21f) < 0.001f &&
+                                   other.scu == 0 && oneOff.scu == 0,
+                               "a look of the rock on view that read no SCU keeps the view's SCU - one that read its "
+                               "own keeps that, and neither another rock nor a mass one numeral off takes it");
+        }
+
         // ...and the report that shares them with the service
         // (server/refinery/README.md, "Rock scans")
         {

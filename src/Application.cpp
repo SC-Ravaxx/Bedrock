@@ -1449,7 +1449,10 @@ float Application::laserRange(std::chrono::steady_clock::time_point now) const {
     return (float)recent[recent.size() / 2];
 }
 
-void Application::rockToView(RockStats rock, std::chrono::steady_clock::time_point look) {
+void Application::rockToView(RockStats& rock, std::chrono::steady_clock::time_point look) {
+    // a look of this rock without its SCU keeps the one on view - and so does
+    // the caller's rock, for the composition's kg per SCU
+    if (shownMass_ > 0) RockScans::keepScu(shownRock_, rock);
     // another rock: the range read at the last one is not this one's
     if (shownMass_ > 0 && RockScans::anotherRock(shownRock_, rock)) {
         while (!rangeReadings_.empty() && rangeReadings_.front().first < look) rangeReadings_.pop_front();

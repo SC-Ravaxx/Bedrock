@@ -235,7 +235,7 @@ private:
     RockStats shownRock_;
     // The rock to the view with the gauge's range on it. A rock of another
     // mass than the one on view drops the readings taken before this look.
-    void rockToView(RockStats rock, std::chrono::steady_clock::time_point look);
+    void rockToView(RockStats& rock, std::chrono::steady_clock::time_point look);
     // Whether the rock view is fed at all; see the definition
     static bool rockViewWanted();
     std::chrono::steady_clock::time_point lastRockLook_{};

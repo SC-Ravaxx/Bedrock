@@ -117,6 +117,12 @@ bool anotherRock(const RockStats& held, const RockStats& look) {
     return std::fabs(look.mass - held.mass) > held.mass * 0.25f;
 }
 
+void keepScu(const RockStats& held, RockStats& look) {
+    if (look.scu > 0 || held.scu <= 0 || held.mass <= 0 || look.mass <= 0) return;
+    if (std::fabs(held.mass - look.mass) > 1.0f) return;
+    look.scu = held.scu;
+}
+
 static int hundredths(float scu) {
     return (int)std::lround(scu * 100.0f);
 }

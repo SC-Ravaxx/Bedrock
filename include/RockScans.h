@@ -90,6 +90,13 @@ bool oneNumeralApart(float a, float b, int places);
 // showed figures no look had read together.
 bool anotherRock(const RockStats& held, const RockStats& look);
 
+// A look of the rock on view (`held`, the same mass to the kilogram) that read
+// no SCU takes the view's. The line and face readers read no SCU, and the
+// shapes miss it on some looks: in the MOLE's turret on 17 November 2026 the
+// view showed 25.27 SCU and none a look apart, the composition's SCU with it.
+// A mass one numeral off may be another rock and takes nothing.
+void keepScu(const RockStats& held, RockStats& look);
+
 // One rock as the view took it: a line of rock_scans.csv, and what goes to
 // the service where the player shares (sharerocks=1).
 struct ScanPart {
