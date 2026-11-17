@@ -33,15 +33,11 @@ cv::Rect laserBand(const cv::Size& frame) {
 
 // The Prospector's HUD stands at size 1 at 1440 lines; the Golem's runs
 // from 1.15 to 1.8 as the view moves. Since 4.10.3 both stand at 0.96 to
-// 1.03 of the size of their own table's shape.
-const std::vector<double>& tableScales(int rows) {
-    static std::vector<double> scales;
-    static int forRows = -1;
-    if (forRows != rows) {
-        forRows = rows;
-        scales.clear();
-        for (double f = 0.80; f <= 1.95; f *= 1.06) scales.push_back(f * rows / 1440.0);
-    }
+// 1.03 of the size of their own table's shape. Looked for from 0.8, or from
+// the smallest size a table is taken at.
+std::vector<double> tableScales(int rows, double smallest) {
+    std::vector<double> scales;
+    for (double f = std::max(0.80, smallest); f <= 1.95; f *= 1.06) scales.push_back(f * rows / 1440.0);
     return scales;
 }
 
@@ -77,6 +73,7 @@ struct TableLayout {
     char shape;                // the table's shape (PanelShapes.h)
     int ink;                   // ...the ink it is looked for in (channelGrey)
     double bar;                // ...how well it must match
+    double smallest;           // ...the smallest size it is taken at, at 1,440 lines
     bool turretsToo;           // ...and whether a MOLE turret's table has it as well
     double pitch;              // from one row's top to the next
     double headLeft, headWidth, headHeight;      // a figure of the Head column
@@ -88,12 +85,15 @@ struct TableLayout {
 };
 
 // How well the table must match. The first: the Prospector's matches at
-// 0.75 to 0.96. Nothing is taken on the table alone - the line over it has
-// to read as a laser. Since 4.10.3 a MOLE turret's table is drawn as the
-// one-seat ships' are, over the turret's laser - see namesTurretLaser.
+// 0.75 to 0.96. The second: 4.10.3's Prospector and Golem at 0.79 to 0.93.
+// The old table matches the second as well, at 0.80 to 0.87 of its size -
+// under the smallest it is taken at. Nothing is taken on the table alone -
+// the line over it has to read as a laser. Since 4.10.3 a MOLE turret's
+// table is drawn as the one-seat ships' are, over the turret's laser - see
+// namesTurretLaser.
 const TableLayout TABLE_LAYOUTS[] = {
-    {'F', 5, 0.65, false, 15.5, 88, 40, 17, 15, -60, -80, 330, -28, -10, -560, 360, -105, 125, -27, 175, 20, 141, 38.5, 12},
-    {'S', 0, 0.70, true, 18.85, 111, 33, 18, 18, -72, -90, 340, -34, 10, -590, 360, -118, 152, -32, 208, 26, 171, 45.5, 14},
+    {'F', 5, 0.65, 0, false, 15.5, 88, 40, 17, 15, -60, -80, 330, -28, -10, -560, 360, -105, 125, -27, 175, 20, 141, 38.5, 12},
+    {'S', 0, 0.70, 0.92, true, 18.85, 111, 33, 18, 18, -72, -90, 340, -34, 10, -590, 360, -118, 152, -32, 208, 26, 171, 45.5, 14},
 };
 
 const TableLayout* tableLayout(char shape) {
@@ -856,12 +856,15 @@ bool headColumnAgrees(const MiningLaser& laser, const std::vector<const MiningMo
 bool findLaserTable(const cv::Mat& frame, SeenLoadout& seen) {
     seen = SeenLoadout();
     if (frame.empty()) return false;
-    // Both tables, each in its own ink, and the better of those over their
-    // bars. The first in whiteness: its words are white on every HUD it has
-    // been seen on, over the Prospector's blue and the Golem's sand. The
-    // second in the darkest channel: since 4.10.3 the words are thin and
-    // fringed with colour, and in whiteness little of them is left.
-    const TableLayout* best = nullptr;
+    // Both tables, each in its own ink. The first in whiteness: its words
+    // are white on every HUD it has been seen on, over the Prospector's blue
+    // and the Golem's sand. The second in the darkest channel: since 4.10.3
+    // the words are thin and fringed with colour, and in whiteness little of
+    // them is left. The first over its bar is taken, the old table first:
+    // its shape found 4.10.3's at 0.27 to 0.62 (a MOLE turret's the
+    // highest), while the new one finds the old table now and then a little
+    // better than the old shape does.
+    const TableLayout* taken = nullptr;
     double nearest = -2;
     for (const TableLayout& layout : TABLE_LAYOUTS) {
         const PanelShape* table = nullptr;
@@ -869,26 +872,29 @@ bool findLaserTable(const cv::Mat& frame, SeenLoadout& seen) {
             if (PANEL_SHAPES[i].glyph == layout.shape) table = &PANEL_SHAPES[i];
         }
         if (!table) continue;
-        const ShapeFound found = findShapeIn(frame, laserBand(frame.size()), layout.ink, *table, tableScales(frame.rows));
+        const ShapeFound found = findShapeIn(frame, laserBand(frame.size()), layout.ink, *table,
+                                             tableScales(frame.rows, layout.smallest));
+        const bool sized = found.scale >= layout.smallest * frame.rows / 1440.0;
         if (DEV_ENV("SCMINER_LOADOUT_TRACE")) {
             std::cerr << "  [loadout] table " << layout.shape << " " << found.score << " at " << found.at << " x"
-                      << found.scale << std::endl;
+                      << found.scale << (sized ? "" : " (too small)") << std::endl;
         }
-        if (found.score >= layout.bar && (!best || found.score > seen.score)) {
-            best = &layout;
+        if (found.score >= layout.bar && sized) {
+            taken = &layout;
             seen.score = found.score;
             seen.table = found.at;
             seen.scale = found.scale;
+            break;
         }
         // none found: the score that came nearest its bar
-        if (!best && found.score - layout.bar > nearest) {
+        if (found.score - layout.bar > nearest) {
             nearest = found.score - layout.bar;
             seen.score = found.score;
         }
     }
-    if (!best) return false;
+    if (!taken) return false;
     seen.tableFound = true;
-    seen.tableShape = best->shape;
+    seen.tableShape = taken->shape;
     return true;
 }
 
