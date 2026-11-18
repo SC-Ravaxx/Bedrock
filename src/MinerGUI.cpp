@@ -2940,6 +2940,12 @@ bool MinerGUI::processMessages() {
                             showAbout(false);
                             continue;
                         }
+                        // Edit ship as well; a list down or a field being
+                        // typed in on it takes Esc first (typingHere)
+                        if (loadoutOpen_) {
+                            showLoadout(false);
+                            continue;
+                        }
                         break;
                     case 'B':
                         toggleCrafting();
