@@ -6088,10 +6088,11 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
     // need. The list drops under the field, drawn last so it lies over the
     // card, and a click anywhere else puts it away - in the phone's picture
     // as well, where a tap on the field opens it as a module field's does.
+    // (power with its thousands mark, as the stats below and the rock view write it)
     auto laserStock = [](const MiningLaser& l) {
         wchar_t stats[96];
-        std::swprintf(stats, 96, L"%.0f  ·  %.0f m  ·  %d slot%s", l.fracture, l.fullRange, l.slots,
-                      l.slots == 1 ? L"" : L"s");
+        std::swprintf(stats, 96, L"%ls  ·  %.0f m  ·  %d slot%ls", formatNumber((int)std::lround(l.fracture)).c_str(),
+                      l.fullRange, l.slots, l.slots == 1 ? L"" : L"s");
         return std::wstring(stats);
     };
     Gdiplus::RectF laserField;
@@ -6219,7 +6220,7 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
             // that change: 90 is -10 %.
             auto rel = [](double fromStock) {
                 const long n = std::lround(fromStock);
-                return (n >= 0 ? L"+" : L"") + std::to_wstring(n) + L"%";
+                return (n >= 0 ? L"+" : L"") + std::to_wstring(n) + L" %";
             };
             return std::array<std::wstring, 5>{
                 formatNumber((int)std::lround(o.fracture)),
@@ -6251,7 +6252,17 @@ void MinerGUI::drawLoadoutCard(Gdiplus::Graphics& g, int cw, int ch) {
         };
         drawRow(L"BASE", baseFigures, dimBrush);
         drawRow(L"FINAL", finalFigures, textBrush);
-        y += scaleF(24) + scaleF(6);
+        y += scaleF(24);
+        // FINAL counts an active module as running, as the rock view does,
+        // and says for how long in its words, under its figures
+        std::string runs = whileRuns(countedModules(loadout_));   // " while Surge runs, 15 s"
+        if (!runs.empty()) {
+            runs.erase(0, 1);
+            runs[0] = (char)std::toupper((unsigned char)runs[0]);
+            g.DrawString(toW(runs).c_str(), -1, &noteFont, Gdiplus::PointF(left + tagW, y - scaleF(4)), &faintBrush);
+            y += scaleF(16);
+        }
+        y += scaleF(6);
     }
 
     // --- one field per slot. Three always, in a row: a head with fewer
@@ -6924,26 +6935,6 @@ void MinerGUI::putHeadLaser(const MiningLaser* laser) {
         loadout_.modules.resize(loadout_.laser->slots);
     modulePicker_ = -1;
     moduleFilter_.clear();
-}
-
-bool MinerGUI::addHeadModule(const MiningModule* module) {
-    // The first empty slot. The same module can fill every one of them -
-    // three Rieger-C3 is a real fit, because the multipliers stack.
-    if (!module || !loadout_.laser) return false;
-    // The first empty slot, a hole or the end. The same module can fill
-    // every slot: three Rieger-C3 is a real fit, because the multipliers stack.
-    for (int i = 0; i < loadout_.laser->slots && i < 3; i++) {
-        const bool empty = i >= (int)loadout_.modules.size() || loadout_.modules[(size_t)i] == nullptr;
-        if (!empty) continue;
-        setSlotModule(i, module);
-        return true;
-    }
-    return false;
-}
-
-void MinerGUI::takeHeadModule(const MiningModule* module) {
-    const auto at = std::find(loadout_.modules.begin(), loadout_.modules.end(), module);
-    if (at != loadout_.modules.end()) loadout_.modules.erase(at);
 }
 
 void MinerGUI::setSlotModule(int slot, const MiningModule* module) {
@@ -12918,8 +12909,10 @@ MinerGUI::LoadoutFile MinerGUI::readLoadoutFile(std::istream& in) {
         } else if (key == "crafted") {
             if (!heads->empty()) heads->back().craftedPower = (float)std::atof(value.c_str());
         } else if (key == "module") {
+            // (none: a slot left empty before a fitted one)
             if (!heads->empty()) {
-                if (const MiningModule* m = moduleById(value.c_str())) heads->back().modules.push_back(m);
+                if (value == "none") heads->back().modules.push_back(nullptr);
+                else if (const MiningModule* m = moduleById(value.c_str())) heads->back().modules.push_back(m);
             }
         }
     }
@@ -12950,6 +12943,10 @@ MinerGUI::LoadoutFile MinerGUI::readLoadoutFile(std::istream& in) {
     // trimmed rather than refused - the rest of the loadout is still good.
     for (ShipFit& f : file.fits) {
         if (!f.heads.empty()) fitHeads(*f.ship, f.heads);
+        // (an empty slot is kept before a fitted one only)
+        for (MiningLoadout& h : f.heads) {
+            while (!h.modules.empty() && !h.modules.back()) h.modules.pop_back();
+        }
     }
     return file;
 }
@@ -12968,6 +12965,7 @@ void MinerGUI::writeLoadoutFile(std::ostream& out, const LoadoutFile& file) {
     out << "# A Prospector's or a Golem's head and modules are set from the ship's\n";
     out << "# own mining HUD while it is flown; crafted_kept= is the per cent of a\n";
     out << "# crafted laser the ship carried before, back when that laser is.\n";
+    out << "# module=none is a slot left empty before a fitted module.\n";
     if (file.ship) out << "ship=" << file.ship->id << "\n";
     if (!file.fit.empty()) out << "fit=" << file.fit << "\n";
     if (file.gadget) out << "gadget=" << file.gadget->id << "\n";
@@ -12981,8 +12979,13 @@ void MinerGUI::writeLoadoutFile(std::ostream& out, const LoadoutFile& file) {
         for (const MiningLoadout& h : f.heads) {
             out << "head=" << (h.laser ? h.laser->id : "") << "\n";
             out << "crafted=" << h.craftedPower << "\n";
-            for (const MiningModule* m : h.modules) {
-                if (m) out << "module=" << m->id << "\n";
+            // A slot emptied before a fitted one is none, so the module
+            // after it keeps its slot. A Bedrock of before knows no module
+            // by that name and reads the rest packed, as it always did.
+            size_t upTo = h.modules.size();
+            while (upTo > 0 && !h.modules[upTo - 1]) upTo--;
+            for (size_t k = 0; k < upTo; k++) {
+                out << "module=" << (h.modules[k] ? h.modules[k]->id : "none") << "\n";
             }
         }
         for (const auto& kept : f.crafted) {

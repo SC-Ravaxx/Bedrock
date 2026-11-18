@@ -7148,6 +7148,32 @@ int runSelfTest() {
                               std::abs(back.fits[1].heads[0].craftedPower - 12.5f) < 0.001f &&
                               back.fits[0].heads[0].modules.size() == 2;
             allPassed &= check(both, "two Prospectors of one's own come back with their names, hulls and heads");
+            // A slot emptied in Edit ship before a fitted one stays empty
+            // through the file (module=none); a Bedrock of before finds no
+            // module by that name, skips it and reads the rest packed
+            {
+                MinerGUI::LoadoutFile gap;
+                MinerGUI::ShipFit mole;
+                mole.ship = SCMiner::shipById("mole");
+                mole.name = "Gap";
+                SCMiner::MiningLoadout left;
+                left.laser = SCMiner::laserById("grin_arbor_s2");
+                left.modules = {nullptr, SCMiner::moduleById("passive_torrent_mk3")};
+                mole.heads = {left};
+                gap.fits.push_back(mole);
+                std::ostringstream text;
+                MinerGUI::writeLoadoutFile(text, gap);
+                std::istringstream again(text.str());
+                const MinerGUI::LoadoutFile read = MinerGUI::readLoadoutFile(again);
+                const bool kept = read.fits.size() == 1 && !read.fits[0].heads.empty() &&
+                                  read.fits[0].heads[0].modules.size() == 2 && !read.fits[0].heads[0].modules[0] &&
+                                  read.fits[0].heads[0].modules[1] == left.modules[1];
+                allPassed &= check(kept && left.modules[1] &&
+                                       text.str().find("module=none\nmodule=passive_torrent_mk3\n") != std::string::npos &&
+                                       SCMiner::moduleById("none") == nullptr,
+                                   "a slot emptied before a fitted one stays empty through loadout.txt (module=none, "
+                                   "which a Bedrock of before skips)");
+            }
             std::istringstream twice("[prospector]\nname=Rock Cracker\n[prospector]\nname=rock cracker\n");
             const MinerGUI::LoadoutFile same = MinerGUI::readLoadoutFile(twice);
             allPassed &= check(same.fits.size() == 2 && same.fits[0].name == "Rock Cracker" &&

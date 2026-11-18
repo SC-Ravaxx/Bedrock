@@ -1780,14 +1780,11 @@ private:
     size_t feedbackPlaceAt(Gdiplus::Graphics& g, int field, float px, float py, bool& atEnd);
     // The caret moved or the text changed: shown, and brought into view
     void feedbackTouched(HWND hwnd, bool edited);
-    // What a click on a row of Edit ship does to the head shown, for the
-    // Gear page to do the same: a laser put on it (the crafted figure goes
-    // aside with the one that leaves, the modules are trimmed to the new
-    // one's slots), a module added where a slot is free, one taken off (a
-    // right-click there). The caller stores the head and saves.
+    // A laser put on the head shown, picked in Edit ship's list: the
+    // crafted figure goes aside with the one that leaves, the modules are
+    // packed and trimmed to the new one's slots. The caller stores the head
+    // and saves.
     void putHeadLaser(const MiningLaser* laser);
-    bool addHeadModule(const MiningModule* module);
-    void takeHeadModule(const MiningModule* module);
     // The module fields are three slots. `module` null empties that slot.
     void setSlotModule(int slot, const MiningModule* module);
     // A click while the ship's list is down: a fit picked, a new one added
