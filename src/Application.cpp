@@ -1743,8 +1743,10 @@ void Application::lookForRock() {
         const bool settled = rockSteadier_.add(panel, rock);
         rockModelFor(rock);
         // ...and settled figures that cannot be the rock's are waited past
-        // the same way: the scan finishes, or the misread goes
-        const std::string why = settled ? rockCheck_.notTaken(rock) : std::string();
+        // the same way: the scan finishes, or the misread goes. The volume
+        // the panel shows is asked too where it did not fit the mass: a mass
+        // read short (ScanPanel::volumeShown)
+        const std::string why = settled ? rockCheck_.notTaken(rock, panel.volumeShown) : std::string();
         rockSettling_ = !settled || !why.empty();
         if (rockSettling_) {
             logRockReading(panel, nullptr, range.metres, why);

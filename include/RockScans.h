@@ -64,9 +64,15 @@ double usualKgPerScu(const RockStats& rock);
 // looks in a row are taken all the same: a misread does not hold that long,
 // and a patch may have made rocks bigger or heavier than the game data
 // Bedrock carries.
+//
+// `volumeShown`: the volume the panel shows where the reader kept no SCU
+// with the look, because it did not fit the mass (ScanPanel::volumeShown).
+// A mass lighter than that volume at density 1 is not taken: a mass read
+// short. Nothing else is asked of it - a volume misread small makes a mass
+// look heavy, and the mass may be right.
 class LookCheck {
 public:
-    std::string notTaken(const RockStats& rock);
+    std::string notTaken(const RockStats& rock, float volumeShown = 0);
 
 private:
     float mass_ = 0, scu_ = 0;

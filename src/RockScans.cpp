@@ -66,18 +66,29 @@ double usualKgPerScu(const RockStats& rock) {
     return rock.mass / rock.scu * (KG_PER_SCU_AT_DENSITY_ONE / modelOf(rock).kgPerScuAtDensityOne);
 }
 
-std::string LookCheck::notTaken(const RockStats& rock) {
+std::string LookCheck::notTaken(const RockStats& rock, float volumeShown) {
     if (notScannedYet(rock)) return "not scanned yet";
-    const std::string why = impossible(rock);
+    std::string why = impossible(rock);
+    // the volume the panel shows, where the look kept none: a mass too light
+    // for it was read short
+    float scu = rock.scu;
+    if (why.empty() && rock.scu <= 0 && volumeShown > 0) {
+        RockStats asked = rock;
+        asked.scu = volumeShown;
+        if (impossible(asked) == "lighter than its volume") {
+            why = "lighter than the volume shown";
+            scu = volumeShown;
+        }
+    }
     if (why.empty()) {
         looks_ = 0;
         return "";
     }
-    if (looks_ > 0 && rock.mass == mass_ && rock.scu == scu_) {
+    if (looks_ > 0 && rock.mass == mass_ && scu == scu_) {
         looks_++;
     } else {
         mass_ = rock.mass;
-        scu_ = rock.scu;
+        scu_ = scu;
         looks_ = 1;
     }
     return looks_ >= 8 ? std::string() : why;

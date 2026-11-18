@@ -802,6 +802,24 @@ int runSelfTest() {
                                    densestPart("Ice") == 1.0 && densestPart("Lindinium") == 19.35,
                                "a rock's first picture before the game has scanned it, and figures no rock can "
                                "have, wait - the same impossible figures on eight looks are taken");
+            // A mass read short, 34 for 3,413 kg (17 November 2026, 90 looks
+            // on view): the reader kept no SCU with it, as 34 kg fits none,
+            // and the volume the panel shows holds it. The rock's own mass is
+            // taken against the same volume, and a volume misread small says
+            // nothing against a mass.
+            LookCheck shortRead;
+            const SCMiner::RockStats readShort = rockOf("Beryl", 34, 0, 53, 70.36f);
+            const SCMiner::RockStats readWhole = rockOf("Beryl", 3413, 0, 53, 70.36f);
+            const bool heldShort = shortRead.notTaken(readShort, 11.27f) == "lighter than the volume shown" &&
+                                   shortRead.notTaken(readWhole, 11.27f).empty() &&
+                                   shortRead.notTaken(readShort, 0).empty() &&
+                                   shortRead.notTaken(readWhole, 1.00f).empty();
+            LookCheck stubborn;
+            int shortWaited = 0;
+            while (shortWaited < 20 && !stubborn.notTaken(readShort, 11.27f).empty()) shortWaited++;
+            allPassed &= check(heldShort && shortWaited == 7,
+                               "a mass read short - 34 kg for 3413, no SCU kept with it - waits against the volume the "
+                               "panel shows; the rock's own mass, and a mass beside a volume misread small, are taken");
         }
 
         // Nyx I's rocks of 5.0 by their own numbers (RockModel): rocks of the
@@ -8171,6 +8189,37 @@ int runSelfTest() {
                                                std::to_string(c.instability) + "; " + seat.note + ")");
                         allPassed &= check(seat.found && std::abs(c.scu - 33.38f) < 0.005f,
                                            "...and its volume by line: 33.38 SCU (got " + std::to_string(c.scu) + ")");
+                    }
+                    // A Prospector's panel off his HDR screen whose mass the
+                    // shapes read short (the app's own picture, 17 November
+                    // 2026, 18:58:30): the panel shows 2125 kg and 5.40 SCU,
+                    // the shapes read 2 and kept no volume, and the view
+                    // showed 2 kg. The volume the panel shows comes back with
+                    // the look, and the view's check holds the mass against it.
+                    const cv::Mat readShort =
+                        testPicture("scanpanel/panel_prospector_short_hdr.png", L"SELFTEST_PROSPECTOR_SHORT");
+                    allPassed &= check(!readShort.empty(),
+                                       "the Prospector's panel whose mass was read short is beside the build or inside "
+                                       "the exe");
+                    if (!readShort.empty()) {
+                        cv::Mat shortScreen(1440, 5120, CV_8UC3, cv::Scalar(0, 0, 0));
+                        readShort.copyTo(shortScreen(cv::Rect(3068, 635, readShort.cols, readShort.rows)));
+                        SCMiner::setPanelToneMapped(true);
+                        SCMiner::ScanPanel cut;
+                        for (int look = 0; look < 4 && !cut.found; look++) {
+                            cut = SCMiner::ScanPanel();
+                            SCMiner::readPanelByShape(shortScreen, cut);
+                        }
+                        SCMiner::setPanelToneMapped(false);
+                        SCMiner::RockScans::LookCheck view;
+                        const std::string why = view.notTaken(cut.stats, cut.volumeShown);
+                        allPassed &= check(cut.found && cut.stats.mass == 2.0f && cut.stats.scu == 0.0f &&
+                                               std::abs(cut.volumeShown - 5.40f) < 0.005f &&
+                                               why == "lighter than the volume shown",
+                                           "...a Prospector's mass read short, 2 kg for 2125: the volume the panel "
+                                           "shows, 5.40 SCU, comes with the look and the view holds the mass (got " +
+                                               std::to_string((int)cut.stats.mass) + " kg, " +
+                                               std::to_string(cut.volumeShown) + " shown, '" + why + "')");
                     }
                     // The MOLE's TURRET, over a sunlit red rock: its figures
                     // are the largest on the screen and no shapes are cut for

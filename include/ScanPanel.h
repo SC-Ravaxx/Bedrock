@@ -84,6 +84,11 @@ struct ScanPanel {
     bool resizing = false;
     // COMP. and SCU were found where the labels put them, and pinned the size
     bool pinned = false;
+    // The volume as the panel shows it, read at its place where it does not
+    // fit the mass read with it: stats.scu stays 0 then, and the view holds
+    // that mass against it (RockScans::LookCheck). A mass read short - 34
+    // for 3,413 kg, 2 for 2,125 - fits no volume the panel shows.
+    float volumeShown = 0;
 };
 
 // Looks at one panel, a second and a half apart, read as one.

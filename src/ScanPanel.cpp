@@ -6,6 +6,7 @@
 #include "PanelShapes.h"
 #include "PanelDigits.h"
 #include "MiningData.h"
+#include "RockScans.h"
 #include "TextLineReader.h"
 
 #include <algorithm>
@@ -3333,6 +3334,18 @@ bool readPanelByShapeInk(const cv::Mat& frame, const cv::Mat& bgr, int ink, Scan
         panel.stats.scu = volume;
         panel.note += " s [" + scu.trace + "]";
         return sure;
+    }
+    // ...or the mass is: read short, 34 for 3,413 kg, it fits no volume, and
+    // given out with none beside it nothing held it (17 November 2026: 90
+    // looks on view). The volume read there is kept as the panel shows it
+    // for the view to hold the mass against (RockScans::LookCheck) - not in
+    // the MOLE's pilot seat, where the place itself is off (below), and not
+    // past the largest rock, which is thousandths read without their m.
+    if (read > 0 && read <= RockScans::LARGEST_ROCK_SCU + 0.08f && layout != &COCKPIT_4103_PANEL) {
+        panel.volumeShown = read;
+        char shown[24];
+        std::snprintf(shown, sizeof(shown), " s? %.2f [", read);
+        panel.note += shown + scu.trace + "]";
     }
     // A volume read there that does not fit the mass is a misreading, and
     // in the MOLE's pilot seat it is the place that is off: on his 5,120 x
