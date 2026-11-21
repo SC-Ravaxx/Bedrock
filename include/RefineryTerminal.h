@@ -129,7 +129,8 @@ std::string refiningMethodIn(const std::string& text);
 // The material a read names, as REFINERY_MATERIALS spells it ("IRON (ORE)" and
 // the refined "IRON" both give "Iron (Ore)"; the salvage's refined
 // "CONSTRUCTION MATERIALS", cut short to "CONSTRUCTION MA" in its column or
-// not, gives "Construction Salvage"); "" when none is near
+// not, gives "Construction Salvage" - Construction Rubble's as well, the
+// work orders' book taking which from the quote); "" when none is near
 std::string refineryMaterialIn(const std::string& text, bool* inert = nullptr);
 // Whether a quality is one a material comes in: one of its ore's eight
 // values (ORE_BANDS) - the terminal prints the raw ore's, refined or not.

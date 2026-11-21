@@ -30,11 +30,43 @@ std::vector<RefineryOrder::Part> partsOf(const RefineryPanel& panel, bool refine
     return parts;
 }
 
+// Salvage goes into the refinery in two forms - the Reclaimer's as
+// Construction Salvage, the Vulture's, the Fortune's and the Salvation's as
+// Construction Rubble (their salvage storages in the game files) - and
+// PROCESSING names both CONSTRUCTION MATERIALS, which reads as Construction
+// Salvage. An order and its quote, and one look at it and the next, take the
+// two for one material; the quote says which it is.
+bool salvage(const std::string& material) {
+    return material == "Construction Salvage" || material == "Construction Rubble";
+}
+
+bool sameMaterial(const std::string& a, const std::string& b) {
+    return a == b || (salvage(a) && salvage(b));
+}
+
+// Where `p` is among `parts`: the same material at the same quality - the
+// one with p's yield first, then the one under p's name, as an order may
+// hold both forms of salvage at one quality (it has none: 0)
+std::vector<RefineryOrder::Part>::iterator partFor(std::vector<RefineryOrder::Part>& parts,
+                                                   const RefineryOrder::Part& p) {
+    auto best = parts.end();
+    int bestScore = -1;
+    for (auto it = parts.begin(); it != parts.end(); ++it) {
+        if (it->quality != p.quality || !sameMaterial(it->material, p.material)) continue;
+        const int score = (it->yield == p.yield ? 2 : 0) + (it->material == p.material ? 1 : 0);
+        if (score > bestScore) {
+            best = it;
+            bestScore = score;
+        }
+    }
+    return best;
+}
+
 // A part both name: the same material at the same quality
 bool overlap(const std::vector<RefineryOrder::Part>& a, const std::vector<RefineryOrder::Part>& b) {
     for (const RefineryOrder::Part& x : a) {
         for (const RefineryOrder::Part& y : b) {
-            if (x.material == y.material && x.quality == y.quality) return true;
+            if (sameMaterial(x.material, y.material) && x.quality == y.quality) return true;
         }
     }
     return false;
@@ -69,7 +101,9 @@ std::string missingOf(const RefineryOrder& order) {
 bool sameParts(const std::vector<RefineryOrder::Part>& a, const std::vector<RefineryOrder::Part>& b) {
     if (a.size() != b.size()) return false;
     for (size_t i = 0; i < a.size(); i++) {
-        if (a[i].material != b[i].material || a[i].quality != b[i].quality || a[i].yield != b[i].yield) return false;
+        if (!sameMaterial(a[i].material, b[i].material) || a[i].quality != b[i].quality || a[i].yield != b[i].yield) {
+            return false;
+        }
     }
     return true;
 }
@@ -389,9 +423,7 @@ bool RefineryOrderBook::apply(const std::string& station, const RefineryScreen& 
                 changed = true;
             }
             for (const RefineryOrder::Part& p : parts) {
-                auto at = std::find_if(known->parts.begin(), known->parts.end(), [&](const RefineryOrder::Part& k) {
-                    return k.material == p.material && k.quality == p.quality;
-                });
+                auto at = partFor(known->parts, p);
                 if (at == known->parts.end()) {
                     known->parts.push_back(p);
                     changed = true;
@@ -446,9 +478,7 @@ bool RefineryOrderBook::apply(const std::string& station, const RefineryScreen& 
             }
             // the parts this look shows, added to the ones seen before
             for (const RefineryOrder::Part& p : parts) {
-                auto at = std::find_if(known->parts.begin(), known->parts.end(), [&](const RefineryOrder::Part& k) {
-                    return k.material == p.material && k.quality == p.quality;
-                });
+                auto at = partFor(known->parts, p);
                 if (at == known->parts.end()) {
                     known->parts.push_back(p);
                     changed = true;
@@ -477,14 +507,13 @@ bool RefineryOrderBook::apply(const std::string& station, const RefineryScreen& 
             // ...and what went in, which only the quote shows: the rows it
             // refines are the order's parts, the ones this look missed too
             for (const RefineryOrder::Part& q : quote->parts) {
-                auto at = std::find_if(order.parts.begin(), order.parts.end(), [&](const RefineryOrder::Part& p) {
-                    return p.material == q.material && p.quality == q.quality;
-                });
+                auto at = partFor(order.parts, q);
                 if (at == order.parts.end()) {
                     order.parts.push_back(q);
-                } else if (q.quantity >= 0) {
-                    at->quantity = q.quantity;
+                    continue;
                 }
+                at->material = q.material;   // salvage: which of the two, only the quote says
+                if (q.quantity >= 0) at->quantity = q.quantity;
             }
         }
         const std::string lacks = missingOf(order);

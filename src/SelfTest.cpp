@@ -2710,6 +2710,65 @@ int runSelfTest() {
                            "read before it and what went in; the same order later only kept; a garbled reading, "
                            "another station's nothing; a second order beside it, not whole without a quote; saved "
                            "with its handover to UEX, loaded and one ticked off");
+        // Salvage: the Vulture's, the Fortune's and the Salvation's go in as
+        // Construction Rubble, the Reclaimer's as Construction Salvage, and
+        // PROCESSING names both CONSTRUCTION MATERIALS, read as Construction
+        // Salvage. An order of rubble under the quote's name for it, read at
+        // once or five minutes on, one part at every look and when done; an
+        // order of both, at one quality (salvage has none: 0), two parts that
+        // stay apart
+        RefineryPanel rubbleQuote = setup;
+        rubbleQuote.cost = 2190;
+        rubbleQuote.seconds = 1824;
+        rubbleQuote.rows = {row("Construction Rubble", 0, 4560, 684)};
+        RefineryPanel rubbleOrder = running;
+        rubbleOrder.rows = {row("Construction Salvage", 0, -1, 684)};
+        RefineryPanel rubbleDone = rubbleOrder;
+        rubbleDone.kind = RefineryBar::Band::Completed;
+        SCMiner::RefineryOrderBook rubble;
+        rubble.take("Levski", screen({rubbleQuote}), t0);
+        rubble.take("Levski", screen({at(rubbleOrder, 1822)}), t0 + 4);
+        rubble.take("Levski", screen({at(rubbleOrder, 1821)}), t0 + 5);
+        rubble.take("Levski", screen({at(rubbleOrder, 1760)}), t0 + 66);
+        rubble.take("Levski", screen({at(rubbleOrder, 1759)}), t0 + 67);
+        rubble.take("Levski", screen({rubbleDone}), t0 + 1900);
+        rubble.take("Levski", screen({rubbleDone}), t0 + 1901);
+        const bool rubbleOne = rubble.orders().size() == 1 && rubble.orders()[0].complete() &&
+                               rubble.orders()[0].completed == t0 + 1901 && rubble.orders()[0].parts.size() == 1 &&
+                               rubble.orders()[0].parts[0].material == "Construction Rubble" &&
+                               rubble.orders()[0].parts[0].quantity == 4560;
+        SCMiner::RefineryOrderBook rubbleLate;
+        rubbleLate.take("Levski", screen({rubbleQuote}), t0);
+        rubbleLate.take("Levski", screen({at(rubbleOrder, 1527)}), t0 + 300);
+        rubbleLate.take("Levski", screen({at(rubbleOrder, 1526)}), t0 + 301);
+        const bool rubbleLater = rubbleLate.orders().size() == 1 && rubbleLate.orders()[0].complete() &&
+                                 rubbleLate.orders()[0].parts.size() == 1 &&
+                                 rubbleLate.orders()[0].parts[0].material == "Construction Rubble";
+        RefineryPanel bothQuote = rubbleQuote;
+        bothQuote.rows = {row("Construction Salvage", 0, 9120, 1368), row("Construction Rubble", 0, 4560, 684)};
+        RefineryPanel bothOrder = rubbleOrder;
+        bothOrder.rows = {row("Construction Salvage", 0, -1, 1368), row("Construction Salvage", 0, -1, 684)};
+        SCMiner::RefineryOrderBook both;
+        both.take("Levski", screen({bothQuote}), t0);
+        both.take("Levski", screen({at(bothOrder, 1822)}), t0 + 4);
+        both.take("Levski", screen({at(bothOrder, 1821)}), t0 + 5);
+        both.take("Levski", screen({at(bothOrder, 1760)}), t0 + 66);
+        const bool bothKept = !both.take("Levski", screen({at(bothOrder, 1759)}), t0 + 67);
+        const std::vector<SCMiner::RefineryOrder::Part> bothParts =
+            both.orders().size() == 1 ? both.orders()[0].parts : std::vector<SCMiner::RefineryOrder::Part>();
+        auto onePart = [&](const char* material, int quantity, int yield) {
+            int n = 0;
+            for (const SCMiner::RefineryOrder::Part& p : bothParts) {
+                if (p.material == material && p.quantity == quantity && p.yield == yield) n++;
+            }
+            return n == 1;
+        };
+        const bool bothTwo = bothKept && bothParts.size() == 2 && both.orders()[0].complete() &&
+                             onePart("Construction Rubble", 4560, 684) && onePart("Construction Salvage", 9120, 1368);
+        allPassed &= check(rubbleOne && rubbleLater && bothTwo,
+                           "salvage, CONSTRUCTION MATERIALS under PROCESSING: an order of Construction Rubble under "
+                           "the name its quote gives it, read at once or five minutes on, one part at every look and "
+                           "when done; one of rubble and salvage alike two parts that stay apart");
     }
 
     // --- A work order as a calendar entry for the phone's camera

@@ -831,7 +831,9 @@ std::string refineryMaterialIn(const std::string& text, bool* inert) {
     }
     // The salvage's refined name, which no material in the tables has: the
     // construction salvage comes out as CONSTRUCTION MATERIALS, too long for
-    // its column, so cut short as much as was read
+    // its column, so cut short as much as was read - and so does the
+    // construction rubble, the work orders' book telling the two apart by
+    // the quote
     {
         const std::string want = "CONSTRUCTIONMATERIALS";
         if (t.size() >= 13 && editDistance(t, want.substr(0, (std::min)(want.size(), t.size()))) <= 1) {
