@@ -4406,15 +4406,26 @@ ScanPanel readScanPanel(const cv::Mat& frame, OCREngine& ocr, GlyphReader* glyph
     // The Gatac Hyun in 4.10: 4.10's panel in 5.0's lettering, which the
     // readers below do not know (their label columns match it at 0.54 to
     // 0.58 nowhere near it, on the seven snapshots of 22 November 2026).
-    // Where it finds no column, the readers below look all the same: the
-    // log may have missed the player boarding another ship.
-    if (g_panelHyun) {
+    // Where it reads no panel, the readers below look all the same: the log
+    // may have missed the player boarding another ship, and its column
+    // turns up on 4.10's other panels too - on 9 of 25 snapshots of the
+    // Prospector and the Golem (16 and 17 November 2026), reading two
+    // figures at most. A column it found and could not read is the answer
+    // only where they find nothing.
+    static thread_local bool below = false;
+    if (g_panelHyun && !below) {
         ScanPanel hyun;
         if (readPanelFive(frame, hyun, lines, true)) {
             const int figures = hyun.figuresRead;
             if (hyun.found) nameTheOre(hyun);
             hyun.figuresRead = figures + (hyun.stats.ore.empty() ? 0 : 1);
-            return hyun;
+            if (hyun.found) return hyun;
+            struct Below {
+                Below() { below = true; }
+                ~Below() { below = false; }
+            } once;
+            const ScanPanel other = readScanPanel(frame, ocr, glyphs, lines);
+            return other.found || other.labels.x >= 0 ? other : hyun;
         }
     }
     // where the face reader is to look, when the shapes found the labels
