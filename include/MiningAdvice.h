@@ -754,13 +754,16 @@ struct MiningShip {
     int8_t heads;            // how many lasers it flies
     int8_t size;             // the size of head its hardpoints take
     const char* ownLaser;    // the head it comes with that no other ship takes, null when none
+    // ...or the head it comes with, for a new fit of a ship whose HUD
+    // nothing reads the head off (the Hyun's); null: the strongest that fits
+    const char* stockLaser = nullptr;
 };
 
 inline const MiningShip MINING_SHIPS[] = {
     {"prospector", "MISC Prospector", 1, 1, nullptr},
     {"mole",       "Argo MOLE",       3, 2, nullptr},
     {"golem",      "Drake Golem",     1, 1, "drak_golem_s1"},
-    {"hyun",       "Gatac Hyun",      1, 1, nullptr},
+    {"hyun",       "Gatac Hyun",      1, 1, nullptr, "grin_arbor_s1"},
 };
 inline constexpr int MINING_SHIP_COUNT = 4;
 

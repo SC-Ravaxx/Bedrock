@@ -5507,12 +5507,15 @@ std::vector<int> MinerGUI::fewestHeadsNeeded() const {
 }
 
 // What a new fit of a kind starts with: the head it comes with where no other
-// ship takes that one (the Golem's Pitman), or the strongest one that fits,
-// on every hardpoint
+// ship takes that one (the Golem's Pitman) or where nothing reads the head off
+// its HUD (the Hyun's Arbor MH1), or the strongest one that fits, on every
+// hardpoint
 static std::vector<MiningLoadout> startingHeads(const MiningShip& ship) {
     MiningLoadout start;
     if (ship.ownLaser) {
         start.laser = laserById(ship.ownLaser);
+    } else if (ship.stockLaser && laserById(ship.stockLaser)) {
+        start.laser = laserById(ship.stockLaser);
     } else {
         for (int i = 0; i < MINING_LASER_COUNT; i++) {
             const MiningLaser& l = MINING_LASERS[i];

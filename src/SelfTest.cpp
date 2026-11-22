@@ -8897,13 +8897,14 @@ int runSelfTest() {
                         const SCMiner::MiningLaser* arborTwo = SCMiner::laserById("grin_arbor_s2");
                         const char* byPanel = SCMiner::panelShipOf(SCMiner::HYUN_PANEL);
                         allPassed &= check(ship && ship->heads == 1 && ship->size == 1 && !ship->ownLaser && arbor && pitman &&
+                                               ship->stockLaser && std::string(ship->stockLaser) == arbor->id &&
                                                arborTwo && SCMiner::laserFits(*arbor, *ship) &&
                                                !SCMiner::laserFits(*pitman, *ship) && !SCMiner::laserFits(*arborTwo, *ship) &&
                                                SCMiner::hyunShip("Gatac Hyun") && !SCMiner::hyunShip("MISC Prospector") &&
                                                SCMiner::panelsWanted("Gatac Hyun", true) && byPanel &&
                                                std::string(byPanel) == "hyun",
-                                           "the Gatac Hyun: one S1 head, any but the Golem's Pitman; its panels are looked "
-                                           "for in its seat, and its reader is on in it");
+                                           "the Gatac Hyun: one S1 head, any but the Golem's Pitman, the Arbor MH1 from "
+                                           "the factory; its panels are looked for in its seat, and its reader is on in it");
                     }();
                 }
             }
