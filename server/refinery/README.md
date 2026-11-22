@@ -282,8 +282,8 @@ most 64 KB:
 - `printed` is `white`, or `colour` when the panel printed the resistance
   green or red because a laser on the rock had changed it.
 - `range` is the distance in metres (`0` when not known), `ship` is
-  `prospector`, `mole` or `golem`, and `place` takes the characters of a
-  station's name, up to 64.
+  `prospector`, `mole`, `golem` or `hyun`, and `place` takes the
+  characters of a station's name, up to 64.
 - `parts` is the composition in the panel's order, up to 8 lines: an ore
   with its share in per cent and its quality (0 to 1000), or the inert
   share. It is empty when the list was not read whole.

@@ -227,7 +227,8 @@ ORE_QUALITIES = {
     "Torite": (262, 528, 661, 785, 873, 944, 951, 1000),
     "Tungsten": (363, 530, 662, 787, 858, 902, 964, 1000),
 }
-ROCK_SHIPS = ("prospector", "mole", "golem")
+# the ships whose rock panel Bedrock reads: the Gatac Hyun since 3.0.5
+ROCK_SHIPS = ("prospector", "mole", "golem", "hyun")
 # how the panel printed the resistance: white, or green or red once a laser
 # on the rock had changed it
 ROCK_PRINTED = ("white", "colour")

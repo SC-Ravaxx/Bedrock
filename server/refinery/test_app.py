@@ -593,6 +593,12 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual([(r["printed"], r["range_m"], r["ship"], r["place"], r["parts"]) for r in self.rock_rows()[:2]],
                          [(None, None, None, None, None)] * 2)
 
+    def test_every_ship_whose_panel_bedrock_reads_is_taken(self):
+        # the Gatac Hyun as well, since Bedrock 3.0.5 reads its panel
+        rocks = [self.rock(ship=ship) for ship in ("prospector", "mole", "golem", "hyun")]
+        self.assertEqual(self.send_rocks(rocks)[0], 201)
+        self.assertEqual([r["ship"] for r in self.rock_rows()], ["prospector", "mole", "golem", "hyun"])
+
     def test_a_batch_that_does_not_fit_the_format_is_turned_down_whole(self):
         bad = [
             self.batch([self.rock()], v=2),
