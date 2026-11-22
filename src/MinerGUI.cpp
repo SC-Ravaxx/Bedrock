@@ -21289,6 +21289,12 @@ void MinerGUI::paintHaloMenu(Gdiplus::Graphics& g, int ch) {
     for (int i = 0, row = -1, column = 0; i < HALO_PLACE_COUNT; i++) {
         column = HALO_PLACES[i].row == row ? column + 1 : 0;
         row = HALO_PLACES[i].row;
+        // a Lagrange point in the column of its number: CRU-L2's stays empty
+        const std::string name = HALO_PLACES[i].name;
+        if (row >= HALO_BODY_ROWS && name.size() >= 2 && name[name.size() - 2] == 'L' && name.back() >= '1' &&
+            name.back() <= '5') {
+            column = name.back() - '1';
+        }
         columnOf[i] = column;
     }
     const bool ruled = bodyRows > 0 && bodyRows < rows;

@@ -3724,6 +3724,14 @@ int runSelfTest() {
                                         std::to_string(fewest) + " from each: from Hurston ARC-L4, not Crusader (both "
                                         "inside the belt); the nearest through band 5 first (ARC-L1: HUR-L5, Hurston: "
                                         "ARC-L4)");
+        // ...and no place the game has no quantum target at: CRU-L2, whose
+        // container holds next to nothing
+        bool noCruL2 = true;
+        for (const SCMiner::HaloPlace& place : SCMiner::HALO_PLACES) noCruL2 &= std::string(place.name) != "CRU-L2";
+        const std::string fromOrison = SCMiner::nearestHaloDestination("Orison");
+        allPassed &= check(noCruL2 && !fromOrison.empty() && fromOrison != "CRU-L2",
+                           "CRU-L2, where the game has no quantum target, is no route's end (from Orison: " + fromOrison +
+                               ")");
 
         // The log's pick of a destination stands until the drive arrives,
         // and so does where its route set off: a moon streamed in on the way

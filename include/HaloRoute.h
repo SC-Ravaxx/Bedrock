@@ -77,7 +77,7 @@ struct HaloPlace {
     const char* name;   // as NavPlaces has it
     int row;
 };
-inline constexpr int HALO_PLACE_COUNT = 36;
+inline constexpr int HALO_PLACE_COUNT = 35;
 inline constexpr int HALO_PLACE_ROWS = 8;
 inline constexpr int HALO_BODY_ROWS = 4;   // the rows of planets and moons; the Lagrange points' after them
 extern const HaloPlace HALO_PLACES[HALO_PLACE_COUNT];

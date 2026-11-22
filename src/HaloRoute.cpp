@@ -22,13 +22,15 @@ const HaloBand HALO_BANDS[HALO_BAND_COUNT] = {
     {10, 21159000, 21299000, 21207000, 2006, 2010},
 };
 
+// Not CRU-L2: the game has no quantum target there (its container holds
+// next to nothing in 4.10.2, 15 KB against 0.5 to 3 MB at the others)
 const HaloPlace HALO_PLACES[HALO_PLACE_COUNT] = {
     {"Hurston", 0},  {"Arial", 0},    {"Aberdeen", 0}, {"Magda", 0},    {"Ita", 0},
     {"Crusader", 1}, {"Cellin", 1},   {"Daymar", 1},   {"Yela", 1},
     {"ArcCorp", 2},  {"Lyria", 2},    {"Wala", 2},
     {"microTech", 3}, {"Calliope", 3}, {"Clio", 3},    {"Euterpe", 3},
     {"HUR-L1", 4},   {"HUR-L2", 4},   {"HUR-L3", 4},   {"HUR-L4", 4},   {"HUR-L5", 4},
-    {"CRU-L1", 5},   {"CRU-L2", 5},   {"CRU-L3", 5},   {"CRU-L4", 5},   {"CRU-L5", 5},
+    {"CRU-L1", 5},   {"CRU-L3", 5},   {"CRU-L4", 5},   {"CRU-L5", 5},
     {"ARC-L1", 6},   {"ARC-L2", 6},   {"ARC-L3", 6},   {"ARC-L4", 6},   {"ARC-L5", 6},
     {"MIC-L1", 7},   {"MIC-L2", 7},   {"MIC-L3", 7},   {"MIC-L4", 7},   {"MIC-L5", 7},
 };
