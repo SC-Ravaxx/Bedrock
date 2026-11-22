@@ -941,7 +941,8 @@ int runSelfTest() {
                 line == "2026-11-08 12:54:16,\"Taranite\",25005,32.38,36,white,302.71,27,\"prospector\",\"Pyro - Pyro II\","
                         "\"Taranite 9.37 957; Taranite 38.51 310; inert 52.11\"";
             const bool ships = shipKind("MISC_Prospector") == "prospector" && shipKind("ARGO_MOLE") == "mole" &&
-                               shipKind("DRAK_Golem") == "golem" && shipKind("GRIN_ROC").empty() &&
+                               shipKind("DRAK_Golem") == "golem" && shipKind("GAMA_Hyun") == "hyun" &&
+                               shipKind("GRIN_ROC").empty() &&
                                shipKind("").empty();
             allPassed &= check(open && two && written && ships,
                                "each rock the view took is a line of rock_scans.csv - its own resistance over one a "

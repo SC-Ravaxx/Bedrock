@@ -235,7 +235,8 @@ private:
     std::vector<Kept> kept_;
 };
 
-// "prospector", "mole" or "golem" for the ship the log names; "" for any other
+// "prospector", "mole", "golem" or "hyun" for the ship the log names - the
+// ships the service takes (ROCK_SHIPS; the Hyun since 3.0.5); "" for any other
 std::string shipKind(const std::string& logShip);
 // "Taranite 9.37 957; Taranite 38.51 310; inert 52.11"
 std::string partsText(const std::vector<ScanPart>& parts);

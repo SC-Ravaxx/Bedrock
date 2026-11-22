@@ -348,7 +348,7 @@ bool ListReadings::confirms(float mass, const std::vector<ScanPart>& parts) {
 std::string shipKind(const std::string& logShip) {
     std::string lower;
     for (char c : logShip) lower += (char)std::tolower((unsigned char)c);
-    for (const char* kind : {"prospector", "mole", "golem"}) {
+    for (const char* kind : {"prospector", "mole", "golem", "hyun"}) {
         if (lower.find(kind) != std::string::npos) return kind;
     }
     return "";
