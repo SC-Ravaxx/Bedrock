@@ -107,14 +107,18 @@ bool headColumnAgrees(const MiningLaser& laser, const std::vector<const MiningMo
 const char* hudShipOf(char glyph, const std::string& logShip, bool inSeat);
 
 // The ship a scan panel's label column belongs to: the Prospector's (L, M),
-// the MOLE's pilot seat (K, P, Q) and turrets (T, W), the Golem's (G, H).
-// Null for any other column and for none.
+// the MOLE's pilot seat (K, P, Q) and turrets (T, W), the Golem's (G, H),
+// the Hyun's (Y, HYUN_PANEL). Null for any other column and for none.
 const char* panelShipOf(char glyph);
 
 // Whether to look for a scan panel at all: not while the log has the player
 // in the seat of a ship that cannot mine. Out of the seat the player may
 // have boarded a mining ship the log did not name (PanelShipWitness).
 bool panelsWanted(const std::string& logShip, bool inSeat);
+
+// Whether the ship the log names is a Gatac Hyun, whose panel in 4.10 only
+// PanelFive reads (setPanelHyun)
+bool hyunShip(const std::string& logShip);
 
 // The ship the scan panels show the player in, where the log has no seat
 // to say it. The log names a ship boarded only by its crew channel ("You

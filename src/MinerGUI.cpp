@@ -6837,6 +6837,20 @@ void MinerGUI::drawShipPicker(Gdiplus::Graphics& g, int cw) {
                                        lineWidth(g, fitSummary(*f.ship, i == fit_ ? heads_ : f.heads), noteFont));
         needed = (std::max)(needed, words + 2 * inset + scaleF(14) + scaleF(2));
     }
+    // ...and the chips under the list, one per kind of ship
+    {
+        float chips = scaleF(4);
+        for (int k = 0; k < MINING_SHIP_COUNT; k++) {
+            const std::string name = MINING_SHIPS[k].name;
+            const size_t space = name.find(' ');
+            const std::wstring model = (fits_.empty() ? L"" : L"+ ") +
+                                       toW(space == std::string::npos ? name : name.substr(space + 1));
+            Gdiplus::RectF measured;
+            g.MeasureString(model.c_str(), -1, &chipFont, Gdiplus::PointF(0, 0), &measured);
+            chips += measured.Width + scaleF(14) + scaleF(6);
+        }
+        needed = (std::max)(needed, chips + 2 * inset);
+    }
     const float leftmost = (float)scale(MARGIN);
     const float panelX = (std::max)(leftmost, (std::min)(shipField_.X, right - needed));
     Gdiplus::RectF panel(panelX, shipField_.GetBottom() + scaleF(6), right - panelX, h);

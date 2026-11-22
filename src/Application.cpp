@@ -1683,6 +1683,12 @@ void Application::lookForRock() {
             std::cout << "[rock] panel of game " << (generation > 0 ? std::to_string(generation) : std::string("unknown"))
                       << std::endl;
         }
+        // ...and the Gatac Hyun's in 4.10, by the ship the log names
+        const bool hyun = hyunShip(gameState_.ship());
+        if (hyun != panelHyun()) {
+            setPanelHyun(hyun);
+            std::cout << "[rock] panel of the Hyun: " << (hyun ? "on" : "off") << std::endl;
+        }
     }
 
     if (!rockOcrTried_) {

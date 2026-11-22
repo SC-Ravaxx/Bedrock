@@ -33,11 +33,20 @@ class TextLineReader;
 
 // ScanPanel::labelGlyph of a 5.0 panel
 inline constexpr char FIVE_PANEL = '5';
+// ...and of the Gatac Hyun's in 4.10: 5.0's lettering, 4.10's places. Its
+// HUD (style gama_2026_mining) writes the panel in the thinner face 5.0
+// gives every ship, but the panel is 4.10's: the figures start a fixed
+// way right of the labels, and the resistance is printed with the laser in
+// it, in colour, as on the Prospector
+inline constexpr char HYUN_PANEL = 'Y';
+// Either of the two: a panel the 5.0 reader reads
+inline bool fiveLettering(char glyph) { return glyph == FIVE_PANEL || glyph == HYUN_PANEL; }
 
 // A 5.0 panel on the screen. False when there is none, and the 4.10 readers
 // then look as before. True when the panel was seen: `labels` and
 // `labelScale` place it, and `found` says whether its figures were read.
-bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines);
+// `hyun`: the Gatac Hyun's 4.10 panel (HYUN_PANEL) rather than 5.0's.
+bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines, bool hyun = false);
 
 // The figures as the panel writes them: "2322", "88%", "+25%" (the laser's
 // modifier), "107.82", and the volume "15.46" or "754.38m". False for
@@ -47,6 +56,15 @@ bool fivePercent(const std::string& text, float& value);
 bool fiveDelta(const std::string& text, float& value);
 bool fiveTwoPlaces(const std::string& text, float& value);
 bool fiveVolume(const std::string& text, float& scu);
+
+// A figure read by the line reader, as the Gatac Hyun's panel is: the word
+// at `box` (in the frame) cut close - given more, it read specks of rock
+// beside a figure as numerals - and read once more stretched to twice the
+// width where it does not read in `parse`'s format, which brings back a
+// narrow 0 it lets fall ('%' for '0%'). `text` is what it read; true and
+// `value` where it read in the format.
+bool fiveByLine(const cv::Mat& frame, const cv::Rect& box, double scale, TextLineReader& lines,
+                bool (*parse)(const std::string&, float&), std::string& text, float& value);
 
 // For the bench: the frame the next look is of (SCMINER_FIVE_HARVEST)
 void fiveHarvestFile(const std::string& file);
@@ -63,6 +81,7 @@ struct FiveListLine {
     bool dim = false;         // drawn faint, as the inert rest's line is
     bool byValues = false;    // the quality taken as the one value of the rock's ores that fits
     cv::Rect name;            // where its name stands
+    cv::Rect shareAt, qualityAt;   // the share's and the quality's words in the frame; empty where none
 };
 cv::Rect fiveContentsRegion(const ScanPanel& panel, const cv::Size& frame);
 // `qualities`: the values the rock's ores come in (fiveQualities), for the

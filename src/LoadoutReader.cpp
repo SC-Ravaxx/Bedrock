@@ -1064,6 +1064,8 @@ const char* panelShipOf(char glyph) {
     case 'G':
     case 'H':
         return "golem";
+    case 'Y':
+        return "hyun";
     default:
         return nullptr;
     }
@@ -1073,10 +1075,16 @@ bool panelsWanted(const std::string& logShip, bool inSeat) {
     if (logShip.empty() || !inSeat) return true;
     std::string ship = logShip;
     for (char& ch : ship) ch = (char)std::tolower((unsigned char)ch);
-    for (const char* miner : {"prospector", "mole", "golem", "roc", "arrastra", "orion"}) {
+    for (const char* miner : {"prospector", "mole", "golem", "hyun", "roc", "arrastra", "orion"}) {
         if (ship.find(miner) != std::string::npos) return true;
     }
     return false;
+}
+
+bool hyunShip(const std::string& logShip) {
+    std::string ship = logShip;
+    for (char& ch : ship) ch = (char)std::tolower((unsigned char)ch);
+    return ship.find("hyun") != std::string::npos;
 }
 
 const char* PanelShipWitness::look(char glyph, bool logSeat) {

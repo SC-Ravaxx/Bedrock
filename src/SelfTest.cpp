@@ -8781,6 +8781,58 @@ int runSelfTest() {
                     allPassed &= check(golemAppSeen && golemApp.note.find(" -/0%(") != std::string::npos,
                                        "5.0 panel on the app's picture of the Golem: the resistance 0% sure (got " +
                                            golemApp.note.substr(0, 160) + ")");
+                    // The Gatac Hyun's panel in 4.10 (the app's own snapshot of
+                    // 22 November 2026 10:41:21, HDR desktop, tone mapped): 4.10's
+                    // places in 5.0's lettering, read by the line reader - 38576,
+                    // 84%, 372.68, 16.27 SCU, and four lines adding up to the
+                    // rock. 5.0's own reader takes it for no 5.0 panel.
+                    [&] {
+                        const cv::Mat hyunCut = testPicture("scanpanel/panel_hyun_app.png", L"SELFTEST_HYUN_APP");
+                        const cv::Mat hyunScreen = onScreen(hyunCut, 3000, 540);
+                        SCMiner::TextLineReader lines;
+                        const bool loaded = lines.loadEmbedded();
+                        SCMiner::setPanelToneMapped(true);
+                        SCMiner::ScanPanel hyun, asFive;
+                        const bool seen = !hyunCut.empty() && loaded && SCMiner::readPanelFive(hyunScreen, hyun, &lines, true);
+                        const bool fiveTook =
+                            !hyunCut.empty() && SCMiner::readPanelFive(hyunScreen, asFive, &lines) && asFive.found;
+                        const SCMiner::RockStats& r = hyun.stats;
+                        SCMiner::RockContents list;
+                        const bool listed = seen && hyun.found && r.scu > 0 &&
+                                            SCMiner::readRockContents(hyunScreen, hyun, "Quantainium", lines, list,
+                                                                      r.mass / r.scu);
+                        SCMiner::setPanelToneMapped(wasToneMapped);
+                        allPassed &= check(seen && hyun.found && hyun.labelGlyph == SCMiner::HYUN_PANEL &&
+                                               r.mass == 38576.0f && r.resistance == 84.0f &&
+                                               std::abs(r.instability - 372.68f) < 0.005f && std::abs(r.scu - 16.27f) < 0.005f &&
+                                               !r.resistanceAdjusted && !r.deltasRead && !fiveTook,
+                                           "the Hyun's panel: 38576, 84% white, 372.68, 16.27 SCU by the line reader, and no "
+                                           "5.0 panel to 5.0's reader (got " +
+                                               hyun.note.substr(0, 220) + ")");
+                        auto part = [&](size_t i, float percent, int quality) {
+                            return list.parts.size() > i && std::abs(list.parts[i].percent - percent) < 0.005f &&
+                                   list.parts[i].quality == quality;
+                        };
+                        allPassed &= check(listed && list.whole && list.parts.size() == 4 && part(0, 7.62f, 514) &&
+                                               part(1, 71.86f, 344) && part(2, 7.48f, 547) && part(3, 13.02f, 0) &&
+                                               list.parts[3].inert,
+                                           "the Hyun's list: 7.62% 514, 71.86% 344, 7.48% 547 and the inert 13.02%, "
+                                           "whole (got " +
+                                               list.note + ")");
+                        const SCMiner::MiningShip* ship = SCMiner::shipById("hyun");
+                        const SCMiner::MiningLaser* arbor = SCMiner::laserById("grin_arbor_s1");
+                        const SCMiner::MiningLaser* pitman = SCMiner::laserById("drak_golem_s1");
+                        const SCMiner::MiningLaser* arborTwo = SCMiner::laserById("grin_arbor_s2");
+                        const char* byPanel = SCMiner::panelShipOf(SCMiner::HYUN_PANEL);
+                        allPassed &= check(ship && ship->heads == 1 && ship->size == 1 && !ship->ownLaser && arbor && pitman &&
+                                               arborTwo && SCMiner::laserFits(*arbor, *ship) &&
+                                               !SCMiner::laserFits(*pitman, *ship) && !SCMiner::laserFits(*arborTwo, *ship) &&
+                                               SCMiner::hyunShip("Gatac Hyun") && !SCMiner::hyunShip("MISC Prospector") &&
+                                               SCMiner::panelsWanted("Gatac Hyun", true) && byPanel &&
+                                               std::string(byPanel) == "hyun",
+                                           "the Gatac Hyun: one S1 head, any but the Golem's Pitman; its panels are looked "
+                                           "for in its seat, and its reader is on in it");
+                    }();
                 }
             }
 

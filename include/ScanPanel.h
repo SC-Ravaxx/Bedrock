@@ -406,6 +406,13 @@ void throttlePanelSearch(bool throttled);
 void setPanelGeneration(int generation);
 int panelGeneration();
 
+// Whether the player sits in a Gatac Hyun, as the game log has it: in 4.10
+// its HUD writes the panel in 5.0's lettering (HYUN_PANEL in PanelFive.h),
+// which the 4.10 readers do not know, so only PanelFive looks then. For the
+// bench and the tools: BEDROCK_PANEL_HYUN=1.
+void setPanelHyun(bool hyun);
+bool panelHyun();
+
 // Whether the pictures come off an HDR desktop, tone mapped in the app
 // (ToneMap.h): the Golem's lettering has another colour there than in an SDR
 // capture, and is looked for in another ink. For the bench and the tools,

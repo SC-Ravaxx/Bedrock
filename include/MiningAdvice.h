@@ -742,6 +742,9 @@ inline std::vector<const MiningGadget*> rankFor(MiningGoal goal) {
 //   MOLE        three S2 heads, swappable, each with its own modules
 //   Golem       one S1 head, swappable; it comes with the Pitman, which no
 //               other ship takes
+//   Hyun        one S1 head on its mining arm, swappable; it comes with the
+//               Arbor MH1. The game's files have a head of its own (Gama
+//               Hyun S1) that no hardpoint takes, the Hyun's included
 //
 // A ship not listed here still works: pass the size and count directly.
 // ---------------------------------------------------------------------------
@@ -757,8 +760,9 @@ inline const MiningShip MINING_SHIPS[] = {
     {"prospector", "MISC Prospector", 1, 1, nullptr},
     {"mole",       "Argo MOLE",       3, 2, nullptr},
     {"golem",      "Drake Golem",     1, 1, "drak_golem_s1"},
+    {"hyun",       "Gatac Hyun",      1, 1, nullptr},
 };
-inline constexpr int MINING_SHIP_COUNT = 3;
+inline constexpr int MINING_SHIP_COUNT = 4;
 
 // The one ship a laser goes on, where it goes on one only. The Golem's
 // Pitman is the only such head: it asks for a hardpoint tagged DRAK_Golem,

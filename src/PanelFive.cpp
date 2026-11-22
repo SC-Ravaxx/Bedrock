@@ -63,6 +63,7 @@ struct Layout {
     double listEnd;                  // a list line's lettering ends by here
     double qualityEnd, nameFrom, nameTo;
     double shareEndsFrom, shareEndsTo;   // a share's per cent sign ends between these, from the shares' edge
+    double figuresFrom = 0;          // the figures start here, left-aligned; 0: they end at figuresEnd
 };
 // The panel beside the reticle: Prospector, Golem, the MOLE's pilot seat
 constexpr Layout BESIDE{FIGURES_END, DELTA_END, VOLUME_TOP, 0.0, 128.0, FIGURES_END, LIST_TOP, LIST_PITCH,
@@ -82,6 +83,16 @@ constexpr Layout BESIDE{FIGURES_END, DELTA_END, VOLUME_TOP, 0.0, 128.0, FIGURES_
 // shares end from 44 to 73; the lines measure their glyphs by their own
 // height.
 constexpr Layout TURRET{236.3, 176.1, -67.0, 322.5, 128.0, 241.0, 16.4, 21.0, 245.0, 233.0, 74.0, 205.0, 44.0, 73.0};
+// The Gatac Hyun's panel in 4.10 (HYUN_PANEL), measured on the app's own
+// snapshots of 22 November 2026 10:41-10:44 (5120x1440, HDR, seven rocks,
+// the column found at 0.78 to 0.86, size 0.865 to 0.927): the figures
+// start at 124 to 128 on all three rows, as 4.10 sets them; the volume
+// and SCU one word on COMPOSITION's line, from 164 to 172 to 236 to 240;
+// the list's lines from 181.5 and 21.4 apart, under a difficulty bar at 79
+// to 95 that 5.0's beside-the-reticle panel has further down; shares from
+// -3 to 1, ending at 35 to 48; names from 62 to 67; qualities ending at
+// 230 to 234.
+constexpr Layout HYUN{233.5, 0.0, 127.0, 0.0, 128.0, 236.0, 181.5, 21.4, 236.0, 232.0, 60.0, 205.0, 30.0, 52.0, 126.0};
 
 // The turret's row stands under the reticle: its labels at cy + 0.31h on
 // both snapshots; the panel beside it has them from cy - 0.14h (Golem) to
@@ -89,7 +100,8 @@ constexpr Layout TURRET{236.3, 176.1, -67.0, 322.5, 128.0, 241.0, 16.4, 21.0, 24
 bool turretRow(const cv::Point& labels, const cv::Size& frame) {
     return labels.y > frame.height / 2.0 + 0.15 * frame.height;
 }
-const Layout& layoutOf(const cv::Point& labels, const cv::Size& frame) {
+const Layout& layoutOf(const cv::Point& labels, const cv::Size& frame, char glyph) {
+    if (glyph == HYUN_PANEL) return HYUN;
     return turretRow(labels, frame) ? TURRET : BESIDE;
 }
 
@@ -257,6 +269,12 @@ struct Line {
     double unit(double frameX) const { return (frameX - origin.x) / s; }
 };
 
+// A word's box on its line, in the line's units (Line::inFrame takes it to the frame)
+cv::Rect wordBox(const Line& line, size_t word) {
+    return cv::Rect(line.left(word), line.top, (std::max)(1, line.right(word) - line.left(word)),
+                    (std::max)(1, line.bottom - line.top));
+}
+
 Line lineAt(const cv::Mat& ink, const cv::Rect& wanted, double s, double floor) {
     Line line;
     line.s = s;
@@ -348,6 +366,17 @@ int wordEndingAt(const Line& line, double end, double before = 3.5, double after
         const int right = whole ? line.right((size_t)w) : textRight(line, (size_t)w);
         if (right >= end - before && right <= end + after) return w;
         if (right < end - before) break;
+    }
+    return -1;
+}
+
+// ...and the word that begins at `start`, for figures set left-aligned (the
+// Gatac Hyun's 4.10 panel); -1 for none
+int wordStartingAt(const Line& line, double start, double before = 4.0, double after = 4.0) {
+    for (size_t w = 0; w < line.words.size(); w++) {
+        const int left = line.left(w);
+        if (left >= start - before && left <= start + after) return (int)w;
+        if (left > start + after) break;
     }
     return -1;
 }
@@ -818,6 +847,28 @@ bool greenOf(const cv::Mat& bgr, const cv::Rect& word) {
     return (g - (std::max)(red, b)) / (double)n > 25.0;
 }
 
+// ...or in any colour at all, green or red, against white: its brightest
+// pixels well apart in one channel from the other two
+bool colouredOf(const cv::Mat& bgr, const cv::Rect& word) {
+    const cv::Rect r = word & cv::Rect(0, 0, bgr.cols, bgr.rows);
+    if (r.area() <= 0) return false;
+    std::vector<cv::Vec3b> px;
+    for (int y = r.y; y < r.y + r.height; y++) {
+        for (int x = r.x; x < r.x + r.width; x++) px.push_back(bgr.at<cv::Vec3b>(y, x));
+    }
+    std::sort(px.begin(), px.end(), [](const cv::Vec3b& a, const cv::Vec3b& b) {
+        return (std::max)({a[0], a[1], a[2]}) > (std::max)({b[0], b[1], b[2]});
+    });
+    const size_t n = (std::max)((size_t)1, px.size() * 3 / 10);
+    double b = 0, g = 0, red = 0;
+    for (size_t i = 0; i < n; i++) {
+        b += px[i][0];
+        g += px[i][1];
+        red += px[i][2];
+    }
+    return (g - (std::max)(red, b)) / (double)n > 25.0 || (red - (std::max)(g, b)) / (double)n > 25.0;
+}
+
 double envOr(const char* name, double fallback) {
     const char* set = DEV_ENV(name);
     return set ? std::atof(set) : fallback;
@@ -888,6 +939,40 @@ bool fiveVolume(const std::string& text, float& scu) {
     return fiveTwoPlaces(text, scu);
 }
 
+bool fiveByLine(const cv::Mat& frame, const cv::Rect& box, double scale, TextLineReader& lines,
+                bool (*parse)(const std::string&, float&), std::string& text, float& value) {
+    text.clear();
+    if (frame.empty() || box.area() <= 0 || !lines.ready()) return false;
+    const int pad = (std::max)(2, (int)std::lround(3 * scale));
+    const cv::Rect cut = cv::Rect(box.x - pad, box.y - pad, box.width + 2 * pad, box.height + 2 * pad) &
+                         cv::Rect(0, 0, frame.cols, frame.rows);
+    if (cut.area() <= 0) return false;
+    const cv::Mat bgr = bgrOf(frame(cut));
+    auto readOf = [&](const cv::Mat& picture) {
+        std::string said;
+        for (char c : lines.read(picture).text) {
+            if (c != ' ') said += c;
+        }
+        return said;
+    };
+    text = readOf(bgr);
+    float v = 0;
+    if (parse(text, v)) {
+        value = v;
+        return true;
+    }
+    cv::Mat wide;
+    cv::resize(bgr, wide, cv::Size(), 2.0, 1.0, cv::INTER_CUBIC);
+    const std::string again = readOf(wide);
+    if (parse(again, v)) {
+        text = again;
+        value = v;
+        return true;
+    }
+    text += "|" + again;
+    return false;
+}
+
 bool fiveShare(const std::string& text, float& value) {
     if (text.size() < 5 || text.back() != '%') return false;
     float v = 0;
@@ -901,12 +986,13 @@ void fiveHarvestFile(const std::string& file) {
     if (Harvest* h = harvest()) h->file = file;
 }
 
-bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines) {
+bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines, bool hyun) {
     if (frame.empty() || columnShape().empty()) return false;
     const cv::Mat bgr = bgrOf(frame);
     const double screen = frame.rows / 1440.0;
     const cv::Rect band = bandOf(frame.size());
-    const cv::Rect turretBand = turretBandOf(frame.size());
+    // the Hyun has one seat and its panel beside the reticle: no turret row
+    const cv::Rect turretBand = hyun ? cv::Rect() : turretBandOf(frame.size());
     const cv::Mat ink = [&] {
         cv::Mat all = cv::Mat::zeros(bgr.size(), CV_32F);
         if (turretBand.area() > 0) inkOf(bgr(turretBand), screen).copyTo(all(turretBand));
@@ -921,20 +1007,24 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
     // at 0.30 to 0.67, the turret's own at 0.82 and 0.85 (17 November 2026)
     static const double turretBar = envOr("SCMINER_FIVE_TURRET_BAR", 0.75);
     const Column beside = findColumn(ink, band, scales);
-    const Column underneath = findColumn(ink, turretBand, scales);
+    const Column underneath = turretBand.area() > 0 ? findColumn(ink, turretBand, scales) : Column();
     // where the labels stand says the layout (layoutOf): a column in the
     // turret's row is one only at the turret's bar, whichever part found it
-    auto fits = [&](const Column& c) { return !turretRow(c.labels, frame.size()) || c.score >= turretBar; };
+    auto fits = [&](const Column& c) {
+        return hyun || !turretRow(c.labels, frame.size()) || c.score >= turretBar;
+    };
     const Column column = fits(underneath) && (!fits(beside) || underneath.score > beside.score) ? underneath : beside;
     static const double bar = envOr("SCMINER_FIVE_BAR", 0.5);
     char note[320];
-    std::snprintf(note, sizeof(note), "five: column %.2f at %d,%d x%.3f%s", column.score, column.labels.x, column.labels.y,
-                  column.scale, turretRow(column.labels, frame.size()) ? " turret" : "");
+    std::snprintf(note, sizeof(note), "%s: column %.2f at %d,%d x%.3f%s", hyun ? "hyun" : "five", column.score,
+                  column.labels.x, column.labels.y, column.scale,
+                  !hyun && turretRow(column.labels, frame.size()) ? " turret" : "");
     panel.note = note;
     if (column.score < bar || !fits(column)) return false;
     const double s = column.scale;
     const int L = column.labels.x, T = column.labels.y;
-    const Layout& lay = layoutOf(column.labels, frame.size());
+    const char glyph = hyun ? HYUN_PANEL : FIVE_PANEL;
+    const Layout& lay = layoutOf(column.labels, frame.size(), glyph);
     auto X = [&](double u) { return (int)std::lround(L + u * s); };
     auto Y = [&](double u) { return (int)std::lround(T + u * s); };
     // a line of the panel at its place, from `from` to `to` right of the labels
@@ -943,6 +1033,11 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
     };
     // the word of a line that ends at `end` right of the labels; -1 for none
     auto endingAt = [&](const Line& line, double end) { return wordEndingAt(line, line.unit(X(end))); };
+    // ...and the word of a figure: the one that starts where the Hyun's
+    // figures start, or the one that ends where 5.0's end
+    auto figureWord = [&](const Line& line) {
+        return lay.figuresFrom > 0 ? wordStartingAt(line, line.unit(X(lay.figuresFrom))) : endingAt(line, lay.figuresEnd);
+    };
     // A 5.0 panel, not 4.10's with the same labels: 4.10 writes its figures
     // after the labels, 5.0 at the panel's right edge, and there a word ends
     // on the MASS line - or the column is 5.0's beyond doubt, and the
@@ -951,11 +1046,15 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
     // frames of 15 November 2026, measured by its lettering alone
     // (textRight), 599 of the 694 with a panel passed and 81 of the 2,906
     // without one; by the word's own end 592 and 70 (the reader before 17
-    // November 2026: 592 and 73).
+    // November 2026: 592 and 73). The Hyun's figures start after the
+    // labels instead, and there a word starts.
     static const double sureColumn = envOr("SCMINER_FIVE_SURE_COLUMN", 0.85);
     const Line massLine = lineOf(0, 60, lay.figuresEnd + 8);
-    if (wordEndingAt(massLine, massLine.unit(X(lay.figuresEnd)), 3.5, 3.5, true) < 0 && column.score < sureColumn) {
-        panel.note += "; nothing at the right edge";
+    const bool massPlaced = lay.figuresFrom > 0
+                                ? figureWord(massLine) >= 0
+                                : wordEndingAt(massLine, massLine.unit(X(lay.figuresEnd)), 3.5, 3.5, true) >= 0;
+    if (!massPlaced && column.score < sureColumn) {
+        panel.note += lay.figuresFrom > 0 ? "; nothing where the figures start" : "; nothing at the right edge";
         return false;
     }
     startDrawing(bgr, cv::Rect(cv::Point(X(-10), Y((std::min)(-55.0, lay.volumeTop - 10))),
@@ -992,6 +1091,16 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
         drawRead(line, f.read);
         return f;
     };
+    // ...one of the three: where the layout sets them
+    auto mainFigure = [&](const Line& line, const Format& format) {
+        if (lay.figuresFrom <= 0) return figure(line, lay.figuresEnd, format);
+        Figure f;
+        f.word = figureWord(line);
+        if (f.word < 0) return f;
+        f.read = slide(line, textRight(line, (size_t)f.word), format, 2, sureScore, sureMargin);
+        drawRead(line, f.read);
+        return f;
+    };
     // The laser's modifier in front of a figure: none where nothing stands
     // left of the figure, read where one word does and ends where modifiers
     // end; anything else leaves the figure unknown, as its own value could
@@ -1009,9 +1118,9 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
     };
     const Line resLine = lineOf(ROW_PITCH, 100, lay.figuresEnd + 8);
     const Line instLine = lineOf(2 * ROW_PITCH, 100, lay.figuresEnd + 8);
-    const Figure mass = figure(massLine, lay.figuresEnd, WHOLE);
-    const Figure res = figure(resLine, lay.figuresEnd, PERCENT);
-    const Figure inst = figure(instLine, lay.figuresEnd, TWO_PLACES);
+    const Figure mass = mainFigure(massLine, WHOLE);
+    const Figure res = mainFigure(resLine, PERCENT);
+    const Figure inst = mainFigure(instLine, TWO_PLACES);
     Figure resDelta, instDelta;
     const bool resOwn = modifier(resLine, res, resDelta);
     const bool instOwn = modifier(instLine, inst, instDelta);
@@ -1032,6 +1141,39 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
             drawRead(volumeLine, volume.read);
         }
     }
+    // The Hyun's figures by the line reader (fiveByLine). Its lettering
+    // carries a split of colour, red to the left and blue to the right,
+    // that 5.0's shapes were not cut for: on the seven snapshots of 22
+    // November 2026 they found every figure and were sure of none (8002 for
+    // 19892, 30570 for 38576); the line reader read all 28 figures right,
+    // given the words the shapes found. Where the shapes are sure of
+    // another figure, it stays unknown.
+    struct Said {
+        std::string text;
+        float value = 0;
+        bool taken = false;
+    };
+    auto byLine = [&](const Line& line, const Figure& shapes, int word, bool (*parse)(const std::string&, float&)) {
+        Said said;
+        if (!hyun || !lines || word < 0) return said;
+        float v = 0;
+        if (!fiveByLine(frame, line.inFrame(wordBox(line, (size_t)word)), s, *lines, parse, said.text, v)) return said;
+        float own = 0;
+        if (shapes.read.sure && (!parse(shapes.read.text, own) || own != v)) return said;
+        said.value = v;
+        said.taken = true;
+        return said;
+    };
+    auto volumeOf = [](const std::string& text, float& scu) {
+        const size_t unit = text.rfind("SCU");
+        return unit != std::string::npos && unit + 3 == text.size() && fiveVolume(text.substr(0, unit), scu) && scu > 0;
+    };
+    const Said massSaid = byLine(massLine, mass, mass.word, fiveWhole);
+    const Said resSaid = byLine(resLine, res, res.word, fivePercent);
+    const Said instSaid = byLine(instLine, inst, inst.word, fiveTwoPlaces);
+    // the volume and SCU, one word; the shapes' volume, if any, as the check
+    const Said volumeSaid = byLine(volumeLine, volume, scuWord.word, volumeOf);
+
     // the bench's harvest: each figure by the truth, glyph by glyph
     if (harvest()) {
         auto take = [&](const char* field, const Line& line, int word, const std::string& truth, int slack) {
@@ -1070,19 +1212,32 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
     r = RockStats();
     r.resistance = -1;
     r.instability = -1;
-    r.deltasRead = true;
+    // 4.10's panel on the Hyun prints no modifiers: its resistance is as the
+    // Prospector's, in colour where the laser is in it
+    r.deltasRead = !hyun;
     float v = 0;
-    if (mass.read.sure && fiveWhole(mass.read.text, v) && v > 0) r.mass = v;
-    if (resOwn && fivePercent(res.read.text, v) &&
-        (resDelta.word < 0 || fiveDelta(resDelta.read.text, r.resistanceDelta))) {
-        r.resistance = v;
-        r.resistanceAdjusted = r.resistanceDelta != 0;
+    if (hyun) {
+        // the line reader's figures alone (above)
+        if (massSaid.taken && massSaid.value > 0) r.mass = massSaid.value;
+        if (resSaid.taken) {
+            r.resistance = resSaid.value;
+            r.resistanceAdjusted = colouredOf(bgr, resLine.inFrame(wordBox(resLine, (size_t)res.word)));
+        }
+        if (instSaid.taken) r.instability = instSaid.value;
+        if (volumeSaid.taken) r.scu = volumeSaid.value;
+    } else {
+        if (mass.read.sure && fiveWhole(mass.read.text, v) && v > 0) r.mass = v;
+        if (resOwn && fivePercent(res.read.text, v) &&
+            (resDelta.word < 0 || fiveDelta(resDelta.read.text, r.resistanceDelta))) {
+            r.resistance = v;
+            r.resistanceAdjusted = r.resistanceDelta != 0;
+        }
+        if (instOwn && fiveTwoPlaces(inst.read.text, v) &&
+            (instDelta.word < 0 || fiveDelta(instDelta.read.text, r.instabilityDelta))) {
+            r.instability = v;
+        }
+        if (volume.read.sure && fiveVolume(volume.read.text, v) && v > 0) r.scu = v;
     }
-    if (instOwn && fiveTwoPlaces(inst.read.text, v) &&
-        (instDelta.word < 0 || fiveDelta(instDelta.read.text, r.instabilityDelta))) {
-        r.instability = v;
-    }
-    if (volume.read.sure && fiveVolume(volume.read.text, v) && v > 0) r.scu = v;
     if (r.resistance < 0) r.resistanceDelta = 0;
     if (r.instability < 0) r.instabilityDelta = 0;
     panel.found = r.mass > 0 && r.resistance >= 0 && r.instability >= 0;
@@ -1098,6 +1253,11 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
                   shown(inst) + " " + shown(volume);
     auto delta = [](float figure, float d) { return figure < 0 ? std::string("-") : std::to_string((int)std::lround(d)); };
     panel.note += "; delta r" + delta(r.resistance, r.resistanceDelta) + " i" + delta(r.instability, r.instabilityDelta);
+    if (hyun) {
+        auto said = [](const Said& x) { return "'" + x.text + "'" + (x.taken ? "" : "?"); };
+        panel.note += "; lines " + said(massSaid) + " " + said(resSaid) + " " + said(instSaid) + " " + said(volumeSaid) +
+                      (r.resistanceAdjusted ? " coloured" : "");
+    }
     panel.note += wordsOf("mass", massLine, L, s) + wordsOf("res", resLine, L, s) + wordsOf("inst", instLine, L, s) +
                   wordsOf("vol", volumeLine, L, s);
     // For the bench: the list too, its qualities narrowed by the ore the
@@ -1106,6 +1266,7 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
         ScanPanel placed = panel;
         placed.labels = column.labels;
         placed.labelScale = s;
+        placed.labelGlyph = glyph;
         const std::string ore = oreByLine(frame, panel.oreRow.area() > 0 ? panel.oreRow
                                                    : cv::Rect(cv::Point(X(-4), Y(ORE_TOP - 3)),
                                                               cv::Point(X(lay.figuresEnd + 4), Y(ORE_TOP + CAP + 3))) &
@@ -1123,10 +1284,11 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
         }
         panel.note += g_listWords;
     }
-    panel.figures[0].text = mass.word >= 0 ? mass.read.text : std::string();
+    panel.figures[0].text = hyun ? massSaid.text : mass.word >= 0 ? mass.read.text : std::string();
+    if (hyun) panel.figures[0].placed = massSaid.taken;
     panel.labels = column.labels;
     panel.labelScale = s;
-    panel.labelGlyph = FIVE_PANEL;
+    panel.labelGlyph = glyph;
     panel.confidence = column.score;
     panel.box = cv::Rect(cv::Point(X(-6), Y((std::min)(-50.0, lay.volumeTop - 6))),
                          cv::Point(X(lay.listLeft + lay.scuEnd + 12), Y(lay.listTop + 5 * lay.listPitch))) &
@@ -1140,7 +1302,7 @@ bool readPanelFive(const cv::Mat& frame, ScanPanel& panel, TextLineReader* lines
 cv::Rect fiveContentsRegion(const ScanPanel& panel, const cv::Size& frame) {
     if (panel.labels.x < 0 || panel.labelScale <= 0) return cv::Rect();
     const double s = panel.labelScale;
-    const Layout& lay = layoutOf(panel.labels, frame);
+    const Layout& lay = layoutOf(panel.labels, frame, panel.labelGlyph);
     const cv::Rect wanted(cv::Point((int)std::lround(panel.labels.x + (lay.listLeft - 12) * s),
                                     (int)std::lround(panel.labels.y + (lay.listTop - 8) * s)),
                           cv::Point((int)std::lround(panel.labels.x + (lay.listLeft + lay.listEnd + 12) * s),
@@ -1153,7 +1315,7 @@ std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& pa
     if (frame.empty() || panel.labels.x < 0 || panel.labelScale <= 0 || knownGlyphs().empty()) return out;
     const double s = panel.labelScale;
     const int L = panel.labels.x, T = panel.labels.y;
-    const Layout& lay = layoutOf(panel.labels, frame.size());
+    const Layout& lay = layoutOf(panel.labels, frame.size(), panel.labelGlyph);
     auto X = [&](double u) { return (int)std::lround(L + u * s); };
     auto Y = [&](double u) { return (int)std::lround(T + u * s); };
     // the list's ink, and its lines cut out of it
@@ -1266,6 +1428,18 @@ std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& pa
         // numerals (17 November 2026); well right of the share
         const int q = wordEndingAt(line, line.unit(X(lay.listLeft + lay.qualityEnd) - part.x), 3.5, 12.0);
         if (q >= 0 && line.left((size_t)q) > edgeOfLine + lay.shareEndsTo) {
+            // ...and for a reader of the whole word (fiveByLine) its last 28
+            // units, piece by piece: three numerals take 27, and a long name
+            // scrolling in its column runs on into the quality ("QUANTAINIUM
+            // (RAW344" one word on the Hyun, 22 November 2026)
+            {
+                const std::vector<cv::Rect>& pieces = line.words[(size_t)q];
+                int from = pieces.back().x;
+                for (auto it = pieces.rbegin(); it != pieces.rend() && it->x >= line.right((size_t)q) - 28; ++it) from = it->x;
+                entry.qualityAt = line.inFrame(cv::Rect(cv::Point(from, line.top),
+                                                        cv::Point(line.right((size_t)q), (std::max)(line.top + 1, line.bottom)))) +
+                                  part.tl();
+            }
             const int qRight = textRight(line, (size_t)q);
             const Reading quality = slide(line, qRight, QUALITY, 2, sureScore, sureMargin);
             entry.qualityText = quality.text;
@@ -1303,6 +1477,11 @@ std::vector<FiveListLine> readFiveList(const cv::Mat& frame, const ScanPanel& pa
                                            cv::Point(shareEnd, sl->bottom)) &
                                   cv::Rect(0, 0, sl->ink.cols, sl->ink.rows);
         if (shareBox.area() > 0) cv::minMaxLoc(sl->ink(shareBox), nullptr, &most);
+        // ...and its word whole, for a reader of the whole word (fiveByLine)
+        if (shareEnd > sl->left((size_t)sw)) {
+            entry.shareAt = sl->inFrame(cv::Rect(cv::Point(sl->left((size_t)sw), sl->top), cv::Point(shareEnd, sl->bottom))) +
+                            part.tl();
+        }
         entry.bright = most;
         brightest = (std::max)(brightest, most);
         const double top = lay.listTop + row * lay.listPitch;
@@ -1369,7 +1548,7 @@ int numeralsOff(const std::string& a, const std::string& b) {
 cv::Rect fivePanelCut(const ScanPanel& panel, const cv::Size& frame) {
     if (panel.labels.x < 0 || panel.labelScale <= 0) return cv::Rect();
     const double s = panel.labelScale;
-    const Layout& lay = layoutOf(panel.labels, frame);
+    const Layout& lay = layoutOf(panel.labels, frame, panel.labelGlyph);
     auto X = [&](double u) { return (int)std::lround(panel.labels.x + u * s); };
     auto Y = [&](double u) { return (int)std::lround(panel.labels.y + u * s); };
     // the turret's row is wide and low: its list stands right of the figures

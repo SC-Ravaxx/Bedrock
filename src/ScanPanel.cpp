@@ -2660,6 +2660,21 @@ int panelGeneration() {
 }
 
 namespace {
+bool g_panelHyun = [] {
+    const char* set = DEV_ENV("BEDROCK_PANEL_HYUN");
+    return set && std::atoi(set) != 0;
+}();
+}  // namespace
+
+void setPanelHyun(bool hyun) {
+    g_panelHyun = hyun;
+}
+
+bool panelHyun() {
+    return g_panelHyun;
+}
+
+namespace {
 bool g_panelToneMapped = [] {
     const char* set = DEV_ENV("BEDROCK_PANEL_HDR");
     return set && std::atoi(set) != 0;
@@ -4387,6 +4402,20 @@ ScanPanel readScanPanel(const cv::Mat& frame, OCREngine& ocr, GlyphReader* glyph
             five.figuresRead = figures + (five.stats.ore.empty() ? 0 : 1);
         }
         return five;
+    }
+    // The Gatac Hyun in 4.10: 4.10's panel in 5.0's lettering, which the
+    // readers below do not know (their label columns match it at 0.54 to
+    // 0.58 nowhere near it, on the seven snapshots of 22 November 2026).
+    // Where it finds no column, the readers below look all the same: the
+    // log may have missed the player boarding another ship.
+    if (g_panelHyun) {
+        ScanPanel hyun;
+        if (readPanelFive(frame, hyun, lines, true)) {
+            const int figures = hyun.figuresRead;
+            if (hyun.found) nameTheOre(hyun);
+            hyun.figuresRead = figures + (hyun.stats.ore.empty() ? 0 : 1);
+            return hyun;
+        }
     }
     // where the face reader is to look, when the shapes found the labels
     cv::Rect faceNear;

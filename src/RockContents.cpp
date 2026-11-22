@@ -339,7 +339,7 @@ bool contentsHold(RockContents& contents) {
 }
 
 cv::Rect rockContentsRegion(const ScanPanel& panel, const cv::Size& frame) {
-    if (panel.labelGlyph == FIVE_PANEL) return fiveContentsRegion(panel, frame);
+    if (fiveLettering(panel.labelGlyph)) return fiveContentsRegion(panel, frame);
     if (panel.labels.x < 0 || panel.labelScale <= 0) return cv::Rect();
     const double u = panel.labelScale;
     const cv::Rect wanted(cv::Point((int)std::lround(panel.labels.x + REGION_LEFT * u), (int)std::lround(panel.labels.y + REGION_TOP * u)),
@@ -797,7 +797,19 @@ bool readFiveContents(const cv::Mat& frame, const ScanPanel& panel, const std::s
                       TextLineReader& lines, RockContents& out, double kgPerScu) {
     // the rock's kind narrows each quality to the values its ores come in
     const std::vector<int> values = rockOre.empty() ? std::vector<int>() : fiveQualities(rockOre);
-    const std::vector<FiveListLine> rows = readFiveList(frame, panel, values.empty() ? nullptr : &values);
+    std::vector<FiveListLine> rows = readFiveList(frame, panel, values.empty() ? nullptr : &values);
+    // The Gatac Hyun's list: its share and its quality by the line reader
+    // alone, as its figures (fiveByLine) - 5.0's shapes do not read its lettering
+    if (panel.labelGlyph == HYUN_PANEL) {
+        for (FiveListLine& row : rows) {
+            float v = 0;
+            row.shareSure = fiveByLine(frame, row.shareAt, panel.labelScale, lines, fiveShare, row.shareText, v);
+            row.share = row.shareSure ? v : 0.0f;
+            row.qualitySure = fiveByLine(frame, row.qualityAt, panel.labelScale, lines, fiveWhole, row.qualityText, v);
+            row.quality = row.qualitySure ? (int)v : -1;
+            row.byValues = false;
+        }
+    }
     if (rows.empty()) {
         out.note = "5.0: no lines under the bar";
         return false;
@@ -879,7 +891,7 @@ bool readRockContents(const cv::Mat& frame, const ScanPanel& panel, const std::s
         out.note = "no label column";
         return done(false);
     }
-    if (panel.labelGlyph == FIVE_PANEL) return done(readFiveContents(frame, panel, rockOre, lines, out, kgPerScu));
+    if (fiveLettering(panel.labelGlyph)) return done(readFiveContents(frame, panel, rockOre, lines, out, kgPerScu));
     const double u = panel.labelScale;
     const cv::Rect region = rockContentsRegion(panel, frame.size());
     if (region.width < 215 * u || region.height < 40 * u) {

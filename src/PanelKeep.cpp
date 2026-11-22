@@ -51,7 +51,7 @@ bool PanelKeep::sameRock(const std::string& a, const std::string& b) {
 
 std::string PanelKeep::massOf(const ScanPanel& panel) {
     // 5.0's reader gives the text where it found the mass's word
-    if (panel.labelGlyph == FIVE_PANEL || panel.figures[0].placed) return panel.figures[0].text;
+    if (fiveLettering(panel.labelGlyph) || panel.figures[0].placed) return panel.figures[0].text;
     if (panel.found && panel.stats.mass > 0) return std::to_string((long long)std::llround(panel.stats.mass));
     return std::string();
 }
@@ -74,12 +74,13 @@ std::string PanelKeep::hudOf(char labelGlyph) {
         case 'G': return "Golem";
         case 'H': return "Golem, long labels";
         case FIVE_PANEL: return "5.0";
+        case HYUN_PANEL: return "Hyun";
         default: return "unknown";
     }
 }
 
 cv::Rect PanelKeep::cut(const ScanPanel& panel, const cv::Size& frame) {
-    if (panel.labelGlyph == FIVE_PANEL) return fivePanelCut(panel, frame);
+    if (fiveLettering(panel.labelGlyph)) return fivePanelCut(panel, frame);
     if (panel.labels.x < 0 || panel.labelScale <= 0) return cv::Rect();
     const double s = panel.labelScale;
     auto X = [&](double u) { return (int)std::lround(panel.labels.x + u * s); };
