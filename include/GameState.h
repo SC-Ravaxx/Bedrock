@@ -105,7 +105,9 @@ public:
     // the body's name the log gave with it, "nyx1"), from the pick until the
     // drive arrives there; "" before and after. A route left before the end
     // - out of quantum travel in the Aaron Halo - keeps it until the next
-    // pick.
+    // pick: the drive writes its arrival there all the same, and what tells
+    // the two apart is where the game streams the ship in after it
+    // (settle()).
     const std::string& target() const { return target_; }
     // ...and where that route set off, as the route's own line names it
     // ("Projected Start Location is ARC-L1 Wide Forest Station for route to
@@ -162,16 +164,28 @@ public:
         // "Planet 'nyx1' (entity 876113521728)" - whose quantum targets give
         // the id where 4.10 gave the name
         std::string body, bodyId;
+        std::string inventoryTo;   // the place the game streams the player in now, by an id without a
+                                   // name: "1902223495" is open space in Stanton (<Update Inventory Location>)
         bool any() const {
             return !system.empty() || !ship.empty() || !place.empty() || !target.empty() ||
                    !zone.empty() || arrived || !location.empty() || cells >= 0 || statsBegin || statsEnd || menu ||
-                   !bodyId.empty();
+                   !bodyId.empty() || !inventoryTo.empty();
         }
     };
     static bool parse(std::string_view line, Event* out);
     // Feeds one event into the state; true when something changed. Shared
     // by the poll and the --gamelog replay so both see the same thing.
     bool apply(const Event& event);
+    // The clock, in seconds since 1970 (UTC), for an arrival held on a
+    // route through the Aaron Halo: the drive writes "arrived" when the
+    // player leaves quantum travel before the end too, and the game
+    // streams the ship into its destination 2 to 13 seconds after a real
+    // arrival at a moon or a planet (all 53 since July 2026) - at a
+    // Lagrange point mostly before the line. Still in Stanton's open space
+    // 30 seconds after it, the ship is in the Halo; a later move gives the
+    // destination back. poll() asks the wall clock, every line its own
+    // stamp (the --gamelog replay). True when it changed the place.
+    bool settle(long long nowUtc);
 
     // "DRAK_Golem" or "Drake Golem" -> "Drake"; an unknown prefix comes back as it is
     static std::string maker(const std::string& ship);
@@ -221,6 +235,14 @@ private:
     bool holding_ = false;
     std::string namedPlace_, namedSystem_, namedStamp_;   // see namedPlace()
     std::string locationStamp_;   // when a terminal last named a place the app knows
+    // Where the game streams the player in (Event::inventoryTo); "" until said
+    std::string inventoryAt_;
+    // An arrival held on a route through the Aaron Halo (settle()): its
+    // target, until the ship moves or the next pick, and the arrival line's
+    // stamp until the clock decides...
+    std::string haloTarget_, haloSince_;
+    // ...and the place the Halo since the clock said so, until another place
+    bool inHalo_ = false;
     // For rockPlace(): a quantum target picked, until it is arrived at or a
     // place line other than its own route says where the ship is...
     bool travelling_ = false;

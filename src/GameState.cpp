@@ -1,7 +1,9 @@
 #include "GameState.h"
 #include "GamePlaces.h"
+#include "HaloRoute.h"
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -49,6 +51,31 @@ bool withinSeconds(const std::string& a, const std::string& b, int seconds) {
     };
     return std::abs(secs(a) - secs(b)) <= seconds;
 }
+
+// "2026-11-21T23:49:11" -> seconds since 1970, UTC; -1 for no stamp
+long long stampSeconds(const std::string& s) {
+    if (s.size() != 19) return -1;
+    const int y = std::atoi(s.c_str()), m = std::atoi(s.c_str() + 5), d = std::atoi(s.c_str() + 8);
+    if (m < 1 || m > 12 || d < 1 || d > 31) return -1;
+    // days since 1970-01-01 of a date in the proleptic Gregorian calendar
+    const int yy = y - (m <= 2 ? 1 : 0);
+    const int era = (yy >= 0 ? yy : yy - 399) / 400;
+    const int yoe = yy - era * 400;
+    const int doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    const int doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    const long long days = (long long)era * 146097 + doe - 719468;
+    return days * 86400 + std::atoi(s.c_str() + 11) * 3600LL + std::atoi(s.c_str() + 14) * 60LL +
+           std::atoi(s.c_str() + 17);
+}
+
+// Open space in Stanton, as the game's inventory names where the player is
+// (<Update Inventory Location>): the id while a route starts at "Stanton
+// System", the same in every build since about 11733560
+constexpr const char* STANTON_OPEN_SPACE = "1902223495";
+// How long after an arrival line on a route through the Aaron Halo the ship
+// may still stand in open space before it counts as stopped in the Halo
+// (GameState::settle)
+constexpr long long HALO_WAIT_SECONDS = 30;
 
 // "MISC_Prospector_824000000606" -> "MISC_Prospector": the entity id at the
 // end goes, and what is left has to look like MAKER_Model
@@ -483,6 +510,25 @@ bool GameState::parse(std::string_view line, Event* out) {
             }
         }
     }
+    // "<Update Inventory Location> Player [...] is changing location.
+    // Landing [a] -> [b]. Location [c] -> [d]. Pending [0]": the player's
+    // own, and d where the game streams them in now - a place's id without
+    // its name (Event::inventoryTo)
+    static constexpr std::string_view MOVED = "<Update Inventory Location>";
+    static constexpr std::string_view MOVED_TO = ". Location [";
+    if (line.find(MOVED) != std::string_view::npos) {
+        if (const size_t k = line.find(MOVED_TO); k != std::string_view::npos) {
+            const size_t arrow = line.find("] -> [", k + MOVED_TO.size());
+            if (arrow != std::string_view::npos) {
+                const size_t b = arrow + 6;
+                const size_t e = line.find(']', b);
+                if (e != std::string_view::npos && e > b) {
+                    event.inventoryTo = std::string(line.substr(b, e - b));
+                    said = true;
+                }
+            }
+        }
+    }
     // "<RequestLocationInventory> Player[...] requested inventory for
     // Location[RR_JP_StantonPyro]": a terminal opened, and the place it
     // stands in - the player on foot at it, so nothing says where more
@@ -534,11 +580,13 @@ bool GameState::applyGadget(const Event& event) {
 // picking in it, so a route of a ship not yet known as the player's is held
 // for a moment and counts once the player's own line names that ship.
 bool GameState::apply(const Event& line) {
-    if (!line.gadget.empty()) return applyGadget(line);   // a line of its own, about no ship
+    // an arrival held for the Aaron Halo, by the line's own time
+    const bool settled = !line.stamp.empty() && settle(stampSeconds(line.stamp));
+    if (!line.gadget.empty()) return applyGadget(line) || settled;   // a line of its own, about no ship
     // A body's entity id, for the 5.0 targets that give only the id...
     if (!line.bodyId.empty()) {
         bodies_[line.bodyId] = line.body;
-        return false;
+        return settled;
     }
     // ...which are read as the body's name, the way 4.10 gave it and
     // placeByDestination knows it
@@ -551,7 +599,7 @@ bool GameState::apply(const Event& line) {
         if (routeBody != bodies_.end()) named.routeTo = routeBody->second;
     }
     const Event& event = targetBody != bodies_.end() || routeBody != bodies_.end() ? named : line;
-    bool changed = false;
+    bool changed = settled;
     if (event.playerAct && !event.navShip.empty()) {
         if (event.navShip != ownShip_) {
             ownShip_ = event.navShip;
@@ -610,6 +658,7 @@ bool GameState::applyOwn(const Event& event) {
             place_ = place;
             changed = true;
             rockPlaceFresh();
+            inHalo_ = false;
         }
         if (!place.empty()) inSpace_ = false;   // a place, whatever it is, is not open space
     };
@@ -645,8 +694,12 @@ bool GameState::applyOwn(const Event& event) {
         if (!spawnNamed) placeUnnamed();
     }
     if (event.systemFromRoute) {
-        setPlace("");   // out in space: no place any more
-        inSpace_ = true;
+        // out in space: no place any more - save the Aaron Halo, which a
+        // ship stopped in it is out in space in (settle())
+        if (!inHalo_) {
+            setPlace("");
+            inSpace_ = true;
+        }
         placeSaid(setsOff);
     }
     if (!event.place.empty()) {
@@ -707,8 +760,13 @@ bool GameState::applyOwn(const Event& event) {
             placeUnnamed();
         }
     }
-    // A pick: under way from here on, as far as a rock's place goes
-    if (!event.target.empty()) travelling_ = true;
+    // A pick: under way from here on, as far as a rock's place goes - and
+    // an arrival held for the Halo is no longer waited on
+    if (!event.target.empty()) {
+        travelling_ = true;
+        haloTarget_.clear();
+        haloSince_.clear();
+    }
     // (a new pick counts as a change: what the route crosses - the Aaron
     // Halo - is shown while it stands)
     if (!event.target.empty() && event.target != target_) {
@@ -726,21 +784,24 @@ bool GameState::applyOwn(const Event& event) {
             changed = true;
         }
     }
-    if (event.arrived && !target_.empty()) {
-        const std::string far = jumpDestination(target_);
+    // Arrived at a target: the place it is
+    auto arriveAt = [&](const std::string& target) {
+        const std::string far = jumpDestination(target);
         // For rockPlace(): arrived, and somewhere the app names or not
         travelling_ = false;
         rockPlaceFresh();
-        unnamed_ = far.empty() && !placeByDestination(target_, system_).known();
+        unnamed_ = far.empty() && !placeByDestination(target, system_).known();
+        haloTarget_.clear();
+        haloSince_.clear();
         if (!far.empty()) {
             // At the jump point, still on this side; the crossing itself
             // is not logged, the next place seen tells (see jumpTo_)
             jumpTo_ = far;
-            const GamePlace place = placeByDestination(target_, system_);
+            const GamePlace place = placeByDestination(target, system_);
             name(place.name, place.system);
             setPlace(place.name);
             setSystem(place.system);
-        } else if (const GamePlace place = placeByDestination(target_, system_); place.known()) {
+        } else if (const GamePlace place = placeByDestination(target, system_); place.known()) {
             if (!place.system.empty()) name(place.name, place.system);
             setPlace(place.name);
             if (!place.system.empty()) setSystem(place.system);
@@ -755,6 +816,40 @@ bool GameState::applyOwn(const Event& event) {
         target_.clear();
         routeStart_.clear();
         changed = true;
+    };
+    // An arrival on a route through the Aaron Halo - or out of it - with
+    // the ship still in Stanton's open space: the drive writes the line
+    // when the player leaves quantum travel in the Halo too. Held, the
+    // place as it was, until the ship moves or the clock says Halo
+    // (settle()). Not at a jump point or a target the map has no point for.
+    auto heldForHalo = [&]() {
+        if (system_ != "Stanton" || inventoryAt_ != STANTON_OPEN_SPACE || !jumpDestination(target_).empty()) {
+            return false;
+        }
+        const GamePlace to = placeByDestination(target_, system_);
+        NavPoint a, b;
+        if (!to.known() || !navPoint(to.name, "Stanton", b)) return false;
+        if (inHalo_) return true;
+        const GamePlace from = placeByLogName(routeStart_, system_);
+        return from.known() && navPoint(from.name, "Stanton", a) && runsThroughHalo(a, b);
+    };
+    if (event.arrived && !target_.empty()) {
+        if (heldForHalo()) {
+            haloTarget_ = target_;
+            haloSince_ = event.stamp;
+        } else {
+            arriveAt(target_);
+        }
+    }
+    // Where the game streams the player in. Out of open space after an
+    // arrival held for the Halo: at its target after all - a moon 2 to 13 s
+    // after the line, a Reclaimer at HUR-L1 236 s
+    if (!event.inventoryTo.empty()) {
+        inventoryAt_ = event.inventoryTo;
+        if (!haloTarget_.empty() && inventoryAt_ != STANTON_OPEN_SPACE && inventoryAt_ != "0" &&
+            haloTarget_ == target_) {
+            arriveAt(target_);
+        }
     }
     // The ten-minute statistics, for rockPlace(): a round begun since the
     // place line, with bodies listed and terrain loaded for none, says the
@@ -818,6 +913,30 @@ std::string GameState::hull() const {
     return !hull_.empty() && hullShip_ == ship_ ? hull_ : std::string();
 }
 
+bool GameState::settle(long long nowUtc) {
+    if (haloTarget_.empty() || haloSince_.empty()) return false;
+    const long long since = stampSeconds(haloSince_);
+    if (since < 0 || nowUtc < since + HALO_WAIT_SECONDS) return false;
+    // In the Halo: its place, out in space. The target and where its route
+    // set off stand until the ship moves - which gives the target back - or
+    // the next pick.
+    static const std::string HALO = "Aaron Halo";
+    const std::string stamp = haloSince_;
+    haloSince_.clear();
+    if (place_ != HALO) {
+        place_ = HALO;
+        rockPlaceFresh();
+    }
+    inHalo_ = true;
+    inSpace_ = false;
+    travelling_ = false;
+    unnamed_ = false;
+    namedPlace_ = HALO;
+    namedSystem_ = "Stanton";
+    namedStamp_ = stamp;
+    return true;
+}
+
 std::string GameState::rockPlace() const {
     RockPlaceState state;
     state.place = place_;
@@ -861,6 +980,10 @@ void GameState::setGameLog(const std::filesystem::path& log) {
     locationStamp_.clear();
     travelling_ = false;
     unnamed_ = false;
+    inventoryAt_.clear();
+    haloTarget_.clear();
+    haloSince_.clear();
+    inHalo_ = false;
     rockPlaceFresh();
     if (log_.empty()) return;
     std::error_code ec;
@@ -909,9 +1032,18 @@ bool GameState::poll() {
         holding_ = false;
         travelling_ = false;
         unnamed_ = false;
+        inventoryAt_.clear();
+        haloTarget_.clear();
+        haloSince_.clear();
+        inHalo_ = false;
         rockPlaceFresh();
     }
     if (size > offset_) changed = readFrom(offset_, &offset_, false) > 0 || changed;
+    // ...and an arrival held for the Halo, by the wall clock: after one the
+    // log often stays quiet for minutes
+    const long long now =
+        std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    if (settle(now)) changed = true;
     return changed;
 }
 

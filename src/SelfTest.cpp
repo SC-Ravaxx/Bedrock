@@ -7206,8 +7206,8 @@ int runSelfTest() {
             allPassed &= check(rock.place() == "HUR-L1" && rock.rockPlace() == "Stanton - Lagrange A",
                                "a terminal at HUR-L1: Lagrange A for a rock, HUR-L1 in the header (got " +
                                    said(rock.rockPlace()) + ")");
-            // Out of quantum travel half way - the Aaron Halo - with no
-            // arrival line: the place set off from is behind the ship
+            // Under way, before the drive's arrival line: the place set off
+            // from is behind the ship
             feedRock("<2026-09-21T19:40:00.000Z> " + PICK + "OOC_Stanton_2b_Daymar" + PICKED);
             feedRock("<2026-09-21T19:40:00.001Z> " + ROUTE + "HUR-L1 Green Glade Station for route to destination "
                      "OOC_Stanton_2b_Daymar [Team_CGP4][QuantumTravel]");
@@ -7230,6 +7230,70 @@ int runSelfTest() {
             allPassed &= check(rock.rockPlace().empty() && rock.place() == "Monox",
                                "a loading screen leaves the header's place, but a rock none until a place line (got " +
                                    said(rock.rockPlace()) + ")");
+            // Out of quantum travel in the Aaron Halo: the drive writes its
+            // arrival there as at the end (Orison to Wala, 22 November 2026
+            // 00:49), and the game leaves the ship in Stanton's open space.
+            // 30 seconds on, the place is the Halo; a ship streamed into its
+            // moon within them is there. A route that does not cross the belt
+            // arrives at once, and so does one whose L-point took the ship in
+            // before the line.
+            {
+                const std::string MOVED = "[Notice] <Update Inventory Location> Player [<player>] is changing "
+                                          "location. Landing [0] -> [0]. Location [";
+                const std::string PENDING = "]. Pending [0] [Team_CoreGameplayFeatures][Inventory]";
+                const std::string OPEN = "1902223495", CRUSADER = "2493660041", WALA = "1569897220";
+                auto moved = [&](const std::string& stamp, const std::string& from, const std::string& to) {
+                    feedRock("<" + stamp + "> " + MOVED + from + "] -> [" + to + PENDING);
+                };
+                auto stats = [&](const std::string& stamp) { feedRock("<" + stamp + "> PHYSICS INSTANCE STATS BEGIN 2"); };
+                feedRock("<2026-11-21T23:46:05.471Z> " + PICK + "OOC_Stanton_3b_Wala" + PICKED);
+                feedRock("<2026-11-21T23:46:05.472Z> " + ROUTE + "Orison for route to destination OOC_Stanton_3b_Wala "
+                         "[Team_CGP4][QuantumTravel]");
+                moved("2026-11-21T23:46:29.729Z", "1105811199", CRUSADER);
+                moved("2026-11-21T23:46:58.403Z", CRUSADER, OPEN);
+                feedRock("<2026-11-21T23:49:11.245Z> " + ARRIVED);
+                const std::string held = rock.place(), heldRock = rock.rockPlace(), heldTarget = rock.target();
+                stats("2026-11-21T23:49:40.000Z");
+                const std::string early = rock.place();
+                stats("2026-11-21T23:49:42.000Z");
+                const std::string halo = rock.place(), haloRock = rock.rockPlace();
+                // ...a route from there, out in open space, leaves it the Halo
+                feedRock("<2026-11-22T00:20:00.000Z> " + PICK + "OOC_Stanton_3b_Wala" + PICKED);
+                feedRock("<2026-11-22T00:20:00.001Z> " + ROUTE + "Stanton System for route to destination "
+                         "OOC_Stanton_3b_Wala [Team_CGP4][QuantumTravel]");
+                const std::string plotted = rock.place();
+                // ...and the drive arriving at Wala, the moon streaming in 5 s on
+                feedRock("<2026-11-22T00:22:00.000Z> " + ARRIVED);
+                const std::string beforeMoon = rock.place();
+                moved("2026-11-22T00:22:05.000Z", OPEN, WALA);
+                allPassed &= check(held == "Orison" && heldRock.empty() && heldTarget == "OOC_Stanton_3b_Wala" &&
+                                       early == "Orison" && halo == "Aaron Halo" &&
+                                       haloRock == "Stanton - Aaron Halo" && plotted == "Aaron Halo" &&
+                                       beforeMoon == "Aaron Halo" && rock.place() == "Wala" && rock.target().empty(),
+                                   "out of quantum travel in the Aaron Halo: the arrival line held, the Halo 30 s on, "
+                                   "kept while a route is plotted from there, Wala once its moon streams in (got " +
+                                       said(held) + ", " + said(early) + ", " + said(halo) + " / " + said(haloRock) +
+                                       ", " + said(plotted) + ", " + said(beforeMoon) + ", " + said(rock.place()) + ")");
+                // A real arrival through the belt, Wala to Crusader: there 4 s after the line
+                feedRock("<2026-11-22T01:00:00.000Z> " + PICK + "OOC_Stanton_2_Crusader" + PICKED);
+                feedRock("<2026-11-22T01:00:00.001Z> " + ROUTE + "Wala for route to destination OOC_Stanton_2_Crusader "
+                         "[Team_CGP4][QuantumTravel]");
+                moved("2026-11-22T01:00:20.000Z", WALA, OPEN);
+                feedRock("<2026-11-22T01:03:00.000Z> " + ARRIVED);
+                const std::string onTheWay = rock.place();
+                moved("2026-11-22T01:03:04.000Z", OPEN, CRUSADER);
+                const std::string crusader = rock.place();
+                // ...from Crusader to Daymar, inside the belt: at once
+                feedRock("<2026-11-22T01:10:00.000Z> " + PICK + "OOC_Stanton_2b_Daymar" + PICKED);
+                feedRock("<2026-11-22T01:10:00.001Z> " + ROUTE + "Crusader for route to destination "
+                         "OOC_Stanton_2b_Daymar [Team_CGP4][QuantumTravel]");
+                moved("2026-11-22T01:10:30.000Z", CRUSADER, OPEN);
+                feedRock("<2026-11-22T01:11:00.000Z> " + ARRIVED);
+                allPassed &= check(onTheWay == "Wala" && crusader == "Crusader" && rock.place() == "Daymar",
+                                   "a real arrival through the belt: the place once the ship streams in; within it at "
+                                   "once (got " + said(onTheWay) + ", " + said(crusader) + ", " + said(rock.place()) +
+                                       ")");
+            }
         }
 
         // The SCAN RESULTS panel, found by structure rather than by place.
