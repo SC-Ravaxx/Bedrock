@@ -667,6 +667,20 @@ int editDistance(const std::string& a, const std::string& b) {
     return prev[b.size()];
 }
 
+// The edits that make `a` a piece of `b`, wherever in it: "TRUCTIONPIECES" is
+// 0 from "CONSTRUCTIONPIECES"
+int pieceDistance(const std::string& a, const std::string& b) {
+    std::vector<int> prev(b.size() + 1, 0), cur(b.size() + 1);
+    for (size_t i = 1; i <= a.size(); i++) {
+        cur[0] = static_cast<int>(i);
+        for (size_t j = 1; j <= b.size(); j++) {
+            cur[j] = (std::min)({prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1)});
+        }
+        std::swap(prev, cur);
+    }
+    return *std::min_element(prev.begin(), prev.end());
+}
+
 // The digits a reader of words gives for numerals it took for letters
 char asDigit(char c) {
     switch (c) {
@@ -829,16 +843,38 @@ std::string refineryMaterialIn(const std::string& text, bool* inert) {
         if (inert) *inert = true;
         return "";
     }
-    // The salvage's refined name, which no material in the tables has: the
-    // construction salvage comes out as CONSTRUCTION MATERIALS, too long for
-    // its column, so cut short as much as was read - and so does the
-    // construction rubble, the work orders' book telling the two apart by
-    // the quote
-    {
-        const std::string want = "CONSTRUCTIONMATERIALS";
-        if (t.size() >= 13 && editDistance(t, want.substr(0, (std::min)(want.size(), t.size()))) <= 1) {
-            return "Construction Salvage";
+    // Salvage: its three forms go in under their own names and all come out
+    // as CONSTRUCTION MATERIALS, which no table has. Every one of the names
+    // is longer than its column - SETUP scrolls them through it
+    // ("TRUCTION PIECES", "NSTRUCTION PIECE", "CONSTRUCTION PI"; CRU-L1,
+    // 22 November 2026), PROCESSING cuts the refined one short ("CONSTRUCTION
+    // M") - so ten letters or more in a row name the one they are a piece of,
+    // where no other name holds them as well ("CONSTRUCTION" is any of
+    // them). The refined name stands for Construction Salvage: the work
+    // orders' book takes the forms for one material and the name from the
+    // quote.
+    if (t.size() >= 10) {
+        struct Form {
+            const char* name;
+            const char* material;
+        };
+        static const Form FORMS[] = {{"CONSTRUCTIONMATERIALS", "Construction Salvage"},
+                                     {"CONSTRUCTIONSALVAGE", "Construction Salvage"},
+                                     {"CONSTRUCTIONRUBBLE", "Construction Rubble"},
+                                     {"CONSTRUCTIONPIECES", "Construction Pieces"}};
+        int best = 1 << 30, other = 1 << 30;
+        std::string name;
+        for (const Form& f : FORMS) {
+            const int d = pieceDistance(t, f.name);
+            if (d < best) {
+                if (!name.empty() && name != f.material) other = best;
+                best = d;
+                name = f.material;
+            } else if (name != f.material) {
+                other = (std::min)(other, d);
+            }
         }
+        if (best <= (t.size() >= 15 ? 2 : 1) && other > best) return name;
     }
     // ...and where what comes out is named for itself, not for what went in:
     // PROCESSING lists raw ice as PRESSURIZED ICE (Levski, 29.10.2026) and,
@@ -871,6 +907,11 @@ std::string refineryMaterialIn(const std::string& text, bool* inert) {
         }
     }
     return best <= (std::max)(1, static_cast<int>(t.size()) / 5) ? name : "";
+}
+
+bool refinerySalvage(const std::string& material) {
+    return material == "Construction Salvage" || material == "Construction Rubble" ||
+           material == "Construction Pieces";
 }
 
 bool refineryQualityFits(const std::string& material, int quality) {
@@ -1291,6 +1332,9 @@ RefineryScreen readRefineryScreen(const cv::Mat& input, const std::vector<Refine
             row.quality = setup  ? figure(SETUP_QUALITY_X0, SETUP_QUALITY_X1, "quality")
                           : done ? figure(DONE_QUALITY_X0, DONE_QUALITY_X1, "quality")
                                  : figure(PROC_QUALITY_X0, PROC_QUALITY_X1, "quality");
+            // Salvage has no quality: SETUP prints 0 for it, PROCESSING leaves
+            // the column empty (CRU-L1, 22 November 2026)
+            if (!row.inert && row.quality < 0 && refinerySalvage(row.material)) row.quality = 0;
             // ...and a quality its ore does not come in is a misreading - an
             // 874 taken for 674 would have stood as a part of its own
             if (!row.inert && row.quality >= 0 && !refineryQualityFits(row.material, row.quality)) continue;

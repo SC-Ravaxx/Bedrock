@@ -2217,6 +2217,21 @@ int runSelfTest() {
             SCMiner::refineryMaterialIn("CONSTRUCTION SALVAGE") == "Construction Salvage";
         allPassed &= check(workload, "a refinery's workload reads: CURRENT CAPACITY's figure, and the game's sentence on "
                                      "it by its word or, misread, by the surcharge's; the salvage's refined name");
+        // ...and salvage's three forms by their names scrolled through
+        // SETUP's column, as the terminal shows every one of them (CRU-L1,
+        // 22 November 2026): ten letters or more name the form they are a
+        // piece of, where no other holds them as well
+        const bool forms = SCMiner::refineryMaterialIn("TRUCTION PIECES") == "Construction Pieces" &&
+                           SCMiner::refineryMaterialIn("NSTRUCTION PIECI") == "Construction Pieces" &&
+                           SCMiner::refineryMaterialIn("ISTRUCTION PIECE") == "Construction Pieces" &&
+                           SCMiner::refineryMaterialIn("CONSTRUCTION PI") == "Construction Pieces" &&
+                           SCMiner::refineryMaterialIn("TRUCTION RUBBLE") == "Construction Rubble" &&
+                           SCMiner::refineryMaterialIn("NSTRUCTION SALVA") == "Construction Salvage" &&
+                           SCMiner::refineryMaterialIn("CONSTRUCTION M") == "Construction Salvage" &&
+                           SCMiner::refineryMaterialIn("CONSTRUCTION").empty();
+        allPassed &= check(forms, "salvage's three forms scrolled through SETUP's column: TRUCTION PIECES is "
+                                  "Construction Pieces, TRUCTION RUBBLE Construction Rubble, CONSTRUCTION M the "
+                                  "refined name, CONSTRUCTION alone none of them");
         // ...and the other refined names that are not the material's: what
         // PROCESSING lists for raw ice and raw silicon
         const bool refined = SCMiner::refineryMaterialIn("PRESSURIZED ICE") == "Raw Ice" &&
@@ -2769,6 +2784,53 @@ int runSelfTest() {
                            "salvage, CONSTRUCTION MATERIALS under PROCESSING: an order of Construction Rubble under "
                            "the name its quote gives it, read at once or five minutes on, one part at every look and "
                            "when done; one of rubble and salvage alike two parts that stay apart");
+        // Construction Pieces, salvage's third form, the same way; and an
+        // order whose quote was read without its rows - a material left
+        // out, the game's warning laid over the list as the bill came up
+        // (CRU-L1, 22 November 2026) - named by the one form of salvage the
+        // list held before, with its amount; with two forms on the list, no
+        // telling which
+        const std::string cru = "CRU-L1 Ambitious Dream Station";
+        RefineryPanel piecesQuote = rubbleQuote;
+        piecesQuote.cost = 383;
+        piecesQuote.seconds = 524;
+        piecesQuote.rows = {row("Construction Pieces", 0, 800, 160)};
+        RefineryPanel piecesOrder = running;
+        piecesOrder.rows = {row("Construction Salvage", 0, -1, 160)};
+        SCMiner::RefineryOrderBook pieces;
+        pieces.take(cru, screen({piecesQuote}), t0);
+        pieces.take(cru, screen({at(piecesOrder, 521)}), t0 + 3);
+        pieces.take(cru, screen({at(piecesOrder, 520)}), t0 + 4);
+        auto onlyPart = [](const SCMiner::RefineryOrderBook& b, const char* material, int quantity) {
+            return b.orders().size() == 1 && b.orders()[0].parts.size() == 1 &&
+                   b.orders()[0].parts[0].material == material && b.orders()[0].parts[0].quantity == quantity &&
+                   b.orders()[0].parts[0].yield == 160;
+        };
+        RefineryPanel listed = setup;
+        listed.method.clear();
+        listed.cost = -1;
+        listed.seconds = -1;
+        listed.rows = {row("Construction Pieces", 0, 800, -1), row("Raw Silicon", 310, 223, -1)};
+        RefineryPanel covered = piecesQuote;
+        covered.rows.clear();
+        SCMiner::RefineryOrderBook named;
+        named.take(cru, screen({listed}), t0 - 10);
+        named.take(cru, screen({covered}), t0);
+        named.take(cru, screen({at(piecesOrder, 521)}), t0 + 3);
+        named.take(cru, screen({at(piecesOrder, 520)}), t0 + 4);
+        RefineryPanel listedTwo = listed;
+        listedTwo.rows = {row("Construction Pieces", 0, 800, -1), row("Construction Rubble", 0, 400, -1)};
+        SCMiner::RefineryOrderBook unnamed;
+        unnamed.take(cru, screen({listedTwo}), t0 - 10);
+        unnamed.take(cru, screen({covered}), t0);
+        unnamed.take(cru, screen({at(piecesOrder, 521)}), t0 + 3);
+        unnamed.take(cru, screen({at(piecesOrder, 520)}), t0 + 4);
+        allPassed &= check(onlyPart(pieces, "Construction Pieces", 800) && pieces.orders()[0].complete() &&
+                               onlyPart(named, "Construction Pieces", 800) && named.orders()[0].cost == 383 &&
+                               onlyPart(unnamed, "Construction Salvage", -1),
+                           "salvage's third form, Construction Pieces, as the rubble; an order whose quote was read "
+                           "without its rows named by the one form of salvage the list held, with its amount, and "
+                           "not where the list held two");
     }
 
     // --- A work order as a calendar entry for the phone's camera

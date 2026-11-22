@@ -141,6 +141,18 @@ private:
                     long long now, std::string& why);
     static constexpr long long QUOTE_KEPT_SECONDS = 900;
     static constexpr size_t QUOTES_KEPT = 8;
+    // The salvage SETUP's list showed lately, a form of it each, where and
+    // how much: all three forms come out as CONSTRUCTION MATERIALS, so an
+    // order whose quote was read without its rows - a warning laid over the
+    // list as the bill comes up, where it leaves a material out - is named
+    // by the one form the list held (see apply)
+    struct Listed {
+        std::string station, material;
+        int quantity = -1;
+        long long seen = 0;
+    };
+    std::vector<Listed> listed_;
+    static constexpr long long LISTED_SECONDS = 120;
     std::vector<std::string> notes_;
     std::string lastPartialQuote_;   // a quote read without all of it: noted once, not at every look
 };

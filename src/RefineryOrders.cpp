@@ -30,14 +30,12 @@ std::vector<RefineryOrder::Part> partsOf(const RefineryPanel& panel, bool refine
     return parts;
 }
 
-// Salvage goes into the refinery in two forms - the Reclaimer's as
-// Construction Salvage, the Vulture's, the Fortune's and the Salvation's as
-// Construction Rubble (their salvage storages in the game files) - and
-// PROCESSING names both CONSTRUCTION MATERIALS, which reads as Construction
-// Salvage. An order and its quote, and one look at it and the next, take the
-// two for one material; the quote says which it is.
+// Salvage goes into the refinery in three forms (refinerySalvage), and
+// PROCESSING names them all CONSTRUCTION MATERIALS, which reads as
+// Construction Salvage. An order and its quote, and one look at it and the
+// next, take the forms for one material; the quote says which it is.
 bool salvage(const std::string& material) {
-    return material == "Construction Salvage" || material == "Construction Rubble";
+    return refinerySalvage(material);
 }
 
 bool sameMaterial(const std::string& a, const std::string& b) {
@@ -291,6 +289,26 @@ bool RefineryOrderBook::samePanel(const RefineryPanel& a, long long aTaken, cons
 // quote seen again only moves its time on - unless it went to an order
 // already: then it is set up anew, the same job twice being two orders.
 void RefineryOrderBook::noteQuote(const std::string& station, const RefineryPanel& panel, long long now) {
+    // The salvage on the list, whatever else the look caught of the quote
+    listed_.erase(std::remove_if(listed_.begin(), listed_.end(),
+                                 [&](const Listed& l) { return now - l.seen > LISTED_SECONDS; }),
+                  listed_.end());
+    for (const RefineryRow& row : panel.rows) {
+        if (row.inert || !salvage(row.material)) continue;
+        auto at = std::find_if(listed_.begin(), listed_.end(),
+                               [&](const Listed& l) { return l.station == station && l.material == row.material; });
+        if (at == listed_.end()) {
+            Listed l;
+            l.station = station;
+            l.material = row.material;
+            l.quantity = row.quantity;
+            l.seen = now;
+            listed_.push_back(l);
+        } else {
+            at->seen = now;
+            if (row.quantity >= 0) at->quantity = row.quantity;
+        }
+    }
     if (panel.method.empty() || panel.cost < 0 || panel.seconds <= 0) {
         std::string lacks;
         if (panel.method.empty()) lacks += "its method";
@@ -512,8 +530,30 @@ bool RefineryOrderBook::apply(const std::string& station, const RefineryScreen& 
                     order.parts.push_back(q);
                     continue;
                 }
-                at->material = q.material;   // salvage: which of the two, only the quote says
+                at->material = q.material;   // salvage: which form, only the quote says
                 if (q.quantity >= 0) at->quantity = q.quantity;
+            }
+        }
+        // ...or, the quote read without its salvage, the list: where it held
+        // one form of salvage in the last two minutes, that form and how much
+        // of it - CRU-L1, 22 November 2026, Construction Pieces with a
+        // material left out, whose warning covered the rows as the bill came up
+        const bool quoted = quote && std::any_of(quote->parts.begin(), quote->parts.end(),
+                                                 [](const RefineryOrder::Part& q) { return salvage(q.material); });
+        if (!quoted) {
+            const Listed* only = nullptr;
+            int forms = 0;
+            for (const Listed& l : listed_) {
+                if (l.station != station || now - l.seen > LISTED_SECONDS) continue;
+                only = &l;
+                forms++;
+            }
+            if (forms == 1) {
+                for (RefineryOrder::Part& p : order.parts) {
+                    if (!salvage(p.material)) continue;
+                    p.material = only->material;
+                    if (p.quantity < 0) p.quantity = only->quantity;
+                }
             }
         }
         const std::string lacks = missingOf(order);

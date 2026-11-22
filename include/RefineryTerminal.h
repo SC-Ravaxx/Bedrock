@@ -127,11 +127,19 @@ int parseRefineryCount(const std::string& text);
 // The method a read names, as REFINING_METHODS spells it; "" when none is near
 std::string refiningMethodIn(const std::string& text);
 // The material a read names, as REFINERY_MATERIALS spells it ("IRON (ORE)" and
-// the refined "IRON" both give "Iron (Ore)"; the salvage's refined
-// "CONSTRUCTION MATERIALS", cut short to "CONSTRUCTION MA" in its column or
-// not, gives "Construction Salvage" - Construction Rubble's as well, the
-// work orders' book taking which from the quote); "" when none is near
+// the refined "IRON" both give "Iron (Ore)"); "" when none is near. Salvage
+// by as much of a form's name as was read: SETUP scrolls the long names
+// through its column ("TRUCTION PIECES" is Construction Pieces), and
+// PROCESSING's refined "CONSTRUCTION MATERIALS", cut short to "CONSTRUCTION
+// M", gives Construction Salvage - for every form, the work orders' book
+// taking which it was from the quote.
 std::string refineryMaterialIn(const std::string& text, bool* inert = nullptr);
+// Whether a material is one of salvage's three forms - Construction Salvage
+// (the Reclaimer's), Construction Rubble (the Vulture's, the Fortune's, the
+// Salvation's) and Construction Pieces - which all refine to Construction
+// Materials. Pieces is in no table (REFINERY_MATERIALS): scmdb's extracts
+// have no refinery numbers for it.
+bool refinerySalvage(const std::string& material);
 // Whether a quality is one a material comes in: one of its ore's eight
 // values (ORE_BANDS) - the terminal prints the raw ore's, refined or not.
 // True for a material the bands do not know (salvage, rubble).
