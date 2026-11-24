@@ -67,6 +67,46 @@ struct FrostCache {
     }
 };
 
+// Everything the recipe list is narrowed by except the typed search,
+// kept as one value: a reset is one assignment, and a picture that
+// needs the bar clear can put it back exactly as it found it.
+struct CraftFilter {
+    int material = -1;           // index into CRAFT_MATERIALS, -1 = every blueprint
+    int type = -1;               // index into CRAFT_TYPES, -1 = every component
+    int group = -1;              // index into MinerGUI::typeGroups(), -1 = every group
+    // 0 any category, 1 FPS, 2 vehicle, 3 misc. The type under FPS and
+    // Vehicle is a CraftKind (MinerGUI.cpp); 0 is any type of the chosen
+    // category. Misc holds the recipes outside those two, and it has no
+    // type row. Row 3 of the filter bar is drawn for FPS and Vehicle, and
+    // class, size and grade only for a vehicle.
+    int category = 0;
+    int kind = 0;
+    char grade = 0;              // 'A'..'D', 0 = any grade
+    int size = -1;               // component size, -1 = any
+    int itemClass = -1;          // index into CRAFT_CLASSES, -1 = any
+    int owned = 0;               // 0 every blueprint, 1 owned only, 2 missing only
+    // 0 every blueprint, 1 only the ones a contract hands out.
+    int contract = 0;
+    // Where a recipe can be earned, and from whom: 0 any system, else
+    // 1 Stanton, 2 Pyro, 3 Nyx; faction "" is any outfit. Both describe a
+    // contract, so they apply only while Has contract is on, and one
+    // contract has to answer BOTH - "in Pyro, from Shubin" is one
+    // question, not two. A choice made while they are off is kept for
+    // when the toggle comes back on, and does not narrow the list.
+    int system = 0;
+    std::string faction;
+
+    // Class, size and grade belong to the vehicle row
+    void clearVehicle() { grade = 0; size = -1; itemClass = -1; }
+    // ...and with category and type, the shape of what is listed. A pick
+    // on the left rail replaces it, or the two would empty the list.
+    void clearShape() { category = 0; kind = 0; clearVehicle(); }
+    bool narrows() const {
+        return material >= 0 || type >= 0 || group >= 0 || category || kind || grade || size >= 0 ||
+               itemClass >= 0 || owned || contract || system || !faction.empty();
+    }
+};
+
 // Forward declaration
 class MinerGUI;
 struct OreLocation;   // MiningLocations.h
@@ -927,8 +967,9 @@ public:
     void dragNoteForShot(bool on);   // ...and a note frozen in mid-drag
     void cartForShot();              // ...and a shopping list with things on it
     void cartOnlyForShot(const char* blueprint);   // ...or with one recipe, and no window opened
-    void widestFilterForShot();      // ...and the filter bar at its most crowded,
-                                     // outfits unfolded and all
+    void widestFilterForShot();      // ...and the filter bar at its most crowded:
+                                     // Vehicle, so type, class, size and grade
+                                     // share a row, outfits unfolded and all
     void narrowByContractForShot();  // ...and the list cut to one system and one outfit   // --screenshot only: the naming box open
     void openTrashForShot();     // ...and the trash unfolded, with a note in it
     HWND notesHandle() const { return notes_; }
@@ -2137,26 +2178,8 @@ private:
     // Blueprints window
     HWND crafting_ = nullptr;
     bool craftingVisible_ = false;
-    int craftMaterial_ = -1;         // index into CRAFT_MATERIALS, -1 = every blueprint
-    int craftType_ = -1;             // index into CRAFT_TYPES, -1 = every component
-    char craftGrade_ = 0;            // 'A'..'D', 0 = any grade
-    int craftSize_ = -1;             // component size, -1 = any
-    int craftClass_ = -1;            // index into CRAFT_CLASSES, -1 = any
-    // Where a recipe can be earned, and from whom. Both read the contracts
-    // that hand it out: 0 any system, else 1 Stanton, 2 Pyro, 3 Nyx; "" any
-    // outfit. One contract has to answer BOTH - "in Pyro, from Shubin" is
-    // one question, not two - and a recipe no contract drops answers
-    // neither, which is what makes these the sharpest filters in the bar.
-    int craftSystem_ = 0;
-    // More than one outfit at a time: "Shubin or Rayari" is a question
-    // somebody actually has, and the alternative - one at a time - makes
-    // them run the search twice and hold the two lists in their head.
-    // Empty means any of them.
-    std::vector<std::string> craftFactions_;
-    std::vector<std::string> factionHits_;   // what the faction chips stand for
-    // Twenty-one factions will not fit beside a heading, so the FROM row
-    // holds two chips and the list of them drops below it when asked for.
-    bool craftFactionPick_ = false;
+    CraftFilter craftFilter_;
+    std::vector<std::string> factionHits_;   // names behind the From dropdown's rows, in row order
     bool craftByComponent_ = false;  // which list the left column shows
     int craftScroll_ = 0;            // first blueprint row shown
     std::wstring craftSearch_;       // typed filter: item, type, material, outfit or contract
@@ -2189,11 +2212,21 @@ private:
     bool caretOn_ = true;            // the search caret, blinking on a timer
     std::vector<std::string> owned_; // per blueprint: when it was received, "" = not owned
     std::string ownedNote_;          // where the library knowledge comes from
-    int craftOwned_ = 0;             // 0 every blueprint, 1 owned only, 2 missing only
-    // 0 every blueprint, 1 only the ones a contract hands out. A recipe the
-    // player does not own is worth knowing about only when there is a way
-    // to earn it; one switch, since "any" is it being off.
-    int craftContract_ = 0;
+    // The open dropdown on the filter bar: the field's hit kind (a
+    // CraftDropField, MinerGUI.cpp), or 0 when shut. Its rows are hit
+    // kind + 1. The choices are filled while the bar is painted and drawn
+    // on top of the list afterwards.
+    int craftFilterPick_ = 0;
+    Gdiplus::RectF craftFilterAnchor_{};
+    struct CraftFilterChoice {
+        std::wstring text;
+        int value = 0;
+        bool on = false;
+    };
+    std::vector<CraftFilterChoice> craftFilterChoices_;
+    // A pick is only a menu while the last paint found its field on the bar
+    bool craftFilterMenuUp() const { return craftFilterPick_ && !craftFilterChoices_.empty(); }
+    void paintCraftFilterMenu(Gdiplus::Graphics& g, int cw, int ch);
     OwnedToggleCallback ownedToggleCallback_;
     DataRestoredCallback dataRestoredCallback_;
     UiScaleCallback uiScaleCallback_;
@@ -2342,10 +2375,10 @@ private:
     void loadCart();
     void saveCart();
 
-    int craftGroup_ = -1;            // index into typeGroups(), -1 = every group
     void openBlueprint(int index);   // switches the window to one recipe
     void showOreFinderFor(const std::string& material);
-    void paintCraftingList(Gdiplus::Graphics& g, int cw, int ch);
+    void paintCraftingList(Gdiplus::Graphics& g, int cw, int ch);   // the page, and a filter menu over it
+    void paintCraftingPage(Gdiplus::Graphics& g, int cw, int ch);
     // kind 6 = the material/component switch, 7 = a component filter
     void paintCraftingDetail(Gdiplus::Graphics& g, int cw, int ch);
     static LRESULT CALLBACK CraftingProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);

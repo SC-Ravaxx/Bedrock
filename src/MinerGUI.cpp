@@ -543,7 +543,8 @@ void drawChevron(Gdiplus::Graphics& g, float cx, float cy, float s, bool up, con
 
 std::vector<Gdiplus::RectF> drawSegmented(Gdiplus::Graphics& g, float x, float y, float h,
                                           const std::vector<Segment>& segs, const Gdiplus::Font& words,
-                                          const Gdiplus::Font& figures, float pad, float s, const POINT& hover) {
+                                          const Gdiplus::Font& figures, float pad, float s, const POINT& hover,
+                                          bool enabled = true) {
     const float inset = SEGMENT_INSET * s;
     fillRoundRect(g, Gdiplus::RectF(x, y, segmentedWidth(g, segs, words, figures, pad, s), h), R_CONTROL * s,
                   COL_CARD_HI);
@@ -556,8 +557,10 @@ std::vector<Gdiplus::RectF> drawSegmented(Gdiplus::Graphics& g, float x, float y
     for (const Segment& seg : segs) {
         const float sw = segmentWidth(g, seg, words, figures, pad, s);
         const Gdiplus::RectF r(sx, y + inset, sw, h - 2.0f * inset);
-        const bool hot = hover.x >= 0 && r.Contains((float)hover.x, (float)hover.y);
-        const Gdiplus::Color ink = choiceFace(g, r, (R_CONTROL - SEGMENT_INSET) * s, seg.on, hot, seg.open);
+        const bool hot = enabled && hover.x >= 0 && r.Contains((float)hover.x, (float)hover.y);
+        // Off: the words stay, faint, and nothing about them answers a click
+        const Gdiplus::Color ink = enabled ? choiceFace(g, r, (R_CONTROL - SEGMENT_INSET) * s, seg.on, hot, seg.open)
+                                           : COL_TEXT_FAINT;
         Gdiplus::SolidBrush brush(ink);
         const float arrow = seg.chevron ? SEGMENT_ARROW * s : 0.0f;
         // the words centred in what the arrow leaves, the arrow just after them
@@ -582,10 +585,11 @@ float toggleWidth(Gdiplus::Graphics& g, const wchar_t* label, const Gdiplus::Fon
 }
 
 void drawToggle(Gdiplus::Graphics& g, const Gdiplus::RectF& r, const wchar_t* label, const Gdiplus::Font& font,
-                bool on, bool hot, float s) {
+                bool on, bool hot, float s, bool enabled = true) {
+    if (!enabled) { on = false; hot = false; }
     const float radius = R_CONTROL * s;
     fillRoundRect(g, r, radius, COL_CARD_HI);
-    const Gdiplus::Color ink = choiceFace(g, r, radius, on, hot, false);
+    const Gdiplus::Color ink = enabled ? choiceFace(g, r, radius, on, hot, false) : COL_TEXT_FAINT;
     const float boxS = 11.0f * s;
     const Gdiplus::RectF box(r.X + 10.0f * s, r.Y + (r.Height - boxS) / 2.0f, boxS, boxS);
     if (on) {
@@ -10517,29 +10521,206 @@ void MinerGUI::openTrashForShot() {
     if (notes_) InvalidateRect(notes_, nullptr, TRUE);
 }
 
-void MinerGUI::widestFilterForShot() {
-    // The type whose recipes carry the most different sizes: that is the
-    // longest the filter bar ever gets, and where it comes closest to the
-    // shopping list at the other end
-    int best = -1;
-    size_t most = 0;
-    for (int t = 0; t < CRAFT_TYPE_COUNT; t++) {
-        std::set<int> sizes;
-        for (int b = 0; b < CRAFT_BLUEPRINT_COUNT; b++) {
-            if (CRAFT_BLUEPRINTS[b].type == t && CRAFT_BLUEPRINTS[b].size >= 0) {
-                sizes.insert(CRAFT_BLUEPRINTS[b].size);
-            }
+namespace {
+
+// Category is FPS, Vehicle, or Misc. Type is the coarser bucket under FPS
+// and Vehicle. Misc is the four recipes that are neither: two Wikelo
+// turn-ins, Probe, and TH-01 Propulsor. They have no type of their own.
+// The unnamed Pioneer cooler is filed with the other coolers. Every mining
+// laser, the size-0 ones included, is a vehicle mining laser.
+enum CraftBucket : int { BucketAny = 0, BucketFps = 1, BucketVehicle = 2, BucketMisc = 3 };
+
+enum CraftKind : int {
+    KindAny = 0,
+    KindArmor,
+    KindClothing,
+    KindFpsWeapon,
+    KindAttachment,
+    KindVehicleWeapon,
+    KindComponent,
+    KindMiningLaser,
+    KindMiningModule,
+    KindSalvage,
+    KindTractor,
+    KindContainer,
+};
+
+struct Placement {
+    int category;
+    int kind;
+};
+
+// Where one of CRAFT_TYPES files, by its name
+Placement placeType(const char* type) {
+    auto is = [type](std::initializer_list<const char*> names) {
+        for (const char* name : names) {
+            if (std::strcmp(type, name) == 0) return true;
         }
-        if (sizes.size() > most) { most = sizes.size(); best = t; }
+        return false;
+    };
+    if (is({"Arms (Armor)", "Backpack (Armor)", "Helmet (Armor)", "Legs (Armor)", "Torso (Armor)",
+            "Undersuit (Armor)"})) {
+        return {BucketFps, KindArmor};
     }
-    craftType_ = best;
-    craftGroup_ = -1;
+    if (is({"Jacket", "Shirt", "Shoes", "Trousers"})) return {BucketFps, KindClothing};
+    if (is({"FPS Weapon"})) return {BucketFps, KindFpsWeapon};
+    if (is({"Weapon Attachment"})) return {BucketFps, KindAttachment};
+    if (is({"Mining Laser"})) return {BucketVehicle, KindMiningLaser};
+    if (is({"Weapon Gun"})) return {BucketVehicle, KindVehicleWeapon};
+    if (is({"Cooler", "Power Plant", "Quantum Drive", "Radar", "Shield", "Fuel Nozzle", "Other"})) {
+        return {BucketVehicle, KindComponent};
+    }
+    if (is({"Mining Modifier"})) return {BucketVehicle, KindMiningModule};
+    if (is({"Salvage Modifier"})) return {BucketVehicle, KindSalvage};
+    if (is({"Tractor Beam"})) return {BucketVehicle, KindTractor};
+    if (is({"Container"})) return {BucketVehicle, KindContainer};
+    return {BucketMisc, KindAny};
+}
+
+// A recipe files by its type alone, so the names are compared once per
+// type rather than once per recipe on every paint
+Placement placeBlueprint(const CraftBlueprint& bp) {
+    static const std::array<Placement, CRAFT_TYPE_COUNT> byType = [] {
+        std::array<Placement, CRAFT_TYPE_COUNT> table{};
+        for (int t = 0; t < CRAFT_TYPE_COUNT; t++) table[t] = placeType(CRAFT_TYPES[t]);
+        return table;
+    }();
+    return byType[bp.type];
+}
+
+struct KindRow {
+    int kind;
+    int category;
+    const wchar_t* name;
+};
+
+const KindRow KIND_ROWS[] = {
+    {KindArmor, BucketFps, L"Armor"},
+    {KindClothing, BucketFps, L"Clothing"},
+    {KindFpsWeapon, BucketFps, L"FPS weapon"},
+    {KindAttachment, BucketFps, L"Weapon attachment"},
+    {KindVehicleWeapon, BucketVehicle, L"Vehicle weapon"},
+    {KindComponent, BucketVehicle, L"Vehicle component"},
+    {KindMiningLaser, BucketVehicle, L"Mining laser"},
+    {KindMiningModule, BucketVehicle, L"Mining module"},
+    {KindSalvage, BucketVehicle, L"Salvage module"},
+    {KindTractor, BucketVehicle, L"Tractor beam"},
+    {KindContainer, BucketVehicle, L"Container"},
+};
+
+const wchar_t* kindLabel(int kind) {
+    for (const KindRow& row : KIND_ROWS) {
+        if (row.kind == kind) return row.name;
+    }
+    return L"Any";
+}
+
+// The category segments on the filter bar, by hit kind
+enum CraftFilterHit : int { HitCategory = 46 };
+
+// The dropdowns on the filter bar, by the hit kind of their field. A
+// field's rows are its kind + 1 (see craftFilterPick_), so the kinds
+// from 48 to 57 are all taken.
+enum CraftDropField : int { DropType = 48, DropClass = 50, DropSize = 52, DropGrade = 54, DropFrom = 56 };
+
+bool isCraftDropField(int kind) {
+    return kind == DropType || kind == DropClass || kind == DropSize || kind == DropGrade || kind == DropFrom;
+}
+
+// Appends x unless it is there already: the filter bar's choices, in the
+// order the recipes first offer them
+template <class T>
+void addOnce(std::vector<T>& list, const T& x) {
+    if (std::find(list.begin(), list.end(), x) == list.end()) list.push_back(x);
+}
+
+// Whether the recipe takes the material in any slot; -1 is every material
+bool usesMaterial(const CraftBlueprint& bp, int material) {
+    if (material < 0) return true;
+    for (int s = 0; s < bp.count; s++) {
+        if (CRAFT_SLOTS[bp.first + s].material == material) return true;
+    }
+    return false;
+}
+
+// What the filter bar offers its choices from: the recipes the left-hand
+// list (type, material) and the category leave, and the type below that
+// unless `withKind` is false - the type dropdown lists the types of the
+// category, not only the one picked.
+bool inFilterShape(const CraftBlueprint& bp, const Placement& placed, const CraftFilter& f, bool withKind = true) {
+    if (f.type >= 0 && bp.type != f.type) return false;
+    if (!usesMaterial(bp, f.material)) return false;
+    if (f.category && placed.category != f.category) return false;
+    if (withKind && f.kind && placed.kind != f.kind) return false;
+    return true;
+}
+
+// What the recipes in the filter's shape say about earning them: the
+// systems their contracts run in, how many outfits hand them out, and how
+// many have a contract at all.
+struct EarnReach {
+    unsigned systems = 0;
+    size_t outfits = 0;
+    int dropped = 0;
+    int undropped = 0;
+};
+
+// Whether system, faction and "has contract" have anything to choose among
+// once category, type and the left-hand list have spoken. A control with
+// nothing to choose stays on the row and does not narrow it. The ...On
+// flags are what is in effect: System and From describe a contract, so
+// they apply only while Has contract itself is narrowing the list.
+struct EarnLive {
+    bool system = false;
+    bool from = false;
+    bool contract = false;
+    bool contractOn = false;
+    bool systemOn = false;
+    bool fromOn = false;
+};
+
+EarnLive earnLive(const CraftFilter& f, const EarnReach& reach) {
+    EarnLive live;
+    live.system = reach.systems && (reach.systems & (reach.systems - 1));
+    live.from = reach.outfits > 1;
+    live.contract = reach.dropped > 0 && reach.undropped > 0;
+    live.contractOn = f.contract == 1 && live.contract;
+    live.systemOn = live.contractOn && live.system;
+    live.fromOn = live.contractOn && live.from;
+    return live;
+}
+
+EarnLive earnLive(const CraftFilter& f) {
+    EarnReach reach;
+    std::vector<std::string> outfits;
+    for (int b = 0; b < CRAFT_BLUEPRINT_COUNT; b++) {
+        const CraftBlueprint& c = CRAFT_BLUEPRINTS[b];
+        if (!inFilterShape(c, placeBlueprint(c), f)) continue;
+        if (c.srcCount) reach.dropped++;
+        else reach.undropped++;
+        for (int i = 0; i < c.srcCount; i++) {
+            const CraftSource& src = CRAFT_SOURCES[c.srcFirst + i];
+            reach.systems |= craftSystemsOf(src);
+            if (*src.faction) addOnce(outfits, std::string(src.faction));
+        }
+    }
+    reach.outfits = outfits.size();
+    return earnLive(f, reach);
+}
+
+}  // namespace
+
+void MinerGUI::widestFilterForShot() {
+    // Vehicle is the long bar: type, class, size and grade share the third
+    // row, and the From dropdown is open so the outfits are in the picture
+    craftFilter_.type = craftFilter_.group = craftFilter_.material = -1;
+    craftFilter_.clearShape();
+    craftFilter_.category = BucketVehicle;
+    craftFilter_.contract = 1;
+    craftFilterPick_ = DropFrom;
     cartOpen_ = false;
     craftByComponent_ = true;
-    craftMaterial_ = -1;
     craftScroll_ = 0;
-    // ...with the faction list dropped, which is the widest the bar gets
-    craftFactionPick_ = true;
     if (crafting_) InvalidateRect(crafting_, nullptr, TRUE);
 }
 
@@ -10548,13 +10729,13 @@ void MinerGUI::widestFilterForShot() {
 // the data rather than named, so the picture keeps telling the truth when
 // the game files change.
 void MinerGUI::narrowByContractForShot() {
-    craftType_ = -1;
-    craftGroup_ = -1;
-    craftMaterial_ = -1;
+    craftFilter_.type = craftFilter_.group = craftFilter_.material = -1;
+    craftFilter_.clearShape();
+    craftFilterPick_ = 0;
     craftByComponent_ = true;
     cartOpen_ = false;
-    craftSystem_ = 2;            // Pyro
-    craftFactionPick_ = true;
+    craftFilter_.contract = 1;
+    craftFilter_.system = 2;            // Pyro
     std::map<std::string, int> reach;
     for (int b = 0; b < CRAFT_BLUEPRINT_COUNT; b++) {
         const CraftBlueprint& bp = CRAFT_BLUEPRINTS[b];
@@ -10565,16 +10746,15 @@ void MinerGUI::narrowByContractForShot() {
         }
         for (const auto& outfit : outfits) reach[outfit]++;
     }
-    // The two that reach the most recipes in Pyro, both at once - the
-    // picture is there to show that more than one may be picked
-    craftFactions_.clear();
+    // The outfit that reaches the most recipes in Pyro
+    craftFilter_.faction.clear();
     std::vector<std::pair<int, std::string>> ranked;
     for (const auto& entry : reach) ranked.push_back({entry.second, entry.first});
     std::sort(ranked.begin(), ranked.end(),
               [](const std::pair<int, std::string>& a, const std::pair<int, std::string>& b) {
                   return a.first > b.first;
               });
-    for (size_t i = 0; i < ranked.size() && i < 2; i++) craftFactions_.push_back(ranked[i].second);
+    if (!ranked.empty()) craftFilter_.faction = ranked[0].second;
     craftScroll_ = 0;
     if (crafting_) InvalidateRect(crafting_, nullptr, TRUE);
 }
@@ -12591,7 +12771,7 @@ void MinerGUI::toggleCrafting() {
             const size_t cut = ore.find_first_of(" \xC3");
             if (cut != std::string::npos) ore = ore.substr(0, cut);
             const int index = materialIndex(ore);
-            if (index >= 0) craftMaterial_ = index;
+            if (index >= 0) craftFilter_.material = index;
         }
         craftOpen_ = -1;
         caretOn_ = true;
@@ -13113,44 +13293,38 @@ void MinerGUI::saveCart() {
 // recipes that need least of it first - that is the one you can afford.
 std::vector<int> MinerGUI::craftRows() const {
     const std::wstring needle = foldForSearch(craftSearch_);
+    const CraftFilter& f = craftFilter_;
+    // A quiet control keeps its last choice, and does not narrow the list
+    const EarnLive live = earnLive(f);
+    // Where it can be earned, and from whom. One contract has to satisfy
+    // both: "in Pyro, from Shubin" asks for a Shubin contract that runs
+    // in Pyro, not for a recipe Shubin gives somewhere and somebody else
+    // gives in Pyro.
+    const bool wantSystem = live.systemOn && f.system > 0;
+    const bool wantFrom = live.fromOn && !f.faction.empty();
 
     std::vector<int> rows;
     for (int b = 0; b < CRAFT_BLUEPRINT_COUNT; b++) {
         const CraftBlueprint& bp = CRAFT_BLUEPRINTS[b];
-        if (craftMaterial_ >= 0) {
-            bool uses = false;
-            for (int s = 0; s < bp.count; s++) {
-                if (CRAFT_SLOTS[bp.first + s].material == craftMaterial_) { uses = true; break; }
-            }
-            if (!uses) continue;
+        const Placement placed = placeBlueprint(bp);
+        if (!inFilterShape(bp, placed, f)) continue;
+        if (f.group >= 0 && !typeInGroup(bp.type, f.group)) continue;
+        // Class, size and grade live on the vehicle row. While that row is
+        // not up, a value left over from it must not empty the list.
+        if (f.category == BucketVehicle) {
+            if (f.grade && bp.grade != f.grade) continue;
+            if (f.size >= 0 && bp.size != f.size) continue;
+            if (f.itemClass >= 0 && bp.itemClass != f.itemClass) continue;
         }
-        if (craftType_ >= 0 && bp.type != craftType_) continue;
-        if (craftGroup_ >= 0 && !typeInGroup(bp.type, craftGroup_)) continue;
-        if (craftGrade_ && bp.grade != craftGrade_) continue;
-        if (craftSize_ >= 0 && bp.size != craftSize_) continue;
-        if (craftClass_ >= 0 && bp.itemClass != craftClass_) continue;
-        if (craftOwned_ == 1 && !isOwned(b)) continue;
-        if (craftOwned_ == 2 && isOwned(b)) continue;
-        if (craftContract_ == 1 && !bp.srcCount) continue;
-        // Where it can be earned, and from whom. One contract has to satisfy
-        // both: "in Pyro, from Shubin" asks for a Shubin contract that runs
-        // in Pyro, not for a recipe Shubin gives somewhere and somebody else
-        // gives in Pyro.
-        if (craftSystem_ > 0 || !craftFactions_.empty()) {
+        if (f.owned == 1 && !isOwned(b)) continue;
+        if (f.owned == 2 && isOwned(b)) continue;
+        if (live.contractOn && !bp.srcCount) continue;
+        if (wantSystem || wantFrom) {
             bool reachable = false;
             for (int i = 0; i < bp.srcCount && !reachable; i++) {
                 const CraftSource& src = CRAFT_SOURCES[bp.srcFirst + i];
-                if (craftSystem_ > 0 &&
-                    !(craftSystemsOf(src) & (1u << (craftSystem_ - 1)))) {
-                    continue;
-                }
-                // Any of the factions picked will do - they are alternatives,
-                // not conditions: no contract comes from two outfits at once.
-                if (!craftFactions_.empty() &&
-                    std::find(craftFactions_.begin(), craftFactions_.end(), src.faction) ==
-                        craftFactions_.end()) {
-                    continue;
-                }
+                if (wantSystem && !(craftSystemsOf(src) & (1u << (f.system - 1)))) continue;
+                if (wantFrom && f.faction != src.faction) continue;
                 reachable = true;
             }
             if (!reachable) continue;
@@ -13161,6 +13335,10 @@ std::vector<int> MinerGUI::craftRows() const {
             // and for which contract, so "fox" keeps what Foxwell gives
             auto has = [&](const char* p) { return foldForSearch(toW(p)).find(needle) != std::wstring::npos; };
             bool hit = has(bp.name) || has(CRAFT_TYPES[bp.type]);
+            if (!hit && placed.kind &&
+                foldForSearch(kindLabel(placed.kind)).find(needle) != std::wstring::npos) {
+                hit = true;
+            }
             for (int s = 0; !hit && s < bp.count; s++) {
                 if (has(CRAFT_MATERIALS[CRAFT_SLOTS[bp.first + s].material].name)) hit = true;
             }
@@ -13172,12 +13350,12 @@ std::vector<int> MinerGUI::craftRows() const {
         rows.push_back(b);
     }
 
-    if (craftMaterial_ >= 0) {
+    if (craftFilter_.material >= 0) {
         auto amount = [&](int b) {
             const CraftBlueprint& bp = CRAFT_BLUEPRINTS[b];
             for (int s = 0; s < bp.count; s++) {
                 const CraftSlot& in = CRAFT_SLOTS[bp.first + s];
-                if (in.material == craftMaterial_) return in.scu > 0 ? in.scu : (float)in.units;
+                if (in.material == craftFilter_.material) return in.scu > 0 ? in.scu : (float)in.units;
             }
             return 0.0f;
         };
@@ -13242,6 +13420,7 @@ void MinerGUI::grindFromForShot(const std::vector<std::string>& outfits, bool op
 
 void MinerGUI::openBlueprint(int index) {
     craftOpen_ = index;
+    craftFilterPick_ = 0;
     craftDrag_ = -1;
     craftSourceOpen_ = -1;
     craftQualityInfo_ = false;
@@ -13396,21 +13575,12 @@ bool MinerGUI::openCardForShot(const std::string& blueprint, const std::string& 
 int MinerGUI::craftSearchCountForShot(const std::wstring& query) {
     // the search on its own: whatever the pictures before left in the bar
     // (a material, an outfit, a system) is put back afterwards
-    const int material = craftMaterial_, type = craftType_, group = craftGroup_, size = craftSize_,
-              cls = craftClass_, owned = craftOwned_, contract = craftContract_, system = craftSystem_;
-    const char grade = craftGrade_;
-    const std::vector<std::string> factions = craftFactions_;
+    const CraftFilter filter = craftFilter_;
     const std::wstring was = craftSearch_;
-    craftMaterial_ = craftType_ = craftGroup_ = craftSize_ = craftClass_ = -1;
-    craftOwned_ = craftContract_ = craftSystem_ = 0;
-    craftGrade_ = 0;
-    craftFactions_.clear();
+    craftFilter_ = {};
     craftSearch_ = query;
     const int n = (int)craftRows().size();
-    craftMaterial_ = material; craftType_ = type; craftGroup_ = group; craftSize_ = size;
-    craftClass_ = cls; craftOwned_ = owned; craftContract_ = contract; craftSystem_ = system;
-    craftGrade_ = grade;
-    craftFactions_ = factions;
+    craftFilter_ = filter;
     craftSearch_ = was;
     return n;
 }
@@ -13467,10 +13637,10 @@ void MinerGUI::openContractForShot(bool unfold) {
 void MinerGUI::showComponentsForShot() {
     craftOpen_ = -1;
     craftByComponent_ = true;
-    craftMaterial_ = -1;
-    craftType_ = -1;
+    craftFilter_.material = -1;
+    craftFilter_.type = -1;
     for (int t = 0; t < CRAFT_TYPE_COUNT; t++) {
-        if (std::string(CRAFT_TYPES[t]) == "Shield") { craftType_ = t; break; }
+        if (std::string(CRAFT_TYPES[t]) == "Shield") { craftFilter_.type = t; break; }
     }
     craftScroll_ = 0;
     if (crafting_) InvalidateRect(crafting_, nullptr, TRUE);
@@ -13639,6 +13809,23 @@ void MinerGUI::paintCartPickList(Gdiplus::Graphics& g, int cw, int ch) {
 
 // ---- the list: search on top, materials left, recipes right --------------
 void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
+    {
+        // While a filter dropdown is down it takes the pointer, as it takes
+        // the click: nothing under it may light up as the pointer crosses
+        // it. The hover point is kept back while the page is drawn, and
+        // given back for the menu alone, however the page comes to end.
+        struct HoverHeld {
+            POINT& hover;
+            const POINT kept;
+            ~HoverHeld() { hover = kept; }
+        } held{hoverCraft_, hoverCraft_};
+        if (craftFilterMenuUp()) hoverCraft_ = {-1, -1};
+        paintCraftingPage(g, cw, ch);
+    }
+    paintCraftFilterMenu(g, cw, ch);
+}
+
+void MinerGUI::paintCraftingPage(Gdiplus::Graphics& g, int cw, int ch) {
     Gdiplus::Font markFont(&markFamily(), scaleF(Type::TITLE), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::Font smallFont(&textFamily(), scaleF(Type::LABEL), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
     Gdiplus::Font subFont(&textFamily(), scaleF(Type::SMALL), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
@@ -13859,7 +14046,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
     };
 
     if (!craftByComponent_) {
-        filterRow(L"All materials", 0, -1, craftMaterial_ < 0,
+        filterRow(L"All materials", 0, -1, craftFilter_.material < 0,
                   std::to_wstring(CRAFT_BLUEPRINT_COUNT), COL_TEXT_FAINT, false);
         y += scaleF(4);
         std::vector<int> mats(CRAFT_MATERIAL_COUNT);
@@ -13873,7 +14060,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
         for (int i : mats) {
             if (y + mrowH > (float)ch - scaleF(44)) break;
             const std::wstring name = toW(CRAFT_MATERIALS[i].name);
-            filterRow(name.c_str(), 0, i, craftMaterial_ == i, std::to_wstring(CRAFT_MATERIALS[i].blueprints),
+            filterRow(name.c_str(), 0, i, craftFilter_.material == i, std::to_wstring(CRAFT_MATERIALS[i].blueprints),
                       getMineralColor(CRAFT_MATERIALS[i].name), true);
         }
     } else {
@@ -13881,7 +14068,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
         std::vector<int> perType(CRAFT_TYPE_COUNT, 0);
         for (int b = 0; b < CRAFT_BLUEPRINT_COUNT; b++) perType[CRAFT_BLUEPRINTS[b].type]++;
 
-        filterRow(L"All components", 7, -1, craftType_ < 0 && craftGroup_ < 0,
+        filterRow(L"All components", 7, -1, craftFilter_.type < 0 && craftFilter_.group < 0,
                   std::to_wstring(CRAFT_BLUEPRINT_COUNT), COL_TEXT_FAINT, false);
         y += scaleF(4);
 
@@ -13896,7 +14083,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
                 for (int t = 0; t < CRAFT_TYPE_COUNT; t++) {
                     if (typeInGroup(t, gi)) inGroup += perType[t];
                 }
-                const bool on = (craftGroup_ == gi);
+                const bool on = (craftFilter_.group == gi);
                 Gdiplus::RectF head(M, y, leftW, scaleF(17));
                 const bool hot = isHot(hoverCraft_, head);
                 if (on) selectionFrame(g, head, scaleF(R_CONTROL));
@@ -13920,7 +14107,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
                     std::string plain = CRAFT_TYPES[t];
                     const size_t bracket = plain.find(" (");
                     if (bracket != std::string::npos) plain = plain.substr(0, bracket);
-                    filterRow(toW(plain).c_str(), 7, t, craftType_ == t, std::to_wstring(perType[t]),
+                    filterRow(toW(plain).c_str(), 7, t, craftFilter_.type == t, std::to_wstring(perType[t]),
                               COL_ACCENT, false);
                 }
             }
@@ -13930,7 +14117,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
         // Anything the three groups do not name
         for (int t = 0; t < CRAFT_TYPE_COUNT; t++) {
             if (shown[t] || y + mrowH > (float)ch - scaleF(44)) continue;
-            filterRow(toW(CRAFT_TYPES[t]).c_str(), 7, t, craftType_ == t, std::to_wstring(perType[t]),
+            filterRow(toW(CRAFT_TYPES[t]).c_str(), 7, t, craftFilter_.type == t, std::to_wstring(perType[t]),
                       COL_TEXT_FAINT, false);
         }
     }
@@ -13942,13 +14129,71 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
     g.DrawLine(&divider, rx - scaleF(9), listTop, rx - scaleF(9), (float)ch - scaleF(44));
 
     const std::vector<int> rows = craftRows();
+
+    // What the filter bar offers, from what the current selection actually
+    // contains, so a dropdown never offers a value that would empty the list
+    std::vector<char> grades;
+    std::vector<int> sizes, classes, kinds;
+    EarnReach reach;
+    struct Outfit { std::string name; int recipes; };
+    std::vector<Outfit> factions;
+    for (int b = 0; b < CRAFT_BLUEPRINT_COUNT; b++) {
+        const CraftBlueprint& c = CRAFT_BLUEPRINTS[b];
+        const Placement placed = placeBlueprint(c);
+        // The type dropdown offers every type of the category, so the
+        // types are gathered before the one picked narrows the rest
+        if (!inFilterShape(c, placed, craftFilter_, false)) continue;
+        if (placed.kind) addOnce(kinds, placed.kind);
+        if (craftFilter_.kind && placed.kind != craftFilter_.kind) continue;
+        if (c.grade) addOnce(grades, c.grade);
+        if (c.size >= 0) addOnce(sizes, (int)c.size);
+        if (c.itemClass >= 0) addOnce(classes, (int)c.itemClass);
+        if (c.srcCount) reach.dropped++;
+        else reach.undropped++;
+        // ...and where it can be earned, and from whom. Counted per
+        // RECIPE, not per contract: a chip saying 145 means 145 recipes
+        // to look through, which is the number worth knowing. Templated
+        // contracts repeat dozens of times and would say 759.
+        std::vector<std::string> outfits;
+        for (int i = 0; i < c.srcCount; i++) {
+            const CraftSource& src = CRAFT_SOURCES[c.srcFirst + i];
+            reach.systems |= craftSystemsOf(src);
+            if (*src.faction) addOnce(outfits, std::string(src.faction));
+        }
+        for (const auto& outfit : outfits) {
+            auto it = std::find_if(factions.begin(), factions.end(),
+                                   [&](const Outfit& f) { return f.name == outfit; });
+            if (it == factions.end()) factions.push_back({outfit, 1});
+            else it->recipes++;
+        }
+    }
+    reach.outfits = factions.size();
+    const unsigned systemMask = reach.systems;
+    // A quiet control keeps its last choice, and does not narrow the list
+    const EarnLive row2 = earnLive(craftFilter_, reach);
+    const bool contractOn = row2.contractOn, systemOn = row2.systemOn, fromOn = row2.fromOn;
+    // Most recipes first: the outfit worth looking at is the one with
+    // something to look at
+    std::stable_sort(factions.begin(), factions.end(),
+                     [](const Outfit& a, const Outfit& b) { return a.recipes > b.recipes; });
+    // A faction that is picked but no longer in the selection stays in
+    // the dropdown, or there would be no way back out of it
+    if (!craftFilter_.faction.empty() &&
+        std::find_if(factions.begin(), factions.end(),
+                     [&](const Outfit& f) { return f.name == craftFilter_.faction; }) == factions.end()) {
+        factions.push_back({craftFilter_.faction, 0});
+    }
+    std::sort(grades.begin(), grades.end());
+    std::sort(sizes.begin(), sizes.end());
+    std::sort(classes.begin(), classes.end());
+
     std::wstring title;
-    if (craftMaterial_ >= 0 && craftType_ >= 0) {
-        title = toW(CRAFT_TYPES[craftType_]) + L"  \u00B7  WITH " + toW(CRAFT_MATERIALS[craftMaterial_].name);
-    } else if (craftMaterial_ >= 0) {
-        title = L"BUILT WITH  \u00B7  " + toW(CRAFT_MATERIALS[craftMaterial_].name);
-    } else if (craftType_ >= 0) {
-        title = toW(CRAFT_TYPES[craftType_]);
+    if (craftFilter_.material >= 0 && craftFilter_.type >= 0) {
+        title = toW(CRAFT_TYPES[craftFilter_.type]) + L"  \u00B7  WITH " + toW(CRAFT_MATERIALS[craftFilter_.material].name);
+    } else if (craftFilter_.material >= 0) {
+        title = L"BUILT WITH  \u00B7  " + toW(CRAFT_MATERIALS[craftFilter_.material].name);
+    } else if (craftFilter_.type >= 0) {
+        title = toW(CRAFT_TYPES[craftFilter_.type]);
     } else {
         title = L"EVERY BLUEPRINT";
     }
@@ -13956,119 +14201,38 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
     g.DrawString(title.c_str(), -1, &smallFont, Gdiplus::PointF(rx, listTop), &faintBrush);
     {
         std::wstring count = std::to_wstring((int)rows.size()) + L" of " + std::to_wstring(CRAFT_BLUEPRINT_COUNT);
-        if (craftGrade_) { count += L"  \u00B7  grade "; count += (wchar_t)craftGrade_; }
-        if (craftSize_ >= 0) count += L"  \u00B7  size " + std::to_wstring(craftSize_);
-        if (craftClass_ >= 0) count += L"  \u00B7  " + toW(CRAFT_CLASSES[craftClass_]);
-        if (craftOwned_ == 1) count += L"  \u00B7  In library";
-        if (craftOwned_ == 2) count += L"  \u00B7  Not in library";
-        if (craftContract_ == 1) count += L"  \u00B7  Contract reward";
-        if (craftSystem_ >= 1 && craftSystem_ <= 3) {
-            count += std::wstring(L"  \u00B7  in ") + CRAFT_SYSTEM_NAMES[craftSystem_];
+        if (craftFilter_.category == BucketFps) count += L"  \u00B7  FPS";
+        else if (craftFilter_.category == BucketVehicle) count += L"  \u00B7  Vehicle";
+        else if (craftFilter_.category == BucketMisc) count += L"  \u00B7  Misc";
+        if (craftFilter_.kind) count += L"  \u00B7  " + std::wstring(kindLabel(craftFilter_.kind));
+        if (craftFilter_.grade) { count += L"  \u00B7  grade "; count += (wchar_t)craftFilter_.grade; }
+        if (craftFilter_.size >= 0) count += L"  \u00B7  size " + std::to_wstring(craftFilter_.size);
+        if (craftFilter_.itemClass >= 0) count += L"  \u00B7  " + toW(CRAFT_CLASSES[craftFilter_.itemClass]);
+        if (craftFilter_.owned == 1) count += L"  \u00B7  In library";
+        if (craftFilter_.owned == 2) count += L"  \u00B7  Not in library";
+        if (contractOn) count += L"  \u00B7  Contract reward";
+        if (systemOn && craftFilter_.system >= 1 && craftFilter_.system <= 3) {
+            count += std::wstring(L"  \u00B7  in ") + CRAFT_SYSTEM_NAMES[craftFilter_.system];
         }
-        for (size_t i = 0; i < craftFactions_.size(); i++) {
-            count += (i == 0 ? std::wstring(L"  \u00B7  from ") : std::wstring(L", "));
-            count += toW(craftFactions_[i]);
-        }
-        if (craftMaterial_ >= 0) count += L"  \u00B7  Lowest first";
+        if (fromOn && !craftFilter_.faction.empty()) count += L"  \u00B7  from " + toW(craftFilter_.faction);
+        if (craftFilter_.material >= 0) count += L"  \u00B7  Lowest first";
         Gdiplus::RectF r(rx, listTop, rw, scaleF(14));
         g.DrawString(count.c_str(), -1, &subFont, r, &rightAlign, &faintBrush);
     }
 
-    // ---- the filters: a grid of three rows ----
-    // Offered from what the current selection actually contains, so a group
-    // never shows a grade or a size that would empty the list, and a group
-    // with nothing to choose between is not there. Two columns of segmented
-    // controls, each column's labels right-aligned in one slot, and a third
-    // column against the right edge:
-    //   LIBRARY  GRADE                 Shopping list
-    //   SIZE     SYSTEM                Has contract
-    //   CLASS, across both columns     FROM
-    // The two columns are as wide as their widest group over every
-    // blueprint, so they stay put while the list is cut down.
+    // ---- the filters ----
+    // Row 1: library, category, and the shopping list at the right.
+    // Category is a segmented control, like system.
+    // Row 2: system, from, has contract. They stay put; a control with
+    // nothing to choose goes quiet and stops narrowing the list. From is
+    // a dropdown, one outfit at a time.
+    // Row 3, once FPS or Vehicle is chosen: type, and for a vehicle also
+    // class, size and grade. Class, size and grade are left out when they
+    // have nothing to choose. Misc has no type row. Those choices are
+    // dropdowns.
     float ry = listTop + scaleF(20);
+    craftFilterChoices_.clear();
     {
-        std::vector<char> grades, everyGrade;
-        std::vector<int> sizes, classes, everySize, everyClass;
-        unsigned systemMask = 0;
-        struct Outfit { std::string name; int recipes; };
-        std::vector<Outfit> factions;
-        // ...and how the current selection splits on whether a contract
-        // hands the recipe out: the switch is only worth showing when both
-        // kinds are in it, the same rule the other groups follow.
-        int dropped = 0, undropped = 0;
-        for (int b = 0; b < CRAFT_BLUEPRINT_COUNT; b++) {
-            const CraftBlueprint& c = CRAFT_BLUEPRINTS[b];
-            // every blueprint's, for the widths of the columns
-            if (c.grade && std::find(everyGrade.begin(), everyGrade.end(), c.grade) == everyGrade.end()) {
-                everyGrade.push_back(c.grade);
-            }
-            if (c.size >= 0 && std::find(everySize.begin(), everySize.end(), (int)c.size) == everySize.end()) {
-                everySize.push_back(c.size);
-            }
-            if (c.itemClass >= 0 &&
-                std::find(everyClass.begin(), everyClass.end(), (int)c.itemClass) == everyClass.end()) {
-                everyClass.push_back(c.itemClass);
-            }
-            if (craftType_ >= 0 && c.type != craftType_) continue;
-            if (craftMaterial_ >= 0) {
-                bool uses = false;
-                for (int s = 0; s < c.count; s++) {
-                    if (CRAFT_SLOTS[c.first + s].material == craftMaterial_) { uses = true; break; }
-                }
-                if (!uses) continue;
-            }
-            if (c.grade && std::find(grades.begin(), grades.end(), c.grade) == grades.end()) {
-                grades.push_back(c.grade);
-            }
-            if (c.size >= 0 && std::find(sizes.begin(), sizes.end(), (int)c.size) == sizes.end()) {
-                sizes.push_back(c.size);
-            }
-            if (c.itemClass >= 0 && std::find(classes.begin(), classes.end(), (int)c.itemClass) == classes.end()) {
-                classes.push_back(c.itemClass);
-            }
-            if (c.srcCount) dropped++; else undropped++;
-            // ...and where it can be earned, and from whom. Counted per
-            // RECIPE, not per contract: a chip saying 145 means 145 recipes
-            // to look through, which is the number worth knowing. Templated
-            // contracts repeat dozens of times and would say 759.
-            unsigned reach = 0;
-            std::vector<std::string> outfits;
-            for (int i = 0; i < c.srcCount; i++) {
-                const CraftSource& src = CRAFT_SOURCES[c.srcFirst + i];
-                reach |= craftSystemsOf(src);
-                if (*src.faction &&
-                    std::find(outfits.begin(), outfits.end(), src.faction) == outfits.end()) {
-                    outfits.push_back(src.faction);
-                }
-            }
-            systemMask |= reach;
-            for (const auto& outfit : outfits) {
-                auto it = std::find_if(factions.begin(), factions.end(),
-                                       [&](const Outfit& f) { return f.name == outfit; });
-                if (it == factions.end()) factions.push_back({outfit, 1});
-                else it->recipes++;
-            }
-        }
-        // Most recipes first: the outfit worth looking at is the one with
-        // something to look at
-        std::stable_sort(factions.begin(), factions.end(),
-                         [](const Outfit& a, const Outfit& b) { return a.recipes > b.recipes; });
-        // A faction that is picked but no longer in the selection still gets
-        // a chip, or there would be no way back out of it
-        for (const auto& picked : craftFactions_) {
-            if (std::find_if(factions.begin(), factions.end(),
-                             [&](const Outfit& f) { return f.name == picked; }) ==
-                factions.end()) {
-                factions.push_back({picked, 0});
-            }
-        }
-        std::sort(grades.begin(), grades.end());
-        std::sort(sizes.begin(), sizes.end());
-        std::sort(classes.begin(), classes.end());
-        std::sort(everyGrade.begin(), everyGrade.end());
-        std::sort(everySize.begin(), everySize.end());
-        std::sort(everyClass.begin(), everyClass.end());
-
         {
             const float sc = scaleF(1.0f);
             const float ctrlH = scaleF(26);
@@ -14109,59 +14273,23 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
             };
             const std::wstring have = std::to_wstring(ownedCount()) + L" owned";
             Group library;
-            library.add(L"All", false, craftOwned_ == 0, 0);
-            library.add(have, false, craftOwned_ == 1, 1);
-            library.add(L"Missing", false, craftOwned_ == 2, 2);
-            auto gradeGroup = [&](const std::vector<char>& list) {
-                Group one;
-                one.add(L"Any", false, craftGrade_ == 0, 0);
-                for (char gr : list) one.add(std::wstring(1, (wchar_t)gr), true, craftGrade_ == gr, (int)gr);
-                return one;
-            };
-            auto sizeGroup = [&](const std::vector<int>& list) {
-                Group one;
-                one.add(L"Any", false, craftSize_ < 0, -1);
-                for (int sz : list) one.add(std::to_wstring(sz), true, craftSize_ == sz, sz);
-                return one;
-            };
-            auto classGroup = [&](const std::vector<int>& list) {
-                Group one;
-                one.add(L"Any", false, craftClass_ < 0, -1);
-                for (int cl : list) one.add(toW(CRAFT_CLASSES[cl]), false, craftClass_ == cl, cl);
-                return one;
-            };
+            library.add(L"All", false, craftFilter_.owned == 0, 0);
+            library.add(have, false, craftFilter_.owned == 1, 1);
+            library.add(L"Missing", false, craftFilter_.owned == 2, 2);
             auto systemGroup = [&](unsigned mask) {
                 Group one;
-                one.add(L"Any", false, craftSystem_ == 0, 0);
+                one.add(L"Any", false, craftFilter_.system == 0, 0);
                 for (int i = 0; i < 3; i++) {
-                    if (!(mask & (1u << i)) && craftSystem_ != i + 1) continue;
-                    one.add(CRAFT_SYSTEM_NAMES[i + 1], false, craftSystem_ == i + 1, i + 1);
+                    if (!(mask & (1u << i)) && craftFilter_.system != i + 1) continue;
+                    one.add(CRAFT_SYSTEM_NAMES[i + 1], false, craftFilter_.system == i + 1, i + 1);
                 }
                 return one;
             };
-            // Two segments, and the twenty-odd factions themselves only when
-            // they are asked for. How many are picked is on the second
-            // segment, so a closed list never hides that the view is
-            // narrowed - and it stays amber while it narrows, open or shut.
-            auto fromGroup = [&](const std::wstring& pick) {
-                Group one;
-                one.add(L"Any", false, craftFactions_.empty(), -1);
-                one.add(pick, false, !craftFactions_.empty(), craftFactionPick_ ? 0 : 1);
-                one.segs.back().open = craftFactionPick_;
-                one.segs.back().chevron = true;
-                return one;
-            };
-            std::wstring pick = L"Select faction";
-            if (!craftFactions_.empty()) pick += L"  \u00B7  " + std::to_wstring((int)craftFactions_.size());
-            // ...the widest it gets, every outfit there is picked, for the room
-            static const int everyOutfit = [] {
-                std::set<std::string> all;
-                for (int i = 0; i < CRAFT_SOURCE_COUNT; i++) {
-                    if (*CRAFT_SOURCES[i].faction) all.insert(CRAFT_SOURCES[i].faction);
-                }
-                return (int)all.size();
-            }();
-            const std::wstring widestPick = L"Select faction  \u00B7  " + std::to_wstring(everyOutfit);
+            Group category;
+            category.add(L"Any", false, craftFilter_.category == BucketAny, BucketAny);
+            category.add(L"FPS", false, craftFilter_.category == BucketFps, BucketFps);
+            category.add(L"Vehicle", false, craftFilter_.category == BucketVehicle, BucketVehicle);
+            category.add(L"Misc", false, craftFilter_.category == BucketMisc, BucketMisc);
 
             // The shopping list: how many are on it as a badge at its end,
             // amber, the one number on the bar that is yours rather than
@@ -14183,70 +14311,157 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
             const wchar_t* contractText = L"Has contract";
             const float contractW = toggleWidth(g, contractText, chipFont, sc);
 
-            // The slots the labels stand in, right-aligned
-            const float slot1 = (std::max)({textWidth(L"LIBRARY", smallFont), textWidth(L"SIZE", smallFont),
-                                            textWidth(L"CLASS", smallFont)});
-            const float slot2 = (std::max)(textWidth(L"GRADE", smallFont), textWidth(L"SYSTEM", smallFont));
-            const float fromLabel = textWidth(L"FROM", smallFont);
-
-            // Room either side of a segment's words, and the gap between the
-            // columns: the most the tightest row allows. Measured with every
-            // blueprint's groups, so it holds whatever the list is cut to;
-            // the outfits' segment as it reads with none picked, and with
-            // every one of them picked it still clears CLASS.
-            const Group everyGrades = gradeGroup(everyGrade), everySizes = sizeGroup(everySize),
-                        everyClasses = classGroup(everyClass), everySystems = systemGroup(7u),
-                        plainFrom = fromGroup(L"Select faction"), widestFrom = fromGroup(widestPick);
-            static const float FITS[][2] = {{8, 26}, {7, 26}, {6, 26}, {5, 26}, {5, 20},
-                                            {4, 20}, {4, 14}, {3, 14}, {3, 10}, {2, 8}};
-            float pad = 0, gap = 0, col1 = 0;
-            for (const auto& fit : FITS) {
-                pad = scaleF(fit[0]);
-                gap = scaleF(fit[1]);
-                const float edgeGap = (std::min)(gap, scaleF(12));   // to the right-hand column
-                auto width = [&](const Group& one) {
-                    return segmentedWidth(g, one.segs, chipFont, figureFont, pad, sc);
-                };
-                col1 = (std::max)(width(library), width(everySizes));
-                const float x2 = slot1 + labelGap + col1 + gap + slot2 + labelGap;
-                const float classEnd = slot1 + labelGap + width(everyClasses);
-                const bool first = x2 + width(everyGrades) + edgeGap <= rw - listW;
-                const bool second = x2 + width(everySystems) + edgeGap <= rw - contractW;
-                const bool third = classEnd + edgeGap <= rw - fromLabel - labelGap - width(plainFrom) &&
-                                   classEnd + scaleF(4) <= rw - fromLabel - labelGap - width(widestFrom);
-                if (first && second && third) break;
+            using Items = std::vector<std::pair<std::wstring, int>>;
+            // A dropdown's rows: Any, then the values the selection offers,
+            // in order. The value picked stays even once the selection no
+            // longer offers it, or there would be no way back out of it.
+            auto valueItems = [](auto list, auto selected, auto any, auto label) {
+                Items items{{L"Any", (int)any}};
+                if (selected != any && std::find(list.begin(), list.end(), selected) == list.end()) {
+                    list.push_back(selected);
+                    std::sort(list.begin(), list.end());
+                }
+                for (auto v : list) items.push_back({label(v), (int)v});
+                return items;
+            };
+            // ...and what its field shows: the picked row's words
+            auto shownOf = [](const Items& items, int selected) {
+                for (const auto& item : items) {
+                    if (item.second == selected) return item.first;
+                }
+                return items.front().first;
+            };
+            auto gradeItems = [&]() {
+                return valueItems(grades, craftFilter_.grade, (char)0,
+                                  [](char gr) { return std::wstring(1, (wchar_t)gr); });
+            };
+            auto sizeItems = [&]() {
+                return valueItems(sizes, craftFilter_.size, -1, [](int sz) { return std::to_wstring(sz); });
+            };
+            auto classItems = [&]() {
+                return valueItems(classes, craftFilter_.itemClass, -1, [](int cl) {
+                    return cl >= 0 && cl < CRAFT_CLASS_COUNT ? toW(CRAFT_CLASSES[cl]) : std::wstring(L"?");
+                });
+            };
+            auto typeItems = [&]() {
+                Items items{{L"Any", KindAny}};
+                for (const KindRow& row : KIND_ROWS) {
+                    if (row.category != craftFilter_.category) continue;
+                    const bool present = std::find(kinds.begin(), kinds.end(), row.kind) != kinds.end();
+                    if (present || craftFilter_.kind == row.kind) items.push_back({row.name, row.kind});
+                }
+                return items;
+            };
+            auto dropWidth = [&](const Items& items) {
+                float w = 0;
+                for (const auto& item : items) w = (std::max)(w, textWidth(item.first, chipFont));
+                return w + scaleF(28);
+            };
+            auto armMenu = [&](int fieldKind, const Items& items, int selected) {
+                if (craftFilterPick_ != fieldKind) return;
+                for (const auto& item : items) {
+                    craftFilterChoices_.push_back({item.first, item.second, item.second == selected});
+                }
+            };
+            Items fromItems{{L"Any", -1}};
+            int fromSelected = -1;
+            factionHits_.clear();
+            for (size_t i = 0; i < factions.size(); i++) {
+                fromItems.push_back({toW(factions[i].name), (int)i});
+                factionHits_.push_back(factions[i].name);
+                if (factions[i].name == craftFilter_.faction) fromSelected = (int)i;
             }
-            const float x1 = rx + slot1 + labelGap;        // column 1's controls
-            const float slot2X = x1 + col1 + gap;          // column 2's label slot
-            const float x2 = slot2X + slot2 + labelGap;    // column 2's controls
+            const std::wstring fromText = shownOf(fromItems, fromSelected);
 
-            auto label = [&](const wchar_t* text, float slotX, float slotW, float y) {
-                g.DrawString(text, -1, &smallFont, Gdiplus::RectF(slotX - scaleF(8), y, slotW + scaleF(8), ctrlH),
-                             &labelRight, &faintBrush);
+            const bool showClass = classes.size() > 1 || craftFilter_.itemClass >= 0;
+            const bool showSize = sizes.size() > 1 || craftFilter_.size >= 0;
+            const bool showGrade = grades.size() > 1 || craftFilter_.grade != 0;
+
+            // Segment padding, and the gap between controls on a row: the
+            // most the tighter of the first two rows allows. Has contract
+            // leads the second row; System and From follow it.
+            const Group everySystems = systemGroup(7u);
+            float fromBox = dropWidth(fromItems);
+            static const float FITS[] = {8, 7, 6, 5, 4, 3, 2};
+            float pad = scaleF(2);
+            float gap = scaleF(8);
+            auto gw = [&](const Group& one) {
+                return segmentedWidth(g, one.segs, chipFont, figureFont, pad, sc);
             };
-            auto drawGroup = [&](const Group& one, float x, float y, int kind) {
+            float row2w = 0;
+            for (float fit : FITS) {
+                pad = scaleF(fit);
+                gap = scaleF((std::max)(4.0f, fit * 2.0f));
+                const float row1 = textWidth(L"LIBRARY", smallFont) + labelGap + gw(library) + gap +
+                                   textWidth(L"CATEGORY", smallFont) + labelGap + gw(category) + gap + listW;
+                row2w = contractW + gap + textWidth(L"SYSTEM", smallFont) + labelGap + gw(everySystems) + gap +
+                        textWidth(L"FROM", smallFont) + labelGap + fromBox;
+                if (row1 <= rw && row2w <= rw) break;
+            }
+            // At the tightest padding, the from-box gives up width before Has
+            // contract leaves the row. Row 1 has nothing that can give way
+            // (its words are short, the shopping list keeps its end), so a
+            // window narrower than that runs it under the shopping list.
+            if (row2w > rw) fromBox = (std::max)(scaleF(72), fromBox - (row2w - rw));
+
+            float cursor = rx;
+            Gdiplus::SolidBrush quietBrush(tint(COL_TEXT_FAINT, 120));
+            auto putLabel = [&](const wchar_t* text, float y, bool enabled = true) {
+                const float w = textWidth(text, smallFont);
+                g.DrawString(text, -1, &smallFont, Gdiplus::RectF(cursor, y, w, ctrlH), &labelRight,
+                             enabled ? &faintBrush : &quietBrush);
+                cursor += w + labelGap;
+            };
+            auto drawGroup = [&](const Group& one, float y, int kind, bool enabled = true) {
                 const std::vector<Gdiplus::RectF> places =
-                    drawSegmented(g, x, y, ctrlH, one.segs, chipFont, figureFont, pad, sc, hoverCraft_);
-                for (size_t i = 0; i < places.size(); i++) craftHits_.push_back({places[i], kind, one.values[i]});
+                    drawSegmented(g, cursor, y, ctrlH, one.segs, chipFont, figureFont, pad, sc, hoverCraft_, enabled);
+                if (enabled) {
+                    for (size_t i = 0; i < places.size(); i++) {
+                        craftHits_.push_back({places[i], kind, one.values[i]});
+                    }
+                }
+                if (!places.empty()) cursor = places.back().GetRight();
             };
-
-            const bool manySystems = systemMask && (systemMask & (systemMask - 1));
-            const bool showSystem = manySystems || craftSystem_ > 0;
-            const bool showFrom = factions.size() > 1 || !craftFactions_.empty();
-            // Whether a contract hands it out: one switch and no heading,
-            // because "any" is simply it being off. 926 of the 1,606 recipes
-            // are dropped by nothing at all, so a recipe you do not own is
-            // worth a second look only when there is a way to earn it.
-            const bool showContract = dropped && undropped;
+            auto drawDrop = [&](float y, float w, const std::wstring& text, int fieldKind, const Items& items,
+                                int selected, bool enabled = true) {
+                const bool open = enabled && craftFilterPick_ == fieldKind;
+                const Gdiplus::RectF box(cursor, y, w, ctrlH);
+                const bool hot = enabled && isHot(hoverCraft_, box);
+                fillRoundRect(g, box, scaleF(R_CONTROL), (open || hot) ? COL_HOVER : COL_CARD_HI);
+                strokeRoundRect(g, box, scaleF(R_CONTROL),
+                                open ? tint(COL_ACCENT, 200) : (hot ? tint(COL_TEXT, 40) : COL_BORDER));
+                const Gdiplus::Color inkColor = !enabled ? COL_TEXT_FAINT
+                                               : open    ? COL_ACCENT
+                                               : hot     ? COL_TEXT
+                                                         : COL_TEXT_DIM;
+                Gdiplus::SolidBrush ink(inkColor);
+                // StringFormat's copy is protected, so this is its own
+                Gdiplus::StringFormat dropText;
+                dropText.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+                dropText.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+                dropText.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+                // The words stop short of the chevron, and give up letters
+                // rather than run into it when the row has to be squeezed
+                g.DrawString(text.c_str(), -1, &chipFont,
+                             Gdiplus::RectF(box.X + scaleF(9), box.Y, (std::max)(0.0f, box.Width - scaleF(30)),
+                                            box.Height),
+                             &dropText, &ink);
+                drawChevron(g, box.GetRight() - scaleF(12), box.Y + box.Height / 2.0f, sc, open, inkColor);
+                if (enabled) craftHits_.push_back({box, fieldKind, 0});
+                if (open) {
+                    craftFilterAnchor_ = box;
+                    armMenu(fieldKind, items, selected);
+                }
+                cursor = box.GetRight();
+            };
 
             // The library first: what you have, what you still need
             float rowY = ry;
-            label(L"LIBRARY", rx, slot1, rowY);
-            drawGroup(library, x1, rowY, 16);
-            if (!grades.empty()) {
-                label(L"GRADE", slot2X, slot2, rowY);
-                drawGroup(gradeGroup(grades), x2, rowY, 8);
-            }
+            putLabel(L"LIBRARY", rowY);
+            drawGroup(library, rowY, 16);
+            cursor += gap;
+            putLabel(L"CATEGORY", rowY);
+            drawGroup(category, rowY, HitCategory);
             // The shopping list keeps the right-hand end of the first row, so
             // the number in it does not shove the filters about as things go
             // on and off the list
@@ -14273,70 +14488,76 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
             }
             float bottom = rowY + ctrlH;
 
-            if (sizes.size() > 1 || showSystem || showContract) {
-                rowY = bottom + rowGap;
-                if (sizes.size() > 1) {
-                    label(L"SIZE", rx, slot1, rowY);
-                    drawGroup(sizeGroup(sizes), x1, rowY, 9);
-                }
-                if (showSystem) {
-                    label(L"SYSTEM", slot2X, slot2, rowY);
-                    drawGroup(systemGroup(systemMask), x2, rowY, 26);
-                }
-                if (showContract) {
-                    const Gdiplus::RectF box(rx + rw - contractW, rowY, contractW, ctrlH);
-                    drawToggle(g, box, contractText, chipFont, craftContract_ == 1, isHot(hoverCraft_, box), sc);
-                    craftHits_.push_back({box, 18, craftContract_ == 1 ? 0 : 1});
-                }
-                bottom = rowY + ctrlH;
+            rowY = bottom + rowGap;
+            cursor = rx;
+            {
+                const Gdiplus::RectF box(cursor, rowY, contractW, ctrlH);
+                drawToggle(g, box, contractText, chipFont, craftFilter_.contract == 1, isHot(hoverCraft_, box), sc,
+                           row2.contract);
+                if (row2.contract) craftHits_.push_back({box, 18, craftFilter_.contract == 1 ? 0 : 1});
+                cursor = box.GetRight();
             }
+            cursor += gap;
+            putLabel(L"SYSTEM", rowY, systemOn);
+            drawGroup(systemGroup(systemMask), rowY, 26, systemOn);
+            cursor += gap;
+            putLabel(L"FROM", rowY, fromOn);
+            drawDrop(rowY, fromBox, fromText, DropFrom, fromItems, fromSelected, fromOn);
+            bottom = rowY + ctrlH;
 
-            if (!classes.empty() || showFrom) {
+            if (craftFilter_.category == BucketFps || craftFilter_.category == BucketVehicle) {
                 rowY = bottom + rowGap;
-                if (!classes.empty()) {
-                    label(L"CLASS", rx, slot1, rowY);
-                    drawGroup(classGroup(classes), x1, rowY, 10);
+                struct Piece {
+                    const wchar_t* label;
+                    Items items;
+                    std::wstring shown;
+                    int field;
+                    int selected;
+                    float box = 0;
+                };
+                std::vector<Piece> pieces;
+                auto addPiece = [&](const wchar_t* label, Items items, int field, int selected) {
+                    std::wstring shown = shownOf(items, selected);
+                    pieces.push_back({label, std::move(items), std::move(shown), field, selected});
+                };
+                addPiece(L"TYPE", typeItems(), DropType, craftFilter_.kind);
+                if (craftFilter_.category == BucketVehicle) {
+                    if (showClass) addPiece(L"CLASS", classItems(), DropClass, craftFilter_.itemClass);
+                    if (showSize) addPiece(L"SIZE", sizeItems(), DropSize, craftFilter_.size);
+                    if (showGrade) addPiece(L"GRADE", gradeItems(), DropGrade, (int)craftFilter_.grade);
                 }
-                if (showFrom) {
-                    const Group from = fromGroup(pick);
-                    const float fromX = rx + rw - segmentedWidth(g, from.segs, chipFont, figureFont, pad, sc);
-                    label(L"FROM", fromX - labelGap - fromLabel, fromLabel, rowY);
-                    const std::vector<Gdiplus::RectF> places =
-                        drawSegmented(g, fromX, rowY, ctrlH, from.segs, chipFont, figureFont, pad, sc, hoverCraft_);
-                    craftHits_.push_back({places[0], 27, from.values[0]});
-                    craftHits_.push_back({places[1], 28, from.values[1]});
-                }
-                bottom = rowY + ctrlH;
-            }
-
-            // The outfits, once asked for: under the grid, as many lines as
-            // they take, each its own switch
-            if (showFrom) {
-                factionHits_.clear();
-                if (craftFactionPick_) {
-                    const float pickH = ctrlH - 2.0f * SEGMENT_INSET * sc;
-                    const float radius = (R_CONTROL - SEGMENT_INSET) * sc;
-                    float px = rx, py = bottom + rowGap;
-                    for (const auto& outfit : factions) {
-                        const bool on = std::find(craftFactions_.begin(), craftFactions_.end(), outfit.name) !=
-                                        craftFactions_.end();
-                        const std::wstring text = toW(outfit.name);
-                        const float pw = textWidth(text, chipFont) + 2.0f * pad;
-                        if (px > rx && px + pw > rx + rw) {
-                            px = rx;
-                            py += pickH + scaleF(6);
-                        }
-                        const Gdiplus::RectF box(px, py, pw, pickH);
-                        fillRoundRect(g, box, radius, COL_CARD_HI);
-                        Gdiplus::SolidBrush ink(choiceFace(g, box, radius, on, isHot(hoverCraft_, box), false));
-                        g.DrawString(text.c_str(), -1, &chipFont, box, &centred, &ink);
-                        craftHits_.push_back({box, 27, (int)factionHits_.size()});
-                        factionHits_.push_back(outfit.name);
-                        px += pw + scaleF(4);
+                for (Piece& piece : pieces) piece.box = dropWidth(piece.items);
+                auto rowWidth = [&](float g) {
+                    float w = 0;
+                    for (size_t i = 0; i < pieces.size(); i++) {
+                        if (i) w += g;
+                        w += textWidth(pieces[i].label, smallFont) + labelGap + pieces[i].box;
                     }
-                    bottom = py + pickH;
+                    return w;
+                };
+                // Gaps first, then the widest boxes, so a long name gives up
+                // letters before a short one (Any, a size) is crushed
+                float gapUse = gap;
+                while (pieces.size() > 1 && gapUse > scaleF(4) && rowWidth(gapUse) > rw) gapUse -= scaleF(2);
+                const float floor = scaleF(72);
+                for (int n = 0; n < 12 && rowWidth(gapUse) > rw; n++) {
+                    size_t widest = 0;
+                    for (size_t i = 1; i < pieces.size(); i++) {
+                        if (pieces[i].box > pieces[widest].box) widest = i;
+                    }
+                    if (pieces[widest].box <= floor) break;
+                    pieces[widest].box = (std::max)(floor, pieces[widest].box - (rowWidth(gapUse) - rw));
                 }
+                cursor = rx;
+                for (size_t i = 0; i < pieces.size(); i++) {
+                    if (i) cursor += gapUse;
+                    putLabel(pieces[i].label, rowY);
+                    drawDrop(rowY, pieces[i].box, pieces[i].shown, pieces[i].field, pieces[i].items,
+                             pieces[i].selected);
+                }
+                bottom = rowY + ctrlH;
             }
+
             ry = bottom + scaleF(10);
         }
     }
@@ -14427,7 +14648,7 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
         float sx = rx + inset + scaleF(16);
         for (int s = 0; s < bp.count; s++) {
             const CraftSlot& in = CRAFT_SLOTS[bp.first + s];
-            const bool mine = (craftMaterial_ >= 0 && in.material == craftMaterial_);
+            const bool mine = (craftFilter_.material >= 0 && in.material == craftFilter_.material);
             std::wstring t = toW(CRAFT_MATERIALS[in.material].name) + L" ";
             if (in.scu > 0) {
                 std::wstringstream v;
@@ -14952,6 +15173,49 @@ void MinerGUI::paintCraftingList(Gdiplus::Graphics& g, int cw, int ch) {
     Gdiplus::RectF fr(M, fy, (float)cw - 2 * M, scaleF(16));
     std::wstring src = L"Game data  \u00B7  " + toW(CRAFT_DATA_VERSION);
     g.DrawString(src.c_str(), -1, &subFont, fr, &rightAlign, &faintBrush);
+}
+
+void MinerGUI::paintCraftFilterMenu(Gdiplus::Graphics& g, int cw, int ch) {
+    if (!craftFilterPick_ || craftFilterChoices_.empty()) return;
+    Gdiplus::Font chipFont(&markFamily(), scaleF(Type::BODY), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::SolidBrush textBrush(COL_TEXT);
+    Gdiplus::SolidBrush dimBrush(COL_TEXT_DIM);
+    Gdiplus::SolidBrush accentBrush(COL_ACCENT);
+    Gdiplus::StringFormat leftMid;
+    leftMid.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    leftMid.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+    leftMid.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+
+    float textW = 0;
+    for (const auto& choice : craftFilterChoices_) {
+        textW = (std::max)(textW, lineWidth(g, choice.text, chipFont));
+    }
+    const float rowH = scaleF(26);
+    const float pad = scaleF(4);
+    const float menuW = (std::max)(craftFilterAnchor_.Width, textW + scaleF(22));
+    const float menuH = rowH * (float)craftFilterChoices_.size() + 2.0f * pad;
+    const float edge = (float)scale(MARGIN);
+    float x = craftFilterAnchor_.X;
+    float y = craftFilterAnchor_.GetBottom() + scaleF(4);
+    if (x + menuW > (float)cw - edge) x = (std::max)(edge, (float)cw - edge - menuW);
+    if (y + menuH > (float)ch - edge) y = (std::max)(edge, craftFilterAnchor_.Y - menuH - scaleF(4));
+    const Gdiplus::RectF list(x, y, menuW, menuH);
+    fillRoundRect(g, Gdiplus::RectF(list.X, list.Y + scaleF(2), list.Width, list.Height), scaleF(R_CARD),
+                  tint(COL_BG, 40));
+    fillRoundRect(g, list, scaleF(R_CARD), COL_CARD);
+    strokeRoundRect(g, list, scaleF(R_CARD), COL_BORDER);
+    const int choiceKind = craftFilterPick_ + 1;
+    for (size_t i = 0; i < craftFilterChoices_.size(); i++) {
+        const auto& choice = craftFilterChoices_[i];
+        const Gdiplus::RectF row(list.X + pad, list.Y + pad + (float)i * rowH, list.Width - 2.0f * pad, rowH);
+        const bool hot = isHot(hoverCraft_, row);
+        if (choice.on) selectionFrame(g, row, scaleF(R_CONTROL));
+        else if (hot) fillRoundRect(g, row, scaleF(R_CONTROL), COL_HOVER);
+        g.DrawString(choice.text.c_str(), -1, &chipFont,
+                     Gdiplus::RectF(row.X + scaleF(8), row.Y, row.Width - scaleF(16), row.Height), &leftMid,
+                     choice.on ? &accentBrush : (hot ? &textBrush : &dimBrush));
+        craftHits_.push_back({row, choiceKind, choice.value});
+    }
 }
 
 // ---- one recipe: its slots, a quality slider each, and what they move ----
@@ -16307,6 +16571,43 @@ LRESULT MinerGUI::handleCraftingMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
         case WM_LBUTTONDOWN: {
             const float px = (float)(short)LOWORD(lParam);
             const float py = (float)(short)HIWORD(lParam);
+            // A pick whose field the last paint left off the bar (the
+            // control went quiet under it) is no menu: it is let go here
+            // rather than in paint, and the click goes where it lands
+            if (!craftFilterMenuUp()) craftFilterPick_ = 0;
+            if (craftFilterPick_) {
+                // The dropped list takes the click. A row picks; anywhere
+                // else, including the field itself, only closes it.
+                bool picked = false;
+                for (const auto& hit : craftHits_) {
+                    if (!hit.rect.Contains(px, py) || hit.kind != craftFilterPick_ + 1) continue;
+                    CraftFilter& f = craftFilter_;
+                    switch (craftFilterPick_) {
+                        case DropType:
+                            // Class, size and grade describe the type just
+                            // left. A ship gun has no class, so a class
+                            // still set would empty the list.
+                            if (hit.value != f.kind && hit.value != KindAny) f.clearVehicle();
+                            f.kind = hit.value;
+                            f.type = f.group = -1;
+                            break;
+                        case DropClass: f.itemClass = hit.value; break;
+                        case DropSize: f.size = hit.value; break;
+                        case DropGrade: f.grade = (char)hit.value; break;
+                        case DropFrom:
+                            f.faction = hit.value >= 0 && hit.value < (int)factionHits_.size()
+                                            ? factionHits_[hit.value]
+                                            : std::string();
+                            break;
+                    }
+                    picked = true;
+                    break;
+                }
+                if (picked) craftScroll_ = 0;
+                craftFilterPick_ = 0;
+                InvalidateRect(hwnd, nullptr, TRUE);
+                return 0;
+            }
             if (cartPickOpen_) {
                 // The dropped list takes the click, whatever lies under it:
                 // an entry picks, anywhere else only closes the list
@@ -16349,12 +16650,14 @@ LRESULT MinerGUI::handleCraftingMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
             for (const auto& hit : craftHits_) {
                 if (!hit.rect.Contains(px, py)) continue;
                 if (hit.kind == 0) {
-                    craftMaterial_ = (craftMaterial_ == hit.value) ? -1 : hit.value;
+                    craftFilter_.material = (craftFilter_.material == hit.value) ? -1 : hit.value;
                     craftMaterialPicked_ = true;
                     craftScroll_ = 0;
                 } else if (hit.kind == 1) {
+                    if (cartOpen_) craftScroll_ = 0;
                     openBlueprint(hit.value);
                     cartOpen_ = false;
+                    cartPickOpen_ = 0;
                 } else if (hit.kind == 2 && craftOpen_ >= 0) {
                     craftDrag_ = hit.value;
                     craftDragX_ = px;
@@ -16384,6 +16687,8 @@ LRESULT MinerGUI::handleCraftingMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
                 } else if (hit.kind == 21) {
                     cartAdd(hit.value, 1);
                 } else if (hit.kind == 22) {
+                    craftFilterPick_ = 0;
+                    cartPickOpen_ = 0;
                     cartOpen_ = !cartOpen_;
                     craftScroll_ = 0;
                 } else if (hit.kind == 32) {
@@ -16394,33 +16699,30 @@ LRESULT MinerGUI::handleCraftingMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
                     cart_.clear();
                     saveCart();
                 } else if (hit.kind == 24) {
-                    // a whole group: armour, ship kit, or what is carried
-                    craftGroup_ = (craftGroup_ == hit.value) ? -1 : hit.value;
-                    craftType_ = -1;
+                    // a whole group: armour, ship kit, or what is carried.
+                    // It is a choice of what to list, so the category and
+                    // type dropdowns step aside rather than empty it.
+                    craftFilter_.group = (craftFilter_.group == hit.value) ? -1 : hit.value;
+                    craftFilter_.type = -1;
+                    craftFilter_.clearShape();
                     craftScroll_ = 0;
                     cartOpen_ = false;
+                    cartPickOpen_ = 0;
                 } else if (hit.kind == 6) {
                     craftByComponent_ = (hit.value == 1);
                     craftScroll_ = 0;
                 } else if (hit.kind == 7) {
-                    craftType_ = (craftType_ == hit.value) ? -1 : hit.value;
-                    craftGroup_ = -1;
+                    craftFilter_.type = (craftFilter_.type == hit.value) ? -1 : hit.value;
+                    craftFilter_.group = -1;
+                    craftFilter_.clearShape();
                     cartOpen_ = false;
-                    craftScroll_ = 0;
-                } else if (hit.kind == 8) {
-                    craftGrade_ = (char)hit.value;
-                    craftScroll_ = 0;
-                } else if (hit.kind == 9) {
-                    craftSize_ = hit.value;
-                    craftScroll_ = 0;
-                } else if (hit.kind == 10) {
-                    craftClass_ = hit.value;
+                    cartPickOpen_ = 0;
                     craftScroll_ = 0;
                 } else if (hit.kind == 16) {
-                    craftOwned_ = hit.value;
+                    craftFilter_.owned = hit.value;
                     craftScroll_ = 0;
                 } else if (hit.kind == 18) {
-                    craftContract_ = hit.value;
+                    craftFilter_.contract = hit.value;
                     craftScroll_ = 0;
                 } else if (hit.kind == 29) {
                     toggleGrind();
@@ -16435,23 +16737,21 @@ LRESULT MinerGUI::handleCraftingMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
                     gameNamesOn_ = !gameNamesOn_;
                     if (onGameNames_) onGameNames_(gameNamesOn_);
                 } else if (hit.kind == 26) {
-                    craftSystem_ = hit.value;
+                    craftFilter_.system = hit.value;
                     craftScroll_ = 0;
-                } else if (hit.kind == 27) {
-                    if (hit.value < 0) {
-                        craftFactions_.clear();     // "any": every outfit again
-                        craftScroll_ = 0;
-                    } else if (hit.value < (int)factionHits_.size()) {
-                        // Each chip is its own switch: picking a second one
-                        // widens the list rather than replacing the first
-                        const std::string& outfit = factionHits_[hit.value];
-                        auto at = std::find(craftFactions_.begin(), craftFactions_.end(), outfit);
-                        if (at == craftFactions_.end()) craftFactions_.push_back(outfit);
-                        else craftFactions_.erase(at);
-                        craftScroll_ = 0;
+                } else if (hit.kind == HitCategory) {
+                    if (hit.value != craftFilter_.category) {
+                        if (craftFilter_.category == BucketVehicle) craftFilter_.clearVehicle();
+                        craftFilter_.category = hit.value;
+                        craftFilter_.kind = 0;
                     }
-                } else if (hit.kind == 28) {
-                    craftFactionPick_ = (hit.value == 1);
+                    // The left rail names components too. Left set, it
+                    // would keep emptying the list after this choice.
+                    craftFilter_.type = craftFilter_.group = -1;
+                    craftFilterPick_ = 0;
+                    craftScroll_ = 0;
+                } else if (isCraftDropField(hit.kind)) {
+                    craftFilterPick_ = hit.kind;
                 } else if (hit.kind == 17) {
                     // Flip it here at once, then tell the app so the file follows
                     const int b = hit.value;
@@ -16554,6 +16854,12 @@ LRESULT MinerGUI::handleCraftingMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
                 InvalidateRect(hwnd, nullptr, TRUE);
                 return 0;
             }
+            // The shopping list is what's on screen. The wheel must not
+            // walk the recipe list hiding under it.
+            if (cartOpen_) return 0;
+            // A dropped filter menu takes the wheel as it takes the click:
+            // the list under it must not scroll by underneath
+            if (craftFilterMenuUp()) return 0;
             const int delta = GET_WHEEL_DELTA_WPARAM(wParam);
             craftScroll_ -= (delta / WHEEL_DELTA) * 3;
             if (craftScroll_ < 0) craftScroll_ = 0;
@@ -16561,8 +16867,9 @@ LRESULT MinerGUI::handleCraftingMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
             return 0;
         }
         case WM_CHAR: {
-            if (craftOpen_ >= 0) return 0;   // the list is what gets searched
+            if (craftOpen_ >= 0 || cartOpen_) return 0;   // the list is what gets searched
             const wchar_t c = (wchar_t)wParam;
+            craftFilterPick_ = 0;
             if (c == VK_BACK) {
                 if (!craftSearch_.empty()) craftSearch_.pop_back();
             } else if (c >= L' ') {
@@ -16580,25 +16887,20 @@ LRESULT MinerGUI::handleCraftingMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
                 InvalidateRect(hwnd, nullptr, TRUE);
                 return 0;
             }
+            if (craftFilterMenuUp() && (wParam == VK_ESCAPE || wParam == VK_RETURN)) {
+                craftFilterPick_ = 0;
+                InvalidateRect(hwnd, nullptr, TRUE);
+                return 0;
+            }
             if (wParam == VK_ESCAPE) {
                 // Esc walks back one step at a time: recipe, then search, then out
                 if (craftQualityInfo_ && craftOpen_ >= 0) craftQualityInfo_ = false;
                 else if (craftSourceOpen_ >= 0) craftSourceOpen_ = -1;
                 else if (craftOpen_ >= 0) craftOpen_ = -1;
                 else if (!craftSearch_.empty()) { craftSearch_.clear(); craftScroll_ = 0; }
-                else if (craftType_ >= 0 || craftMaterial_ >= 0 || craftGrade_ ||
-                         craftSize_ >= 0 || craftClass_ >= 0 || craftOwned_ ||
-                         craftContract_ || craftSystem_ || !craftFactions_.empty()) {
-                    craftOwned_ = 0;
-                    craftContract_ = 0;
-                    craftSystem_ = 0;
-                    craftFactions_.clear();
-                    craftFactionPick_ = false;
-                    craftType_ = -1;
-                    craftMaterial_ = -1;
-                    craftGrade_ = 0;
-                    craftSize_ = -1;
-                    craftClass_ = -1;
+                else if (craftFilter_.narrows()) {
+                    craftFilter_ = {};
+                    craftFilterPick_ = 0;
                     craftMaterialPicked_ = true;   // do not snap back to the scan
                     craftScroll_ = 0;
                 }
